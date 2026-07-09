@@ -1,0 +1,38 @@
+# Build outputs
+build/
+build*/
+*.user
+*.user.*
+
+# Runtime artifacts
+qml_errors.log
+crash.log
+error.log
+error.txt
+run_log.txt
+*.log
+
+# Scratch / experiments
+scratch/
+src/test_*.json
+run_sketch.bat
+
+# Vendored Indigo SDK (637 MB third-party tree; kept on disk, not in history.
+# See THIRD-PARTY-NOTICES.md — source: https://github.com/epam/indigo)
+indigo/
+# Duplicate/unused copy of the Indigo runtime DLL at repo root — the build
+# links and copies indigo/lib/indigo.dll instead (see CMakeLists.txt).
+/indigo.dll
+
+# Editor / tool-specific state (not needed to build)
+.idea/
+.cursor/
+.antigravitycli/
+.qtcreator/
+.claude/
+.codegraph/
+
+# Session planning docs / notes (not needed to build)
+docs/superpowers/
+velvety-meandering-snowglobe.md
+ui-typography-redesign.md

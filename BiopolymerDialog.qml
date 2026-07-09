@@ -1,0 +1,199 @@
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+
+TaskDialog {
+    id: root
+    title: "Biopolymer Editor"
+    width: 580
+    height: 480
+    standardButtons: Dialog.Close
+
+    // Emitted by Load button — caller calls the relevant IndigoService method
+    signal loadRequested(string format, string seqType, string text)
+    // Emitted by Export buttons — caller calls requestSerialize with the right reqId
+    signal exportRequested(string format)
+
+    // Called by MainWindow when an export result arrives
+    function showExportResult(label, text) {
+        if (text && text.trim().length > 0) {
+            bioText.text = text
+            bioText.readOnly = true
+            statusLabel.text = label + " ready — edit above or Copy All."
+            statusLabel.color = Theme.textSecondary
+        } else {
+            statusLabel.text = "Export failed: structure may not be a biopolymer."
+            statusLabel.color = "#c0392b"
+        }
+    }
+
+    function showLoadError(error) {
+        statusLabel.text = "Load error: " + error
+        statusLabel.color = "#c0392b"
+    }
+
+    function onLoadSuccess() {
+        statusLabel.text = "Loaded successfully."
+        statusLabel.color = "#27ae60"
+        root.close()
+    }
+
+    // Format / type configuration
+    readonly property var formats:  ["Sequence", "FASTA", "HELM", "IDT", "AxoLabs"]
+    readonly property var seqTypes: ["DNA", "RNA", "Peptide"]
+
+    // IDT and AxoLabs are oligonucleotide-only — disable Peptide type for them
+    property bool typeRelevant: formatCombo.currentIndex <= 1  // Sequence or FASTA
+    property bool peptideDisabledForFormat: formatCombo.currentIndex >= 3  // IDT/AxoLabs
+
+    // Reset textarea whenever format changes so stale data is not accidentally loaded
+    onVisibleChanged: if (visible) _resetInput()
+
+    function _resetInput() {
+        bioText.text = ""
+        bioText.readOnly = false
+        statusLabel.text = ""
+        // Auto-fix type when IDT/AxoLabs selected and Peptide was chosen
+        if (peptideDisabledForFormat && seqTypeCombo.currentIndex === 2)
+            seqTypeCombo.currentIndex = 0
+    }
+
+    ColumnLayout {
+        anchors { fill: parent; margins: 4 }
+        spacing: 8
+
+        // ── Format & type row ───────────────────────────────────────────────
+        RowLayout {
+            spacing: 12
+            Layout.fillWidth: true
+
+            Label { text: "Format:"; color: Theme.textSecondary; font.pixelSize: 12 }
+            ComboBox {
+                id: formatCombo
+                model: root.formats
+                Layout.preferredWidth: 120
+                onCurrentIndexChanged: root._resetInput()
+            }
+
+            Label {
+                text: "Type:"
+                color: root.typeRelevant ? Theme.textSecondary : Theme.textSecondary
+                opacity: root.typeRelevant ? 1.0 : 0.35
+                font.pixelSize: 12
+            }
+            ComboBox {
+                id: seqTypeCombo
+                model: root.seqTypes
+                Layout.preferredWidth: 110
+                enabled: root.typeRelevant
+                opacity: root.typeRelevant ? 1.0 : 0.35
+                // Remove Peptide option for IDT/AxoLabs
+                onEnabledChanged: {
+                    if (!enabled && currentIndex === 2) currentIndex = 0
+                }
+            }
+        }
+
+        // ── Text area ───────────────────────────────────────────────────────
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            color: bioText.readOnly ? Qt.darker(Theme.background, 1.05) : Theme.background
+            border.color: Theme.outline
+            radius: 4
+            clip: true
+
+            ScrollView {
+                anchors { fill: parent; margins: 2 }
+
+                TextArea {
+                    id: bioText
+                    font { family: "Courier New, monospace"; pixelSize: 12 }
+                    wrapMode: TextArea.Wrap
+                    selectByMouse: true
+                    background: null
+                    color: Theme.textPrimary
+                    placeholderText: {
+                        const fmt = root.formats[formatCombo.currentIndex]
+                        const typ = root.seqTypes[seqTypeCombo.currentIndex]
+                        if (fmt === "Sequence") {
+                            if (typ === "DNA")     return "e.g.  ATGCATGCTAGC"
+                            if (typ === "RNA")     return "e.g.  AUGCAUGCUAGC"
+                            return "e.g.  ACDEFGHIKLMNPQRSTVWY"
+                        }
+                        if (fmt === "FASTA") return ">MySeq\nATGCATGCTAGC"
+                        if (fmt === "HELM")  return "RNA1{R(A)P.R(U)P.R(G)P.R(C)}$$$$"
+                        if (fmt === "IDT")   return "e.g.  /5Biosg/ATGCATGC/3AmMO/"
+                        if (fmt === "AxoLabs") return "AxoLabs oligo notation"
+                        return ""
+                    }
+                }
+            }
+        }
+
+        // ── Status label ─────────────────────────────────────────────────────
+        Label {
+            id: statusLabel
+            text: ""
+            font.pixelSize: 11
+            Layout.fillWidth: true
+            wrapMode: Text.WordWrap
+        }
+
+        // ── Action buttons ────────────────────────────────────────────────────
+        RowLayout {
+            spacing: 6
+            Layout.fillWidth: true
+
+            Button {
+                text: "Load to Canvas"
+                enabled: bioText.text.trim().length > 0 && !bioText.readOnly
+                onClicked: {
+                    const fmt     = root.formats[formatCombo.currentIndex]
+                    const seqType = root.seqTypes[seqTypeCombo.currentIndex].toUpperCase()
+                    root.loadRequested(fmt, seqType, bioText.text.trim())
+                    statusLabel.text  = "Loading…"
+                    statusLabel.color = Theme.textSecondary
+                }
+            }
+
+            Button {
+                text: "Clear"
+                onClicked: root._resetInput()
+            }
+
+            Item { Layout.fillWidth: true }
+
+            // Export buttons
+            Repeater {
+                model: root.formats
+                Button {
+                    required property string modelData
+                    required property int index
+                    text: modelData
+                    opacity: (index >= 3 && seqTypeCombo.currentIndex === 2) ? 0.35 : 1.0
+                    enabled: opacity > 0.5
+                    onClicked: {
+                        bioText.readOnly = false
+                        bioText.text = ""
+                        statusLabel.text = "Exporting as " + modelData + "…"
+                        statusLabel.color = Theme.textSecondary
+                        root.exportRequested(modelData)
+                    }
+                }
+            }
+
+            Button {
+                text: "Copy All"
+                enabled: bioText.text.trim().length > 0
+                onClicked: {
+                    bioText.selectAll()
+                    bioText.copy()
+                    bioText.deselect()
+                    statusLabel.text = "Copied to clipboard."
+                    statusLabel.color = Theme.textSecondary
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,1273 @@
+﻿import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import QtQuick.Shapes
+
+
+Item {
+    id: root
+    anchors.fill: parent
+
+    property real scale: 1.0
+    property real offsetX: 0
+    property real offsetY: 0
+    property real bondLength: Theme.baseBondLength
+    // Single source of truth for the canvas<->chem scale factor (mirrors chem-core.js's
+    // Scale.canvasToModel/modelToCanvas, which isn't reachable here since chem-core.js only
+    // runs inside the Node.js worker process, not the QML engine).
+    readonly property real chemScale: scale * bondLength
+
+    // Bound by MainWindow's per-document Repeater to this canvas's V8Process instance.
+    property var sketch: null
+    property string currentTool: "SELECT" // "SELECT", "BOND", "ATOM", "BENZENE"
+    property string currentArrowMode: "filled-triangle" // default reaction arrow mode
+    property bool showExplicitH: false
+    // These must remain 'var' as they store plain JS objects from CanvasState.
+    // In a future refactor, these should be moved to a C++ backed type or QtObject subclasses
+    // to enable granular property change notifications.
+    property var selectedAtom: null
+    property var selectedBond: null
+    property var selectedRxnArrow: null
+    property bool isDirty: false
+    property bool canUndo: false
+    property bool canRedo: false
+
+    property int _renderVersion: 0
+    property int _overlayVersion: 0
+    property bool _refreshing: false
+    // Armed by loadStructure() only: fit-to-view should follow loading a file,
+    // never the user's first interactive draw on a blank canvas.
+    property bool _needsCentering: false
+    property bool _panningActive: false
+
+    focus: true
+
+    signal atomPropertiesRequested(int atomId)
+    // Emitted by the TEXT tool: textId is -1 for "create new at (chemX, chemY)"
+    signal textEditRequested(int textId, string content, real chemX, real chemY)
+
+    // Finds a text annotation near a canvas point (px tolerance), or null.
+    function hitTestText(cx, cy) {
+        if (!sketch || !sketch.primitives || !sketch.primitives.texts) return null
+        for (let i = 0; i < sketch.primitives.texts.length; i++) {
+            const t = sketch.primitives.texts[i]
+            const p = chemToCanvas(t.x, t.y)
+            if (Math.abs(p.x - cx) < 60 && Math.abs(p.y - cy) < 20) return t
+        }
+        return null
+    }
+
+    onShowExplicitHChanged: {
+        sketch.sendCommand("setShowExplicitH", [showExplicitH])
+        refresh()
+    }
+
+    // Render data stored in pure JS file (CanvasState.js) so V4 does NOT build
+    // InternalClass chains when the top-level component's properties change.
+
+    // Incrementing this triggers all Canvas layers to repaint.
+
+    function setOverlayState(s) {
+        sketch.overlayState = s;
+        _overlayVersion++;
+    }
+
+    // Public accessors for layers and mouse handlers
+    
+    
+    
+
+    
+    
+
+        
+
+    
+
+    
+
+    
+
+    
+
+    Keys.onPressed: (event) => {
+        if (event.modifiers & Qt.ControlModifier) {
+            if (event.key === Qt.Key_Z) {
+                sketch.undo()
+                refresh()
+                event.accepted = true
+            }
+            if (event.key === Qt.Key_Y) {
+                sketch.redo()
+                refresh()
+                event.accepted = true
+            }
+            if (event.key === Qt.Key_C) {
+                if (event.modifiers & Qt.ShiftModifier) {
+                    copyAsImage()
+                } else {
+                    sketch.copySelection()
+                    sketch.requestClipboardKet()  // async → clipboard_ket handler writes to OS clipboard
+                }
+                event.accepted = true
+            }
+            if (event.key === Qt.Key_X) {
+                sketch.cutSelection()
+                sketch.requestClipboardKet()
+                refresh()
+                event.accepted = true
+            }
+            if (event.key === Qt.Key_V) {
+                const center = canvasToChem(root.width / 2, root.height / 2)
+                const osText = sketch.getOsClipboardText()
+                if (osText && osText.length > 0) {
+                    // Prefer OS clipboard: try KET, then MOL/SDF
+                    if (osText.indexOf('"root"') >= 0 || osText.indexOf('"atoms"') >= 0) {
+                        sketch.importKetAtPosition(osText, center.x, center.y)
+                    } else {
+                        // Not KET — fall back to internal clipboard
+                        sketch.pasteSelection(center.x, center.y)
+                    }
+                } else {
+                    sketch.pasteSelection(center.x, center.y)
+                }
+                refresh()
+                event.accepted = true
+            }
+        }
+        if (event.key === Qt.Key_A && (event.modifiers & Qt.ControlModifier)) {
+            sketch.selectAll()
+            event.accepted = true
+        }
+        if (event.key === Qt.Key_0 && (event.modifiers & Qt.ControlModifier)) {
+            fitToMolecule()
+            event.accepted = true
+        }
+        if (event.key === Qt.Key_Delete || event.key === Qt.Key_Backspace) {
+            sketch.deleteSelection()
+            refresh()
+            event.accepted = true
+        }
+        if (event.key === Qt.Key_Escape) {
+            currentTool = "SELECT"
+            sketch.setOverlayState({ hoverAtomId: null, hoverBondId: null, dragRect: null, bondPreview: null })
+            event.accepted = true
+        }
+        // Single-key tool shortcuts (no modifier)
+        if (event.modifiers === Qt.NoModifier) {
+            if (event.key === Qt.Key_S) { currentTool = "SELECT"; event.accepted = true }
+            else if (event.key === Qt.Key_B) { currentTool = "BOND_1"; event.accepted = true }
+            else if (event.key === Qt.Key_E) { currentTool = "ERASE"; event.accepted = true }
+            else if (event.key === Qt.Key_R) { currentTool = "TEMPLATE_BENZENE"; event.accepted = true }
+        }
+        if (event.key === Qt.Key_Left || event.key === Qt.Key_Right ||
+                event.key === Qt.Key_Up || event.key === Qt.Key_Down) {
+            const sel = sketch.selection
+            if ((sel.atom_ids && sel.atom_ids.length > 0) ||
+                    (sel.rxnArrow_ids && sel.rxnArrow_ids.length > 0) ||
+                    (sel.rxnPlus_ids && sel.rxnPlus_ids.length > 0) ||
+                    (sel.multitailArrow_ids && sel.multitailArrow_ids.length > 0)) {
+                const nudgePx = (event.modifiers & Qt.ShiftModifier) ? 1 : 10
+                const f = root.chemScale
+                let cdx = 0, cdy = 0
+                if (event.key === Qt.Key_Left)  cdx = -nudgePx / f
+                if (event.key === Qt.Key_Right) cdx =  nudgePx / f
+                if (event.key === Qt.Key_Up)    cdy =  nudgePx / f
+                if (event.key === Qt.Key_Down)  cdy = -nudgePx / f
+                sketch.moveSelection(cdx, cdy)
+                sketch.commitMove()
+                refresh()
+                event.accepted = true
+            }
+        }
+    }
+
+    Connections {
+        target: sketch
+        function onStateUpdated(state, selection, dirty, undoState, redoState, result) {
+            if (sketch.selection.atom_ids && sketch.selection.atom_ids.length === 1 && (!sketch.selection.bond_ids || sketch.selection.bond_ids.length === 0)) {
+                const atom = sketch.primitives.atomsById[sketch.selection.atom_ids[0].toString()]
+                if (atom) {
+                    selectedAtom = { id: sketch.selection.atom_ids[0], label: atom.label, charge: atom.charge, isSgroup: atom.isSgroup || false,
+                        isAtomList: atom.isAtomList || false, atomListElements: atom.atomListElements || "", atomListNot: atom.atomListNot || false }
+                } else {
+                    selectedAtom = null
+                }
+                selectedBond = null
+            } else if (sketch.selection.bond_ids && sketch.selection.bond_ids.length === 1 && (!sketch.selection.atom_ids || sketch.selection.atom_ids.length === 0)) {
+                const bId = sketch.selection.bond_ids[0]
+                let bObj = null
+                for (let i=0; i<sketch.primitives.bonds.length; i++) { if(sketch.primitives.bonds[i].id === bId) bObj = sketch.primitives.bonds[i] }
+                selectedAtom = null
+                selectedBond = { id: bId, type: bObj ? bObj.type : 1 }
+                selectedRxnArrow = null
+            } else if (sketch.selection.rxnArrow_ids && sketch.selection.rxnArrow_ids.length === 1
+                       && (!sketch.selection.atom_ids || sketch.selection.atom_ids.length === 0)
+                       && (!sketch.selection.bond_ids || sketch.selection.bond_ids.length === 0)) {
+                const arId = sketch.selection.rxnArrow_ids[0]
+                let arObj = null
+                if (sketch.primitives.rxnArrows) {
+                    for (let i = 0; i < sketch.primitives.rxnArrows.length; i++) {
+                        if (sketch.primitives.rxnArrows[i].id === arId) arObj = sketch.primitives.rxnArrows[i]
+                    }
+                }
+                selectedAtom = null
+                selectedBond = null
+                selectedRxnArrow = arObj ? {
+                    id: arId,
+                    mode: arObj.mode || "filled-triangle",
+                    conditionsAbove: (arObj.conditionsText && arObj.conditionsText.above) || "",
+                    conditionsBelow: (arObj.conditionsText && arObj.conditionsText.below) || ""
+                } : null
+            } else {
+                selectedAtom = null
+                selectedBond = null
+                selectedRxnArrow = null
+            }
+            
+            isDirty = dirty
+            canUndo = undoState
+            canRedo = redoState
+            
+            _renderVersion++
+
+            if (_needsCentering && sketch.primitives && sketch.primitives.bbox) {
+                _needsCentering = false
+                centerOnMolecule()
+            }
+        }
+    }
+
+    function refresh() {
+        // Obsolete now that V8 updates reactively, but kept for compatibility 
+        // with other parts of the code. We can optionally send an 'init' to trigger state.
+    }
+
+    function _refreshImpl() {
+        // Deprecated
+    }
+
+    function setClean() {
+        isDirty = false
+    }
+
+    function normalizeStructure() {
+        sketch.normalizeStructure()
+        refresh()
+    }
+
+    function centerStructure() {
+        sketch.centerStructure()
+        refresh()
+    }
+
+    // The single QML-side entry point for every structure mutation — the
+    // async request/response half of the same convention is requestSerialize(reqId)
+    // paired with the catch-all onStructureReady(reqId, data) handler (MainWindow.qml,
+    // ToolPanel.qml); no third mechanism should be introduced for either half.
+    // Parameter shape: one value → pass it directly as val; two or more related
+    // values → one object literal (e.g. {above, below}, {elements, notList}).
+    function applyPropertyChange(type, id, val) {
+        if (type === "atomLabel") {
+            sketch.changeAtomLabel(id, val)
+        } else if (type === "atomCharge") {
+            sketch.changeAtomCharge(id, parseInt(val) || 0)
+        } else if (type === "bondType") {
+            sketch.changeBondType(id, parseInt(val) || 1)
+        } else if (type === "rxnArrowMode") {
+            sketch.setRxnArrowMode(id, val)
+        } else if (type === "rxnArrowConditions") {
+            sketch.setRxnArrowConditions(id, val.above || "", val.below || "")
+        } else if (type === "atomQueryList") {
+            if (val.elements && val.elements.trim().length > 0) sketch.setAtomQueryList(id, val.elements, !!val.notList)
+            else sketch.clearAtomQueryList(id, "C")
+        } else if (type === "atomProps") {
+            sketch.changeAtomIsotope(id, val.isotope || 0)
+            sketch.changeAtomRadical(id, val.radical || 0)
+            sketch.changeAtomValence(id, val.valence !== undefined ? val.valence : -1)
+        } else if (type === "rgroupDefine") {
+            sketch.addRGroup(id)
+        } else if (type === "rgroupDelete") {
+            sketch.deleteRGroup(id)
+        } else if (type === "rgroupLogic") {
+            sketch.setRGroupLogic(id, val.range || "", !!val.resth, val.ifthen || 0)
+        } else if (type === "rgroupAddMember") {
+            sketch.addRGroupMember(id)
+        } else if (type === "rgroupRemoveMember") {
+            sketch.removeRGroupMember(id, val)
+        }
+        refresh()
+    }
+
+    function clearCanvas() {
+        sketch.clearCanvas()
+        scale = 1.0
+        offsetX = root.width  / 2
+        offsetY = root.height / 2
+        refresh()
+    }
+
+    function undo() {
+        sketch.undo()
+        refresh()
+    }
+
+    function redo() {
+        sketch.redo()
+        refresh()
+    }
+
+    function copySelection() {
+        sketch.copySelection()
+    }
+
+    function cutSelection() {
+        sketch.cutSelection()
+        refresh()
+    }
+
+    function pasteSelection() {
+        const center = canvasToChem(root.width / 2, root.height / 2)
+        sketch.pasteSelection(center.x, center.y)
+        refresh()
+    }
+
+    function getStructure(fmt) {
+        return sketch.getStructure(fmt)
+    }
+
+    function getMolfile() {
+        return getStructure('mol')
+    }
+
+    function loadMolfile(data) {
+        loadStructure('mol', data)
+    }
+
+    function loadStructure(fmt, data) {
+        _needsCentering = true
+        sketch.loadStructure(fmt, data)
+        refresh()
+    }
+
+    function serializeMol() {
+        return sketch.serializeMol()
+    }
+
+    function deserializeMol(data) {
+        sketch.deserializeMol(data)
+        refresh()
+    }
+
+    // Resolve a hit atom ID: if it's a contracted sgroup prim, return its attachment atom ID instead
+    function resolveHitAtom(id) {
+        if (id === null || id === undefined || !sketch.primitives || !sketch.primitives.atomsById) return id
+        const prim = sketch.primitives.atomsById[id.toString()]
+        if (prim && prim.isSgroup && prim.attachAtomId !== null && prim.attachAtomId !== undefined)
+            return prim.attachAtomId
+        return id
+    }
+
+    function chemToCanvas(chemX, chemY) {
+        if (typeof chemX === 'object' && chemX !== null) {
+            chemY = chemX.y;
+            chemX = chemX.x;
+        }
+        const f = root.chemScale
+        return Qt.point(chemX * f + offsetX, chemY * f + offsetY)
+    }
+
+    function canvasToChem(cx, cy) {
+        if (typeof cx === 'object' && cx !== null) {
+            cy = cx.y;
+            cx = cx.x;
+        }
+        const f = root.chemScale
+        return Qt.point((cx - offsetX) / f, (cy - offsetY) / f)
+    }
+
+    function fitToMolecule() {
+        const prims = sketch.primitives
+        if (!prims || !prims.bbox) return
+        const bb = prims.bbox
+        const w = bb.maxX - bb.minX
+        const h = bb.maxY - bb.minY
+        let newScale
+        if (w < 0.01 && h < 0.01) {
+            newScale = 1.0
+        } else {
+            const pad = 0.70
+            const sx = w > 0.01 ? (root.width  * pad) / (w * bondLength) : 999
+            const sy = h > 0.01 ? (root.height * pad) / (h * bondLength) : 999
+            // Ceiling 1.5: "fit" may shrink a large molecule to view, but must not
+            // blow a small one up to fill the page (a lone ring is not a poster).
+            newScale = Math.max(0.1, Math.min(1.5, Math.min(sx, sy)))
+        }
+        scale = newScale
+        const chemCenterX = (bb.minX + bb.maxX) / 2
+        const chemCenterY = (bb.minY + bb.maxY) / 2
+        offsetX = root.width  / 2 - chemCenterX * root.chemScale
+        offsetY = root.height / 2 - chemCenterY * root.chemScale
+    }
+
+    function centerOnMolecule() { fitToMolecule() }
+
+    function _grabClean(fileUrl, afterSave) {
+        gridCanvas.visible = false
+        selectionLayer.visible = false
+        toolOverlayItem.visible = false
+        exportBg.visible = true
+        root.grabToImage(function(result) {
+            result.saveToFile(fileUrl)
+            if (afterSave) afterSave(fileUrl)
+            gridCanvas.visible = true
+            selectionLayer.visible = true
+            toolOverlayItem.visible = true
+            exportBg.visible = false
+        })
+    }
+
+    function exportPNG(fileUrl) { _grabClean(fileUrl, null) }
+
+    // Grabs a clean (no grid/selection/overlay) PNG, then invokes afterSave(url) —
+    // used to feed AppController.exportPdf() the same clean render Copy-as-Image uses.
+    function exportForPrint(fileUrl, afterSave) { _grabClean(fileUrl, afterSave) }
+
+    function copyAsImage() {
+        const tmp = AppController.tempPngPath()
+        const tmpUrl = Qt.url("file:///" + tmp.replace(/\\/g, "/"))
+        _grabClean(tmpUrl, function(url) { AppController.copyImageToClipboard(url) })
+    }
+
+    function zoomAt(cx, cy, factor) {
+        const chem = canvasToChem(cx, cy)
+        scale = Math.max(0.1, Math.min(20.0, scale * factor))
+        const fNew = root.chemScale
+        offsetX = cx - chem.x * fNew
+        offsetY = cy - chem.y * fNew
+    }
+
+    Rectangle {
+        id: exportBg
+        anchors.fill: parent
+        color: "white"
+        z: -1
+        visible: false
+    }
+
+    // Subtle dot grid overlay
+    Canvas {
+        id: gridCanvas
+        anchors.fill: parent
+        antialiasing: true
+        onPaint: {
+            const ctx = getContext("2d")
+            ctx.clearRect(0, 0, width, height)
+            let gridSize = 40 * root.scale
+            while (gridSize < 8) gridSize *= 2
+            const dotRadius = Math.max(0.8, 1.2 * root.scale)
+            ctx.fillStyle = Theme.rulerColor
+            ctx.globalAlpha = 0.18
+            const startX = root.offsetX % gridSize
+            const startY = root.offsetY % gridSize
+            for (let x = startX; x < width; x += gridSize) {
+                for (let y = startY; y < height; y += gridSize) {
+                    ctx.beginPath()
+                    ctx.arc(x, y, dotRadius, 0, Math.PI * 2)
+                    ctx.fill()
+                }
+            }
+            ctx.globalAlpha = 1.0
+        }
+    }
+
+    // Theme flips (dark mode) must repaint every Canvas layer — they read Theme
+    // colors imperatively at paint time, not through bindings.
+    Connections {
+        target: Theme
+        function onDarkModeChanged() {
+            root._renderVersion++
+            gridCanvas.requestPaint()
+        }
+    }
+
+    Connections {
+        target: root
+        function onScaleChanged() { gridCanvas.requestPaint() }
+        function onOffsetXChanged() { gridCanvas.requestPaint() }
+        function onOffsetYChanged() { gridCanvas.requestPaint() }
+        function onWidthChanged() { gridCanvas.requestPaint() }
+        function onHeightChanged() { gridCanvas.requestPaint() }
+    }
+
+    MoleculeLayer {
+        id: moleculeLayer
+        anchors.fill: parent
+        scale: root.scale
+        offsetX: root.offsetX
+        offsetY: root.offsetY
+        bondLength: root.bondLength
+        canvas: root
+        renderVersion: root._renderVersion
+    }
+
+    SelectionLayer {
+        id: selectionLayer
+        anchors.fill: parent
+        scale: root.scale
+        offsetX: root.offsetX
+        offsetY: root.offsetY
+        bondLength: root.bondLength
+        canvas: root
+        renderVersion: root._renderVersion
+        overlayVersion: root._overlayVersion
+    }
+
+    LabelLayer {
+        id: labelLayer
+        anchors.fill: parent
+        scale: root.scale
+        offsetX: root.offsetX
+        offsetY: root.offsetY
+        bondLength: root.bondLength
+        canvas: root
+        renderVersion: root._renderVersion
+    }
+
+    ToolOverlay {
+        id: toolOverlayItem
+        anchors.fill: parent
+        overlayVersion: root._overlayVersion
+        canvas: root
+        renderVersion: root._renderVersion
+        scale: root.scale
+    }
+
+    MouseArea {
+        id: mouse
+        anchors.fill: parent
+        hoverEnabled: true
+        acceptedButtons: Qt.AllButtons
+        cursorShape: {
+            if (mouse.panning) return Qt.ClosedHandCursor
+            if (currentTool === "SELECT" || currentTool === "SELECT_FRAGMENT") return Qt.ArrowCursor
+            if (currentTool === "ERASE") return Qt.PointingHandCursor
+            return Qt.CrossCursor
+        }
+
+        property real pressX: 0
+        property real pressY: 0
+        property real startPressX: 0
+        property real startPressY: 0
+        property bool panning: false
+        property bool isDragging: false
+        property bool isAppControllerDragging: false
+        property bool movingSelection: false
+        property bool shiftAtPress: false
+
+        onWheel: (wheel) => {
+            const factor = wheel.angleDelta.y > 0 ? 1.15 : (1.0 / 1.15)
+            zoomAt(wheel.x, wheel.y, factor)
+        }
+
+        onPressed: (m) => {
+            root.forceActiveFocus()
+            pressX = m.x
+            pressY = m.y
+            startPressX = m.x
+            startPressY = m.y
+            shiftAtPress = (m.modifiers & Qt.ShiftModifier) !== 0
+            if (m.button === Qt.MiddleButton) {
+                panning = true
+                _panningActive = true
+                return
+            }
+            if (m.button === Qt.RightButton) {
+                const hitAtom = selectionLayer.hitTestAtom(m.x, m.y)
+                const hitBond = (hitAtom === null) ? selectionLayer.hitTestBond(m.x, m.y) : null
+                contextMenu._hitAtom = hitAtom
+                contextMenu._hitBond = hitBond
+                contextMenu.popup(m.x, m.y)
+                return
+            }
+            if (m.button === Qt.LeftButton) {
+                const hitAtom = selectionLayer.hitTestAtom(m.x, m.y)
+                const hitBond = hitAtom === null ? selectionLayer.hitTestBond(m.x, m.y) : null
+                const hitRxnArrow = (hitAtom === null && hitBond === null) ? selectionLayer.hitTestRxnArrow(m.x, m.y) : null
+                const hitRxnPlus = (hitAtom === null && hitBond === null && hitRxnArrow === null) ? selectionLayer.hitTestRxnPlus(m.x, m.y) : null
+                const hitMultitailArrow = (hitAtom === null && hitBond === null && hitRxnArrow === null && hitRxnPlus === null) ? selectionLayer.hitTestMultitailArrow(m.x, m.y) : null
+                
+                if (currentTool === "SELECT" || currentTool === "SELECT_FRAGMENT") {
+                    const shiftHeld = (m.modifiers & Qt.ShiftModifier) !== 0
+                    if (shiftHeld && hitAtom !== null) {
+                        // Shift+click atom: toggle membership in selection
+                        const alreadySel = sketch.selection.atom_ids && sketch.selection.atom_ids.indexOf(hitAtom) >= 0
+                        if (alreadySel) {
+                            sketch.removeItemFromSelection(hitAtom, null)
+                        } else {
+                            sketch.addItemToSelection(hitAtom, null)
+                        }
+                        isDragging = true
+                        movingSelection = true
+                        refresh()
+                    } else if (shiftHeld && hitBond !== null) {
+                        // Shift+click bond: toggle membership in selection
+                        const alreadySel = sketch.selection.bond_ids && sketch.selection.bond_ids.indexOf(hitBond) >= 0
+                        if (alreadySel) {
+                            sketch.removeItemFromSelection(null, hitBond)
+                        } else {
+                            sketch.addItemToSelection(null, hitBond)
+                        }
+                        isDragging = true
+                        movingSelection = false
+                        refresh()
+                    } else if (shiftHeld) {
+                        // Shift+click empty space: start additive rubber band without clearing
+                        isDragging = true
+                        movingSelection = false
+                        setOverlayState({ hoverAtomId: null, hoverBondId: null, dragRect: Qt.rect(m.x, m.y, 0, 0), bondPreview: null })
+                    } else if (hitAtom !== null && sketch.selection.atom_ids && sketch.selection.atom_ids.indexOf(hitAtom) !== -1) {
+                        // Clicked an ALREADY selected atom -> prepare to move selection
+                        isDragging = true
+                        movingSelection = true
+                    } else if (hitAtom !== null) {
+                        if (currentTool === "SELECT_FRAGMENT") {
+                            sketch.selectFragment(hitAtom, null)
+                            isDragging = true
+                            movingSelection = true
+                        } else {
+                            const hitPrim = sketch.primitives.atomsById[hitAtom.toString()]
+                            if (hitPrim && hitPrim.isSgroup) {
+                                // Sgroup pill: select it and allow moving, no bond preview
+                                sketch.selectItem(hitAtom, null)
+                                isDragging = true
+                                movingSelection = true
+                                setOverlayState({ hoverAtomId: hitAtom, hoverBondId: null, dragRect: null, bondPreview: null })
+                            } else {
+                                sketch.selectItem(null, null)
+                                isDragging = true
+                                movingSelection = false
+                                setOverlayState({
+                                    hoverAtomId: hitAtom,
+                                    hoverBondId: hitBond,
+                                    dragRect: null,
+                                    bondPreview: {
+                                        startAtomId: hitAtom,
+                                        endX: m.x,
+                                        endY: m.y
+                                    }
+                                })
+                            }
+                        }
+                    } else if (hitBond !== null) {
+                        if (currentTool === "SELECT_FRAGMENT") {
+                            sketch.selectFragment(null, hitBond)
+                            isDragging = true
+                            movingSelection = true
+                        } else if (sketch.selection.bond_ids && sketch.selection.bond_ids.indexOf(hitBond) >= 0 &&
+                                   sketch.selection.atom_ids && sketch.selection.atom_ids.length > 0) {
+                            // Clicked an ALREADY selected bond (with atoms also selected) -> prepare to move selection
+                            isDragging = true
+                            movingSelection = true
+                        } else {
+                            isDragging = true
+                            movingSelection = false
+                            setOverlayState({
+                                hoverAtomId: null,
+                                hoverBondId: hitBond,
+                                dragRect: Qt.rect(m.x, m.y, 0, 0),
+                                bondPreview: null
+                            })
+                        }
+                    } else if (hitRxnArrow !== null) {
+                        sketch.selectItem(null, null, hitRxnArrow, null)
+                        isDragging = true
+                        movingSelection = true
+                    } else if (hitRxnPlus !== null) {
+                        sketch.selectItem(null, null, null, hitRxnPlus)
+                        isDragging = true
+                        movingSelection = true
+                    } else if (hitMultitailArrow !== null) {
+                        sketch.selectItem(null, null, null, null, hitMultitailArrow)
+                        isDragging = true
+                        movingSelection = true
+                    } else {
+                        sketch.selectItem(null, null)
+                        isDragging = true
+                        movingSelection = false
+                        setOverlayState({
+                            hoverAtomId: null,
+                            hoverBondId: null,
+                            dragRect: Qt.rect(m.x, m.y, 0, 0),
+                            bondPreview: null
+                        })
+                    }
+                } else if (currentTool === "ERASE") {
+                    if (hitAtom !== null) {
+                        sketch.deleteAtomById(hitAtom)
+                        refresh()
+                    } else if (hitBond !== null) {
+                        sketch.deleteBondById(hitBond)
+                        refresh()
+                    } else if (hitRxnArrow !== null) {
+                        sketch.sendCommand("deleteRxnArrow", [hitRxnArrow])
+                        refresh()
+                    } else if (hitRxnPlus !== null) {
+                        sketch.sendCommand("deleteRxnPlus", [hitRxnPlus])
+                        refresh()
+                    } else if (hitMultitailArrow !== null) {
+                        sketch.deleteMultitailArrow(hitMultitailArrow)
+                        refresh()
+                    }
+                } else if (currentTool.startsWith("BOND_")) {
+                    if (hitBond !== null && hitAtom === null) {
+                        isDragging = true
+                        setOverlayState({
+                            hoverAtomId: null,
+                            hoverBondId: hitBond,
+                            dragRect: null,
+                            bondPreview: null
+                        })
+                        return
+                    }
+                    let startAtomId = resolveHitAtom(hitAtom)
+                    const chemP = canvasToChem(m.x, m.y)
+                    isDragging = true
+                    setOverlayState({
+                        hoverAtomId: hitAtom,
+                        hoverBondId: hitBond,
+                        dragRect: null,
+                        bondPreview: {
+                            startAtomId: startAtomId,
+                            startX: chemP.x,
+
+                            startY: chemP.y,
+                            endX: m.x,
+                            endY: m.y
+                        }
+                    })
+                } else if (currentTool.startsWith("ATOM_") || currentTool.startsWith("FG_") || currentTool.startsWith("SS_") || currentTool.startsWith("LIB_") || currentTool.startsWith("TEMPLATE_")) {
+                    if (hitAtom !== null) {
+                        const cP = canvasToChem(m.x, m.y)
+                        AppController.handleDragStart(currentTool, hitAtom, m.x, m.y, cP.x, cP.y)
+                        isAppControllerDragging = true
+                    } else {
+                        if (currentTool.startsWith("ATOM_")) {
+                            const atomLabel = currentTool.split("_")[1]
+                            const cP = canvasToChem(m.x, m.y)
+                            sketch.addAtom(atomLabel, cP.x, cP.y, 0)
+                            refresh()
+                        } else if (currentTool.startsWith("FG_") || currentTool.startsWith("SS_")) {
+                            const fgName = currentTool.substring(3)
+                            const cP = canvasToChem(m.x, m.y)
+                            sketch.insertFunctionalGroup(fgName, cP.x, cP.y)
+                            refresh()
+                        } else if (currentTool.startsWith("LIB_")) {
+                            const cP = canvasToChem(m.x, m.y)
+                            sketch.insertFunctionalGroup(currentTool.substring(4), cP.x, cP.y)
+                            refresh()
+                        } else if (currentTool.startsWith("TEMPLATE_")) {
+                            const cP2 = canvasToChem(m.x, m.y)
+                            let ringSize = 6
+                            if (currentTool === "TEMPLATE_BENZENE") {
+                                ringSize = 6
+                            } else {
+                                const parsed = parseInt(currentTool.split("_")[1])
+                                if (!isNaN(parsed)) ringSize = parsed
+                            }
+                            var coords = sketch.getRingPreviewCoords(
+                                ringSize, cP2.x, cP2.y, hitAtom, hitBond
+                            );
+                            if (coords && coords.length > 0) {
+                                const coordList = []
+                                for (let i = 0; i < coords.length; i++) {
+                                    coordList.push(coords[i].x);
+                                    coordList.push(coords[i].y);
+                                }
+                                sketch.addRing(coordList, currentTool === "TEMPLATE_BENZENE")
+                            }
+                            refresh()
+                        }
+                    }
+                } else if (currentTool === "CHAIN") {
+                    // Drag lays a zig-zag carbon chain; the bond-preview line doubles
+                    // as the drag feedback (same overlay the BOND tools use).
+                    isDragging = true
+                    setOverlayState({
+                        hoverAtomId: null, hoverBondId: null, dragRect: null,
+                        bondPreview: { startX: canvasToChem(m.x, m.y).x, startY: canvasToChem(m.x, m.y).y, endX: m.x, endY: m.y }
+                    })
+                } else if (currentTool === "TEXT") {
+                    const hitText = hitTestText(m.x, m.y)
+                    const cP = canvasToChem(m.x, m.y)
+                    if (hitText !== null) {
+                        textEditRequested(hitText.id, hitText.content, hitText.x, hitText.y)
+                    } else {
+                        textEditRequested(-1, "", cP.x, cP.y)
+                    }
+                } else if (currentTool === "RXN_ARROW") {
+                    const cP = canvasToChem(m.x, m.y)
+                    sketch.addRxnArrow(cP.x, cP.y, currentArrowMode)
+                    refresh()
+                } else if (currentTool === "MULTITAIL_ARROW") {
+                    const cP = canvasToChem(m.x, m.y)
+                    sketch.addMultitailArrow(cP.x, cP.y)
+                    refresh()
+                } else if (currentTool === "RXN_PLUS") {
+                    const cP = canvasToChem(m.x, m.y)
+                    sketch.addRxnPlus(cP.x, cP.y)
+                    refresh()
+                } else if (currentTool.startsWith("CHARGE_")) {
+                    if (hitAtom !== null) {
+                        const atom = sketch.primitives.atomsById[hitAtom.toString()]
+                        if (atom) {
+                            const currentCharge = atom.charge || 0
+                            const newCharge = currentTool === "CHARGE_PLUS" ? currentCharge + 1 : currentCharge - 1
+                            sketch.changeAtomCharge(hitAtom, newCharge)
+                            refresh()
+                        }
+                    }
+                } else if (currentTool === "AAM") {
+                    if (hitAtom !== null) {
+                        const atom = sketch.primitives.atomsById[hitAtom.toString()]
+                        if (atom) {
+                            const currentAam = atom.aam || 0
+                            const newAam = (m.modifiers & Qt.ShiftModifier) ? 0 : (currentAam >= 99 ? 0 : currentAam + 1)
+                            sketch.setAtomMapping(hitAtom, newAam)
+                            refresh()
+                        }
+                    }
+                }
+            }
+        }
+
+        onPositionChanged: (m) => {
+            if (panning) {
+                offsetX += m.x - pressX
+                offsetY += m.y - pressY
+                pressX = m.x
+                pressY = m.y
+                setOverlayState({ hoverAtomId: null, hoverBondId: null, dragRect: null, bondPreview: null })
+                return
+            }
+            
+            const hoverAtomId = selectionLayer.hitTestAtom(m.x, m.y)
+            const hoverBondId = hoverAtomId === null ? selectionLayer.hitTestBond(m.x, m.y) : null
+
+            if (isAppControllerDragging) {
+                AppController.handleDrag(m.x, m.y, 1.0)
+                return
+            }
+
+            if (isDragging) {
+                if (!(m.buttons & Qt.LeftButton)) {
+                    isDragging = false
+                    setOverlayState({ hoverAtomId: hoverAtomId, hoverBondId: hoverBondId, dragRect: null, bondPreview: null })
+                    return
+                }
+
+                if (currentTool === "CHAIN") {
+                    const bp = sketch.overlayState.bondPreview
+                    if (bp) {
+                        setOverlayState({
+                            hoverAtomId: null, hoverBondId: null, dragRect: null,
+                            bondPreview: { startX: bp.startX, startY: bp.startY, endX: m.x, endY: m.y }
+                        })
+                    }
+                    return
+                }
+
+                if (currentTool === "SELECT" || currentTool === "SELECT_FRAGMENT") {
+                    if (movingSelection) {
+                        const dx = m.x - pressX
+                        const dy = m.y - pressY
+                        const chemDx = dx / root.chemScale
+                        const chemDy = dy / root.chemScale
+                        sketch.moveSelection(chemDx, chemDy)
+                        refresh()
+                        pressX = m.x
+                        pressY = m.y
+                    } else if (sketch.overlayState.bondPreview) {
+                        // Smart drawing bond
+                        let targetX = m.x
+                        let targetY = m.y
+                        if (hoverAtomId !== null && hoverAtomId !== sketch.overlayState.bondPreview.startAtomId) {
+                            for (let i = 0; i < sketch.primitives.atoms.length; i++) {
+                                if (sketch.primitives.atoms[i].id === hoverAtomId) {
+                                    const aPos = chemToCanvas(sketch.primitives.atoms[i].x, sketch.primitives.atoms[i].y)
+                                    targetX = aPos.x
+                                    targetY = aPos.y
+                                    break
+                                }
+                            }
+                        }
+                        setOverlayState({
+                            hoverAtomId: hoverAtomId,
+                            hoverBondId: hoverBondId,
+                            dragRect: null,
+                            bondPreview: {
+                                startAtomId: sketch.overlayState.bondPreview.startAtomId,
+                                startX: sketch.overlayState.bondPreview.startX,
+                                startY: sketch.overlayState.bondPreview.startY,
+                                endX: targetX,
+                                endY: targetY
+                            }
+                        })
+                    } else if (sketch.overlayState.dragRect !== null) {
+                        const x = Math.min(pressX, m.x)
+                        const y = Math.min(pressY, m.y)
+                        const w = Math.abs(m.x - pressX)
+                        const h = Math.abs(m.y - pressY)
+                        setOverlayState({
+                            hoverAtomId: hoverAtomId,
+                            hoverBondId: hoverBondId,
+                            dragRect: Qt.rect(x, y, w, h),
+                            bondPreview: null
+                        })
+                    }
+                    return
+                } else if (currentTool.startsWith("BOND_") && sketch.overlayState.bondPreview) {
+                    let targetX = m.x
+                    let targetY = m.y
+                    if (hoverAtomId !== null && hoverAtomId !== sketch.overlayState.bondPreview.startAtomId) {
+                        // Snap to atom
+                        for (let i = 0; i < sketch.primitives.atoms.length; i++) {
+                            if (sketch.primitives.atoms[i].id === hoverAtomId) {
+                                const aPos = chemToCanvas(sketch.primitives.atoms[i].x, sketch.primitives.atoms[i].y)
+                                targetX = aPos.x
+                                targetY = aPos.y
+                                break
+                            }
+                        }
+                    }
+                    setOverlayState({
+                        hoverAtomId: hoverAtomId,
+                        hoverBondId: hoverBondId,
+                        dragRect: null,
+                        bondPreview: {
+                            startAtomId: sketch.overlayState.bondPreview.startAtomId,
+                            startX: sketch.overlayState.bondPreview.startX,
+                            startY: sketch.overlayState.bondPreview.startY,
+                            endX: targetX,
+                            endY: targetY
+                        }
+                    })
+                    return
+                }
+            }
+
+            // Normal hover logic
+            let hoverRingSize = null
+            if (currentTool.startsWith("TEMPLATE_")) {
+                // TEMPLATE_BENZENE has no numeric suffix; without the explicit 6 the
+                // benzene tool gets no ring ghost at all.
+                hoverRingSize = currentTool === "TEMPLATE_BENZENE" ? 6 : (parseInt(currentTool.split("_")[1]) || null);
+            }
+            if (hoverAtomId !== sketch.overlayState.hoverAtomId || hoverBondId !== sketch.overlayState.hoverBondId || hoverRingSize !== null) {
+                setOverlayState({
+                    hoverAtomId: hoverAtomId,
+                    hoverBondId: hoverBondId,
+                    dragRect: sketch.overlayState.dragRect,
+                    bondPreview: sketch.overlayState.bondPreview,
+                    hoverRingSize: hoverRingSize,
+                    mouseX: m.x,
+                    mouseY: m.y
+                })
+            }
+        }
+
+        onReleased: (m) => {
+            if (panning) {
+                panning = false
+                _panningActive = false
+                _renderVersion++  // force full repaint of all layers
+                return
+            }
+            if (isDragging && currentTool === "CHAIN") {
+                isDragging = false
+                const bp = sketch.overlayState.bondPreview
+                setOverlayState({ hoverAtomId: null, hoverBondId: null, dragRect: null, bondPreview: null })
+                if (bp) {
+                    const endChem = canvasToChem(m.x, m.y)
+                    const dx = endChem.x - bp.startX, dy = endChem.y - bp.startY
+                    if (dx * dx + dy * dy > 0.25) {  // ignore sub-half-bond accidental drags
+                        sketch.addChain(bp.startX, bp.startY, endChem.x, endChem.y)
+                        refresh()
+                    }
+                }
+                return
+            }
+            if (isAppControllerDragging) {
+                isAppControllerDragging = false
+                let wasDrag = AppController.handleDragEnd()
+                if (!wasDrag) {
+                    // Fallback to click behavior
+                    if (currentTool.startsWith("ATOM_")) {
+                        const atomLabel = currentTool.split("_")[1]
+                        if (sketch.overlayState.hoverAtomId !== null) {
+                            sketch.changeAtomLabel(sketch.overlayState.hoverAtomId, atomLabel)
+                        }
+                    } else if (currentTool.startsWith("FG_") || currentTool.startsWith("SS_") || currentTool.startsWith("LIB_")) {
+                        const fgName = currentTool.startsWith("LIB_") ? currentTool.substring(4) : currentTool.substring(3)
+                        if (sketch.overlayState.hoverAtomId !== null) {
+                            const hid = sketch.overlayState.hoverAtomId
+                            const atom = sketch.primitives.atomsById[hid.toString()]
+                            const realTargetId = resolveHitAtom(hid)
+                            sketch.insertFunctionalGroup(fgName, atom.x, atom.y, realTargetId)
+                        }
+                    } else if (currentTool.startsWith("TEMPLATE_")) {
+                        const cP2 = canvasToChem(m.x, m.y)
+                        let ringSize = 6
+                        if (currentTool === "TEMPLATE_BENZENE") { ringSize = 6 }
+                        else { const parsed = parseInt(currentTool.split("_")[1]); if (!isNaN(parsed)) ringSize = parsed; }
+                        
+                        var coords = sketch.getRingPreviewCoords(
+                            ringSize, cP2.x, cP2.y, sketch.overlayState.hoverAtomId, null
+                        );
+                        if (coords && coords.length > 0) {
+                            const coordList = []
+                            for (let i = 0; i < coords.length; i++) {
+                                coordList.push(coords[i].x); coordList.push(coords[i].y);
+                            }
+                            sketch.addRing(coordList, currentTool === "TEMPLATE_BENZENE")
+                        }
+                    }
+                }
+                refresh()
+                return
+            }
+
+            if (isDragging) {
+                isDragging = false
+                if (currentTool === "SELECT" || currentTool === "SELECT_FRAGMENT") {
+                    if (movingSelection) {
+                        movingSelection = false
+                        const dx = m.x - startPressX
+                        const dy = m.y - startPressY
+                        if (Math.abs(dx) >= 5 || Math.abs(dy) >= 5) {
+                            sketch.commitMove()
+                        }
+                    } else if (sketch.overlayState.bondPreview) {
+                        const dx = m.x - startPressX
+                        const dy = m.y - startPressY
+                        if (Math.abs(dx) < 5 && Math.abs(dy) < 5) {
+                            // Short click -> just select it
+                            sketch.selectItem(sketch.overlayState.bondPreview.startAtomId, null)
+                        } else {
+                            // Drew a bond!
+                            const endAtomId = resolveHitAtom(sketch.overlayState.hoverAtomId)
+                            const startAtomId = sketch.overlayState.bondPreview.startAtomId
+                            if (endAtomId === null) {
+                                const endChemP = canvasToChem(m.x, m.y)
+                                sketch.addBondAndAtom(startAtomId, "C", endChemP.x, endChemP.y, 1, 0)
+                            } else if (startAtomId !== endAtomId) {
+                                sketch.addBond(startAtomId, endAtomId, 1, 0)
+                            }
+                            refresh()
+                        }
+                    } else if (sketch.overlayState.dragRect !== null) {
+                        const dx = m.x - startPressX
+                        const dy = m.y - startPressY
+                        if (Math.abs(dx) >= 5 || Math.abs(dy) >= 5) {
+                            const r = sketch.overlayState.dragRect
+                            const tl = canvasToChem(r.x, r.y)
+                            const br = canvasToChem(r.x + r.width, r.y + r.height)
+                            if (shiftAtPress) {
+                                sketch.addSelectionByRect(tl.x, tl.y, br.x, br.y)
+                            } else {
+                                sketch.selectByRect(tl.x, tl.y, br.x, br.y)
+                            }
+                        } else if (sketch.overlayState.hoverBondId !== null && sketch.overlayState.hoverAtomId === null) {
+                            // Short click on bond: select it (SELECT) or cycle type (if already selected)
+                            const hitBond = sketch.overlayState.hoverBondId
+                            const alreadySel = sketch.selection.bond_ids && sketch.selection.bond_ids.indexOf(hitBond) >= 0
+                            if (alreadySel && currentTool === "SELECT") {
+                                // Second click cycles bond type: 1→2→3→1
+                                let bObj = null
+                                for (let j = 0; j < sketch.primitives.bonds.length; j++) {
+                                    if (sketch.primitives.bonds[j].id === hitBond) { bObj = sketch.primitives.bonds[j]; break; }
+                                }
+                                if (bObj) {
+                                    sketch.changeBondType(hitBond, bObj.type === 1 ? 2 : (bObj.type === 2 ? 3 : 1), 0)
+                                    refresh()
+                                }
+                            } else {
+                                sketch.selectItem(null, hitBond)
+                            }
+                        }
+                    }
+                } else if (currentTool.startsWith("BOND_")) {
+                    if (sketch.overlayState.hoverBondId !== null && sketch.overlayState.bondPreview === null) {
+                        const dx = m.x - pressX
+                        const dy = m.y - pressY
+                        if (Math.abs(dx) < 5 && Math.abs(dy) < 5) {
+                            const targetBond = sketch.overlayState.hoverBondId
+                            let newType = 1, newStereo = 0
+                            if (currentTool === "BOND_UP") { newType = 1; newStereo = 1 }
+                            else if (currentTool === "BOND_DOWN") { newType = 1; newStereo = 6 }
+                            else if (currentTool === "BOND_UPDOWN") { newType = 1; newStereo = 4 }
+                            else if (currentTool === "BOND_1") {
+                                let bObj = null
+                                for (let k=0; k<sketch.primitives.bonds.length; k++) {
+                                    if (sketch.primitives.bonds[k].id === targetBond) { bObj = sketch.primitives.bonds[k]; break; }
+                                }
+                                if (bObj) {
+                                    newType = bObj.type === 1 ? 2 : (bObj.type === 2 ? 3 : 1)
+                                }
+                            } else {
+                                newType = parseInt(currentTool.split("_")[1]) || 1
+                            }
+                            sketch.changeBondType(targetBond, newType, newStereo)
+                            refresh()
+                        }
+                    } else if (sketch.overlayState.bondPreview) {
+                        const endAtomId = resolveHitAtom(sketch.overlayState.hoverAtomId)
+                        const startAtomId = sketch.overlayState.bondPreview.startAtomId  // already resolved on press
+                        const startX = sketch.overlayState.bondPreview.startX
+                        const startY = sketch.overlayState.bondPreview.startY
+                        let newType = 1, newStereo = 0
+                        if (currentTool === "BOND_UP") { newType = 1; newStereo = 1 }
+                        else if (currentTool === "BOND_DOWN") { newType = 1; newStereo = 6 }
+                        else if (currentTool === "BOND_UPDOWN") { newType = 1; newStereo = 4 }
+                        else { newType = parseInt(currentTool.split("_")[1]) || 1 }
+
+                        if (startAtomId === null) {
+                            if (endAtomId === null) {
+                                const endChemP = canvasToChem(m.x, m.y)
+                                sketch.addBondBetweenCoords(startX, startY, endChemP.x, endChemP.y, newType, newStereo)
+                            } else {
+                                sketch.addBondAndAtom(endAtomId, "C", startX, startY, newType, newStereo)
+                            }
+                        } else {
+                            if (endAtomId === null) {
+                                const endChemP = canvasToChem(m.x, m.y)
+                                sketch.addBondAndAtom(startAtomId, "C", endChemP.x, endChemP.y, newType, newStereo)
+                            } else if (startAtomId !== endAtomId) {
+                                sketch.addBond(startAtomId, endAtomId, newType, newStereo)
+                            }
+                        }
+                        refresh()
+                    }
+                }
+                setOverlayState({
+                    hoverAtomId: sketch.overlayState.hoverAtomId,
+                    hoverBondId: sketch.overlayState.hoverBondId,
+                    dragRect: null,
+                    bondPreview: null
+                })
+            }
+        }
+
+        onDoubleClicked: (m) => {
+            if (m.button !== Qt.LeftButton) return
+            if (currentTool === "SELECT" || currentTool === "SELECT_FRAGMENT") {
+                const hitAtom = selectionLayer.hitTestAtom(m.x, m.y)
+                if (hitAtom !== null) {
+                    // Cancel drag from the second press so onReleased is a no-op
+                    isDragging = false
+                    movingSelection = false
+                    setOverlayState({ hoverAtomId: hitAtom, hoverBondId: null, dragRect: null, bondPreview: null })
+                    const prim = sketch.primitives.atomsById[hitAtom.toString()]
+                    if (prim && prim.isSgroup) {
+                        sketch.sendCommand("toggleSgroupExpanded", [hitAtom])
+                    } else {
+                        root.atomPropertiesRequested(hitAtom)
+                    }
+                }
+            }
+        }
+    }
+
+    Menu {
+        id: contextMenu
+        property var _hitAtom: null
+        property var _hitBond: null
+
+        MenuItem {
+            text: "Properties…"
+            visible: contextMenu._hitAtom !== null
+            onTriggered: if (contextMenu._hitAtom !== null) sketch.requestAtomProperties(contextMenu._hitAtom)
+        }
+        MenuItem {
+            text: "Charge +"
+            visible: contextMenu._hitAtom !== null
+            onTriggered: if (contextMenu._hitAtom !== null) {
+                const atom = sketch.primitives.atomsById[contextMenu._hitAtom.toString()]
+                if (atom) sketch.changeAtomCharge(contextMenu._hitAtom, (atom.charge || 0) + 1)
+            }
+        }
+        MenuItem {
+            text: "Charge −"
+            visible: contextMenu._hitAtom !== null
+            onTriggered: if (contextMenu._hitAtom !== null) {
+                const atom = sketch.primitives.atomsById[contextMenu._hitAtom.toString()]
+                if (atom) sketch.changeAtomCharge(contextMenu._hitAtom, (atom.charge || 0) - 1)
+            }
+        }
+        MenuItem {
+            text: "Delete Atom"
+            visible: contextMenu._hitAtom !== null
+            onTriggered: if (contextMenu._hitAtom !== null) { sketch.deleteAtomById(contextMenu._hitAtom); refresh() }
+        }
+
+        MenuSeparator { visible: contextMenu._hitAtom !== null || contextMenu._hitBond !== null }
+
+        MenuItem {
+            text: "Single Bond"
+            visible: contextMenu._hitBond !== null
+            onTriggered: if (contextMenu._hitBond !== null) { sketch.changeBondType(contextMenu._hitBond, 1, 0); refresh() }
+        }
+        MenuItem {
+            text: "Double Bond"
+            visible: contextMenu._hitBond !== null
+            onTriggered: if (contextMenu._hitBond !== null) { sketch.changeBondType(contextMenu._hitBond, 2, 0); refresh() }
+        }
+        MenuItem {
+            text: "Triple Bond"
+            visible: contextMenu._hitBond !== null
+            onTriggered: if (contextMenu._hitBond !== null) { sketch.changeBondType(contextMenu._hitBond, 3, 0); refresh() }
+        }
+        MenuItem {
+            text: "Delete Bond"
+            visible: contextMenu._hitBond !== null
+            onTriggered: if (contextMenu._hitBond !== null) { sketch.deleteBondById(contextMenu._hitBond); refresh() }
+        }
+
+        MenuSeparator { visible: contextMenu._hitAtom === null && contextMenu._hitBond === null }
+
+        MenuItem {
+            text: "Paste"
+            visible: contextMenu._hitAtom === null && contextMenu._hitBond === null
+            onTriggered: {
+                const center = canvasToChem(root.width / 2, root.height / 2)
+                const osText = sketch.getOsClipboardText()
+                if (osText && osText.length > 0 && (osText.indexOf('"root"') >= 0 || osText.indexOf('"atoms"') >= 0)) {
+                    sketch.importKetAtPosition(osText, center.x, center.y)
+                } else {
+                    sketch.pasteSelection(center.x, center.y)
+                }
+                refresh()
+            }
+        }
+        MenuItem {
+            text: "Select All"
+            visible: contextMenu._hitAtom === null && contextMenu._hitBond === null
+            onTriggered: { sketch.selectAll(); refresh() }
+        }
+        MenuItem {
+            text: "Clear Canvas"
+            visible: contextMenu._hitAtom === null && contextMenu._hitBond === null
+            onTriggered: { sketch.clearCanvas(); refresh() }
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
