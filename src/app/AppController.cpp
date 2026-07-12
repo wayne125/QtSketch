@@ -30,9 +30,9 @@ void AppController::handleDragStart(const QString& toolId, int hitAtomId, double
     }
 }
 
-void AppController::handleDrag(double mouseX, double mouseY, double bondLength) {
+void AppController::handleDrag(double mouseX, double mouseY, double chemScale, double bondLength) {
     if (m_previewManager) {
-        m_previewManager->updatePreview(QPointF(mouseX, mouseY), bondLength);
+        m_previewManager->updatePreview(QPointF(mouseX, mouseY), chemScale, bondLength);
     }
 }
 

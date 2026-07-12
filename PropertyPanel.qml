@@ -19,6 +19,8 @@ Rectangle {
     property int    molBonds:    0
     property double molTPSA:     0
     property double molLogP:     0
+    property double molMolarRefractivity: 0
+    property double molPka: 0
     property int    molHBA:      0
     property int    molHBD:      0
     property int    molRotBonds: 0
@@ -36,6 +38,7 @@ Rectangle {
         spacing: Theme.spacingLarge
 
         Text {
+            textFormat: Text.PlainText
             text: "Properties"
             color: Theme.textSecondary
             font {
@@ -77,22 +80,20 @@ Rectangle {
                 rowSpacing: 4
                 Layout.fillWidth: true
 
-                Text { text: "MW";        color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
-                Text { text: root._fmtNum(root.molMW, 3) + " g/mol"; color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
-
-                Text { text: "Exact";     color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
-                Text { text: root._fmtNum(root.molMono, 4) + " Da";   color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
-
-                Text { text: "Atoms";     color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
-                Text { text: root.molAtoms.toString();                 color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
-
-                Text { text: "Bonds";     color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
-                Text { text: root.molBonds.toString();                 color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
+                Text { textFormat: Text.PlainText; text: "MW";        color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
+                Text { textFormat: Text.PlainText; text: root._fmtNum(root.molMW, 3) + " g/mol"; color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
+                Text { textFormat: Text.PlainText; text: "Exact";     color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
+                Text { textFormat: Text.PlainText; text: root._fmtNum(root.molMono, 4) + " Da";   color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
+                Text { textFormat: Text.PlainText; text: "Atoms";     color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
+                Text { textFormat: Text.PlainText; text: root.molAtoms.toString();                 color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
+                Text { textFormat: Text.PlainText; text: "Bonds";     color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
+                Text { textFormat: Text.PlainText; text: root.molBonds.toString();                 color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
             }
 
             Rectangle { Layout.fillWidth: true; height: 1; color: Theme.outline; opacity: 0.5 }
 
             Text {
+                textFormat: Text.PlainText
                 text: "Drug Properties"
                 color: Theme.textSecondary
                 font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontDisplay }
@@ -104,20 +105,26 @@ Rectangle {
                 rowSpacing: 4
                 Layout.fillWidth: true
 
-                Text { text: "TPSA";   color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
-                Text { text: root._fmtNum(root.molTPSA, 2) + " Å²";  color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
+                Text { textFormat: Text.PlainText; text: "TPSA";   color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
+                Text { textFormat: Text.PlainText; text: root._fmtNum(root.molTPSA, 2) + " Å²";  color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
 
-                Text { text: "LogP";   color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
-                Text { text: root._fmtNum(root.molLogP, 2);            color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
+                Text { textFormat: Text.PlainText; text: "LogP";   color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
+                Text { textFormat: Text.PlainText; text: root._fmtNum(root.molLogP, 2);            color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
 
-                Text { text: "HBA";    color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
-                Text { text: root.molHBA.toString();                   color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
+                Text { textFormat: Text.PlainText; text: "HBA";    color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
+                Text { textFormat: Text.PlainText; text: root.molHBA.toString();                   color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
 
-                Text { text: "HBD";    color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
-                Text { text: root.molHBD.toString();                   color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
+                Text { textFormat: Text.PlainText; text: "HBD";    color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
+                Text { textFormat: Text.PlainText; text: root.molHBD.toString();                   color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
 
-                Text { text: "RotB";   color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
-                Text { text: root.molRotBonds.toString();              color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
+                Text { textFormat: Text.PlainText; text: "RotB";   color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
+                Text { textFormat: Text.PlainText; text: root.molRotBonds.toString();              color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
+
+                Text { textFormat: Text.PlainText; text: "MolRef";  color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
+                Text { textFormat: Text.PlainText; text: root._fmtNum(root.molMolarRefractivity, 2);  color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
+
+                Text { textFormat: Text.PlainText; text: "pKa";     color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
+                Text { textFormat: Text.PlainText; text: root._fmtNum(root.molPka, 2);            color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
             }
         }
 
@@ -135,11 +142,13 @@ Rectangle {
             spacing: Theme.spacingMedium
 
             Text {
+                textFormat: Text.PlainText
                 text: "Abbreviation"
                 color: Theme.textSecondary
                 font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontDisplay }
             }
             Text {
+                textFormat: Text.PlainText
                 text: root.selAtom ? root.selAtom.label : ""
                 color: Theme.textPrimary
                 font { pixelSize: Theme.fontSizeHeadline; bold: true; family: Theme.fontDisplay }
@@ -153,6 +162,7 @@ Rectangle {
             spacing: Theme.spacingMedium
 
             Text {
+                textFormat: Text.PlainText
                 text: "Atom Label"
                 color: Theme.textSecondary
                 font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontDisplay }
@@ -175,6 +185,7 @@ Rectangle {
             }
 
             Text {
+                textFormat: Text.PlainText
                 text: "Charge"
                 color: Theme.textSecondary
                 font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontDisplay }
@@ -197,6 +208,7 @@ Rectangle {
             }
 
             Text {
+                textFormat: Text.PlainText
                 text: "Atom List (e.g. C,N,O)"
                 color: Theme.textSecondary
                 font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontDisplay }
@@ -242,6 +254,7 @@ Rectangle {
             spacing: Theme.spacingMedium
 
             Text {
+                textFormat: Text.PlainText
                 text: "Bond Type"
                 color: Theme.textSecondary
                 font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontDisplay }
@@ -269,6 +282,7 @@ Rectangle {
             spacing: Theme.spacingMedium
 
             Text {
+                textFormat: Text.PlainText
                 text: "Arrow Mode"
                 color: Theme.textSecondary
                 font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontDisplay }
@@ -294,6 +308,7 @@ Rectangle {
             }
 
             Text {
+                textFormat: Text.PlainText
                 text: "Conditions Above"
                 color: Theme.textSecondary
                 font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontDisplay }
@@ -320,6 +335,7 @@ Rectangle {
             }
 
             Text {
+                textFormat: Text.PlainText
                 text: "Conditions Below"
                 color: Theme.textSecondary
                 font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontDisplay }
@@ -358,6 +374,7 @@ Rectangle {
         Item { Layout.fillHeight: true }
 
         Text {
+            textFormat: Text.PlainText
             text: "sketch"
             color: Theme.textSecondary
             opacity: 0.5

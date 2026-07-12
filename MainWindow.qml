@@ -10,6 +10,14 @@ ApplicationWindow {
 
     flags: Qt.Window | Qt.FramelessWindowHint
 
+    // Material Design Icons font — vendored-but-unused until the toolbar
+    // alignment/distribute icon group (below) started using it. Loaded once
+    // here; IconCell glyph-mode cells reference mdiFont.name as their family.
+    FontLoader {
+        id: mdiFont
+        source: "fonts/materialdesignicons-webfont.ttf"
+    }
+
     header: Rectangle {
         height: 32
         color: Theme.surface
@@ -142,6 +150,7 @@ ApplicationWindow {
     property var docFilePaths: ({})
     property int titleRev: 0
     property url pendingSaveUrl
+    property url pendingRenderUrl
     function setDocFile(docId, fileUrl) {
         docFilePaths[docId] = fileUrl
         const s = fileUrl.toString()
@@ -241,6 +250,14 @@ ApplicationWindow {
                 window.isProcessing = false
                 if (newMol && activeCanvas) activeCanvas.loadMolfile(newMol)
             }
+            function onUnfoldHydrogensFinished(newMol) {
+                window.isProcessing = false
+                if (newMol && activeCanvas) activeCanvas.loadMolfile(newMol)
+            }
+            function onFoldHydrogensFinished(newMol) {
+                window.isProcessing = false
+                if (newMol && activeCanvas) activeCanvas.loadMolfile(newMol)
+            }
             function onNormalizeFinished(newMol) {
                 window.isProcessing = false
                 if (newMol && activeCanvas) activeCanvas.loadMolfile(newMol)
@@ -255,7 +272,19 @@ ApplicationWindow {
             function onCanonicalSmilesFinished(smiles) {
                 if (smiles) indigoSvc.copyToClipboard(smiles)
             }
-            function onPropertiesReady(mw, mono, mf, atoms, bonds, tpsa, logp, hba, hbd, rotBonds) {
+            function onInchiFinished(inchi) {
+                if (inchi) indigoSvc.copyToClipboard(inchi)
+            }
+            function onInchiKeyFinished(inchiKey) {
+                if (inchiKey) indigoSvc.copyToClipboard(inchiKey)
+            }
+            function onRenderFinished(success, error) {
+                if (!success) {
+                    workerErrorDialog.errorText = "SVG export failed: " + error
+                    workerErrorDialog.open()
+                }
+            }
+            function onPropertiesReady(mw, mono, mf, atoms, bonds, tpsa, logp, hba, hbd, rotBonds, molarRefractivity, pka) {
                 propPanel.molMW       = mw
                 propPanel.molMono     = mono
                 propPanel.molFormula  = mf
@@ -266,6 +295,8 @@ ApplicationWindow {
                 propPanel.molHBA      = hba
                 propPanel.molHBD      = hbd
                 propPanel.molRotBonds = rotBonds
+                propPanel.molMolarRefractivity = molarRefractivity
+                propPanel.molPka      = pka
             }
             function onStereoDescriptorsReady(jsonMap) {
                 if (activeSketch) activeSketch.setStereoDescriptors(jsonMap)
@@ -315,10 +346,16 @@ ApplicationWindow {
             function onStructureReady(reqId, data) {
                 if (reqId === "save") {
                     fileIO.write(window.pendingSaveUrl, data)
+                } else if (reqId === "render_svg") {
+                    indigoSvc.renderToFile(data, window.pendingRenderUrl, "svg")
                 } else if (reqId === "smiles") {
                     indigoSvc.smiles(data)
                 } else if (reqId === "canonical_smiles") {
                     indigoSvc.canonicalSmiles(data)
+                } else if (reqId === "inchi") {
+                    indigoSvc.inchi(data)
+                } else if (reqId === "inchikey") {
+                    indigoSvc.inchiKey(data)
                 } else if (reqId === "layout") {
                     window.isProcessing = true
                     indigoSvc.layout(data)
@@ -328,6 +365,12 @@ ApplicationWindow {
                 } else if (reqId === "dearomatize") {
                     window.isProcessing = true
                     indigoSvc.dearomatize(data)
+                } else if (reqId === "unfoldH") {
+                    window.isProcessing = true
+                    indigoSvc.unfoldHydrogens(data)
+                } else if (reqId === "foldH") {
+                    window.isProcessing = true
+                    indigoSvc.foldHydrogens(data)
                 } else if (reqId === "normalize") {
                     window.isProcessing = true
                     indigoSvc.normalize(data)
@@ -357,6 +400,21 @@ ApplicationWindow {
                 } else if (reqId === "clipboard_ket") {
                     if (data && data.length > 0 && activeSketch)
                         activeSketch.setOsClipboardText(data)
+                } else if (reqId === "sdf_batch_list") {
+                    const parsed = JSON.parse(data)
+                    if (parsed.count <= 1) {
+                        if (activeSketch) activeSketch.sendCommand("loadSdfBatchRecord", [0])
+                    } else {
+                        sdfRecordPicker.recordCount = parsed.count
+                        sdfRecordPicker.model = parsed.records
+                        sdfRecordPicker.open()
+                    }
+                } else if (reqId === "sdf_batch_load") {
+                    if (activeCanvas) {
+                        activeCanvas._needsCentering = true
+                        activeCanvas.refresh()
+                        setDocFile(DocumentManager.activeDocId, pendingSdfBatchUrl)
+                    }
                 }
             }
             function onStateUpdated(state, selection, dirty, undoState, redoState, result) {
@@ -403,6 +461,7 @@ ApplicationWindow {
                             { id: "FIT", icon: "fit.svg", label: "Fit to screen (Ctrl+0)" },
                             { id: "COPY_IMG", icon: "copy_image.svg", label: "Copy as image (Ctrl+Shift+C)" },
                             { id: "SMILES_IN",   icon: "smiles_in.svg",   label: "Load from SMILES" },
+                            { id: "INCHI_IN",    icon: "smiles_in.svg",   label: "Load from InChI" },
                             { id: "BIOPOLYMER",  icon: "biopolymer.svg",  label: "Biopolymer (FASTA / HELM / Sequence / IDT)" },
                             { id: "PRINT_PDF",   icon: "file-thumbnail.svg", label: "Export as PDF (page size from combo below)" }
                         ]
@@ -423,6 +482,7 @@ ApplicationWindow {
                                 else if (fileToolbarDelegate.modelData.id === "FIT") activeCanvas.fitToMolecule()
                                 else if (fileToolbarDelegate.modelData.id === "COPY_IMG") activeCanvas.copyAsImage()
                                 else if (fileToolbarDelegate.modelData.id === "SMILES_IN")  smilesDialog.open()
+                                else if (fileToolbarDelegate.modelData.id === "INCHI_IN")   inchiLoadDialog.open()
                                 else if (fileToolbarDelegate.modelData.id === "BIOPOLYMER") biopolymerDialog.open()
                                 else if (fileToolbarDelegate.modelData.id === "PRINT_PDF") window.printToPdf()
                             }
@@ -477,6 +537,8 @@ ApplicationWindow {
                             { id: "layout",      icon: "layout.svg",       tip: "Layout (2D coordinates)" },
                             { id: "aromatize",   icon: "arom.svg",         tip: "Aromatize" },
                             { id: "dearomatize", icon: "dearom.svg",       tip: "Dearomatize" },
+                            { id: "unfoldH",     icon: "explicit-hydrogens.svg", tip: "Add Explicit Hydrogens" },
+                            { id: "foldH",       icon: "explicit-hydrogens.svg", tip: "Remove Explicit Hydrogens" },
                             { id: "normalize",   icon: "clean.svg",        tip: "Normalize" },
                             { id: "standardize", icon: "analyse.svg",      tip: "Standardize" },
                             { id: "check",       icon: "check.svg",        tip: "Validate structure" },
@@ -587,14 +649,19 @@ ApplicationWindow {
                                         Behavior on color { ColorAnimation { duration: 150 } }
                                         Image {
                                             id: amRowIcon
-                                            anchors { left: parent.left; leftMargin: 6; verticalCenter: parent.verticalCenter }
+                                            anchors { left: parent ? parent.left : undefined; leftMargin: 6; verticalCenter: parent ? parent.verticalCenter : undefined }
                                             source: "icons/" + amRow.modelData.icon
                                             width: 18
                                             height: 18
                                             sourceSize: Qt.size(18, 18)
+                                            onStatusChanged: {
+                                                if (status === Image.Error) {
+                                                    console.warn("Failed to load icon:", amRow.modelData.icon)
+                                                }
+                                            }
                                         }
                                         Text {
-                                            anchors { left: amRowIcon.right; leftMargin: 6; verticalCenter: parent.verticalCenter }
+                                            anchors { left: amRowIcon.right; leftMargin: 6; verticalCenter: parent ? parent.verticalCenter : undefined }
                                             text: amRow.modelData.label
                                             color: !!(activeCanvas && activeCanvas.currentArrowMode === amRow.modelData.mode) ? Theme.accent : Theme.textPrimary
                                             font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay }
@@ -716,6 +783,16 @@ ApplicationWindow {
                         }
                     }
 
+                    Button {
+                        text: "Copy InChI ▾"
+                        onClicked: inchiMenu.open()
+                        Menu {
+                            id: inchiMenu
+                            MenuItem { text: "Copy InChI"; onTriggered: if (activeSketch) activeSketch.requestSerialize("inchi") }
+                            MenuItem { text: "Copy InChIKey"; onTriggered: if (activeSketch) activeSketch.requestSerialize("inchikey") }
+                        }
+                    }
+
                     // ── Signature: Publication Style switcher ───────────────────
                     // A segmented control, not a dropdown. This is the one feature
                     // that makes this tool different from every other chemistry editor.
@@ -755,35 +832,30 @@ ApplicationWindow {
                     // NOTE: enabled/visible are bool properties; a bare `a && b.c` chain
                     // yields `undefined` (not false) while the worker hasn't populated
                     // selection yet — hence the !!() coercion on all of these.
-                    Button {
-                        text: "Align L"
-                        onClicked: if (activeSketch) activeSketch.alignAtoms("left")
-                        enabled: Selection.hasAtoms(activeSketch, 2)
-                    }
-                    Button {
-                        text: "Align R"
-                        onClicked: if (activeSketch) activeSketch.alignAtoms("right")
-                        enabled: Selection.hasAtoms(activeSketch, 2)
-                    }
-                    Button {
-                        text: "Align T"
-                        onClicked: if (activeSketch) activeSketch.alignAtoms("top")
-                        enabled: Selection.hasAtoms(activeSketch, 2)
-                    }
-                    Button {
-                        text: "Align B"
-                        onClicked: if (activeSketch) activeSketch.alignAtoms("bottom")
-                        enabled: Selection.hasAtoms(activeSketch, 2)
-                    }
-                    Button {
-                        text: "Dist H"
-                        onClicked: if (activeSketch) activeSketch.distributeAtoms("horizontal")
-                        enabled: Selection.hasAtoms(activeSketch, 3)
-                    }
-                    Button {
-                        text: "Dist V"
-                        onClicked: if (activeSketch) activeSketch.distributeAtoms("vertical")
-                        enabled: Selection.hasAtoms(activeSketch, 3)
+                    Repeater {
+                        model: [
+                            { mode: "left",       fn: "align",       glyph: "\u{f11c2}", tip: "Align left edges",  minAtoms: 2 },
+                            { mode: "right",      fn: "align",       glyph: "\u{f11c4}", tip: "Align right edges", minAtoms: 2 },
+                            { mode: "top",        fn: "align",       glyph: "\u{f11c7}", tip: "Align top edges",   minAtoms: 2 },
+                            { mode: "bottom",     fn: "align",       glyph: "\u{f11c5}", tip: "Align bottom edges", minAtoms: 2 },
+                            { mode: "horizontal", fn: "distribute",  glyph: "\u{f11c9}", tip: "Distribute horizontally", minAtoms: 3 },
+                            { mode: "vertical",   fn: "distribute",  glyph: "\u{f11cc}", tip: "Distribute vertically",   minAtoms: 3 }
+                        ]
+                        delegate: IconCell {
+                            id: alignDelegate
+                            required property var modelData
+                            Layout.alignment: Qt.AlignVCenter
+                            glyph: alignDelegate.modelData.glyph
+                            glyphFontFamily: mdiFont.name
+                            glyphIsIcon: true
+                            tip: alignDelegate.modelData.tip
+                            enabled: Selection.hasAtoms(activeSketch, alignDelegate.modelData.minAtoms)
+                            onClicked: {
+                                if (!activeSketch) return
+                                if (alignDelegate.modelData.fn === "align") activeSketch.alignAtoms(alignDelegate.modelData.mode)
+                                else activeSketch.distributeAtoms(alignDelegate.modelData.mode)
+                            }
+                        }
                     }
 
                     Rectangle { width: 1; height: 20; color: Theme.outline; opacity: 0.6 }
@@ -862,8 +934,8 @@ ApplicationWindow {
 
                         Text {
                             text: "✕"
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.right: parent ? parent.right : undefined
+                            anchors.verticalCenter: parent ? parent.verticalCenter : undefined
                             anchors.rightMargin: 8
                             font.pixelSize: Theme.fontSizeCaption
                             color: tabMouseArea.containsMouse ? Theme.error : Theme.textSecondary
@@ -872,7 +944,14 @@ ApplicationWindow {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 onClicked: {
+                                    if (DocumentManager.docIds.length <= 1) return
                                     if (window.dirtyDocs[tabBtn.modelData]) {
+                                        // Switch to the tab being closed first: saveDialog/the
+                                        // structureReady Connections below only ever operate on
+                                        // activeSketch/activeCanvas, so saving a *different*,
+                                        // still-background tab here would silently save the
+                                        // wrong document's content instead.
+                                        DocumentManager.activeDocId = tabBtn.modelData
                                         window._pendingCloseDocId = tabBtn.modelData
                                         unsavedChangesDialog.open()
                                     } else {
@@ -1117,6 +1196,11 @@ ApplicationWindow {
                                             textDialog.inputText = content
                                             textDialog.open()
                                         }
+                                        onImageInsertRequested: (cx, cy) => {
+                                            imageFileDialog.chemX = cx
+                                            imageFileDialog.chemY = cy
+                                            imageFileDialog.open()
+                                        }
                                     }
                                 }
 
@@ -1218,9 +1302,9 @@ ApplicationWindow {
 
             RowLayout {
                 anchors {
-                    left: parent.left
+                    left: parent ? parent.left : undefined
                     leftMargin: 16
-                    verticalCenter: parent.verticalCenter
+                    verticalCenter: parent ? parent.verticalCenter : undefined
                 }
                 spacing: 12
 
@@ -1253,9 +1337,9 @@ ApplicationWindow {
 
             RowLayout {
                 anchors {
-                    right: parent.right
+                    right: parent ? parent.right : undefined
                     rightMargin: 16
-                    verticalCenter: parent.verticalCenter
+                    verticalCenter: parent ? parent.verticalCenter : undefined
                 }
                 spacing: 8
 
@@ -1322,8 +1406,17 @@ ApplicationWindow {
         }
     }
 
+    property url pendingSdfBatchUrl: ""
+
     FileIO {
         id: fileIO
+    }
+
+    SdfRecordPicker {
+        id: sdfRecordPicker
+        onRecordChosen: function(index) {
+            if (activeSketch) activeSketch.sendCommand("loadSdfBatchRecord", [index])
+        }
     }
 
     FileDialog {
@@ -1373,7 +1466,11 @@ ApplicationWindow {
             let fmt = "mol"
             if (fileStr.endsWith(".sdf")) fmt = "sdf"
             else if (fileStr.endsWith(".ket")) fmt = "ket"
-            if (activeCanvas) {
+            
+            if (fmt === "sdf" && activeSketch) {
+                pendingSdfBatchUrl = fileUrl
+                activeSketch.sendCommand("deserializeSdfBatch", [data])
+            } else if (activeCanvas) {
                 activeCanvas.loadStructure(fmt, data)
                 setDocFile(DocumentManager.activeDocId, fileUrl)
             }
@@ -1395,11 +1492,16 @@ ApplicationWindow {
         id: saveDialog
         title: "Save Molecule"
         fileMode: FileDialog.SaveFile
-        nameFilters: ["Molfile (*.mol)", "SDF (*.sdf)", "Ketcher JSON (*.ket)", "PNG image (*.png)", "All files (*)"]
+        nameFilters: ["Molfile (*.mol)", "SDF (*.sdf)", "Ketcher JSON (*.ket)", "PNG image (*.png)", "SVG image (*.svg)", "All files (*)"]
         onAccepted: {
             const fileStr = selectedFile.toString().toLowerCase()
             if (fileStr.endsWith(".png")) {
                 activeCanvas.exportPNG(selectedFile)
+                return
+            }
+            if (fileStr.endsWith(".svg")) {
+                window.pendingRenderUrl = selectedFile
+                if (activeSketch) activeSketch.requestStructure("mol", "render_svg")
                 return
             }
             let fmt = "mol"
@@ -1594,6 +1696,25 @@ ApplicationWindow {
         }
     }
 
+    FileDialog {
+        id: imageFileDialog
+        nameFilters: ["Images (*.png *.jpg *.jpeg *.gif *.bmp)"]
+        
+        property real chemX: 0
+        property real chemY: 0
+        
+        onAccepted: {
+            if (!activeSketch) return
+            const dataUri = fileIO.readImageAsDataUri(selectedFile)
+            if (dataUri === "") {
+                workerErrorDialog.text = "Failed to load image. Ensure it is a supported format (png, jpg, gif, bmp) and under 5 MB."
+                workerErrorDialog.open()
+            } else {
+                activeSketch.addImage(dataUri, chemX, chemY, 1.5, 1.5)
+            }
+        }
+    }
+
     BiopolymerDialog {
         id: biopolymerDialog
 
@@ -1680,6 +1801,52 @@ ApplicationWindow {
             if (smi) {
                 window.isProcessing = true
                 indigoSvc.layout(smi)
+            }
+        }
+    }
+
+    TaskDialog {
+        id: inchiLoadDialog
+        title: "Load from InChI"
+        standardButtons: Dialog.Ok | Dialog.Cancel
+
+        ColumnLayout {
+            spacing: 4
+
+            TextField {
+                id: inchiLoadInput
+                Layout.preferredWidth: 460
+                placeholderText: "InChI=1S/C6H6/c1-2-4-6-5-3-1/h1-6H"
+                Keys.onReturnPressed: inchiLoadDialog.accept()
+            }
+
+            // InChIKey (the 27-char hash, e.g. UHOVQNZJYSORNB-UHFFFAOYSA-N) is a
+            // one-way hash of an InChI -- there is no algorithm that reverses it
+            // back into a structure, unlike the full InChI string. This is exactly
+            // the mix-up this dialog exists to prevent, so it's flagged live
+            // rather than only after a confusing load failure.
+            Text {
+                visible: /^[A-Z]{14}-[A-Z]{10}-[A-Z]$/.test(inchiLoadInput.text.trim())
+                text: "That looks like an InChIKey, not a full InChI — InChIKey is a one-way hash and can't be loaded back into a structure. Paste the full \"InChI=1S/...\" string instead."
+                color: "#c0392b"
+                wrapMode: Text.WordWrap
+                Layout.preferredWidth: 460
+                font.pixelSize: Theme.fontSizeCaption
+            }
+        }
+
+        onOpened: { inchiLoadInput.text = ""; inchiLoadInput.forceActiveFocus() }
+        onAccepted: {
+            // Indigo's generic loader auto-detects and parses InChI directly
+            // (confirmed: no separate indigo-inchi-plugin call needed for this
+            // direction, unlike generating an InChI/InChIKey from a structure,
+            // which does need the plugin) -- same layout() call "Load from
+            // SMILES" already uses. InChI carries no 2D coordinates, so the
+            // layout step here isn't optional the way it might seem.
+            const txt = inchiLoadInput.text.trim()
+            if (txt) {
+                window.isProcessing = true
+                indigoSvc.layout(txt)
             }
         }
     }

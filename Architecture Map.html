@@ -1,0 +1,388 @@
+<title>Architecture Map — Sketch</title>
+<style>
+:root{
+  --bg:#eef1f6;
+  --bg-panel:#ffffff;
+  --ink:#1b2130;
+  --ink-soft:#545d70;
+  --ink-faint:#8891a3;
+  --accent:#463c8c;
+  --accent-soft:#e9e6f7;
+  --node:#a3611a;
+  --node-soft:#f7ecdd;
+  --qml:#1f6f7a;
+  --qml-soft:#e1f0f2;
+  --cpp:#7a3f5e;
+  --cpp-soft:#f5e6ee;
+  --indigo:#463c8c;
+  --indigo-soft:#e9e6f7;
+  --border:#d7dce4;
+  --code-bg:#f5f6f9;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#11141c; --bg-panel:#171b26; --ink:#e7e9f0; --ink-soft:#a2aac0; --ink-faint:#6d7690;
+    --accent:#a79bef; --accent-soft:#241f3d;
+    --node:#e2a256; --node-soft:#332512;
+    --qml:#5fc2cf; --qml-soft:#122a2d;
+    --cpp:#d98cb3; --cpp-soft:#301f28;
+    --indigo:#a79bef; --indigo-soft:#241f3d;
+    --border:#2b3040; --code-bg:#1c202c;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#11141c; --bg-panel:#171b26; --ink:#e7e9f0; --ink-soft:#a2aac0; --ink-faint:#6d7690;
+  --accent:#a79bef; --accent-soft:#241f3d;
+  --node:#e2a256; --node-soft:#332512;
+  --qml:#5fc2cf; --qml-soft:#122a2d;
+  --cpp:#d98cb3; --cpp-soft:#301f28;
+  --indigo:#a79bef; --indigo-soft:#241f3d;
+  --border:#2b3040; --code-bg:#1c202c;
+}
+:root[data-theme="light"]{
+  --bg:#eef1f6; --bg-panel:#ffffff; --ink:#1b2130; --ink-soft:#545d70; --ink-faint:#8891a3;
+  --accent:#463c8c; --accent-soft:#e9e6f7;
+  --node:#a3611a; --node-soft:#f7ecdd;
+  --qml:#1f6f7a; --qml-soft:#e1f0f2;
+  --cpp:#7a3f5e; --cpp-soft:#f5e6ee;
+  --indigo:#463c8c; --indigo-soft:#e9e6f7;
+  --border:#d7dce4; --code-bg:#f5f6f9;
+}
+
+*{box-sizing:border-box;}
+body{ margin:0; background:var(--bg); color:var(--ink); font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; line-height:1.55; }
+::selection{ background:var(--accent-soft); }
+.page{ max-width:1040px; margin:0 auto; padding:3rem 1.5rem 5rem; }
+
+h1,h2,h3{ font-family:Georgia,"Iowan Old Style","Palatino Linotype",serif; font-weight:600; text-wrap:balance; color:var(--ink); }
+h1{ font-size:1.9rem; letter-spacing:-0.01em; margin:0 0 0.3rem; }
+h2{ font-size:1.3rem; margin:0 0 0.2rem; }
+h3{ font-size:1rem; margin:0 0 0.3rem; color:var(--ink); font-weight:600; }
+code{ font-family:ui-monospace,"SFMono-Regular",Consolas,"Liberation Mono",monospace; font-size:0.86em; background:var(--code-bg); padding:0.1em 0.35em; border-radius:4px; }
+
+.masthead .kicker{ font-size:0.72rem; letter-spacing:0.11em; text-transform:uppercase; color:var(--accent); font-weight:600; margin:0 0 0.6rem; }
+.masthead p.dek{ max-width:66ch; color:var(--ink-soft); font-size:1rem; margin:0.6rem 0 0; }
+
+/* ===== diagram ===== */
+.diagram{ margin:2.4rem 0; display:flex; flex-direction:column; gap:0; }
+.tier{ display:grid; gap:0.9rem; }
+.tier.qml{ grid-template-columns:1fr; }
+.tier.host{ grid-template-columns:1.6fr 1fr; }
+.tier.runtime{ grid-template-columns:1.6fr 1fr; }
+@media (max-width:680px){ .tier.host, .tier.runtime{ grid-template-columns:1fr; } }
+
+.arrowrow{ display:grid; grid-template-columns:1.6fr 1fr; gap:0.9rem; padding:0.35rem 0; }
+@media (max-width:680px){ .arrowrow{ grid-template-columns:1fr; } }
+.arrowrow .lane{ display:flex; align-items:center; justify-content:center; gap:0.5rem; font-size:0.74rem; color:var(--ink-faint); text-align:center; }
+.arrowrow .lane .glyph{ font-size:1.1rem; line-height:1; }
+
+.box{
+  border:1px solid var(--border);
+  border-radius:8px;
+  background:var(--bg-panel);
+  padding:0.9rem 1.05rem;
+  border-top:3px solid var(--layer-color, var(--border));
+}
+.box .taglabel{
+  font-size:0.68rem; letter-spacing:0.09em; text-transform:uppercase; font-weight:700;
+  color:var(--layer-color, var(--ink-faint)); margin-bottom:0.45rem; display:block;
+}
+.box.qml-c{ --layer-color:var(--qml); }
+.box.cpp-c{ --layer-color:var(--cpp); }
+.box.node-c{ --layer-color:var(--node); }
+.box.indigo-c{ --layer-color:var(--indigo); }
+
+.subgrid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:0.6rem; margin-top:0.5rem; }
+.chip{
+  border:1px solid var(--border); border-radius:6px; background:var(--bg);
+  padding:0.5rem 0.65rem; font-size:0.82rem; color:var(--ink-soft);
+}
+.chip b{ color:var(--ink); font-weight:600; display:block; font-size:0.83rem; margin-bottom:0.15rem; }
+.chip .f{ font-family:ui-monospace,Consolas,monospace; font-size:0.76rem; color:var(--ink-faint); }
+
+.note{ font-size:0.85rem; color:var(--ink-soft); margin-top:0.9rem; padding-top:0.7rem; border-top:1px dashed var(--border); }
+
+/* ===== seams ===== */
+.seams{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:1.1rem; margin:1.6rem 0 2.2rem; }
+@media (max-width:960px){ .seams{ grid-template-columns:1fr 1fr; } }
+@media (max-width:720px){ .seams{ grid-template-columns:1fr; } }
+.seam{ border:1px solid var(--border); border-radius:8px; background:var(--bg-panel); padding:1.1rem 1.2rem; border-top:3px solid var(--sc, var(--accent)); }
+.seam.node-seam{ --sc:var(--node); }
+.seam.indigo-seam{ --sc:var(--indigo); }
+.seam.bingo-seam{ --sc:var(--cpp); }
+.seam h3{ color:var(--sc); }
+.seam ol{ margin:0.6rem 0 0; padding-left:1.2rem; font-size:0.87rem; color:var(--ink-soft); }
+.seam ol li{ margin-bottom:0.3rem; }
+
+/* ===== feature mapping ===== */
+section.report{ margin-top:2.6rem; }
+section.report .head{ display:flex; align-items:baseline; justify-content:space-between; gap:1rem; flex-wrap:wrap; border-bottom:2px solid var(--ink); padding-bottom:0.5rem; }
+section.report > p.lede{ color:var(--ink-soft); max-width:70ch; margin:0.8rem 0 0; font-size:0.92rem; }
+
+table.map{ width:100%; border-collapse:collapse; margin-top:1rem; font-size:0.86rem; }
+table.map th{ text-align:left; font-size:0.7rem; letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-faint); font-weight:600; padding:0.4rem 0.6rem; border-bottom:1px solid var(--border); }
+table.map td{ padding:0.55rem 0.6rem; border-bottom:1px solid var(--border); vertical-align:top; color:var(--ink-soft); }
+table.map tr:last-child td{ border-bottom:none; }
+table.map td.feature{ color:var(--ink); font-weight:600; }
+table.map td.seamtag{ white-space:nowrap; }
+.tag{ display:inline-block; font-size:0.7rem; font-weight:700; padding:0.15em 0.55em; border-radius:99px; }
+.tag.node{ background:var(--node-soft); color:var(--node); }
+.tag.indigo{ background:var(--indigo-soft); color:var(--indigo); }
+.tag.qml{ background:var(--qml-soft); color:var(--qml); }
+.tag.mixed{ background:var(--cpp-soft); color:var(--cpp); }
+.tag.bingo{ background:var(--cpp-soft); color:var(--cpp); }
+
+footer{ margin-top:3rem; padding-top:1.2rem; border-top:1px solid var(--border); font-size:0.8rem; color:var(--ink-faint); }
+</style>
+
+<div class="page">
+
+  <header class="masthead">
+    <p class="kicker">Sketch — system map</p>
+    <h1>Where the next features actually plug in</h1>
+    <p class="dek">The current three-layer hybrid, and the two structurally separate integration seams every item in <code>Features To Be Implemented.md</code> falls into.</p>
+  </header>
+
+  <!-- ================= DIAGRAM ================= -->
+  <div class="diagram">
+
+    <div class="tier qml">
+      <div class="box qml-c">
+        <span class="taglabel">QML UI · Qt Quick</span>
+        <div class="subgrid">
+          <div class="chip"><b>MainWindow.qml</b>Shell — tabs, toolbars, menus, dialogs, shared <code>IndigoService</code> instance</div>
+          <div class="chip"><b>ChemCanvas.qml</b>× one per open document — owns tool state, zoom/pan, keyboard shortcuts</div>
+          <div class="chip"><b>Rendering layers</b><span class="f">MoleculeLayer · SelectionLayer · LabelLayer · ToolOverlay</span></div>
+          <div class="chip"><b>ToolPanel / PropertyPanel</b>Left tool grid, right property editor</div>
+          <div class="chip"><b>components/</b><span class="f">IconCell · AnchoredPicker · TaskDialog · SegmentedControl …</span></div>
+          <div class="chip"><b>Theme.qml / StyleSheets.qml</b>Design-token singletons</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrowrow">
+      <div class="lane"><span class="glyph">↓ ↑</span>&nbsp;Q_INVOKABLE calls · property bindings · signals</div>
+      <div class="lane"><span class="glyph">↓ ↑</span>&nbsp;Q_INVOKABLE calls · *Finished signals</div>
+    </div>
+
+    <div class="tier host">
+      <div class="box cpp-c">
+        <span class="taglabel">C++ Host · Qt6</span>
+        <div class="subgrid">
+          <div class="chip"><b>DocumentManager</b><span class="f">QML_SINGLETON</span> — owns <code>docId → V8Process*</code></div>
+          <div class="chip"><b>V8Process</b>× one per document — the <code>Sketch</code> bridge: ~90 Q_INVOKABLE methods. Owns one in-process <code>QjsEngine</code> (QuickJS-ng <code>JSRuntime</code>+<code>JSContext</code>) each — <b>no child process, no Node.js dependency</b> (replaced the original Node.js/QProcess transport)</div>
+          <div class="chip"><b>AppController / PlacementEngines / PlacementPreviewManager</b>Drag-placement preview, synchronous, no IPC</div>
+        </div>
+      </div>
+      <div class="box indigo-c">
+        <span class="taglabel">C++ Host · shared instance</span>
+        <div class="subgrid">
+          <div class="chip"><b>IndigoService</b><span class="f">QML_ELEMENT</span>, one instance for the whole window, always acts on <code>activeCanvas</code>. Every heavy call runs via <code>QtConcurrent::run</code> on a thread-pool worker with its own <code>indigoAllocSessionId()</code></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrowrow">
+      <div class="lane"><span class="glyph">↓ ↑</span>&nbsp;direct JS function calls, in-process, no IPC (one JSContext per open tab)</div>
+      <div class="lane"><span class="glyph">↓ ↑</span>&nbsp;direct C calls, in-process</div>
+    </div>
+
+    <div class="tier runtime">
+      <div class="box node-c">
+        <span class="taglabel">In-process JS runtime</span>
+        <div class="subgrid">
+          <div class="chip"><b>src/v8_worker.js</b>× one JSContext per document — holds the live <code>_struct</code>, dispatches <code>(cmd,args)</code> via an if/else chain (<code>_dispatchCommand</code>), wraps every mutation in <code>makeCmd</code> for undo/redo, then <code>buildRenderPrimitives</code>. Node-specific globals are shimmed by <code>QjsEngine</code> under <code>__native</code>; a <code>_hasNative</code> check keeps a Node.js fallback path working for <code>scripts/worker_smoke_test.js</code>, but the shipped app never spawns Node</div>
+          <div class="chip"><b>chem-core.js</b><code>eval()</code>'d once per JSContext — 72 exports, 22 used (see audit)</div>
+          <div class="chip"><b>quickjs-ng (<code>qjs</code> library)</b>The in-process engine itself. Vendored as plain C source in <code>third_party/quickjs-ng</code>, compiled straight into <code>sketch.exe</code> via <code>add_subdirectory</code> — no prebuilt-binary/toolchain mismatch to fight, unlike Indigo. Bridge: <code>src/qjs_engine.h</code>/<code>.cpp</code></div>
+        </div>
+      </div>
+      <div class="box indigo-c">
+        <span class="taglabel">Native DLL</span>
+        <div class="subgrid">
+          <div class="chip"><b>indigo.dll</b>517 C functions, 51 used (see audit). Linked only into the C++ host — the worker's JS code never touches it</div>
+          <div class="chip"><b>bingo-nosql.dll</b>Self-contained chemistry search index (substructure/similarity/exact/formula, file-based, no DB server). Vendored (DLL + header) but <b>not linked into the build at all</b> — no CMakeLists.txt entry yet</div>
+        </div>
+      </div>
+    </div>
+
+    <p class="note"><strong>The re-entry loop:</strong> when <code>IndigoService</code> finishes a job (e.g. <code>layoutFinished</code>), <code>MainWindow.qml</code>'s <code>Connections</code> block calls <code>activeCanvas.loadMolfile(...)</code> — which re-enters the V8Process → worker path above. Indigo never holds state; every result gets funneled back into the worker's <code>_struct</code> as the one source of truth.</p>
+    <p class="note"><strong>Engine migration (2026-07-10):</strong> the worker transport was originally a spawned Node.js child process talking newline-delimited JSON over stdin/stdout (<code>QProcess</code>). That's been fully replaced with <code>QjsEngine</code>, an in-process QuickJS-ng <code>JSRuntime</code>/<code>JSContext</code> per document — <code>V8Process::sendCommand</code>'s public shape is unchanged, only its internals differ (direct <code>JS_Call</code> instead of a pipe write). This removed the "Node.js must be on PATH or bundled next to the binary" deployment requirement entirely. V8 was evaluated and passed over: MSVC (needed for V8 anyway) is now available, but V8's build system (<code>depot_tools</code>/GN/Ninja, no CMake integration, a 10-20GB checkout, hours-long builds) was judged not worth it since this app's actual bottleneck was IPC overhead, not JS execution speed.</p>
+    <p class="note"><strong>Argument marshaling gotcha (found post-migration):</strong> <code>QjsEngine::variantToJs</code> (<code>src/qjs_engine.cpp</code>) converts each <code>QVariant</code> in <code>sendCommand</code>'s args list into a real JS value. It handles scalars directly, and <b><code>QVariantList</code>/<code>QVariantMap</code> recursively into real JS arrays/objects</b> — the latter case was originally missing, which silently broke every <code>TEMPLATE_*</code> ring tool (<code>addRing</code>'s <code>coords</code> argument is a <code>QVariantList</code>) while scalar-only commands kept working. <code>scripts/worker_smoke_test.js</code> never would have caught this — it drives the worker via the Node fallback path, never through <code>QjsEngine</code>. A manual in-app test is the only real verification for this seam; there's no automated test exercising the QjsEngine transport itself yet.</p>
+    <p class="note"><strong>Verification pass (2026-07-10):</strong> a systematic bug-hunt across the whole project after the migration found and fixed 9 issues — a deferred-error-signal bug in <code>V8Process</code>, a cross-thread <code>QPointer</code> race across all 20 <code>QtConcurrent</code> call sites in <code>IndigoService.cpp</code> (see the Indigo seam's step 1 below), two undo/redo asymmetries in <code>v8_worker.js</code>'s sgroup/functional-group handling, and four QML bugs including a <b>recurring pattern</b> worth remembering: several call sites forgot to resolve a contracted sgroup pill id to a real atom id before touching the backend (the established fix is <code>ChemCanvas.qml</code>'s own <code>resolveHitAtom()</code> helper — check any new atom-targeting code path against it).</p>
+    <p class="note"><strong>Canvas interaction tools (2026-07-11):</strong> added a <code>HAND</code> (pan) tool, a <code>SELECT_LASSO</code> tool, a hard page/canvas boundary, and — replacing an initial standalone <code>ROTATE</code> tool the same day — PowerPoint-style selection handles (4 corner + 4 side resize, 1 rotate) that appear automatically on any qualifying selection while <code>SELECT</code>/<code>SELECT_FRAGMENT</code> is active. See <code>calm-launching-kettle.md</code> for the full ChemDraw/PowerPoint research. Notable patterns: <code>rotateSelectionLive</code>/<code>commitRotate</code> and the new <code>scaleSelectionLive</code>/<code>commitScale</code> were <b>generalized to every selectable type</b> (atoms, reaction arrows, rxn-plus signs, multitail arrows) via shared <code>_snapshotSelectionPoints</code>/<code>_writeSelectionPoint</code> helpers mirroring <code>moveSelection</code>'s own multi-type handling — a single arrow or a mixed molecule+arrow+text selection now rotates/resizes as a whole; resize scales uniformly about the handle's <b>opposite</b> point (not the centroid, unlike rotate), since anisotropic stretch would distort bond lengths; <code>selectByLasso</code> reuses <code>selectByRect</code>'s structure but is <b>not</b> a drop-in copy — ChemDraw's lasso only selects objects <b>entirely enclosed</b> by the path; the page boundary (<code>PAGE_MIN_X/MAX_X/MIN_Y/MAX_Y</code>) is a hard clamp by explicit user decision despite ChemDraw's own page lines being only a soft print guide, and is deliberately <b>not</b> applied to fusion-sensitive geometry to avoid misaligning a fused seam. <b>Two operational findings from this pass:</b> <code>CMakeLists.txt</code>'s icon list is an explicit file list, not a glob — a new icon on disk isn't packaged until added there too (missed for <code>hand.svg</code>/<code>select-lasso.svg</code> initially); and Bash-launched GUI checks via <code>PATH</code> alone can silently fail with zero output (<code>STATUS_DLL_NOT_FOUND</code>) — real verification needs <code>windeployqt.exe --qmldir &lt;src&gt;</code> run once per build tree plus the matching MinGW runtime DLLs, checked via PowerShell's <code>Start-Process</code> exit code, not just an empty Bash log. Verified via a temporary Node harness, the standing smoke test, a clean MinGW build, and (this time) a real interactive launch with captured stderr showing zero QML errors beyond pre-existing benign style warnings; manual mouse-driven interaction and the MSVC build are still pending.</p>
+    <p class="note"><strong>InChI / InChIKey support (2026-07-11):</strong> linked the previously-vendored-but-unlinked <code>indigo-inchi</code> plugin — third confirmation of the Indigo-plugin linking pattern (after <code>indigo.dll</code> itself; <code>indigo-renderer</code> linked next, for native SVG export — see below; Bingo still unlinked). <b>Zero <code>src/v8_worker.js</code> changes</b> — confirms <code>V8Process::requestSerialize(reqId)</code> is a pure passthrough (always <code>requestStructure("mol", reqId)</code>), so any "compute X from the current structure" clipboard/export action is purely an <code>IndigoService</code> + <code>MainWindow.qml</code> addition. The MSVC <code>.lib</code> generation step (<code>dumpbin</code>/<code>lib.exe</code>) is a standalone tool invocation, not a full build, so it's doable directly from this Bash shell even without the MSVC compiler environment. <b>Found and fixed a real bug via direct chemistry-level verification, not just a clean build:</b> <code>indigoInchiGetInchi()</code>'s return value points into a buffer <code>indigoInchiGetInchiKey()</code> itself overwrites while computing its own result — passing the first call's raw pointer straight into the second reads already-clobbered memory and silently returns null. Confirmed with a standalone repro (compiled directly against the vendored DLLs, bypassing Qt/the GUI) before and after the fix, both against benzene's known reference values (<code>InChI=1S/C6H6/c1-2-4-6-5-3-1/h1-6H</code>, <code>UHOVQNZJYSORNB-UHFFFAOYSA-N</code>). <b>General lesson:</b> any Indigo API returning <code>const char*</code> is valid only until the <i>next</i> Indigo call of any kind — copy it to an owned string immediately if it needs to survive past that. Verified via the standing smoke test (unaffected, confirming the "zero worker changes" claim), a clean MinGW build, and a real interactive launch with no new QML errors; MSVC compile/link still needs the user's Qt Creator rebuild.</p>
+    <p class="note"><strong>"Load from InChI" (2026-07-11) — and why not InChIKey:</strong> follow-up prompted by a request to "load molecules from InChIKey" — <b>confirmed with the user before building anything</b> that InChIKey is a one-way hash with no reverse algorithm, so the real request was either loading from the full InChI string (invertible) or resolving an InChIKey via an external database like PubChem (network-dependent, never done in this app, remains unbuilt). Built the first. <b>Key discovery:</b> Indigo's <i>generic</i> loader (<code>indigoLoadMoleculeFromString</code>, the same one "Load from SMILES" already calls via <code>IndigoService::layout()</code>) auto-detects and parses InChI <b>natively</b> — confirmed via a standalone test that this works even without <code>indigo-inchi.dll</code> linked or <code>indigoInchiInit</code> called at all. The plugin (linked above) is only needed for <i>generating</i> an InChI from a structure, not loading one. So this needed <b>zero new backend code</b> — purely a new "Load from InChI" toolbar entry + dialog in <code>MainWindow.qml</code>, mirroring <code>smilesDialog</code> exactly, calling the same <code>indigoSvc.layout(text)</code>. Added a live inline warning (regex-matches the InChIKey shape) in the dialog, directly targeting the mix-up that prompted this feature. Verified via a standalone repro, the standing smoke test (unaffected), a clean MinGW build, and a real interactive launch with no new QML errors.</p>
+    <p class="note"><strong>Native SVG export (2026-07-12):</strong> linked the previously-vendored-but-unlinked <code>indigo-renderer</code> plugin — fourth confirmation of the Indigo-plugin linking pattern. Purely additive: does not touch the existing screenshot-based PNG/PDF export (<code>AppController::exportPdf</code>/canvas <code>exportPNG</code>). New <code>IndigoService::renderToFile(molfile, fileUrl, format)</code> + <code>renderFinished(bool, error)</code> signal, following the <code>inchi()</code>/<code>emitOnGuiThread</code> shape exactly; <code>MainWindow.qml</code> gained a <code>pendingRenderUrl</code> property, a <code>render_svg</code> <code>reqId</code> branch, and a <code>*.svg</code> entry in the save dialog. <b>Started as an <code>opencode</code> delegation that stalled partway through</b> — the process (model <code>opencode-go/glm-5.2</code>) finished <code>CMakeLists.txt</code>'s linking changes and the bare <code>Q_INVOKABLE</code> declaration in <code>IndigoService.h</code>, then produced no new output for several checks in a row while still alive (confirmed via <code>tasklist</code>, not guessed). Killed it and hand-finished the rest against the same plan: the missing <code>&lt;QUrl&gt;</code> include and <code>renderFinished</code> signal, the <code>.cpp</code> implementation, and all of the <code>MainWindow.qml</code> wiring. Verified via a standalone harness — a small <code>.cpp</code> calling the <i>actual compiled</i> <code>IndigoService::renderToFile</code>, moc'd and linked directly against the vendored DLLs, bypassing the GUI — rendering a benzene molfile to SVG and confirming the output was a real vector <code>&lt;svg&gt;</code> document (9 <code>&lt;path&gt;</code> elements), not a rasterized blob or an empty/error file. Clean MinGW build; real interactive launch showed no new QML errors beyond pre-existing style warnings; <code>.mol</code>/<code>.sdf</code>/<code>.ket</code>/<code>.png</code> save paths inspected and confirmed unaffected. See <code>Features To Be Implemented.md</code>'s "Done (2026-07-12, native SVG export)" entry and <code>.claude/plans/indigo-native-svg-export.md</code>.</p>
+    <p class="note"><strong>Reaction structure validation (2026-07-11):</strong> <code>IndigoService::checkStructure</code> had an explicit reaction guard returning a placeholder instead of ever checking anything. <b><code>indigoCheckObj</code> on a whole reaction handle isn't usable the same way as on a molecule</b> — confirmed via a standalone test before writing any real code: it returns an empty-string key with no component association, which the existing regex-based JSON parser can't classify. <b>Fix:</b> iterate <code>indigoIterateReactants</code>/<code>indigoIterateProducts</code> and run <code>indigoCheckObj</code> on each component individually — gives back the exact same clean per-type shape the molecule branch already parses, just with ids local to that component; the shared parsing logic was factored into a file-local <code>parseCheckReport()</code> so both branches use the same code. <b>Deliberate scope boundary:</b> this only produces a text report — inline badge/red-bond highlighting stays off for reactions, since mapping per-component-local ids back to global canvas ids would need matching <code>MolSerializer</code>'s own fragment-ordering when serializing a <code>$RXN</code> string, not safely verifiable without disproportionate effort into third-party bundled code, and a wrong mapping would silently highlight the wrong atom — worse than the stub it replaces. Verified via a standalone test against both a broken reaction (genuine valence error) and a clean one, the standing smoke test (unaffected), a clean MinGW build, and a real interactive launch with no new QML errors.</p>
+    <p class="note"><strong>loadMolfile data loss on the Indigo round-trip (2026-07-11):</strong> started from "how do we minimize worker↔Indigo IPC overhead" — investigating found the actual overhead negligible (MDL parsing at this app's sizes is microsecond-scale, dwarfed by the thread-hop/debounce timers already in place) but surfaced a real correctness bug instead. <b>MDL molfile/RXN — what Layout/Aromatize/Dearomatize/Normalize/Standardize all round-trip through — has no concept of Ketcher's own text annotations or multitail arrows.</b> <code>loadMolfile()</code> did a full <code>_struct = loaded</code> replace with whatever came back, so both were silently deleted on every one of those five actions (reaction arrows/plus signs were fine — <code>$RXN</code> is a real MDL concept). Confirmed via direct calls to <code>getStructure("mol", ...)</code> before writing any fix. <b>Fix:</b> merge the outgoing struct's <code>texts</code>/<code>multitailArrows</code> pools into the freshly-deserialized one inside <code>loadMolfile()</code> itself — safe because that function is only ever called for "reload a modified version of the same document" (those five ops, plus biopolymer expansion); genuine file open goes through the separate <code>loadStructure()</code> path, confirmed by tracing <code>MainWindow.qml</code>'s <code>loadFromFile()</code>. <b>Found in passing, fixed as a same-day follow-up</b> (see next note): <code>getStructure("ket", ...)</code> threw/returned empty specifically when a multitail arrow was present, even though KET otherwise preserves both texts and multitail arrows correctly. Verified via a disposable Node harness simulating the round-trip against the real worker, the standing smoke test (unaffected), a clean MinGW build, and a real interactive launch with no new QML errors.</p>
+    <p class="note"><strong>KET multitail-arrow crash (2026-07-11):</strong> same-day follow-up. <b>Root-caused, not guessed:</b> patched a disposable copy of <code>src/v8_worker.js</code> (in <code>/tmp</code>, tracked file never touched) so <code>getStructure</code>'s catch block would stop silently swallowing the exception, then reran the exact repro. Real error: <code>TypeError: multitailArrow.toKetNode is not a function</code>, thrown inside <code>KetSerializer.serializeMicromolecules</code> (chem-core.js, vendored) — it walks <code>struct.multitailArrows</code> directly and calls <code>.toKetNode()</code> on each entry, assuming a real chem-core <code>MultitailArrow</code> class instance. This app's own multitail arrows (<code>_makeMultitailArrow</code>) are plain data objects with no such method — already flagged in the Part B audit ("Sketch reimplemented this as plain objects"). The crash happens before <code>_injectMultitailArrows</code> (which correctly builds KET nodes from the plain-object data — never the actual bug) gets a chance to run. <b>Second call site with the identical problem:</b> <code>getClipboardAsKet()</code> had the same crash risk and separately never called <code>_injectMultitailArrows</code> at all. <b>Fix:</b> a new <code>_serializeMicromoleculesSafe(struct)</code> helper — mirroring the existing <code>_reattachMultitailArrows</code>'s established pattern of swapping in <code>new CoreLib.ChemCore.Pool()</code> — temporarily empties <code>struct.multitailArrows</code> for just the <code>serializeMicromolecules</code> call, restoring it right after in a <code>finally</code>; safe because both call sites already re-inject the correct nodes afterward from the real pool data. Vendored chem-core.js was not touched. <b>Pattern worth repeating:</b> when a caught exception is suspiciously silent, patch a disposable copy to unmask it rather than guessing from the symptom alone — the second bug this session (after the InChIKey buffer-aliasing bug) found this way. Verified via the exact repro: both call sites now return non-empty KET JSON containing the multitail-arrow node; standing smoke test unaffected, clean MinGW build, real interactive launch with no new QML errors.</p>
+    <p class="note"><strong>Toolbar alignment icons (2026-07-11) — first delegated-to-opencode implementation:</strong> section 1 of the toolbar/rulers spec. First feature this session where Claude planned but did <b>not</b> directly implement — delegated to <code>opencode</code> via the <code>claude-opencode:opencode-implement</code> skill, then verified independently. Plan: <code>.claude/plans/toolbar-alignment-icons.md</code>. No align/distribute icons existed anywhere, and the vendored MDI font was completely unused — codepoints were extracted directly from the font binary via Python's <code>fontTools</code> before writing the plan, not guessed (version-dependent; a wrong one renders as a blank tofu box with no build-time signal). Found and specified the fix for a real <code>IconCell.qml</code> bug before delegating: its glyph-sizing logic would misfire for any codepoint above U+FFFF (a 2-code-unit UTF-16 surrogate pair), landing these icons in the wrong font at the wrong size — fixed with new opt-in <code>glyphFontFamily</code>/<code>glyphIsIcon</code> properties defaulting to the old behavior. The first delegation attempt was blocked by Claude Code's own auto-mode safety classifier (a third-party CLI granted unrestricted write/shell access from an abstract permission menu, not explicit confirmation) — not worked around; the user explicitly asked for a retry, which ran to completion. <b>Verification didn't stop at opencode's own report</b>: read the actual diffs (matched the plan exactly), grepped the other 7 <code>glyph:</code> call sites to confirm none changed, and — the one thing opencode's own report flagged it couldn't check (no display capture in its environment) — launched the real app and screenshotted it, confirming all 6 icons render as correct, distinct pictograms. Load-bearing lesson: a sub-agent's "I verified X" is only as good as what its environment can observe — check what it says it <i>couldn't</i> check.</p>
+    <p class="note"><strong>Native SVG export (2026-07-12):</strong> linked the previously-vendored-but-unlinked <code>indigo-renderer</code> plugin — fourth confirmation of the Indigo-plugin linking pattern. Purely additive: does not touch the existing screenshot-based PNG/PDF export (<code>AppController::exportPdf</code>/canvas <code>exportPNG</code>). New <code>IndigoService::renderToFile(molfile, fileUrl, format)</code> + <code>renderFinished(bool, error)</code> signal, following the <code>inchi()</code>/<code>emitOnGuiThread</code> shape exactly; <code>MainWindow.qml</code> gained a <code>pendingRenderUrl</code> property, a <code>render_svg</code> <code>reqId</code> branch, and a <code>*.svg</code> entry in the save dialog. <b>Started as an <code>opencode</code> delegation that stalled partway through</b> — the process (model <code>opencode-go/glm-5.2</code>) finished <code>CMakeLists.txt</code>'s linking changes and the bare <code>Q_INVOKABLE</code> declaration in <code>IndigoService.h</code>, then produced no new output for several checks in a row while still alive (confirmed via <code>tasklist</code>, not guessed). Killed it and hand-finished the rest against the same plan: the missing <code>&lt;QUrl&gt;</code> include and <code>renderFinished</code> signal, the <code>.cpp</code> implementation, and all of the <code>MainWindow.qml</code> wiring. Verified via a standalone harness — a small <code>.cpp</code> calling the <i>actual compiled</i> <code>IndigoService::renderToFile</code>, moc'd and linked directly against the vendored DLLs, bypassing the GUI — rendering a benzene molfile to SVG and confirming the output was a real vector <code>&lt;svg&gt;</code> document (9 <code>&lt;path&gt;</code> elements), not a rasterized blob or an empty/error file. Clean MinGW build; real interactive launch showed no new QML errors beyond pre-existing style warnings; <code>.mol</code>/<code>.sdf</code>/<code>.ket</code>/<code>.png</code> save paths inspected and confirmed unaffected. See <code>Features To Be Implemented.md</code>'s "Done (2026-07-12, native SVG export)" entry and <code>.claude/plans/indigo-native-svg-export.md</code>.</p>
+    <p class="note"><strong>SDF multi-record batch browsing (2026-07-12):</strong> opening a multi-record <code>.sdf</code> previously silently kept only the first record (<code>_deserializeStruct</code>'s <code>sdf</code> branch returned <code>items[0].struct</code>, discarding the rest with no warning — <code>v8_worker.js:3026-3028</code>). Fixed by reusing the Library/template popup's exact pattern (<code>AnchoredPicker</code>+<code>ThumbnailGridItem</code>+<code>GridView</code>) — that popup is itself already "parse a multi-record SDF, thumbnail every record, click to pick," just pointed at <code>templates/library.sdf</code> instead of a user-opened file. New worker commands <code>deserializeSdfBatch(data)</code>/<code>loadSdfBatchRecord(index)</code>, new standalone <code>SdfRecordPicker.qml</code>. <b>Built entirely via seam ①</b> (the worker's own <code>SdfSerializer</code>), not seam ② as the roadmap had originally scoped it — no new <code>IndigoService</code>/Indigo C API surface was needed. <b>Zero regression for the common case, by design</b>: a single-record <code>.sdf</code> still loads directly with no popup (<code>MainWindow.qml</code> only opens the picker when the worker reports <code>count &gt;= 2</code>); eager thumbnail computation capped at 500 records; no general pagination system built (explicit non-goal); <code>.rdf</code> remains completely unsupported. <b>First feature this session delegated to the Antigravity CLI (<code>agy</code>, Gemini 3.1 Pro High, <code>--mode accept-edits</code>) rather than <code>opencode</code>.</b> First launch attempt was lost to a shell double-backgrounding mistake (a trailing <code>&amp;</code> inside an already-backgrounded call detached the process from its own wrapper's stdio, so the wrapper reported a false timeout while an orphaned <code>agy</code> process kept running unmanaged with no workspace writes) — killed the stray process and relaunched cleanly via a stdin-piped prompt; the second attempt completed cleanly. Verified via two standalone Node harnesses spawning <code>src/v8_worker.js</code> over its real stdin/stdout protocol (the same technique <code>scripts/worker_smoke_test.js</code> uses, no GUI needed): one confirmed <code>deserializeSdfBatch</code> against the real <code>templates/library.sdf</code> returns the true record count (276, independently cross-checked by counting <code>$$$$</code> separators in the raw file) with correct titles/thumbnails, and that a genuine single-record file reports <code>count === 1</code>; a second confirmed <code>loadSdfBatchRecord(5)</code> loads the exact picked record (atom/bond counts matching that record read directly from the raw file). Standing smoke test unaffected; clean MinGW build; real interactive launch with no new QML errors. <b>Re-verified on request, fresh (not recalled from the original pass):</b> reran a new Node harness against the current code and the real <code>templates/library.sdf</code> — worker-reported count still exactly matches the raw file's <code>$$$$</code>-delimited record count (276/276), and <code>loadSdfBatchRecord(10)</code>'s loaded structure title (<code>alpha-D-Lyxopyranose</code>) matches that record's picker-list label exactly. Code unchanged since the original implementation; standing smoke test still passes; app still launches cleanly. <b>Attempted to close the standing click-through gap this round and could not:</b> tried driving the real UI (<code>Ctrl+O</code> → native file dialog → type path → <code>SdfRecordPicker</code> should open) via <code>SetForegroundWindow</code>, <code>ShowWindow</code>, and <code>WScript.Shell.AppActivate</code> — all three failed to bring the app window into focus in this environment, confirmed by a screenshot showing the keystrokes never reached the app. This is an environment constraint (no window-focus control for another process' window), not a code issue — backend correctness is solid; the actual mouse-driven open → picker → click flow remains an honest, stated verification gap, same class as the earlier image-file-picker gap. See <code>Features To Be Implemented.md</code>'s "Done (2026-07-12, SDF batch record browsing)" entry and <code>.claude/plans/sdf-batch-browser.md</code>.</p>
+    <p class="note"><strong>Image embedding on canvas (2026-07-12):</strong> <code>struct.images</code> was already a native, initialized Pool in vendored <code>chem-core.js</code> with a working KET <code>Image</code> class (<code>toKetNode</code>/<code>fromKetNode</code>) — opening a <code>.ket</code> file with an embedded image already silently worked; nothing could create one, nothing rendered one. New worker commands <code>addImage</code>/<code>deleteImage</code> (a duck-typed <code>_makeImage</code> object mirroring chem-core's real, unexported <code>Image</code> class — same situation as <code>Text</code>/<code>MultitailArrow</code>); new <code>FileIO::readImageAsDataUri</code>; new <code>IMAGE</code> tool (using the previously-unused <code>icons/add-image.svg</code>) + <code>FileDialog</code> + <code>LabelLayer.qml</code> rendering block (a hidden <code>Image {}</code> <code>Repeater</code> decodes each base64 data URI, then <code>ctx.drawImage()</code>s it once ready). Full plan: <code>.claude/plans/image-embedding.md</code>. <b>v1 deliberately bounded</b>: insert/delete only (no move/resize — matching text annotations' own existing lack of drag support), file-picker only (no clipboard-paste), KET-only round-trip. <code>loadMolfile()</code>'s internal MDL round-trip carries <code>images</code> across unchanged — the same bug class fixed for texts/multitailArrows earlier this session, deliberately not repeated here. <b>Second feature delegated to the Antigravity CLI</b> (<code>agy</code>, Gemini 3.1 Pro High, <code>--mode accept-edits</code>). The plan flagged the bounding-box/Y-inversion math as highest-risk and required reading the real <code>Image</code> class before writing the duck-type. <b>Verified independently, not just trusted</b>: read <code>getTopLeftPosition()</code> (<code>center.sub(halfSize)</code>) and <code>getNodeWithInvertedYCoord</code>'s customizer (negates <code>.y</code> only) directly in <code>chem-core.js</code>, and confirmed the delegated <code>toKetNode()</code> reproduces that exact formula — an initial hand-derivation suspecting a sign error turned out to rest on a wrong coordinate-convention assumption, corrected by reading the real source rather than trusting either the digest or the unverified reasoning. Verified via two standalone Node harnesses spawning <code>src/v8_worker.js</code> over its real stdin/stdout protocol: one confirmed <code>addImage</code> → <code>getStructure("ket",...)</code> produces a correctly-shaped node (base64 <code>data</code> exactly matching input, <code>boundingBox</code> matching the hand-computed expected value), <code>undo</code> removes it, and that <code>imageToKet</code>'s real re-serialize step genuinely drops the <code>center</code> field (confirmed by reading <code>chem-core.js:21073-21081</code> — expected chem-core behavior, not a bug); a second confirmed the image survives <code>loadMolfile</code>'s internal round-trip (via <code>aromatize</code>). Standing smoke test unaffected; clean MinGW build; real interactive launch with no new QML errors. <b>Known gap, stated explicitly</b>: the actual mouse-driven click-through (IMAGE tool → canvas click → native file-picker → render) was not exercised — no UI automation was available for the native file-dialog step in this environment. Backend correctness was verified directly; QML wiring was verified by inspection and a clean launch, not an actual click-through.</p>
+    <p class="note"><strong>R-group variable attachment points (2026-07-12):</strong> chem-core already has the real MDL-standard machinery for this — <code>Atom.attachmentPoints</code> (<code>1=FirstSideOnly, 2=SecondSideOnly, 3=BothSides</code>), and both the V2000 <code>M  APO</code> writer and the KET <code>atomToKet</code> writer already read it directly and serialize it correctly. The entire gap was that nothing in <code>v8_worker.js</code>/the UI ever set it. New <code>setAttachmentPoint(atomId, order)</code> worker command (mirrors <code>changeAtomCharge</code>'s exact shape); new "Attachment Point 1/2/Clear" context-menu items in <code>ChemCanvas.qml</code>; new superscript badge (<code>*1</code>/<code>*2</code>/<code>*3</code>) in <code>LabelLayer.qml</code> alongside the existing charge/isotope badges, plus a matching one-line bond-retraction addition in <code>MoleculeLayer.qml</code>'s <code>atomHasLabel()</code>. Full plan: <code>.claude/plans/rgroup-attachment-points.md</code>. <b>Deliberately capped at chem-core's real ceiling</b> (2 attachment points per fragment, not arbitrary-N). v1 allows marking any atom (no fragment-membership enforcement) and does not touch the separate, similarly-named R1-R8 scaffold pseudo-atom-label mechanism or <code>RGroupPanel.qml</code>. <b>Third feature delegated to the Antigravity CLI</b> — Gemini 3.5 Flash High this time (a smaller, more mechanical delegation than SVG export or image embedding, tiered down accordingly). Read-before-writing confirmed both real chem-core writers read <code>atom.attachmentPoints</code> directly off the atom, so no pool-maintenance code was needed. Verified via a standalone Node harness spawning <code>src/v8_worker.js</code> over its real stdin/stdout protocol: correct <code>M  APO</code> line (parsed field-by-field, not just substring-matched — an earlier looser check produced a false failure against the real fixed-width MDL spacing, caught and corrected) for orders 1 and 2, correct <code>attachmentPoints</code> in KET output, <code>undo</code> correctly restores the prior order including back to fully cleared, explicit clear removes the line entirely. Standing smoke test unaffected; clean MinGW build; real interactive launch with no new QML errors.</p>
+    <p class="note"><strong>Explicit hydrogens fold/unfold (2026-07-12):</strong> Part C's Indigo-export audit listed <code>indigoFoldHydrogens</code>/<code>indigoUnfoldHydrogens</code> as unused; nothing in the app could physically add/remove explicit H atoms — distinct from the pre-existing "Show Hydrogens" checkbox (<code>activeCanvas.showExplicitH</code>), which only toggles whether implicit H are drawn and never touches the atom data. New <code>IndigoService::unfoldHydrogens</code>/<code>foldHydrogens</code> (<code>src/app/IndigoService.h</code>/<code>.cpp</code>), each a byte-for-byte mirror of the existing <code>dearomatize</code> method's shape except for the one core call; two new toolbar entries in <code>MainWindow.qml</code>'s STRUCTURE GROUP row reusing the existing, previously-unused <code>icons/explicit-hydrogens.svg</code> for both directions. Full plan: <code>.claude/plans/fold-unfold-hydrogens.md</code>. <b>Zero <code>src/v8_worker.js</code> changes</b> — confirmed <code>requestSerialize(reqId)</code> (<code>src/v8_process.cpp:84</code>) is a pure passthrough to <code>getStructure("mol", reqId)</code>, the same generic opaque-reqId mechanism already used by <code>calc_props</code>/<code>smiles</code>/<code>inchi</code>. <b>Fourth feature delegated to the Antigravity CLI</b> — flash tier, the smallest and most mechanical delegation this session. <b>Real gap caught by the interactive-launch check, not by trusting the digest:</b> the real launch showed a new QML resource error — <code>Cannot open: qrc:/qt/qml/Sketch/App/icons/explicit-hydrogens.svg</code> — because the SVG, though present on disk and referenced by the new toolbar entries, was never added to <code>CMakeLists.txt</code>'s <code>RESOURCES</code> list (the same class of omission <code>add-image.svg</code> needed fixed for earlier this session). Added it, rebuilt, relaunched — error gone, only the two pre-existing benign style warnings remained. Verified via a standalone C++ harness (same technique used for native SVG export) calling the actual compiled <code>IndigoService::unfoldHydrogens</code>/<code>foldHydrogens</code> directly against a real ethane molfile, moc'd and linked against the real vendored Indigo DLLs, bypassing the GUI: unfolding correctly produced 8 atoms (2 C + 6 explicit H, correct valence) each properly bonded to its carbon, and folding back down reproduced the original 2-atom input exactly. Standing smoke test unaffected (no worker changes); clean MinGW rebuild; real interactive launch with no new QML errors after the icon fix. <b>Known verification gap, stated explicitly:</b> the actual mouse-driven toolbar click-through was not exercised in this environment.</p>
+    <p class="note"><strong>Molar refractivity + pKa (2026-07-12):</strong> Part C's Indigo-export audit listed <code>indigoMolarRefractivity</code>/<code>indigoPka</code> as unused; both are single-<code>double</code>-return calls, identical shape to <code>indigoLogP</code>/<code>indigoTPSA</code> already used in <code>IndigoService::calcProperties</code>. Extended <code>propertiesReady</code>'s signal with two trailing <code>double</code> params; <code>MainWindow.qml</code>/<code>PropertyPanel.qml</code> gained two more "Drug Properties" grid rows. Full plan: <code>.claude/plans/molar-refractivity-pka.md</code>. <b>Zero worker/CMake changes</b> — same <code>requestSerialize</code> passthrough as <code>layout</code>/<code>aromatize</code>; <code>indigo</code> core lib already linked. <b>Fifth feature delegated to the Antigravity CLI</b> — flash tier, small mechanical signal extension. <b>Wrapper reported <code>AGY_FAILED</code>/timeout again — another false negative</b>, verified with full rigor from the start this time (every line of all four changed files' diffs read; the only genuinely new content was the planned two-param signal extension, everything else individually cross-checked against already-documented earlier features, not assumed). <b>Verified against the actual compiled code with real numbers</b>: a standalone C++ harness called the real compiled <code>calcProperties</code> against a real aspirin molfile — molar refractivity 41.79 (published ≈44-45) and <b>pKa 3.345 (aspirin's real literature pKa is ≈3.5)</b>, both close, chemically plausible matches confirming the values are computed, not stubbed. <b>UI screenshot/click-through could not be closed out — a real environment constraint.</b> Every window-focus API tried (<code>SetForegroundWindow</code>, <code>ShowWindow</code>, <code>WScript.Shell.AppActivate</code>, <code>FindWindow</code>, <code>EnumWindows</code>) failed to reliably surface the launched window; <code>EnumWindows</code> also revealed this is an actively-used desktop (Qt Creator, Notepad++, a browser already open on this project), so further window manipulation was stopped as a real interference risk, not abandoned by choice. Backend correctness is solid; on-screen row rendering wasn't visually confirmed this round. Standing smoke test unaffected; clean MinGW build; real interactive launch (stderr captured directly) shows no new QML errors.</p>
+    <p class="note"><strong>QML review hardening (2026-07-12):</strong> an automated 23-finding QML review was triaged against the real code before acting — 19 findings did not survive: a hallucinated property (<code>font.preferShaping</code>, zero hits anywhere in the codebase), a false ownership claim (<code>DocumentManager</code>'s <code>V8Process</code> objects are constructed <code>new V8Process(this)</code>, already have a C++ parent, so QML respects existing ownership), several false positives describing already-correct idiomatic QML used pervasively and intentionally throughout this codebase (the <code>CheckBox</code> two-way-sync pattern, bare <code>activeCanvas</code>/<code>window.*</code> delegate lookups, <code>Connections.target</code> going briefly <code>null</code>), one false positive with a broken suggested fix (<code>RGroupPanel.qml</code>'s <code>implicitHeight</code> sizing isn't circular), a couple of overstated claims (<code>Theme.qml</code>'s 118-item array, fixed-size popup grids), some speculative items the report itself flagged as unverified, and the report's own 7 self-flagged investigation-only targets. Full triage: <code>.claude/plans/qml-review-fixes.md</code>. <b>Four findings survived and were delegated to the Antigravity CLI</b> (flash tier): batching <code>ChemCanvas.qml</code>'s per-dot <code>beginPath()</code>/<code>fill()</code> grid-paint calls into one call for the whole grid; <code>Image.Error</code> logging on three previously-silent dynamic-source <code>Image</code> elements (<code>LabelLayer.qml</code>, <code>MainWindow.qml</code>'s <code>amRowIcon</code>, <code>components/IconCell.qml</code>); <code>parent</code>-null guards on five <code>anchors.*: parent.*</code> bindings in <code>MainWindow.qml</code> delegates; and <code>textFormat: Text.PlainText</code> on plain-string <code>Text</code> elements across <code>PropertyPanel.qml</code>, <code>IconCell.qml</code>, and four shared components found via an explicit whole-tree search. <b>False negative from the delegation wrapper — the mirror image of "never trust agy's GREEN":</b> <code>agy-delegate</code> reported <code>AGY_FAILED</code>/timeout, but the five target files' mtimes fell inside the delegation's run window and <code>git diff</code> showed exactly the planned four fixes and nothing more — confirmed by reading every hunk and distinguishing genuinely-new content from large pre-existing uncommitted diffs (canvas resize/rotate handles, R-group badges, image rendering) before concluding the work was correct and complete despite the wrapper's failure report. Verified: clean MinGW rebuild, standing smoke test unaffected, real interactive launch with no new QML errors beyond the two pre-existing benign style warnings. <b>Real regression shipped and then caught by the user, not by this pass's own verification:</b> the grid-dot batching fix removed the per-dot <code>ctx.beginPath()</code> on the assumption that reordering <code>beginPath()</code>/<code>fill()</code> calls around an unchanged <code>arc()</code> loop couldn't change the render — wrong: without a <code>beginPath()</code>/<code>moveTo()</code> immediately before each <code>arc()</code>, Canvas draws a straight line connecting the previous subpath's end to the new arc's start instead of opening a fresh circle, so the whole grid rendered as large triangular wedges (one per column) instead of dots — reported by the user with a screenshot showing exactly that. Fixed by adding <code>ctx.moveTo(x + dotRadius, y)</code> before each <code>arc()</code> call, keeping the single <code>beginPath()</code>/<code>fill()</code> batching while restoring correct per-dot subpaths. This time verified by actually launching the app and screenshotting the canvas before calling it fixed — the gap the first pass skipped.</p>
+  </div>
+
+  <!-- ================= SEAMS ================= -->
+  <h2>Two integration seams</h2>
+  <p class="dek" style="margin-bottom:0">Every backlog item is chemistry-model work (touches <code>_struct</code>, wants undo/redo, needs to render) or toolkit work (a computed result handed back once) — never both. That split is exactly the chem-core.js / Indigo divide, and it decides which files a new feature touches.</p>
+
+  <div class="seams">
+    <div class="seam node-seam">
+      <h3>① The worker seam</h3>
+      <p>For anything built on an unused <b>chem-core.js</b> export — biopolymer drawing, image embedding, native multitail arrows, R-group attachment helpers.</p>
+      <ol>
+        <li>Add the operation to <code>src/v8_worker.js</code>, calling the already-loaded <code>CoreLib.ChemCore.X</code> — follow the <code>addText</code>/<code>addChain</code> shape (build the object, wrap the mutation in <code>makeCmd</code>, call <code>executeCommand</code>)</li>
+        <li>Register the new <code>cmd</code> string in the if/else dispatch inside <code>_dispatchCommand</code> (<code>src/v8_worker.js:4026</code>)</li>
+        <li>Add a matching <code>Q_INVOKABLE</code> to <code>v8_process.h</code>/<code>.cpp</code> that calls <code>sendCommand(...)</code> — array/object-shaped arguments are fine (<code>QjsEngine::variantToJs</code> converts <code>QVariantList</code>/<code>QVariantMap</code> recursively into real JS arrays/objects, e.g. <code>addRing</code>'s <code>coords</code> list), not just scalars</li>
+        <li>Extend <code>buildRenderPrimitives</code> if the new entity needs to reach the canvas, then teach <code>MoleculeLayer</code>/<code>LabelLayer</code>/<code>SelectionLayer</code> to draw and hit-test it</li>
+        <li>Add the tool/menu entry in <code>ToolPanel.qml</code> or <code>MainWindow.qml</code>, reusing <code>IconCell</code>/<code>AnchoredPicker</code>/<code>TaskDialog</code></li>
+      </ol>
+    </div>
+    <div class="seam indigo-seam">
+      <h3>② The Indigo seam</h3>
+      <p>For anything built on an unused <b>Indigo C function</b> — similarity search, SMARTS matching, InChI, native rendering, SDF/RDF batch browsing, scaffold decomposition, reaction enumeration, auto-AAM/pKa.</p>
+      <ol>
+        <li>Add a method to <code>IndigoService.h</code>/<code>.cpp</code> following the existing <code>layout()</code>/<code>calcProperties()</code> shape — <code>QtConcurrent::run</code>, own <code>indigoAllocSessionId()</code>, then <b><code>emitOnGuiThread(self, [...](IndigoService *s) { emit s-&gt;xyzFinished(...); })</code></b> to emit the result — not a raw <code>if (self) emit self-&gt;...</code> from the background thread. <code>QPointer</code>'s guard isn't thread-safe for a concurrent check-then-use; <code>emitOnGuiThread</code> posts the check-and-emit onto the GUI thread instead, serialized against <code>~IndigoService()</code> by the same event loop (found and fixed across all 20 existing call sites in the 2026-07-10 verification pass — this is now the required pattern)</li>
+        <li>Wire a handler in <code>MainWindow.qml</code>'s <code>Connections { target: indigoSvc }</code> block</li>
+        <li>Feed the result back to the model either via <code>activeCanvas.loadMolfile(...)</code> (structural result) or straight into a QML panel (a computed value, e.g. a similarity score or InChIKey string)</li>
+        <li>This path <b>never touches</b> <code>v8_worker.js</code> — the worker is the passive supplier of the molfile string Indigo is handed</li>
+      </ol>
+    </div>
+    <div class="seam bingo-seam">
+      <h3>③ The Bingo seam (new — not wired in at all yet)</h3>
+      <p>For similarity search, substructure search, exact-match search, and formula search over a collection — the template library, or a user-opened SDF/RDF.</p>
+      <ol>
+        <li><b>Prerequisite, not yet done:</b> link <code>bingo-nosql.dll</code> in <code>CMakeLists.txt</code> (mirroring the <code>indigo.dll</code> pattern — on MSVC this needs its own generated <code>.lib</code>, same <code>dumpbin</code>/<code>lib.exe</code> process already used for <code>indigo.dll</code>)</li>
+        <li>Add a new <code>BingoService</code> (or extend <code>IndigoService</code>) following the same <code>QtConcurrent::run</code> + own-session shape</li>
+        <li>Build the index once (e.g. over <code>templates/library.sdf</code>'s 276 entries) via <code>bingoCreateDatabaseFile</code>/<code>bingoInsertRecordObj</code>, then query with <code>bingoSearchSub</code>/<code>bingoSearchSim</code>/<code>bingoSearchExact</code>/<code>bingoSearchMolFormula</code></li>
+        <li>Like the Indigo seam, this never touches <code>v8_worker.js</code> directly — results (a list of matching template names/ids) feed a QML popup, not the live <code>_struct</code></li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- ================= FEATURE MAP ================= -->
+  <section class="report">
+    <div class="head"><h2>Backlog → integration point</h2></div>
+    <p class="lede">Every item from <code>Features To Be Implemented.md</code>, mapped to the seam and files it would actually touch.</p>
+
+    <table class="map">
+      <thead><tr><th>Feature</th><th>Seam</th><th>Touches</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="feature">Word-style rulers (<s>alignment icons</s> <b>done 2026-07-11</b>)</td>
+          <td class="seamtag"><span class="tag qml">QML-only</span></td>
+          <td><code>MainWindow.qml</code>'s <code>topRuler</code>/<code>leftRuler</code> still static (margins/indents/tab-stops not built). Alignment icons: done — see the note above and <code>.claude/plans/toolbar-alignment-icons.md</code>. No backend change either way.</td>
+        </tr>
+        <tr>
+          <td class="feature"><s>Library-template ring fusion</s> <b>(done 2026-07-10)</b></td>
+          <td class="seamtag"><span class="tag node">① Worker</span></td>
+          <td>Implemented: <code>insertLibraryTemplateFused()</code> in <code>v8_worker.js</code> + <code>V8Process::insertLibraryTemplateFused</code> + <code>ChemCanvas.qml</code>'s <code>hitBond</code>-gated <code>LIB_</code> branch. See <code>calm-launching-kettle.md</code> for the verified design/implementation notes.</td>
+        </tr>
+        <tr>
+          <td class="feature"><s>Canvas interaction tools: move fix, Hand, PowerPoint-style resize/rotate handles, Lasso, page boundary</s> <b>(done 2026-07-11, pending manual/MSVC verification)</b></td>
+          <td class="seamtag"><span class="tag node">① Worker</span> + QML</td>
+          <td><code>HAND</code>/<code>SELECT_LASSO</code> tools in <code>ToolPanel.qml</code>; selection handles + drag handling in <code>ChemCanvas.qml</code>/<code>ToolOverlay.qml</code>; <code>rotateSelectionLive</code>/<code>commitRotate</code>/<code>scaleSelectionLive</code>/<code>commitScale</code>/<code>selectByLasso</code> + page-boundary clamp in <code>v8_worker.js</code>; boundary outline in <code>MoleculeLayer.qml</code>. See the note above and <code>calm-launching-kettle.md</code>.</td>
+        </tr>
+        <tr>
+          <td class="feature"><s>Reaction structure validation</s> <b>(done 2026-07-11)</b></td>
+          <td class="seamtag"><span class="tag indigo">② Indigo</span></td>
+          <td>Implemented: <code>IndigoService::checkStructure</code> now runs <code>indigoCheckObj</code> per reactant/product component via <code>indigoIterateReactants</code>/<code>indigoIterateProducts</code>, text-report only (inline highlighting deliberately stays off for reactions). See the note above and <code>calm-launching-kettle.md</code>.</td>
+        </tr>
+        <tr>
+          <td class="feature">Native biopolymer drawing engine</td>
+          <td class="seamtag"><span class="tag node">① Worker</span></td>
+          <td><code>DrawingEntitiesManager</code>/<code>Entities</code>/monomer helpers already sit unused in <code>chem-core.js</code>; would need a new worker-side monomer struct, new canvas render layer, new tool set. The biggest single item in the backlog.</td>
+        </tr>
+        <tr>
+          <td class="feature"><s>Image embedding on canvas</s> <b>(done 2026-07-12)</b></td>
+          <td class="seamtag"><span class="tag node">① Worker</span></td>
+          <td>Implemented: new <code>addImage</code>/<code>deleteImage</code> worker commands (a duck-typed <code>_makeImage</code> object mirroring chem-core's real, unexported <code>Image</code> class), new <code>FileIO::readImageAsDataUri</code>, new <code>IMAGE</code> tool + <code>FileDialog</code> + <code>LabelLayer.qml</code> rendering. v1 is insert/delete only — no move/resize, no clipboard-paste, KET-only round-trip. See <code>Features To Be Implemented.md</code>'s "Done (2026-07-12, image embedding)" entry and <code>.claude/plans/image-embedding.md</code>.</td>
+        </tr>
+        <tr>
+          <td class="feature"><s>R-group variable attachment points</s> <b>(done 2026-07-12)</b></td>
+          <td class="seamtag"><span class="tag node">① Worker</span></td>
+          <td>Implemented via the existing native <code>Atom.attachmentPoints</code> field (MDL <code>M  APO</code>), not the <code>getAttachmentPointLabel</code>/<code>getNextFreeAttachmentPoint</code> bitmask helpers originally guessed here — those operate on a different namespace (the R1-R8 scaffold label system) and remain unused. New <code>setAttachmentPoint</code> worker command, <code>ChemCanvas.qml</code> context-menu items, <code>LabelLayer.qml</code> badge rendering. See <code>Features To Be Implemented.md</code>'s "Done (2026-07-12, R-group attachment points)" entry and <code>.claude/plans/rgroup-attachment-points.md</code>.</td>
+        </tr>
+        <tr>
+          <td class="feature"><s>Explicit hydrogens fold/unfold</s> <b>(done 2026-07-12)</b></td>
+          <td class="seamtag"><span class="tag indigo">② Indigo</span></td>
+          <td>Implemented: <code>IndigoService::unfoldHydrogens()</code>/<code>foldHydrogens()</code> mirroring <code>dearomatize</code>'s exact shape around <code>indigoUnfoldHydrogens</code>/<code>indigoFoldHydrogens</code>; two new STRUCTURE GROUP toolbar buttons reusing the previously-unused <code>icons/explicit-hydrogens.svg</code>. Distinct from the pre-existing render-only "Show Hydrogens" checkbox. See <code>Features To Be Implemented.md</code>'s "Done (2026-07-12, explicit hydrogens fold/unfold)" entry and <code>.claude/plans/fold-unfold-hydrogens.md</code>.</td>
+        </tr>
+        <tr>
+          <td class="feature"><s>Molar refractivity + pKa</s> <b>(done 2026-07-12)</b></td>
+          <td class="seamtag"><span class="tag indigo">② Indigo</span></td>
+          <td>Implemented: extended <code>IndigoService::calcProperties</code>'s <code>propertiesReady</code> signal with <code>indigoMolarRefractivity</code>/<code>indigoPka</code> (two more trailing scalar doubles, same shape as the existing TPSA/LogP fields); two new "Drug Properties" rows in <code>PropertyPanel.qml</code>. Verified against real aspirin data (pKa 3.345 vs. literature ≈3.5). See <code>Features To Be Implemented.md</code>'s "Done (2026-07-12, molar refractivity + pKa)" entry and <code>.claude/plans/molar-refractivity-pka.md</code>.</td>
+        </tr>
+        <tr>
+          <td class="feature">IUPAC nomenclature, 3D viewer, spectral prediction, macros</td>
+          <td class="seamtag"><span class="tag mixed">External</span></td>
+          <td>None of these are latent in either vendored library — all need a new dependency or licensed engine, so no existing seam applies yet.</td>
+        </tr>
+        <tr>
+          <td class="feature">Similarity / fingerprint search</td>
+          <td class="seamtag"><span class="tag bingo">③ Bingo</span> <span class="tag indigo">or ② Indigo</span></td>
+          <td>Better done via Bingo NoSQL's <code>bingoSearchSim</code>/<code>bingoSearchSimTopN</code> over a pre-built index than hand-rolled <code>indigoFingerprint</code>/<code>indigoSimilarity</code> calls — Bingo owns indexing + scoring as one package. Natural UI home is the Library popup (compare against <code>templates/library.sdf</code> entries).</td>
+        </tr>
+        <tr>
+          <td class="feature">Substructure / SMARTS search</td>
+          <td class="seamtag"><span class="tag bingo">③ Bingo</span> <span class="tag indigo">or ② Indigo</span></td>
+          <td><code>bingoSearchSub</code> over the same Bingo index, vs. hand-rolling <code>indigoSubstructureMatcher</code>/<code>indigoMatch</code> yourself. Result would highlight atoms back on the active canvas (needs a "highlight by atom id list" hook — <code>_struct</code> already tracks per-atom <code>checkWarning</code> flags the same way).</td>
+        </tr>
+        <tr>
+          <td class="feature">Bingo NoSQL indexed search (prerequisite for both rows above)</td>
+          <td class="seamtag"><span class="tag bingo">③ Bingo</span></td>
+          <td>Not yet linked at all — needs a <code>CMakeLists.txt</code> entry for <code>bingo-nosql.dll</code> (+ a generated <code>.lib</code> on MSVC, same process used for <code>indigo.lib</code>) and a new <code>BingoService</code> before either search feature above can be built.</td>
+        </tr>
+        <tr>
+          <td class="feature"><s>InChI / InChIKey generation</s> <b>(done 2026-07-11)</b></td>
+          <td class="seamtag"><span class="tag indigo">② Indigo</span></td>
+          <td>Implemented: <code>indigo-inchi</code> linked in <code>CMakeLists.txt</code> (MinGW bare-DLL + generated MSVC <code>.lib</code>); <code>IndigoService::inchi()</code>/<code>inchiKey()</code>; "Copy InChI ▾" button in <code>MainWindow.qml</code>. See the note below and <code>calm-launching-kettle.md</code>.</td>
+        </tr>
+        <tr>
+          <td class="feature"><s>Load from InChI</s> <b>(done 2026-07-11)</b></td>
+          <td class="seamtag"><span class="tag qml">QML-only</span></td>
+          <td>Implemented: <code>indigoSvc.layout(text)</code> (Indigo's generic loader auto-detects InChI natively — no plugin call needed for this direction) + a new "Load from InChI" toolbar entry/dialog in <code>MainWindow.qml</code>, mirroring "Load from SMILES." Not InChIKey — that's a one-way hash with no reverse algorithm; see the note below.</td>
+        </tr>
+        <tr>
+          <td class="feature"><s>Native SVG export</s> <b>(done 2026-07-12)</b></td>
+          <td class="seamtag"><span class="tag indigo">② Indigo</span></td>
+          <td>Implemented: <code>indigo-renderer</code> linked in <code>CMakeLists.txt</code> (MinGW bare-DLL + generated MSVC <code>.lib</code>); <code>IndigoService::renderToFile()</code>; new <code>*.svg</code> entry in the save dialog. Purely additive alongside the existing screenshot-based PNG/PDF export. Started as an <code>opencode</code> delegation that stalled partway (finished <code>CMakeLists.txt</code> only) and was completed manually. See <code>Features To Be Implemented.md</code>'s "Done (2026-07-12, native SVG export)" entry and <code>.claude/plans/indigo-native-svg-export.md</code>.</td>
+        </tr>
+        <tr>
+          <td class="feature">Native PNG/PDF rendering via indigo-renderer</td>
+          <td class="seamtag"><span class="tag indigo">② Indigo</span></td>
+          <td>Would replace <code>AppController::exportPdf</code>'s canvas-screenshot approach with <code>indigoRenderToFile</code> (same plugin the SVG export above now uses) — same print/export menu entry in <code>MainWindow.qml</code>, different implementation underneath. Format/style is set entirely via <code>indigoSetOption</code> (<code>render-output-format</code>, <code>render-bond-length</code>, <code>render-coloring</code>, <code>render-comment</code>, etc.), not function args. <code>indigoRenderGrid</code>/<code>indigoRenderGridToFile</code> is a bonus fit for printing a whole reaction scheme or a template sheet in one image.</td>
+        </tr>
+        <tr>
+          <td class="feature">SDF/RDF batch file browsing</td>
+          <td class="seamtag"><span class="tag indigo">② Indigo</span></td>
+          <td>New <code>IndigoService</code> method around <code>indigoIterateSDF</code>; needs a new QML popup (a paging list, similar to <code>AnchoredPicker</code> + <code>ThumbnailGridItem</code> already used for the Library popup) rather than a single-shot Q_INVOKABLE/signal pair.</td>
+        </tr>
+        <tr>
+          <td class="feature">R-Group deconvolution / scaffold analysis</td>
+          <td class="seamtag"><span class="tag indigo">② Indigo</span></td>
+          <td>New <code>IndigoService</code> method around <code>indigoExtractCommonScaffold</code> + <code>indigoDecomposeMolecules</code>; a batch-input feature (multiple molecules in, e.g. an opened SDF of analogs), so it doesn't fit the single-<code>activeCanvas</code> model as cleanly — likely wants its own dialog rather than reusing the toolbar. <code>indigoDecomposedMoleculeWithRGroups</code>'s output shape could feed straight into the existing <code>RGroupPanel.qml</code>/<code>struct.rgroups</code> model — the discovery complement to Sketch's manual R-group authoring.</td>
+        </tr>
+        <tr>
+          <td class="feature">Reaction product enumeration</td>
+          <td class="seamtag"><span class="tag indigo">② Indigo</span></td>
+          <td>New <code>IndigoService</code> method around <code>indigoReactionProductEnumerate</code>, taking the active canvas's reaction (reactants/products already split via <code>rxnArrows</code>) plus a reactant-set input dialog.</td>
+        </tr>
+        <tr>
+          <td class="feature">Automatic atom-mapping / pKa prediction</td>
+          <td class="seamtag"><span class="tag indigo">② Indigo</span></td>
+          <td><code>indigoAutomap</code> could replace/augment the worker's manual click-to-increment AAM (<code>atom.aam</code> field) — this one is unusual in that its *result* (mapping numbers) would need to flow back through the ① worker seam via <code>setAtomMapping</code>, one of the few features that crosses both seams.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <footer>
+    Signatures verified against <code>src/v8_process.h</code> (90 Q_INVOKABLE methods), <code>src/app/IndigoService.h</code>, <code>src/app/DocumentManager.h</code>, and the dispatch chain in <code>src/v8_worker.js:4026+</code>. Companion documents: <code>Features To Be Implemented.md</code> and the chem-core.js/Indigo coverage audit artifact.
+  </footer>
+
+</div>

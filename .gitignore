@@ -24,6 +24,12 @@ indigo/
 # links and copies indigo/lib/indigo.dll instead (see CMakeLists.txt).
 /indigo.dll
 
+# Official EPAM MSVC build of Indigo (indigo-libs-windows-x86_64, v1.43.0) —
+# same "vendored binary blobs, kept on disk not in history" treatment as
+# indigo/ above. See CMakeLists.txt's MSVC branch.
+/indigo-libs-windows-x86_64/
+/indigo-libs-windows-x86_64.zip
+
 # Editor / tool-specific state (not needed to build)
 .idea/
 .cursor/

@@ -40,6 +40,23 @@ Item {
             ctx.clearRect(0, 0, width, height)
 
             if (!canvas) return
+
+            // Page/canvas boundary: a soft visual reference, drawn beneath
+            // everything else. The actual hard clamp lives in the worker
+            // (src/v8_worker.js's PAGE_MIN_X/MAX_X/MIN_Y/MAX_Y).
+            if (canvas.pageBounds) {
+                const pb = canvas.pageBounds
+                const tl = canvas.chemToCanvas(pb.x, pb.y)
+                const br = canvas.chemToCanvas(pb.x + pb.width, pb.y + pb.height)
+                ctx.save()
+                ctx.strokeStyle = Theme.textSecondary
+                ctx.globalAlpha = 0.35
+                ctx.lineWidth = 1
+                ctx.setLineDash([6, 4])
+                ctx.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y)
+                ctx.restore()
+            }
+
             if (!canvas.sketch.primitives || !canvas.sketch.primitives.bonds || !canvas.sketch.primitives.atoms) return
 
             // Helper: check if an atom has a visible label (needs bond retraction)
@@ -56,6 +73,7 @@ Item {
                 if (a.isotope && a.isotope > 0) return true
                 if (a.radical && a.radical > 0) return true
                 if (a.explicitValence !== undefined && a.explicitValence >= 0) return true
+                if (a.attachmentPoints && a.attachmentPoints > 0) return true
                 return false
             }
 

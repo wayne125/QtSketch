@@ -1,0 +1,653 @@
+<title>Library Surface Audit — chem-core.js &amp; Indigo</title>
+<style>
+:root{
+  --bg:#eef1f6;
+  --bg-panel:#ffffff;
+  --ink:#1b2130;
+  --ink-soft:#545d70;
+  --ink-faint:#8891a3;
+  --accent:#463c8c;
+  --accent-soft:#e9e6f7;
+  --used:#1f7a52;
+  --used-soft:#e3f3ea;
+  --unused:#a3611a;
+  --unused-soft:#f7ecdd;
+  --border:#d7dce4;
+  --code-bg:#f5f6f9;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#11141c;
+    --bg-panel:#171b26;
+    --ink:#e7e9f0;
+    --ink-soft:#a2aac0;
+    --ink-faint:#6d7690;
+    --accent:#a79bef;
+    --accent-soft:#241f3d;
+    --used:#4bd39a;
+    --used-soft:#183227;
+    --unused:#e2a256;
+    --unused-soft:#332512;
+    --border:#2b3040;
+    --code-bg:#1c202c;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#11141c;
+  --bg-panel:#171b26;
+  --ink:#e7e9f0;
+  --ink-soft:#a2aac0;
+  --ink-faint:#6d7690;
+  --accent:#a79bef;
+  --accent-soft:#241f3d;
+  --used:#4bd39a;
+  --used-soft:#183227;
+  --unused:#e2a256;
+  --unused-soft:#332512;
+  --border:#2b3040;
+  --code-bg:#1c202c;
+}
+:root[data-theme="light"]{
+  --bg:#eef1f6;
+  --bg-panel:#ffffff;
+  --ink:#1b2130;
+  --ink-soft:#545d70;
+  --ink-faint:#8891a3;
+  --accent:#463c8c;
+  --accent-soft:#e9e6f7;
+  --used:#1f7a52;
+  --used-soft:#e3f3ea;
+  --unused:#a3611a;
+  --unused-soft:#f7ecdd;
+  --border:#d7dce4;
+  --code-bg:#f5f6f9;
+}
+
+*{box-sizing:border-box;}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--ink);
+  font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  line-height:1.55;
+}
+::selection{ background:var(--accent-soft); }
+
+.page{
+  max-width:920px;
+  margin:0 auto;
+  padding:3rem 1.5rem 5rem;
+}
+
+h1,h2,h3{
+  font-family:Georgia,"Iowan Old Style","Palatino Linotype",serif;
+  font-weight:600;
+  text-wrap:balance;
+  color:var(--ink);
+}
+h1{ font-size:1.9rem; letter-spacing:-0.01em; margin:0 0 0.3rem; }
+h2{ font-size:1.35rem; margin:0; }
+h3{ font-size:1.02rem; margin:2rem 0 0.2rem; color:var(--ink-soft); font-weight:600; }
+
+.masthead .kicker{
+  font-size:0.72rem;
+  letter-spacing:0.11em;
+  text-transform:uppercase;
+  color:var(--accent);
+  font-weight:600;
+  margin:0 0 0.6rem;
+}
+.masthead p.dek{
+  max-width:62ch;
+  color:var(--ink-soft);
+  font-size:1rem;
+  margin:0.6rem 0 0;
+}
+.masthead .meta{
+  margin-top:1.1rem;
+  font-size:0.82rem;
+  color:var(--ink-faint);
+  display:flex;
+  gap:1.2rem;
+  flex-wrap:wrap;
+}
+
+/* summary tiles */
+.summary{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:1rem;
+  margin:2.2rem 0 2.4rem;
+}
+@media (max-width:600px){ .summary{ grid-template-columns:1fr; } }
+.tile{
+  background:var(--bg-panel);
+  border:1px solid var(--border);
+  border-radius:6px;
+  padding:1.1rem 1.3rem;
+}
+.tile .label{
+  font-size:0.72rem;
+  letter-spacing:0.08em;
+  text-transform:uppercase;
+  color:var(--ink-faint);
+  font-weight:600;
+}
+.tile .frac{
+  font-family:ui-monospace,"SFMono-Regular",Consolas,"Liberation Mono",monospace;
+  font-variant-numeric:tabular-nums;
+  font-size:1.7rem;
+  margin:0.25rem 0 0.5rem;
+  color:var(--ink);
+}
+.tile .frac small{ font-size:1rem; color:var(--ink-faint); font-weight:400; }
+.bar{
+  height:7px;
+  border-radius:99px;
+  background:var(--unused-soft);
+  overflow:hidden;
+}
+.bar > span{
+  display:block;
+  height:100%;
+  background:var(--used);
+  border-radius:99px 0 0 99px;
+}
+.tile .pct{ font-size:0.78rem; color:var(--ink-faint); margin-top:0.4rem; }
+
+/* filter */
+.filterbar{
+  position:sticky; top:0; z-index:5;
+  background:var(--bg);
+  padding:0.8rem 0;
+  margin-bottom:0.4rem;
+  border-bottom:1px solid var(--border);
+}
+.filterbar input{
+  width:100%;
+  font:inherit;
+  font-size:0.9rem;
+  padding:0.55rem 0.8rem;
+  border-radius:6px;
+  border:1px solid var(--border);
+  background:var(--bg-panel);
+  color:var(--ink);
+}
+.filterbar input:focus{
+  outline:2px solid var(--accent);
+  outline-offset:1px;
+}
+.filterbar .hint{ font-size:0.74rem; color:var(--ink-faint); margin-top:0.35rem; }
+
+section.report{ margin-top:2.6rem; }
+section.report .head{
+  display:flex; align-items:baseline; justify-content:space-between; gap:1rem;
+  flex-wrap:wrap;
+  border-bottom:2px solid var(--ink);
+  padding-bottom:0.5rem;
+}
+section.report .head .frac{
+  font-family:ui-monospace,"SFMono-Regular",Consolas,monospace;
+  font-variant-numeric:tabular-nums;
+  font-size:0.95rem;
+  color:var(--ink-soft);
+}
+section.report > p.lede{ color:var(--ink-soft); max-width:66ch; margin:0.8rem 0 0; }
+
+/* implemented table */
+table.impl{
+  width:100%;
+  border-collapse:collapse;
+  margin-top:0.8rem;
+  font-size:0.87rem;
+}
+table.impl th{
+  text-align:left;
+  font-size:0.7rem;
+  letter-spacing:0.07em;
+  text-transform:uppercase;
+  color:var(--ink-faint);
+  font-weight:600;
+  padding:0.4rem 0.6rem;
+  border-bottom:1px solid var(--border);
+}
+table.impl td{
+  padding:0.45rem 0.6rem;
+  border-bottom:1px solid var(--border);
+  vertical-align:top;
+  color:var(--ink-soft);
+}
+table.impl td.name code, ul.fnlist code{
+  font-family:ui-monospace,"SFMono-Regular",Consolas,"Liberation Mono",monospace;
+  font-size:0.84rem;
+  color:var(--ink);
+  background:var(--code-bg);
+  padding:0.1em 0.4em;
+  border-radius:4px;
+}
+table.impl td.cat{
+  white-space:nowrap;
+  font-size:0.78rem;
+}
+table.impl tr:last-child td{ border-bottom:none; }
+table.impl tr[hidden]{ display:none; }
+
+/* unused categories */
+details.cat{
+  border:1px solid var(--border);
+  border-radius:6px;
+  background:var(--bg-panel);
+  margin-top:0.6rem;
+  padding:0;
+}
+details.cat + details.cat{ margin-top:0.55rem; }
+details.cat > summary{
+  cursor:pointer;
+  list-style:none;
+  padding:0.65rem 0.9rem;
+  display:flex;
+  align-items:center;
+  gap:0.6rem;
+  font-weight:600;
+  font-size:0.92rem;
+}
+details.cat > summary::-webkit-details-marker{ display:none; }
+details.cat > summary::before{
+  content:"›";
+  display:inline-block;
+  transition:transform 0.15s ease;
+  color:var(--ink-faint);
+  width:0.8em;
+}
+details.cat[open] > summary::before{ transform:rotate(90deg); }
+details.cat > summary .n{
+  margin-left:auto;
+  font-family:ui-monospace,"SFMono-Regular",Consolas,monospace;
+  font-variant-numeric:tabular-nums;
+  font-size:0.78rem;
+  color:var(--unused);
+  background:var(--unused-soft);
+  padding:0.12em 0.55em;
+  border-radius:99px;
+}
+details.cat .body{
+  padding:0 0.9rem 0.9rem;
+  border-top:1px solid var(--border);
+}
+details.cat p.why{
+  color:var(--ink-soft);
+  font-size:0.85rem;
+  margin:0.7rem 0 0;
+}
+ul.fnlist{
+  list-style:none;
+  display:flex;
+  flex-wrap:wrap;
+  gap:0.35em 0.7em;
+  margin:0.7rem 0 0;
+  padding:0;
+}
+ul.fnlist li[hidden]{ display:none; }
+ul.fnlist code{ font-size:0.79rem; color:var(--ink-soft); background:transparent; padding:0; }
+
+footer{
+  margin-top:3rem;
+  padding-top:1.2rem;
+  border-top:1px solid var(--border);
+  font-size:0.8rem;
+  color:var(--ink-faint);
+}
+
+@media (prefers-reduced-motion:reduce){
+  details.cat > summary::before{ transition:none; }
+}
+</style>
+
+<div class="page">
+
+  <header class="masthead">
+    <p class="kicker">Sketch — dependency coverage</p>
+    <h1>What's wired up, what's sitting on the shelf</h1>
+    <p class="dek">Every symbol <code>src/v8_worker.js</code> pulls from chem-core.js, and every C function <code>IndigoService.cpp</code> calls from the Indigo toolkit — set against everything each library actually offers.</p>
+    <div class="meta">
+      <span>QtSketch</span>
+      <span>chem-core.js — 24,370 lines</span>
+      <span>indigo.h + indigo-inchi.h + indigo-renderer.h — 517 functions</span>
+    </div>
+  </header>
+
+  <div class="summary">
+    <div class="tile">
+      <div class="label">chem-core.js exports</div>
+      <div class="frac">22 <small>/ 72 used</small></div>
+      <div class="bar"><span style="width:30.5%"></span></div>
+      <div class="pct">30% of the exported surface is touched</div>
+    </div>
+    <div class="tile">
+      <div class="label">Indigo C API</div>
+      <div class="frac">51 <small>/ 517 used</small></div>
+      <div class="bar"><span style="width:9.9%"></span></div>
+      <div class="pct">10% of the C API is touched</div>
+    </div>
+  </div>
+
+  <div class="filterbar">
+    <input id="filter" type="text" placeholder="Filter by function or class name…" autocomplete="off" spellcheck="false">
+    <div class="hint">Matches anywhere on this page — implemented tables and unutilised lists alike.</div>
+  </div>
+
+  <!-- ============ CHEM-CORE ============ -->
+  <section class="report" id="chemcore">
+    <div class="head">
+      <h2>chem-core.js</h2>
+      <span class="frac">22 implemented · 50 unutilised · 72 total</span>
+    </div>
+    <p class="lede">The bundled Ketcher core is loaded whole via <code>eval()</code> in the worker; only the pieces below are ever referenced off the resulting <code>ChemCore</code> object.</p>
+
+    <h3>Implemented (22)</h3>
+    <table class="impl">
+      <thead><tr><th>Export</th><th>Category</th><th>Role in the worker</th></tr></thead>
+      <tbody>
+        <tr data-fn="Vec2"><td class="name"><code>Vec2</code></td><td class="cat">Geometry</td><td>2D point/vector math — the single most-used export, threaded through nearly every geometric calculation</td></tr>
+        <tr data-fn="Atom"><td class="name"><code>Atom</code></td><td class="cat">Model</td><td>Atom node constructor for the working <code>Struct</code></td></tr>
+        <tr data-fn="Bond"><td class="name"><code>Bond</code></td><td class="cat">Model</td><td>Bond edge constructor</td></tr>
+        <tr data-fn="Struct"><td class="name"><code>Struct</code></td><td class="cat">Model</td><td>The core molecule/reaction graph container</td></tr>
+        <tr data-fn="Pool"><td class="name"><code>Pool</code></td><td class="cat">Collections</td><td>Id-indexed storage backing every atom/bond/sgroup collection</td></tr>
+        <tr data-fn="Pile"><td class="name"><code>Pile</code></td><td class="cat">Collections</td><td>Id-set structure used for ring and selection bookkeeping</td></tr>
+        <tr data-fn="Command"><td class="name"><code>Command</code></td><td class="cat">Undo/redo</td><td><code>makeCmd()</code> wraps every mutating operation in one of these for the undo stack</td></tr>
+        <tr data-fn="Elements"><td class="name"><code>Elements</code></td><td class="cat">Data</td><td>Periodic table lookups — symbol, atomic number, default valence</td></tr>
+        <tr data-fn="ElementColor"><td class="name"><code>ElementColor</code></td><td class="cat">Rendering</td><td>Per-element CPK-style colour lookup</td></tr>
+        <tr data-fn="AtomLabel"><td class="name"><code>AtomLabel</code></td><td class="cat">Model</td><td>Constants for special atom label types</td></tr>
+        <tr data-fn="Box2Abs"><td class="name"><code>Box2Abs</code></td><td class="cat">Geometry</td><td>Segment-intersection test, used for bond-crossing detection</td></tr>
+        <tr data-fn="StandardBondLength"><td class="name"><code>StandardBondLength</code></td><td class="cat">Constants</td><td>Default bond length driving chain/ring/template geometry</td></tr>
+        <tr data-fn="StereoValidator"><td class="name"><code>StereoValidator</code></td><td class="cat">Chemistry</td><td>Stereocentre validity checks</td></tr>
+        <tr data-fn="Generics"><td class="name"><code>Generics</code></td><td class="cat">Chemistry</td><td>Generic query-atom group logic (e.g. superatom placeholders)</td></tr>
+        <tr data-fn="genericsList"><td class="name"><code>genericsList</code></td><td class="cat">Chemistry</td><td>The generic query-atom group definitions (e.g. "A", "Q") that <code>Generics</code> operates on</td></tr>
+        <tr data-fn="attachmentPointNames"><td class="name"><code>attachmentPointNames</code></td><td class="cat">R-group</td><td>R-group attachment-point label naming</td></tr>
+        <tr data-fn="SdfSerializer"><td class="name"><code>SdfSerializer</code></td><td class="cat">I/O</td><td>Reads <code>templates/library.sdf</code></td></tr>
+        <tr data-fn="MolSerializer"><td class="name"><code>MolSerializer</code></td><td class="cat">I/O</td><td>Molfile V2000/V3000 read/write</td></tr>
+        <tr data-fn="KetSerializer"><td class="name"><code>KetSerializer</code></td><td class="cat">I/O</td><td>.ket JSON format read/write, incl. clipboard and autosave</td></tr>
+        <tr data-fn="FunctionalGroupsProvider"><td class="name"><code>FunctionalGroupsProvider</code></td><td class="cat">I/O</td><td>Reads <code>templates/fg.sdf</code> for the Functional Groups popup</td></tr>
+        <tr data-fn="SaltsAndSolventsProvider"><td class="name"><code>SaltsAndSolventsProvider</code></td><td class="cat">I/O</td><td>Reads <code>templates/salts-and-solvents.sdf</code></td></tr>
+        <tr data-fn="MULTITAIL_ARROW_SERIALIZE_KEY"><td class="name"><code>MULTITAIL_ARROW_SERIALIZE_KEY</code></td><td class="cat">I/O</td><td>Only the KET serialization key is borrowed — the multitail arrow itself is hand-rolled (see below)</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Unutilised (50)</h3>
+
+    <details class="cat">
+      <summary>Biopolymer / monomer template engine <span class="n">18</span></summary>
+      <div class="body">
+        <p class="why">This is Ketcher's own visual monomer/sequence editor. Sketch currently only imports/exports HELM, FASTA, IDT and plain sequence text through Indigo — there's no on-canvas monomer drawing. Picking this up is most of the path to the "native biopolymer drawing engine" already on the deferred list.</p>
+        <ul class="fnlist">
+          <li data-fn="DrawingEntitiesManager"><code>DrawingEntitiesManager</code></li>
+          <li data-fn="Entities"><code>Entities</code></li>
+          <li data-fn="MonomerSize"><code>MonomerSize</code></li>
+          <li data-fn="HalfMonomerSize"><code>HalfMonomerSize</code></li>
+          <li data-fn="MONOMER_CONST"><code>MONOMER_CONST</code></li>
+          <li data-fn="STRAND_TYPE"><code>STRAND_TYPE</code></li>
+          <li data-fn="CREATE_MONOMER_TOOL_NAME"><code>CREATE_MONOMER_TOOL_NAME</code></li>
+          <li data-fn="QetcherJSWrapper"><code>QetcherJSWrapper</code></li>
+          <li data-fn="SnakeLayoutCellWidth"><code>SnakeLayoutCellWidth</code></li>
+          <li data-fn="setMonomerPrefix"><code>setMonomerPrefix</code></li>
+          <li data-fn="setMonomerTemplatePrefix"><code>setMonomerTemplatePrefix</code></li>
+          <li data-fn="setMonomerGroupTemplatePrefix"><code>setMonomerGroupTemplatePrefix</code></li>
+          <li data-fn="setAmbiguousMonomerPrefix"><code>setAmbiguousMonomerPrefix</code></li>
+          <li data-fn="setAmbiguousMonomerTemplatePrefix"><code>setAmbiguousMonomerTemplatePrefix</code></li>
+          <li data-fn="KetAmbiguousMonomerTemplateSubType"><code>KetAmbiguousMonomerTemplateSubType</code></li>
+          <li data-fn="getHELMClassByKetMonomerClass"><code>getHELMClassByKetMonomerClass</code></li>
+          <li data-fn="getMonomerTemplateRefFromMonomerItem"><code>getMonomerTemplateRefFromMonomerItem</code></li>
+          <li data-fn="getKetRef"><code>getKetRef</code></li>
+        </ul>
+      </div>
+    </details>
+
+    <details class="cat">
+      <summary>RNA/DNA/peptide ambiguous-symbol tables <span class="n">12</span></summary>
+      <div class="body">
+        <p class="why">Supporting data for the same biopolymer engine above — ambiguity-code tables (IUPAC-style "N", "R", "Y" wobble bases, etc.) with nowhere to be consumed until sequence editing exists.</p>
+        <ul class="fnlist">
+          <li data-fn="NO_NATURAL_ANALOGUE"><code>NO_NATURAL_ANALOGUE</code></li>
+          <li data-fn="RNA_DNA_NON_MODIFIED_PART"><code>RNA_DNA_NON_MODIFIED_PART</code></li>
+          <li data-fn="RnaDnaBaseNames"><code>RnaDnaBaseNames</code></li>
+          <li data-fn="RnaDnaNaturalAnaloguesEnum"><code>RnaDnaNaturalAnaloguesEnum</code></li>
+          <li data-fn="StandardAmbiguousPeptide"><code>StandardAmbiguousPeptide</code></li>
+          <li data-fn="StandardAmbiguousRnaBase"><code>StandardAmbiguousRnaBase</code></li>
+          <li data-fn="peptideAmbiguousSymbols"><code>peptideAmbiguousSymbols</code></li>
+          <li data-fn="peptideNaturalAnalogues"><code>peptideNaturalAnalogues</code></li>
+          <li data-fn="rnaDnaAmbiguousSymbols"><code>rnaDnaAmbiguousSymbols</code></li>
+          <li data-fn="rnaDnaNaturalAnalogues"><code>rnaDnaNaturalAnalogues</code></li>
+          <li data-fn="unknownNaturalAnalogues"><code>unknownNaturalAnalogues</code></li>
+          <li data-fn="fillNaturalAnalogueForPhosphateAndSugar"><code>fillNaturalAnalogueForPhosphateAndSugar</code></li>
+        </ul>
+      </div>
+    </details>
+
+    <details class="cat">
+      <summary>R-group attachment-point helpers <span class="n">6</span></summary>
+      <div class="body">
+        <p class="why">Sketch's R-groups are built natively on <code>struct.rgroups</code> rather than through this helper layer, so the label/numbering utilities Ketcher itself would use here are dead. Relevant if the deferred "R-group variable attachment points" (multiple attachment points per definition) feature ever gets built.</p>
+        <ul class="fnlist">
+          <li data-fn="AttachmentPointName"><code>AttachmentPointName</code></li>
+          <li data-fn="getAttachmentPointLabel"><code>getAttachmentPointLabel</code></li>
+          <li data-fn="getAttachmentPointLabelWithBinaryShift"><code>getAttachmentPointLabelWithBinaryShift</code></li>
+          <li data-fn="getAttachmentPointNumberFromLabel"><code>getAttachmentPointNumberFromLabel</code></li>
+          <li data-fn="getNextFreeAttachmentPoint"><code>getNextFreeAttachmentPoint</code></li>
+          <li data-fn="isSingleRGroupAttachmentPoint"><code>isSingleRGroupAttachmentPoint</code></li>
+        </ul>
+      </div>
+    </details>
+
+    <details class="cat">
+      <summary>Image embedding <span class="n">3</span></summary>
+      <div class="body">
+        <p class="why">chem-core.js already has a KET representation for embedded images — these are its serialization keys and cursor-positioning helper. Maps directly to the deferred "image embedding" feature; the storage format is already there, only the canvas-side UI is missing.</p>
+        <ul class="fnlist">
+          <li data-fn="IMAGE_KEY"><code>IMAGE_KEY</code></li>
+          <li data-fn="IMAGE_SERIALIZE_KEY"><code>IMAGE_SERIALIZE_KEY</code></li>
+          <li data-fn="imageReferencePositionToCursor"><code>imageReferencePositionToCursor</code></li>
+        </ul>
+      </div>
+    </details>
+
+    <details class="cat">
+      <summary>Multitail reaction-arrow class <span class="n">4</span></summary>
+      <div class="body">
+        <p class="why">Sketch reimplemented multitail arrows as plain objects instead of using chem-core's own class (it isn't exported in a usable form) — only its KET serialize-key constant made the cut above. These are the rest of that unused original.</p>
+        <ul class="fnlist">
+          <li data-fn="MULTITAIL_ARROW_KEY"><code>MULTITAIL_ARROW_KEY</code></li>
+          <li data-fn="MULTITAIL_ARROW_TOOL_NAME"><code>MULTITAIL_ARROW_TOOL_NAME</code></li>
+          <li data-fn="multitailArrowReferenceLinesToCursor"><code>multitailArrowReferenceLinesToCursor</code></li>
+          <li data-fn="multitailReferencePositionToCursor"><code>multitailReferencePositionToCursor</code></li>
+        </ul>
+      </div>
+    </details>
+
+    <details class="cat">
+      <summary>Misc geometry / selection utilities <span class="n">7</span></summary>
+      <div class="body">
+        <p class="why">Generic helpers Sketch happened to hand-roll its own equivalents of. <code>CoreAtom</code> is simply chem-core's own internal alias for <code>Atom</code>, exported twice under different names.</p>
+        <ul class="fnlist">
+          <li data-fn="CoreAtom"><code>CoreAtom</code></li>
+          <li data-fn="Scale"><code>Scale</code></li>
+          <li data-fn="SgContexts"><code>SgContexts</code></li>
+          <li data-fn="getNodeWithInvertedYCoord"><code>getNodeWithInvertedYCoord</code></li>
+          <li data-fn="modifyTransformation"><code>modifyTransformation</code></li>
+          <li data-fn="switchIntoChemistryCoordSystem"><code>switchIntoChemistryCoordSystem</code></li>
+          <li data-fn="populateStructWithSelection"><code>populateStructWithSelection</code></li>
+        </ul>
+      </div>
+    </details>
+  </section>
+
+  <!-- ============ INDIGO ============ -->
+  <section class="report" id="indigo">
+    <div class="head">
+      <h2>Indigo C API</h2>
+      <span class="frac">51 implemented · 466 unutilised · 517 total</span>
+    </div>
+    <p class="lede">Counted across <code>indigo.h</code> (498 functions), plus the separate <code>indigo-inchi.h</code> (11) and <code>indigo-renderer.h</code> (8) plugin headers. <code>IndigoService.cpp</code> touches 51 of them — everything else in the DLL is linked but dormant.</p>
+
+    <h3>Implemented (51)</h3>
+    <table class="impl">
+      <thead><tr><th>Group</th><th>Functions</th><th>Used for</th></tr></thead>
+      <tbody>
+        <tr><td class="cat">Session lifecycle</td><td class="name"><code data-fn="indigoAllocSessionId">indigoAllocSessionId</code> <code data-fn="indigoSetSessionId">indigoSetSessionId</code> <code data-fn="indigoReleaseSessionId">indigoReleaseSessionId</code> <code data-fn="indigoFreeAllObjects">indigoFreeAllObjects</code> <code data-fn="indigoFree">indigoFree</code> <code data-fn="indigoGetLastError">indigoGetLastError</code></td><td>Per-thread session setup/teardown and error retrieval wrapped around every other call</td></tr>
+        <tr><td class="cat">Structure loading</td><td class="name"><code data-fn="indigoLoadMoleculeFromString">indigoLoadMoleculeFromString</code> <code data-fn="indigoLoadReactionFromString">indigoLoadReactionFromString</code> <code data-fn="indigoLoadMonomerLibraryFromString">indigoLoadMonomerLibraryFromString</code> <code data-fn="indigoLoadSequenceFromString">indigoLoadSequenceFromString</code> <code data-fn="indigoLoadFastaFromString">indigoLoadFastaFromString</code> <code data-fn="indigoLoadHelmFromString">indigoLoadHelmFromString</code> <code data-fn="indigoLoadIdtFromString">indigoLoadIdtFromString</code> <code data-fn="indigoLoadAxoLabsFromString">indigoLoadAxoLabsFromString</code></td><td>Parsing molfile/RXN text and biopolymer sequence notations into an Indigo handle</td></tr>
+        <tr><td class="cat">Structure export</td><td class="name"><code data-fn="indigoMolfile">indigoMolfile</code> <code data-fn="indigoRxnfile">indigoRxnfile</code> <code data-fn="indigoSequence">indigoSequence</code> <code data-fn="indigoFasta">indigoFasta</code> <code data-fn="indigoHelm">indigoHelm</code> <code data-fn="indigoIdt">indigoIdt</code> <code data-fn="indigoAxoLabs">indigoAxoLabs</code> <code data-fn="indigoJson">indigoJson</code> <code data-fn="indigoToString">indigoToString</code></td><td>Serializing an Indigo handle back out to text</td></tr>
+        <tr><td class="cat">Transforms</td><td class="name"><code data-fn="indigoLayout">indigoLayout</code> <code data-fn="indigoAromatize">indigoAromatize</code> <code data-fn="indigoDearomatize">indigoDearomatize</code> <code data-fn="indigoNormalize">indigoNormalize</code> <code data-fn="indigoStandardize">indigoStandardize</code> <code data-fn="indigoSmiles">indigoSmiles</code> <code data-fn="indigoCanonicalSmiles">indigoCanonicalSmiles</code></td><td>2D coordinate generation and structure normalization, run on the Qt Concurrent pool</td></tr>
+        <tr><td class="cat">Monomer expansion</td><td class="name"><code data-fn="indigoExpandMonomers">indigoExpandMonomers</code> <code data-fn="indigoExpandedMonomersToAtoms">indigoExpandedMonomersToAtoms</code></td><td>Biopolymer monomer-library expansion into atom-level structures for layout</td></tr>
+        <tr><td class="cat">Property/descriptor calc</td><td class="name"><code data-fn="indigoMolecularWeight">indigoMolecularWeight</code> <code data-fn="indigoMonoisotopicMass">indigoMonoisotopicMass</code> <code data-fn="indigoCountAtoms">indigoCountAtoms</code> <code data-fn="indigoCountBonds">indigoCountBonds</code> <code data-fn="indigoTPSA">indigoTPSA</code> <code data-fn="indigoLogP">indigoLogP</code> <code data-fn="indigoNumHydrogenBondAcceptors">indigoNumHydrogenBondAcceptors</code> <code data-fn="indigoNumHydrogenBondDonors">indigoNumHydrogenBondDonors</code> <code data-fn="indigoNumRotatableBonds">indigoNumRotatableBonds</code> <code data-fn="indigoMolecularFormula">indigoMolecularFormula</code></td><td>Feeds the MW / formula / TPSA / logP block in <code>PropertyPanel</code></td></tr>
+        <tr><td class="cat">Stereo / CIP</td><td class="name"><code data-fn="indigoAddCIPStereoDescriptors">indigoAddCIPStereoDescriptors</code> <code data-fn="indigoIterateStereocenters">indigoIterateStereocenters</code> <code data-fn="indigoNext">indigoNext</code> <code data-fn="indigoIndex">indigoIndex</code> <code data-fn="indigoStereocenterCIPDescriptor">indigoStereocenterCIPDescriptor</code> <code data-fn="indigoStereocenterType">indigoStereocenterType</code> <code data-fn="indigoStereocenterGroup">indigoStereocenterGroup</code></td><td>Per-stereocentre R/S (CIP) descriptor calculation</td></tr>
+        <tr><td class="cat">Validation</td><td class="name"><code data-fn="indigoCheckObj">indigoCheckObj</code> <code data-fn="indigoSetOptionBool">indigoSetOptionBool</code></td><td>Structure-check warning badges (bad valence etc.) in <code>checkStructure</code></td></tr>
+      </tbody>
+    </table>
+
+    <h3>Unutilised (466)</h3>
+
+    <details class="cat">
+      <summary>Substructure matching <span class="n">13</span></summary>
+      <div class="body">
+        <p class="why">SMARTS/substructure search has no UI hook anywhere in Sketch today — this whole matcher API is unused.</p>
+        <ul class="fnlist"><li data-fn="indigoSubstructureMatcher"><code>indigoSubstructureMatcher</code></li><li data-fn="indigoIgnoreAtom"><code>indigoIgnoreAtom</code></li><li data-fn="indigoUnignoreAtom"><code>indigoUnignoreAtom</code></li><li data-fn="indigoUnignoreAllAtoms"><code>indigoUnignoreAllAtoms</code></li><li data-fn="indigoMatch"><code>indigoMatch</code></li><li data-fn="indigoCountMatches"><code>indigoCountMatches</code></li><li data-fn="indigoCountMatchesWithLimit"><code>indigoCountMatchesWithLimit</code></li><li data-fn="indigoIterateMatches"><code>indigoIterateMatches</code></li><li data-fn="indigoHighlightedTarget"><code>indigoHighlightedTarget</code></li><li data-fn="indigoMapAtom"><code>indigoMapAtom</code></li><li data-fn="indigoMapBond"><code>indigoMapBond</code></li><li data-fn="indigoMapMolecule"><code>indigoMapMolecule</code></li><li data-fn="indigoIterateTautomers"><code>indigoIterateTautomers</code></li></ul>
+      </div>
+    </details>
+
+    <details class="cat">
+      <summary>Fingerprints &amp; similarity <span class="n">7</span></summary>
+      <div class="body">
+        <p class="why">No molecule-to-molecule similarity search exists in Sketch (e.g. "find similar in the template library") — this is the API that would back it.</p>
+        <ul class="fnlist"><li data-fn="indigoFingerprint"><code>indigoFingerprint</code></li><li data-fn="indigoCountBits"><code>indigoCountBits</code></li><li data-fn="indigoCommonBits"><code>indigoCommonBits</code></li><li data-fn="indigoOneBitsList"><code>indigoOneBitsList</code></li><li data-fn="indigoLoadFingerprintFromBuffer"><code>indigoLoadFingerprintFromBuffer</code></li><li data-fn="indigoLoadFingerprintFromDescriptors"><code>indigoLoadFingerprintFromDescriptors</code></li><li data-fn="indigoSimilarity"><code>indigoSimilarity</code></li></ul>
+      </div>
+    </details>
+
+    <details class="cat">
+      <summary>Renderer plugin (indigo-renderer.h) <span class="n">8</span></summary>
+      <div class="body">
+        <p class="why">Indigo ships a whole separate native rendering engine (PNG/SVG/PDF, single or grid-of-molecules) that Sketch never touches — print-to-PDF today grabs a canvas screenshot instead (<code>AppController::exportPdf</code>). Worth a look for higher-fidelity export.</p>
+        <ul class="fnlist"><li data-fn="indigoRendererInit"><code>indigoRendererInit</code></li><li data-fn="indigoRendererDispose"><code>indigoRendererDispose</code></li><li data-fn="indigoRenderWriteHDC"><code>indigoRenderWriteHDC</code></li><li data-fn="indigoRender"><code>indigoRender</code></li><li data-fn="indigoRenderGrid"><code>indigoRenderGrid</code></li><li data-fn="indigoRenderToFile"><code>indigoRenderToFile</code></li><li data-fn="indigoRenderGridToFile"><code>indigoRenderGridToFile</code></li><li data-fn="indigoRenderReset"><code>indigoRenderReset</code></li></ul>
+      </div>
+    </details>
+
+    <details class="cat">
+      <summary>InChI plugin (indigo-inchi.h) <span class="n">11</span></summary>
+      <div class="body">
+        <p class="why">No InChI or InChIKey generation/lookup anywhere — a standard interchange format most cheminformatics tools support, entirely absent here.</p>
+        <ul class="fnlist"><li data-fn="indigoInchiVersion"><code>indigoInchiVersion</code></li><li data-fn="indigoInchiInit"><code>indigoInchiInit</code></li><li data-fn="indigoInchiDispose"><code>indigoInchiDispose</code></li><li data-fn="indigoInchiResetOptions"><code>indigoInchiResetOptions</code></li><li data-fn="indigoInchiLoadMolecule"><code>indigoInchiLoadMolecule</code></li><li data-fn="indigoInchiGetInchiWithForcedOptions"><code>indigoInchiGetInchiWithForcedOptions</code></li><li data-fn="indigoInchiGetInchi"><code>indigoInchiGetInchi</code></li><li data-fn="indigoInchiGetInchiKey"><code>indigoInchiGetInchiKey</code></li><li data-fn="indigoInchiGetWarning"><code>indigoInchiGetWarning</code></li><li data-fn="indigoInchiGetLog"><code>indigoInchiGetLog</code></li><li data-fn="indigoInchiGetAuxInfo"><code>indigoInchiGetAuxInfo</code></li></ul>
+      </div>
+    </details>
+
+    <details class="cat">
+      <summary>SDF / RDF / SMILES / CML / CDX file iteration <span class="n">23</span></summary>
+      <div class="body">
+        <p class="why">Indigo's own multi-record iterators — confirms there's currently no way to open an SDF/RDF and page through its records; template libraries are read via chem-core.js's own <code>SdfSerializer</code> instead, and there's no "batch file" workflow for user-supplied SDFs.</p>
+        <ul class="fnlist"><li data-fn="indigoIterateSDF"><code>indigoIterateSDF</code></li><li data-fn="indigoIterateRDF"><code>indigoIterateRDF</code></li><li data-fn="indigoIterateSmiles"><code>indigoIterateSmiles</code></li><li data-fn="indigoIterateCML"><code>indigoIterateCML</code></li><li data-fn="indigoIterateCDX"><code>indigoIterateCDX</code></li><li data-fn="indigoIterateSDFile"><code>indigoIterateSDFile</code></li><li data-fn="indigoIterateRDFile"><code>indigoIterateRDFile</code></li><li data-fn="indigoIterateSmilesFile"><code>indigoIterateSmilesFile</code></li><li data-fn="indigoIterateCMLFile"><code>indigoIterateCMLFile</code></li><li data-fn="indigoIterateCDXFile"><code>indigoIterateCDXFile</code></li><li data-fn="indigoRawData"><code>indigoRawData</code></li><li data-fn="indigoTell"><code>indigoTell</code></li><li data-fn="indigoTell64"><code>indigoTell64</code></li><li data-fn="indigoSdfAppend"><code>indigoSdfAppend</code></li><li data-fn="indigoSmilesAppend"><code>indigoSmilesAppend</code></li><li data-fn="indigoRdfHeader"><code>indigoRdfHeader</code></li><li data-fn="indigoRdfAppend"><code>indigoRdfAppend</code></li><li data-fn="indigoCmlHeader"><code>indigoCmlHeader</code></li><li data-fn="indigoCmlAppend"><code>indigoCmlAppend</code></li><li data-fn="indigoCmlFooter"><code>indigoCmlFooter</code></li><li data-fn="indigoCreateSaver"><code>indigoCreateSaver</code></li><li data-fn="indigoCreateFileSaver"><code>indigoCreateFileSaver</code></li><li data-fn="indigoAppend"><code>indigoAppend</code></li></ul>
+      </div>
+    </details>
+
+    <details class="cat">
+      <summary>R-Group deconvolution &amp; decomposition <span class="n">11</span></summary>
+      <div class="body">
+        <p class="why">Markush/scaffold-decomposition analysis (splitting a set of molecules into a common scaffold + R-group table) — a different capability from Sketch's own manual R-group authoring, and currently unused.</p>
+        <ul class="fnlist"><li data-fn="indigoDecomposeMolecules"><code>indigoDecomposeMolecules</code></li><li data-fn="indigoDecomposedMoleculeScaffold"><code>indigoDecomposedMoleculeScaffold</code></li><li data-fn="indigoIterateDecomposedMolecules"><code>indigoIterateDecomposedMolecules</code></li><li data-fn="indigoDecomposedMoleculeHighlighted"><code>indigoDecomposedMoleculeHighlighted</code></li><li data-fn="indigoDecomposedMoleculeWithRGroups"><code>indigoDecomposedMoleculeWithRGroups</code></li><li data-fn="indigoCreateDecomposer"><code>indigoCreateDecomposer</code></li><li data-fn="indigoDecomposeMolecule"><code>indigoDecomposeMolecule</code></li><li data-fn="indigoIterateDecompositions"><code>indigoIterateDecompositions</code></li><li data-fn="indigoAddDecomposition"><code>indigoAddDecomposition</code></li><li data-fn="indigoGetFragmentedMolecule"><code>indigoGetFragmentedMolecule</code></li><li data-fn="indigoRGroupComposition"><code>indigoRGroupComposition</code></li></ul>
+      </div>
+    </details>
+
+    <details class="cat">
+      <summary>Scaffold detection <span class="n">2</span></summary>
+      <div class="body">
+        <ul class="fnlist"><li data-fn="indigoExtractCommonScaffold"><code>indigoExtractCommonScaffold</code></li><li data-fn="indigoAllScaffolds"><code>indigoAllScaffolds</code></li></ul>
+      </div>
+    </details>
+
+    <details class="cat">
+      <summary>Reaction products enumeration <span class="n">3</span></summary>
+      <div class="body">
+        <p class="why">Combinatorial/virtual-library reaction expansion — running a reaction template against reactant sets. No such workflow exists yet.</p>
+        <ul class="fnlist"><li data-fn="indigoReactionProductEnumerate"><code>indigoReactionProductEnumerate</code></li><li data-fn="indigoTransform"><code>indigoTransform</code></li><li data-fn="indigoTransformHELMtoSCSR"><code>indigoTransformHELMtoSCSR</code></li></ul>
+      </div>
+    </details>
+
+    <details class="cat">
+      <summary>Reactions, query reactions <span class="n">48</span></summary>
+      <div class="body">
+        <p class="why">Beyond load/save and the descriptor calls already implemented, this covers reactant/product/catalyst iteration, reaction auto-mapping (<code>indigoAutomap</code> — Sketch's AAM is manual, click-to-increment), pKa prediction, and reacting-center flags.</p>
+        <ul class="fnlist"><li data-fn="indigoLoadReaction"><code>indigoLoadReaction</code></li><li data-fn="indigoLoadReactionFromFile"><code>indigoLoadReactionFromFile</code></li><li data-fn="indigoLoadReactionFromBuffer"><code>indigoLoadReactionFromBuffer</code></li><li data-fn="indigoLoadReactionWithLib"><code>indigoLoadReactionWithLib</code></li><li data-fn="indigoLoadReactionWithLibFromString"><code>indigoLoadReactionWithLibFromString</code></li><li data-fn="indigoLoadReactionWithLibFromFile"><code>indigoLoadReactionWithLibFromFile</code></li><li data-fn="indigoLoadReactionWithLibFromBuffer"><code>indigoLoadReactionWithLibFromBuffer</code></li><li data-fn="indigoLoadQueryReaction"><code>indigoLoadQueryReaction</code></li><li data-fn="indigoLoadQueryReactionFromString"><code>indigoLoadQueryReactionFromString</code></li><li data-fn="indigoLoadQueryReactionFromFile"><code>indigoLoadQueryReactionFromFile</code></li><li data-fn="indigoLoadQueryReactionFromBuffer"><code>indigoLoadQueryReactionFromBuffer</code></li><li data-fn="indigoLoadQueryReactionWithLib"><code>indigoLoadQueryReactionWithLib</code></li><li data-fn="indigoLoadQueryReactionWithLibFromString"><code>indigoLoadQueryReactionWithLibFromString</code></li><li data-fn="indigoLoadQueryReactionWithLibFromFile"><code>indigoLoadQueryReactionWithLibFromFile</code></li><li data-fn="indigoLoadQueryReactionWithLibFromBuffer"><code>indigoLoadQueryReactionWithLibFromBuffer</code></li><li data-fn="indigoLoadReactionSmarts"><code>indigoLoadReactionSmarts</code></li><li data-fn="indigoLoadReactionSmartsFromString"><code>indigoLoadReactionSmartsFromString</code></li><li data-fn="indigoLoadReactionSmartsFromFile"><code>indigoLoadReactionSmartsFromFile</code></li><li data-fn="indigoLoadReactionSmartsFromBuffer"><code>indigoLoadReactionSmartsFromBuffer</code></li><li data-fn="indigoCreateReaction"><code>indigoCreateReaction</code></li><li data-fn="indigoCreateQueryReaction"><code>indigoCreateQueryReaction</code></li><li data-fn="indigoAddReactant"><code>indigoAddReactant</code></li><li data-fn="indigoAddProduct"><code>indigoAddProduct</code></li><li data-fn="indigoAddCatalyst"><code>indigoAddCatalyst</code></li><li data-fn="indigoCountReactants"><code>indigoCountReactants</code></li><li data-fn="indigoCountProducts"><code>indigoCountProducts</code></li><li data-fn="indigoCountCatalysts"><code>indigoCountCatalysts</code></li><li data-fn="indigoCountMolecules"><code>indigoCountMolecules</code></li><li data-fn="indigoGetMolecule"><code>indigoGetMolecule</code></li><li data-fn="indigoIterateReactants"><code>indigoIterateReactants</code></li><li data-fn="indigoIterateProducts"><code>indigoIterateProducts</code></li><li data-fn="indigoIterateCatalysts"><code>indigoIterateCatalysts</code></li><li data-fn="indigoIterateMolecules"><code>indigoIterateMolecules</code></li><li data-fn="indigoIterateReactions"><code>indigoIterateReactions</code></li><li data-fn="indigoSaveRxnfile"><code>indigoSaveRxnfile</code></li><li data-fn="indigoSaveRxnfileToFile"><code>indigoSaveRxnfileToFile</code></li><li data-fn="indigoOptimize"><code>indigoOptimize</code></li><li data-fn="indigoIonize"><code>indigoIonize</code></li><li data-fn="indigoBuildPkaModel"><code>indigoBuildPkaModel</code></li><li data-fn="indigoGetAcidPkaValue"><code>indigoGetAcidPkaValue</code></li><li data-fn="indigoGetBasicPkaValue"><code>indigoGetBasicPkaValue</code></li><li data-fn="indigoAutomap"><code>indigoAutomap</code></li><li data-fn="indigoGetAtomMappingNumber"><code>indigoGetAtomMappingNumber</code></li><li data-fn="indigoSetAtomMappingNumber"><code>indigoSetAtomMappingNumber</code></li><li data-fn="indigoGetReactingCenter"><code>indigoGetReactingCenter</code></li><li data-fn="indigoSetReactingCenter"><code>indigoSetReactingCenter</code></li><li data-fn="indigoClearAAM"><code>indigoClearAAM</code></li><li data-fn="indigoCorrectReactingCenters"><code>indigoCorrectReactingCenters</code></li></ul>
+      </div>
+    </details>
+
+    <details class="cat">
+      <summary>Calculation on molecules <span class="n">23</span></summary>
+      <div class="body">
+        <p class="why">Beyond the MW/formula/TPSA/logP already surfaced: molar refractivity, additional pKa APIs, chirality/Fischer-projection checks, canonical hashing/symmetry classes, and submolecule extraction.</p>
+        <ul class="fnlist"><li data-fn="indigoCountHeavyAtoms"><code>indigoCountHeavyAtoms</code></li><li data-fn="indigoGrossFormula"><code>indigoGrossFormula</code></li><li data-fn="indigoMostAbundantMass"><code>indigoMostAbundantMass</code></li><li data-fn="indigoMassComposition"><code>indigoMassComposition</code></li><li data-fn="indigoMolarRefractivity"><code>indigoMolarRefractivity</code></li><li data-fn="indigoPka"><code>indigoPka</code></li><li data-fn="indigoPkaValues"><code>indigoPkaValues</code></li><li data-fn="indigoLayeredCode"><code>indigoLayeredCode</code></li><li data-fn="indigoHash"><code>indigoHash</code></li><li data-fn="indigoSymmetryClasses"><code>indigoSymmetryClasses</code></li><li data-fn="indigoHasCoord"><code>indigoHasCoord</code></li><li data-fn="indigoHasZCoord"><code>indigoHasZCoord</code></li><li data-fn="indigoIsChiral"><code>indigoIsChiral</code></li><li data-fn="indigoCheckChirality"><code>indigoCheckChirality</code></li><li data-fn="indigoCheck3DStereo"><code>indigoCheck3DStereo</code></li><li data-fn="indigoCheckStereo"><code>indigoCheckStereo</code></li><li data-fn="indigoIsPossibleFischerProjection"><code>indigoIsPossibleFischerProjection</code></li><li data-fn="indigoCreateSubmolecule"><code>indigoCreateSubmolecule</code></li><li data-fn="indigoCreateEdgeSubmolecule"><code>indigoCreateEdgeSubmolecule</code></li><li data-fn="indigoGetSubmolecule"><code>indigoGetSubmolecule</code></li><li data-fn="indigoRemoveAtoms"><code>indigoRemoveAtoms</code></li><li data-fn="indigoRemoveBonds"><code>indigoRemoveBonds</code></li><li data-fn="indigoAlignAtoms"><code>indigoAlignAtoms</code></li></ul>
+      </div>
+    </details>
+
+    <details class="cat">
+      <summary>Molecules &amp; reactions — shared ops <span class="n">23</span></summary>
+      <div class="body">
+        <p class="why">Adjacent to the transforms already used (layout/aromatize/etc.): hydrogen fold/unfold, tautomer handling, named properties on the handle itself, and bad-valence/ambiguous-H checks (Sketch's own <code>checkStructure</code> parses <code>indigoCheckObj</code> text output instead of using these directly).</p>
+        <ul class="fnlist"><li data-fn="indigoFoldHydrogens"><code>indigoFoldHydrogens</code></li><li data-fn="indigoUnfoldHydrogens"><code>indigoUnfoldHydrogens</code></li><li data-fn="indigoFoldUnfoldHydrogens"><code>indigoFoldUnfoldHydrogens</code></li><li data-fn="indigoLayoutSelected"><code>indigoLayoutSelected</code></li><li data-fn="indigoClean2d"><code>indigoClean2d</code></li><li data-fn="indigoSmarts"><code>indigoSmarts</code></li><li data-fn="indigoCanonicalSmarts"><code>indigoCanonicalSmarts</code></li><li data-fn="indigoExactMatch"><code>indigoExactMatch</code></li><li data-fn="indigoSetTautomerRule"><code>indigoSetTautomerRule</code></li><li data-fn="indigoRemoveTautomerRule"><code>indigoRemoveTautomerRule</code></li><li data-fn="indigoClearTautomerRules"><code>indigoClearTautomerRules</code></li><li data-fn="indigoName"><code>indigoName</code></li><li data-fn="indigoSetName"><code>indigoSetName</code></li><li data-fn="indigoSerialize"><code>indigoSerialize</code></li><li data-fn="indigoUnserialize"><code>indigoUnserialize</code></li><li data-fn="indigoHasProperty"><code>indigoHasProperty</code></li><li data-fn="indigoGetProperty"><code>indigoGetProperty</code></li><li data-fn="indigoSetProperty"><code>indigoSetProperty</code></li><li data-fn="indigoRemoveProperty"><code>indigoRemoveProperty</code></li><li data-fn="indigoIterateProperties"><code>indigoIterateProperties</code></li><li data-fn="indigoClearProperties"><code>indigoClearProperties</code></li><li data-fn="indigoCheckBadValence"><code>indigoCheckBadValence</code></li><li data-fn="indigoCheckAmbiguousH"><code>indigoCheckAmbiguousH</code></li></ul>
+      </div>
+    </details>
+
+    <details class="cat">
+      <summary>Molecules, query molecules, SMARTS — remaining loaders/savers <span class="n">73</span></summary>
+      <div class="body">
+        <p class="why">Query-molecule/SMARTS loading, CDX/CML/monomer-library save formats, and most of the file/buffer-path variants of loaders Sketch only uses the from-string form of.</p>
+        <ul class="fnlist"><li data-fn="indigoGetOriginalFormat"><code>indigoGetOriginalFormat</code></li><li data-fn="indigoCreateMolecule"><code>indigoCreateMolecule</code></li><li data-fn="indigoCreateQueryMolecule"><code>indigoCreateQueryMolecule</code></li><li data-fn="indigoLoadStructureFromString"><code>indigoLoadStructureFromString</code></li><li data-fn="indigoLoadStructureFromBuffer"><code>indigoLoadStructureFromBuffer</code></li><li data-fn="indigoLoadStructureFromFile"><code>indigoLoadStructureFromFile</code></li><li data-fn="indigoLoadMoleculeWithLib"><code>indigoLoadMoleculeWithLib</code></li><li data-fn="indigoLoadMoleculeWithLibFromString"><code>indigoLoadMoleculeWithLibFromString</code></li><li data-fn="indigoLoadMoleculeWithLibFromFile"><code>indigoLoadMoleculeWithLibFromFile</code></li><li data-fn="indigoLoadMoleculeWithLibFromBuffer"><code>indigoLoadMoleculeWithLibFromBuffer</code></li><li data-fn="indigoLoadMolecule"><code>indigoLoadMolecule</code></li><li data-fn="indigoLoadMoleculeFromFile"><code>indigoLoadMoleculeFromFile</code></li><li data-fn="indigoLoadMoleculeFromBuffer"><code>indigoLoadMoleculeFromBuffer</code></li><li data-fn="indigoLoadQueryMoleculeWithLib"><code>indigoLoadQueryMoleculeWithLib</code></li><li data-fn="indigoLoadQueryMoleculeWithLibFromString"><code>indigoLoadQueryMoleculeWithLibFromString</code></li><li data-fn="indigoLoadQueryMoleculeWithLibFromFile"><code>indigoLoadQueryMoleculeWithLibFromFile</code></li><li data-fn="indigoLoadQueryMoleculeWithLibFromBuffer"><code>indigoLoadQueryMoleculeWithLibFromBuffer</code></li><li data-fn="indigoLoadQueryMolecule"><code>indigoLoadQueryMolecule</code></li><li data-fn="indigoLoadQueryMoleculeFromString"><code>indigoLoadQueryMoleculeFromString</code></li><li data-fn="indigoLoadQueryMoleculeFromFile"><code>indigoLoadQueryMoleculeFromFile</code></li><li data-fn="indigoLoadQueryMoleculeFromBuffer"><code>indigoLoadQueryMoleculeFromBuffer</code></li><li data-fn="indigoLoadSmarts"><code>indigoLoadSmarts</code></li><li data-fn="indigoLoadSmartsFromString"><code>indigoLoadSmartsFromString</code></li><li data-fn="indigoLoadSmartsFromFile"><code>indigoLoadSmartsFromFile</code></li><li data-fn="indigoLoadSmartsFromBuffer"><code>indigoLoadSmartsFromBuffer</code></li><li data-fn="indigoLoadMonomerLibrary"><code>indigoLoadMonomerLibrary</code></li><li data-fn="indigoLoadMonomerLibraryFromFile"><code>indigoLoadMonomerLibraryFromFile</code></li><li data-fn="indigoLoadMonomerLibraryFromBuffer"><code>indigoLoadMonomerLibraryFromBuffer</code></li><li data-fn="indigoLoadKetDocument"><code>indigoLoadKetDocument</code></li><li data-fn="indigoLoadKetDocumentFromString"><code>indigoLoadKetDocumentFromString</code></li><li data-fn="indigoLoadKetDocumentFromFile"><code>indigoLoadKetDocumentFromFile</code></li><li data-fn="indigoLoadKetDocumentFromBuffer"><code>indigoLoadKetDocumentFromBuffer</code></li><li data-fn="indigoLoadSequence"><code>indigoLoadSequence</code></li><li data-fn="indigoLoadSequenceFromFile"><code>indigoLoadSequenceFromFile</code></li><li data-fn="indigoLoadFasta"><code>indigoLoadFasta</code></li><li data-fn="indigoLoadFastaFromFile"><code>indigoLoadFastaFromFile</code></li><li data-fn="indigoLoadIdt"><code>indigoLoadIdt</code></li><li data-fn="indigoLoadIdtFromFile"><code>indigoLoadIdtFromFile</code></li><li data-fn="indigoLoadHelm"><code>indigoLoadHelm</code></li><li data-fn="indigoLoadHelmFromFile"><code>indigoLoadHelmFromFile</code></li><li data-fn="indigoLoadAxoLabs"><code>indigoLoadAxoLabs</code></li><li data-fn="indigoLoadAxoLabsFromFile"><code>indigoLoadAxoLabsFromFile</code></li><li data-fn="indigoSaveMolfile"><code>indigoSaveMolfile</code></li><li data-fn="indigoSaveMolfileToFile"><code>indigoSaveMolfileToFile</code></li><li data-fn="indigoSaveSequence"><code>indigoSaveSequence</code></li><li data-fn="indigoSaveSequenceToFile"><code>indigoSaveSequenceToFile</code></li><li data-fn="indigoSaveSequence3Letter"><code>indigoSaveSequence3Letter</code></li><li data-fn="indigoSaveSequence3LetterToFile"><code>indigoSaveSequence3LetterToFile</code></li><li data-fn="indigoSequence3Letter"><code>indigoSequence3Letter</code></li><li data-fn="indigoSaveFasta"><code>indigoSaveFasta</code></li><li data-fn="indigoSaveFastaToFile"><code>indigoSaveFastaToFile</code></li><li data-fn="indigoSaveIdt"><code>indigoSaveIdt</code></li><li data-fn="indigoSaveIdtToFile"><code>indigoSaveIdtToFile</code></li><li data-fn="indigoSaveHelm"><code>indigoSaveHelm</code></li><li data-fn="indigoSaveHelmToFile"><code>indigoSaveHelmToFile</code></li><li data-fn="indigoSaveAxoLabs"><code>indigoSaveAxoLabs</code></li><li data-fn="indigoSaveAxoLabsToFile"><code>indigoSaveAxoLabsToFile</code></li><li data-fn="indigoSaveMonomerLibrary"><code>indigoSaveMonomerLibrary</code></li><li data-fn="indigoSaveMonomerLibraryToFile"><code>indigoSaveMonomerLibraryToFile</code></li><li data-fn="indigoMonomerLibrary"><code>indigoMonomerLibrary</code></li><li data-fn="indigoSaveJsonToFile"><code>indigoSaveJsonToFile</code></li><li data-fn="indigoSaveJson"><code>indigoSaveJson</code></li><li data-fn="indigoSaveCml"><code>indigoSaveCml</code></li><li data-fn="indigoSaveCmlToFile"><code>indigoSaveCmlToFile</code></li><li data-fn="indigoCml"><code>indigoCml</code></li><li data-fn="indigoCdxBase64"><code>indigoCdxBase64</code></li><li data-fn="indigoSaveCdxml"><code>indigoSaveCdxml</code></li><li data-fn="indigoSaveCdx"><code>indigoSaveCdx</code></li><li data-fn="indigoCdxml"><code>indigoCdxml</code></li><li data-fn="indigoSaveCdxmlToFile"><code>indigoSaveCdxmlToFile</code></li><li data-fn="indigoSaveCdxToFile"><code>indigoSaveCdxToFile</code></li><li data-fn="indigoSaveMDLCT"><code>indigoSaveMDLCT</code></li><li data-fn="indigoNameToStructure"><code>indigoNameToStructure</code></li></ul>
+      </div>
+    </details>
+
+    <details class="cat">
+      <summary>Accessing a molecule — atom/bond/sgroup internals <span class="n">162</span></summary>
+      <div class="body">
+        <p class="why">The low-level atom-by-atom / bond-by-bond / SGroup editing API. Sketch never builds or inspects molecules through Indigo's own object model — the working structure always lives in chem-core.js's <code>Struct</code>, and Indigo only ever sees a molfile/RXN string handed over whole and handed back whole. This entire category is naturally dormant given that division of labour.</p>
+        <ul class="fnlist"><li data-fn="indigoIterateAtoms"><code>indigoIterateAtoms</code></li><li data-fn="indigoIteratePseudoatoms"><code>indigoIteratePseudoatoms</code></li><li data-fn="indigoIterateRSites"><code>indigoIterateRSites</code></li><li data-fn="indigoIterateAlleneCenters"><code>indigoIterateAlleneCenters</code></li><li data-fn="indigoIterateRGroups"><code>indigoIterateRGroups</code></li><li data-fn="indigoCountRGroups"><code>indigoCountRGroups</code></li><li data-fn="indigoCopyRGroups"><code>indigoCopyRGroups</code></li><li data-fn="indigoIsPseudoatom"><code>indigoIsPseudoatom</code></li><li data-fn="indigoIsRSite"><code>indigoIsRSite</code></li><li data-fn="indigoIsTemplateAtom"><code>indigoIsTemplateAtom</code></li><li data-fn="indigoChangeStereocenterType"><code>indigoChangeStereocenterType</code></li><li data-fn="indigoSetStereocenterGroup"><code>indigoSetStereocenterGroup</code></li><li data-fn="indigoStereocenterPyramid"><code>indigoStereocenterPyramid</code></li><li data-fn="indigoSingleAllowedRGroup"><code>indigoSingleAllowedRGroup</code></li><li data-fn="indigoAddStereocenter"><code>indigoAddStereocenter</code></li><li data-fn="indigoIterateRGroupFragments"><code>indigoIterateRGroupFragments</code></li><li data-fn="indigoCountAttachmentPoints"><code>indigoCountAttachmentPoints</code></li><li data-fn="indigoIterateAttachmentPoints"><code>indigoIterateAttachmentPoints</code></li><li data-fn="indigoSymbol"><code>indigoSymbol</code></li><li data-fn="indigoDegree"><code>indigoDegree</code></li><li data-fn="indigoGetCharge"><code>indigoGetCharge</code></li><li data-fn="indigoGetExplicitValence"><code>indigoGetExplicitValence</code></li><li data-fn="indigoSetExplicitValence"><code>indigoSetExplicitValence</code></li><li data-fn="indigoAtomicNumber"><code>indigoAtomicNumber</code></li><li data-fn="indigoIsotope"><code>indigoIsotope</code></li><li data-fn="indigoValence"><code>indigoValence</code></li><li data-fn="indigoGetHybridization"><code>indigoGetHybridization</code></li><li data-fn="indigoCheckValence"><code>indigoCheckValence</code></li><li data-fn="indigoCheckQuery"><code>indigoCheckQuery</code></li><li data-fn="indigoCheckRGroups"><code>indigoCheckRGroups</code></li><li data-fn="indigoAtomIndex"><code>indigoAtomIndex</code></li><li data-fn="indigoBondIndex"><code>indigoBondIndex</code></li><li data-fn="indigoBondBegin"><code>indigoBondBegin</code></li><li data-fn="indigoBondEnd"><code>indigoBondEnd</code></li><li data-fn="indigoCheck"><code>indigoCheck</code></li><li data-fn="indigoCheckStructure"><code>indigoCheckStructure</code></li><li data-fn="indigoCountHydrogens"><code>indigoCountHydrogens</code></li><li data-fn="indigoCountImplicitHydrogens"><code>indigoCountImplicitHydrogens</code></li><li data-fn="indigoMacroProperties"><code>indigoMacroProperties</code></li><li data-fn="indigoXYZ"><code>indigoXYZ</code></li><li data-fn="indigoSetXYZ"><code>indigoSetXYZ</code></li><li data-fn="indigoClearXYZ"><code>indigoClearXYZ</code></li><li data-fn="indigoCountSuperatoms"><code>indigoCountSuperatoms</code></li><li data-fn="indigoCountDataSGroups"><code>indigoCountDataSGroups</code></li><li data-fn="indigoCountRepeatingUnits"><code>indigoCountRepeatingUnits</code></li><li data-fn="indigoCountMultipleGroups"><code>indigoCountMultipleGroups</code></li><li data-fn="indigoCountGenericSGroups"><code>indigoCountGenericSGroups</code></li><li data-fn="indigoIterateDataSGroups"><code>indigoIterateDataSGroups</code></li><li data-fn="indigoIterateSuperatoms"><code>indigoIterateSuperatoms</code></li><li data-fn="indigoIterateGenericSGroups"><code>indigoIterateGenericSGroups</code></li><li data-fn="indigoIterateRepeatingUnits"><code>indigoIterateRepeatingUnits</code></li><li data-fn="indigoIterateMultipleGroups"><code>indigoIterateMultipleGroups</code></li><li data-fn="indigoIterateTGroups"><code>indigoIterateTGroups</code></li><li data-fn="indigoIterateSGroups"><code>indigoIterateSGroups</code></li><li data-fn="indigoGetSuperatom"><code>indigoGetSuperatom</code></li><li data-fn="indigoGetDataSGroup"><code>indigoGetDataSGroup</code></li><li data-fn="indigoGetGenericSGroup"><code>indigoGetGenericSGroup</code></li><li data-fn="indigoGetMultipleGroup"><code>indigoGetMultipleGroup</code></li><li data-fn="indigoGetRepeatingUnit"><code>indigoGetRepeatingUnit</code></li><li data-fn="indigoDescription"><code>indigoDescription</code></li><li data-fn="indigoData"><code>indigoData</code></li><li data-fn="indigoAddDataSGroup"><code>indigoAddDataSGroup</code></li><li data-fn="indigoAddSuperatom"><code>indigoAddSuperatom</code></li><li data-fn="indigoSetDataSGroupXY"><code>indigoSetDataSGroupXY</code></li><li data-fn="indigoSetSGroupData"><code>indigoSetSGroupData</code></li><li data-fn="indigoSetSGroupCoords"><code>indigoSetSGroupCoords</code></li><li data-fn="indigoSetSGroupDescription"><code>indigoSetSGroupDescription</code></li><li data-fn="indigoSetSGroupFieldName"><code>indigoSetSGroupFieldName</code></li><li data-fn="indigoSetSGroupQueryCode"><code>indigoSetSGroupQueryCode</code></li><li data-fn="indigoSetSGroupQueryOper"><code>indigoSetSGroupQueryOper</code></li><li data-fn="indigoSetSGroupDisplay"><code>indigoSetSGroupDisplay</code></li><li data-fn="indigoSetSGroupLocation"><code>indigoSetSGroupLocation</code></li><li data-fn="indigoSetSGroupTag"><code>indigoSetSGroupTag</code></li><li data-fn="indigoSetSGroupTagAlign"><code>indigoSetSGroupTagAlign</code></li><li data-fn="indigoSetSGroupDataType"><code>indigoSetSGroupDataType</code></li><li data-fn="indigoSetSGroupXCoord"><code>indigoSetSGroupXCoord</code></li><li data-fn="indigoSetSGroupYCoord"><code>indigoSetSGroupYCoord</code></li><li data-fn="indigoCreateSGroup"><code>indigoCreateSGroup</code></li><li data-fn="indigoGetSGroupClass"><code>indigoGetSGroupClass</code></li><li data-fn="indigoGetSGroupName"><code>indigoGetSGroupName</code></li><li data-fn="indigoSetSGroupClass"><code>indigoSetSGroupClass</code></li><li data-fn="indigoSetSGroupName"><code>indigoSetSGroupName</code></li><li data-fn="indigoGetSGroupNumCrossBonds"><code>indigoGetSGroupNumCrossBonds</code></li><li data-fn="indigoAddSGroupAttachmentPoint"><code>indigoAddSGroupAttachmentPoint</code></li><li data-fn="indigoDeleteSGroupAttachmentPoint"><code>indigoDeleteSGroupAttachmentPoint</code></li><li data-fn="indigoIterateSGroupAttachmentPoints"><code>indigoIterateSGroupAttachmentPoints</code></li><li data-fn="indigoGetSGroupAttachmentPointAtomIdx"><code>indigoGetSGroupAttachmentPointAtomIdx</code></li><li data-fn="indigoGetSGroupAttachmentPointLeaveAtom"><code>indigoGetSGroupAttachmentPointLeaveAtom</code></li><li data-fn="indigoGetSGroupAttachmentPointLabel"><code>indigoGetSGroupAttachmentPointLabel</code></li><li data-fn="indigoGetSGroupDisplayOption"><code>indigoGetSGroupDisplayOption</code></li><li data-fn="indigoSetSGroupDisplayOption"><code>indigoSetSGroupDisplayOption</code></li><li data-fn="indigoGetSGroupSeqId"><code>indigoGetSGroupSeqId</code></li><li data-fn="indigoGetSGroupCoords"><code>indigoGetSGroupCoords</code></li><li data-fn="indigoGetSGroupMultiplier"><code>indigoGetSGroupMultiplier</code></li><li data-fn="indigoSetSGroupMultiplier"><code>indigoSetSGroupMultiplier</code></li><li data-fn="indigoGetRepeatingUnitSubscript"><code>indigoGetRepeatingUnitSubscript</code></li><li data-fn="indigoGetRepeatingUnitConnectivity"><code>indigoGetRepeatingUnitConnectivity</code></li><li data-fn="indigoSetSGroupBrackets"><code>indigoSetSGroupBrackets</code></li><li data-fn="indigoFindSGroups"><code>indigoFindSGroups</code></li><li data-fn="indigoGetSGroupType"><code>indigoGetSGroupType</code></li><li data-fn="indigoGetSGroupIndex"><code>indigoGetSGroupIndex</code></li><li data-fn="indigoGetSGroupOriginalId"><code>indigoGetSGroupOriginalId</code></li><li data-fn="indigoSetSGroupOriginalId"><code>indigoSetSGroupOriginalId</code></li><li data-fn="indigoGetSGroupParentId"><code>indigoGetSGroupParentId</code></li><li data-fn="indigoSetSGroupParentId"><code>indigoSetSGroupParentId</code></li><li data-fn="indigoAddTemplate"><code>indigoAddTemplate</code></li><li data-fn="indigoRemoveTemplate"><code>indigoRemoveTemplate</code></li><li data-fn="indigoFindTemplate"><code>indigoFindTemplate</code></li><li data-fn="indigoGetTGroupClass"><code>indigoGetTGroupClass</code></li><li data-fn="indigoGetTGroupName"><code>indigoGetTGroupName</code></li><li data-fn="indigoGetTGroupAlias"><code>indigoGetTGroupAlias</code></li><li data-fn="indigoTransformSCSRtoCTAB"><code>indigoTransformSCSRtoCTAB</code></li><li data-fn="indigoTransformCTABtoSCSR"><code>indigoTransformCTABtoSCSR</code></li><li data-fn="indigoResetCharge"><code>indigoResetCharge</code></li><li data-fn="indigoResetExplicitValence"><code>indigoResetExplicitValence</code></li><li data-fn="indigoResetIsotope"><code>indigoResetIsotope</code></li><li data-fn="indigoSetAttachmentPoint"><code>indigoSetAttachmentPoint</code></li><li data-fn="indigoClearAttachmentPoints"><code>indigoClearAttachmentPoints</code></li><li data-fn="indigoRemoveConstraints"><code>indigoRemoveConstraints</code></li><li data-fn="indigoAddConstraint"><code>indigoAddConstraint</code></li><li data-fn="indigoAddConstraintNot"><code>indigoAddConstraintNot</code></li><li data-fn="indigoAddConstraintOr"><code>indigoAddConstraintOr</code></li><li data-fn="indigoResetStereo"><code>indigoResetStereo</code></li><li data-fn="indigoInvertStereo"><code>indigoInvertStereo</code></li><li data-fn="indigoCountPseudoatoms"><code>indigoCountPseudoatoms</code></li><li data-fn="indigoCountRSites"><code>indigoCountRSites</code></li><li data-fn="indigoIterateBonds"><code>indigoIterateBonds</code></li><li data-fn="indigoBondOrder"><code>indigoBondOrder</code></li><li data-fn="indigoBondStereo"><code>indigoBondStereo</code></li><li data-fn="indigoTopology"><code>indigoTopology</code></li><li data-fn="indigoIterateNeighbors"><code>indigoIterateNeighbors</code></li><li data-fn="indigoBond"><code>indigoBond</code></li><li data-fn="indigoGetAtom"><code>indigoGetAtom</code></li><li data-fn="indigoGetBond"><code>indigoGetBond</code></li><li data-fn="indigoSource"><code>indigoSource</code></li><li data-fn="indigoDestination"><code>indigoDestination</code></li><li data-fn="indigoClearCisTrans"><code>indigoClearCisTrans</code></li><li data-fn="indigoClearStereocenters"><code>indigoClearStereocenters</code></li><li data-fn="indigoCountStereocenters"><code>indigoCountStereocenters</code></li><li data-fn="indigoClearAlleneCenters"><code>indigoClearAlleneCenters</code></li><li data-fn="indigoCountAlleneCenters"><code>indigoCountAlleneCenters</code></li><li data-fn="indigoResetSymmetricCisTrans"><code>indigoResetSymmetricCisTrans</code></li><li data-fn="indigoResetSymmetricStereocenters"><code>indigoResetSymmetricStereocenters</code></li><li data-fn="indigoMarkEitherCisTrans"><code>indigoMarkEitherCisTrans</code></li><li data-fn="indigoMarkStereobonds"><code>indigoMarkStereobonds</code></li><li data-fn="indigoValidateChirality"><code>indigoValidateChirality</code></li><li data-fn="indigoAddAtom"><code>indigoAddAtom</code></li><li data-fn="indigoResetAtom"><code>indigoResetAtom</code></li><li data-fn="indigoGetTemplateAtomClass"><code>indigoGetTemplateAtomClass</code></li><li data-fn="indigoSetTemplateAtomClass"><code>indigoSetTemplateAtomClass</code></li><li data-fn="indigoAddRSite"><code>indigoAddRSite</code></li><li data-fn="indigoSetRSite"><code>indigoSetRSite</code></li><li data-fn="indigoSetCharge"><code>indigoSetCharge</code></li><li data-fn="indigoSetIsotope"><code>indigoSetIsotope</code></li><li data-fn="indigoGetRadicalElectrons"><code>indigoGetRadicalElectrons</code></li><li data-fn="indigoGetRadical"><code>indigoGetRadical</code></li><li data-fn="indigoSetRadical"><code>indigoSetRadical</code></li><li data-fn="indigoResetRadical"><code>indigoResetRadical</code></li><li data-fn="indigoSetImplicitHCount"><code>indigoSetImplicitHCount</code></li><li data-fn="indigoAddBond"><code>indigoAddBond</code></li><li data-fn="indigoSetBondOrder"><code>indigoSetBondOrder</code></li><li data-fn="indigoMerge"><code>indigoMerge</code></li></ul>
+      </div>
+    </details>
+
+    <details class="cat">
+      <summary>Options, iterators, arrays, connected components, SSSR <span class="n">40</span></summary>
+      <div class="body">
+        <p class="why">Generic object-model plumbing (options get/set, iterator helpers, generic arrays, connected-component and ring-perception iteration) — a natural consequence of the same string-in/string-out usage pattern above.</p>
+        <ul class="fnlist"><li data-fn="indigoSetOption"><code>indigoSetOption</code></li><li data-fn="indigoSetOptionInt"><code>indigoSetOptionInt</code></li><li data-fn="indigoSetOptionFloat"><code>indigoSetOptionFloat</code></li><li data-fn="indigoSetOptionColor"><code>indigoSetOptionColor</code></li><li data-fn="indigoSetOptionXY"><code>indigoSetOptionXY</code></li><li data-fn="indigoResetOptions"><code>indigoResetOptions</code></li><li data-fn="indigoGetOption"><code>indigoGetOption</code></li><li data-fn="indigoGetOptionInt"><code>indigoGetOptionInt</code></li><li data-fn="indigoGetOptionBool"><code>indigoGetOptionBool</code></li><li data-fn="indigoGetOptionFloat"><code>indigoGetOptionFloat</code></li><li data-fn="indigoGetOptionColor"><code>indigoGetOptionColor</code></li><li data-fn="indigoGetOptionXY"><code>indigoGetOptionXY</code></li><li data-fn="indigoGetOptionType"><code>indigoGetOptionType</code></li><li data-fn="indigoHasNext"><code>indigoHasNext</code></li><li data-fn="indigoRemove"><code>indigoRemove</code></li><li data-fn="indigoCreateArray"><code>indigoCreateArray</code></li><li data-fn="indigoArrayAdd"><code>indigoArrayAdd</code></li><li data-fn="indigoAt"><code>indigoAt</code></li><li data-fn="indigoCount"><code>indigoCount</code></li><li data-fn="indigoClear"><code>indigoClear</code></li><li data-fn="indigoIterateArray"><code>indigoIterateArray</code></li><li data-fn="indigoCountComponents"><code>indigoCountComponents</code></li><li data-fn="indigoComponentIndex"><code>indigoComponentIndex</code></li><li data-fn="indigoIterateComponents"><code>indigoIterateComponents</code></li><li data-fn="indigoComponent"><code>indigoComponent</code></li><li data-fn="indigoCountSSSR"><code>indigoCountSSSR</code></li><li data-fn="indigoIterateSSSR"><code>indigoIterateSSSR</code></li><li data-fn="indigoIterateSubtrees"><code>indigoIterateSubtrees</code></li><li data-fn="indigoIterateRings"><code>indigoIterateRings</code></li><li data-fn="indigoIterateEdgeSubmolecules"><code>indigoIterateEdgeSubmolecules</code></li><li data-fn="indigoReadFile"><code>indigoReadFile</code></li><li data-fn="indigoReadString"><code>indigoReadString</code></li><li data-fn="indigoLoadString"><code>indigoLoadString</code></li><li data-fn="indigoReadBuffer"><code>indigoReadBuffer</code></li><li data-fn="indigoLoadBuffer"><code>indigoLoadBuffer</code></li><li data-fn="indigoWriteFile"><code>indigoWriteFile</code></li><li data-fn="indigoWriteBuffer"><code>indigoWriteBuffer</code></li><li data-fn="indigoClose"><code>indigoClose</code></li><li data-fn="indigoExpandAbbreviations"><code>indigoExpandAbbreviations</code></li><li data-fn="indigoExpandGroupPseudoatoms"><code>indigoExpandGroupPseudoatoms</code></li></ul>
+      </div>
+    </details>
+
+    <details class="cat">
+      <summary>Highlighting, selection, system misc, debug <span class="n">19</span></summary>
+      <div class="body">
+        <p class="why">Indigo's own highlight/selection state and object-lifecycle introspection — Sketch keeps highlight and selection state entirely on the chem-core.js side, so this mirrors the "Accessing a molecule" gap above. Debug counters are for Indigo's own development use.</p>
+        <ul class="fnlist"><li data-fn="indigoHighlight"><code>indigoHighlight</code></li><li data-fn="indigoUnhighlight"><code>indigoUnhighlight</code></li><li data-fn="indigoIsHighlighted"><code>indigoIsHighlighted</code></li><li data-fn="indigoSelect"><code>indigoSelect</code></li><li data-fn="indigoUnselect"><code>indigoUnselect</code></li><li data-fn="indigoIsSelected"><code>indigoIsSelected</code></li><li data-fn="indigoHasSelection"><code>indigoHasSelection</code></li><li data-fn="indigoVersion"><code>indigoVersion</code></li><li data-fn="indigoVersionInfo"><code>indigoVersionInfo</code></li><li data-fn="indigoSetErrorHandler"><code>indigoSetErrorHandler</code></li><li data-fn="indigoClone"><code>indigoClone</code></li><li data-fn="indigoCountReferences"><code>indigoCountReferences</code></li><li data-fn="indigoToBase64String"><code>indigoToBase64String</code></li><li data-fn="indigoToBuffer"><code>indigoToBuffer</code></li><li data-fn="indigoDbgInternalType"><code>indigoDbgInternalType</code></li><li data-fn="indigoDbgBreakpoint"><code>indigoDbgBreakpoint</code></li><li data-fn="indigoDbgProfiling"><code>indigoDbgProfiling</code></li><li data-fn="indigoDbgResetProfiling"><code>indigoDbgResetProfiling</code></li><li data-fn="indigoDbgProfilingGetCounter"><code>indigoDbgProfilingGetCounter</code></li></ul>
+      </div>
+    </details>
+  </section>
+
+  <footer>
+    Counts verified against <code>indigo/api/c/indigo/indigo.h</code>, <code>indigo-inchi.h</code>, <code>indigo-renderer.h</code>, and the top-level export object at <code>chem-core.js:5772-5843</code>, cross-checked with usage grep over <code>src/v8_worker.js</code> and <code>src/app/IndigoService.cpp</code>.
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  var input = document.getElementById('filter');
+  input.addEventListener('input', function(){
+    var q = input.value.trim().toLowerCase();
+    document.querySelectorAll('[data-fn]').forEach(function(el){
+      var name = el.getAttribute('data-fn').toLowerCase();
+      var match = !q || name.indexOf(q) !== -1;
+      if (el.tagName === 'TR') { el.hidden = !match; }
+      else if (el.tagName === 'LI') { el.hidden = !match; }
+      else { el.style.opacity = match ? '1' : '0.25'; }
+    });
+    document.querySelectorAll('details.cat').forEach(function(d){
+      if (!q) return;
+      var any = Array.prototype.some.call(d.querySelectorAll('[data-fn]'), function(el){ return !el.hidden; });
+      d.open = any;
+    });
+  });
+})();
+</script>

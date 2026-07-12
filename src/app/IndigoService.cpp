@@ -6,7 +6,10 @@
 #include <QFile>
 #include <QDir>
 #include <mutex>
+#include <functional>
 #include "indigo.h"
+#include "indigo-inchi.h"
+#include "indigo-renderer.h"
 #include <QtConcurrent>
 #include <QPointer>
 #include <QJsonDocument>
@@ -52,6 +55,19 @@ static const QByteArray& monomerLibraryContent() {
 // gracefully here rather than attempted — same treatment as an empty molfile.
 static bool isReactionFormat(const QString &data) {
     return data.trimmed().startsWith(QLatin1String("$RXN"));
+}
+
+// QPointer's guard is documented as safe only when checked from the pointed-to
+// object's own thread (or with extra synchronization) -- checking it directly from
+// a QtConcurrent background thread and then emitting on it is a real, if narrow,
+// race against ~IndigoService() running concurrently on the GUI thread (mainly at
+// app shutdown, if a slow Indigo call is still in flight). This posts the
+// check-and-emit onto the GUI thread instead, where both the check and any
+// concurrent destruction are serialized by the same single-threaded event loop.
+static void emitOnGuiThread(QPointer<IndigoService> self, std::function<void(IndigoService *)> fn) {
+    QMetaObject::invokeMethod(qApp, [self, fn]() {
+        if (self) fn(self.data());
+    }, Qt::QueuedConnection);
 }
 
 static int loadMonomerLibrary() {
@@ -122,9 +138,7 @@ void IndigoService::layout(const QString &molfile) {
         
         indigoReleaseSessionId(threadSessionId);
         
-        if (self) {
-            emit self->layoutFinished(resultMol);
-        }
+        emitOnGuiThread(self, [resultMol](IndigoService *s) { emit s->layoutFinished(resultMol); });
     });
 }
 
@@ -165,7 +179,7 @@ void IndigoService::aromatize(const QString &molfile) {
 
         indigoReleaseSessionId(threadSessionId);
 
-        if (self) emit self->aromatizeFinished(resultMol);
+        emitOnGuiThread(self, [resultMol](IndigoService *s) { emit s->aromatizeFinished(resultMol); });
     });
 }
 
@@ -202,7 +216,7 @@ void IndigoService::smiles(const QString &molfile) {
 
         indigoReleaseSessionId(threadSessionId);
 
-        if (self) emit self->smilesFinished(result);
+        emitOnGuiThread(self, [result](IndigoService *s) { emit s->smilesFinished(result); });
     });
 }
 
@@ -227,7 +241,57 @@ void IndigoService::dearomatize(const QString &molfile) {
             }
         } catch (...) {}
         indigoReleaseSessionId(sid);
-        if (self) emit self->dearomatizeFinished(result);
+        emitOnGuiThread(self, [result](IndigoService *s) { emit s->dearomatizeFinished(result); });
+    });
+}
+
+void IndigoService::unfoldHydrogens(const QString &molfile) {
+    if (molfile.isEmpty()) { emit unfoldHydrogensFinished(""); return; }
+    QPointer<IndigoService> self = this;
+    (void)QtConcurrent::run([self, molfile]() {
+        QString result = molfile;
+        unsigned long long sid = indigoAllocSessionId();
+        indigoSetSessionId(sid);
+        try {
+            const bool isRxn = isReactionFormat(molfile);
+            int mol = isRxn ? indigoLoadReactionFromString(molfile.toUtf8().constData())
+                            : indigoLoadMoleculeFromString(molfile.toUtf8().constData());
+            if (mol >= 0) {
+                indigoUnfoldHydrogens(mol);
+                const char* mf = isRxn ? indigoRxnfile(mol) : indigoMolfile(mol);
+                if (mf) result = QString::fromUtf8(mf);
+                indigoFree(mol);
+            } else {
+                qWarning() << "Indigo: unfoldHydrogens load failed:" << indigoGetLastError();
+            }
+        } catch (...) {}
+        indigoReleaseSessionId(sid);
+        emitOnGuiThread(self, [result](IndigoService *s) { emit s->unfoldHydrogensFinished(result); });
+    });
+}
+
+void IndigoService::foldHydrogens(const QString &molfile) {
+    if (molfile.isEmpty()) { emit foldHydrogensFinished(""); return; }
+    QPointer<IndigoService> self = this;
+    (void)QtConcurrent::run([self, molfile]() {
+        QString result = molfile;
+        unsigned long long sid = indigoAllocSessionId();
+        indigoSetSessionId(sid);
+        try {
+            const bool isRxn = isReactionFormat(molfile);
+            int mol = isRxn ? indigoLoadReactionFromString(molfile.toUtf8().constData())
+                            : indigoLoadMoleculeFromString(molfile.toUtf8().constData());
+            if (mol >= 0) {
+                indigoFoldHydrogens(mol);
+                const char* mf = isRxn ? indigoRxnfile(mol) : indigoMolfile(mol);
+                if (mf) result = QString::fromUtf8(mf);
+                indigoFree(mol);
+            } else {
+                qWarning() << "Indigo: foldHydrogens load failed:" << indigoGetLastError();
+            }
+        } catch (...) {}
+        indigoReleaseSessionId(sid);
+        emitOnGuiThread(self, [result](IndigoService *s) { emit s->foldHydrogensFinished(result); });
     });
 }
 
@@ -251,7 +315,113 @@ void IndigoService::canonicalSmiles(const QString &molfile) {
             }
         } catch (...) {}
         indigoReleaseSessionId(sid);
-        if (self) emit self->canonicalSmilesFinished(result);
+        emitOnGuiThread(self, [result](IndigoService *s) { emit s->canonicalSmilesFinished(result); });
+    });
+}
+
+void IndigoService::inchi(const QString &molfile) {
+    // InChI has no reaction form (unlike SMILES's native "reactants>>products"),
+    // so reactions are guarded out the same way checkStructure guards them below.
+    if (molfile.isEmpty() || isReactionFormat(molfile)) { emit inchiFinished(""); return; }
+    QPointer<IndigoService> self = this;
+    (void)QtConcurrent::run([self, molfile]() {
+        QString result;
+        unsigned long long sid = indigoAllocSessionId();
+        indigoSetSessionId(sid);
+        indigoInchiInit(sid);
+        try {
+            int mol = indigoLoadMoleculeFromString(molfile.toUtf8().constData());
+            if (mol >= 0) {
+                const char* inchiStr = indigoInchiGetInchi(mol);
+                if (inchiStr) result = QString::fromUtf8(inchiStr);
+                else qWarning() << "Indigo: InChI generation failed:" << indigoInchiGetWarning();
+                indigoFree(mol);
+            } else {
+                qWarning() << "Indigo: Failed to load molecule for InChI:" << indigoGetLastError();
+            }
+        } catch (const std::exception& e) {
+            qWarning() << "Indigo C++ exception in inchi:" << e.what();
+        } catch (...) {
+            qWarning() << "Indigo unknown C++ exception in inchi";
+        }
+        indigoInchiDispose(sid);
+        indigoReleaseSessionId(sid);
+        emitOnGuiThread(self, [result](IndigoService *s) { emit s->inchiFinished(result); });
+    });
+}
+
+void IndigoService::inchiKey(const QString &molfile) {
+    // InChIKey is a hash of the InChI string, not of the molecule directly --
+    // computes the InChI first, then keys it, in one round trip.
+    if (molfile.isEmpty() || isReactionFormat(molfile)) { emit inchiKeyFinished(""); return; }
+    QPointer<IndigoService> self = this;
+    (void)QtConcurrent::run([self, molfile]() {
+        QString result;
+        unsigned long long sid = indigoAllocSessionId();
+        indigoSetSessionId(sid);
+        indigoInchiInit(sid);
+        try {
+            int mol = indigoLoadMoleculeFromString(molfile.toUtf8().constData());
+            if (mol >= 0) {
+                const char* inchiStr = indigoInchiGetInchi(mol);
+                // Must copy before the next Indigo call: indigoInchiGetInchi's
+                // return value points into a buffer indigoInchiGetInchiKey
+                // itself reuses/overwrites, so passing the raw pointer straight
+                // through as its argument reads already-clobbered memory and
+                // silently returns null (confirmed via a standalone repro).
+                QString inchiCopy = inchiStr ? QString::fromUtf8(inchiStr) : QString();
+                if (!inchiCopy.isEmpty()) {
+                    const char* key = indigoInchiGetInchiKey(inchiCopy.toUtf8().constData());
+                    if (key) result = QString::fromUtf8(key);
+                    else qWarning() << "Indigo: InChIKey generation failed:" << indigoInchiGetWarning();
+                } else {
+                    qWarning() << "Indigo: InChI generation (for key) failed:" << indigoInchiGetWarning();
+                }
+                indigoFree(mol);
+            } else {
+                qWarning() << "Indigo: Failed to load molecule for InChIKey:" << indigoGetLastError();
+            }
+        } catch (const std::exception& e) {
+            qWarning() << "Indigo C++ exception in inchiKey:" << e.what();
+        } catch (...) {
+            qWarning() << "Indigo unknown C++ exception in inchiKey";
+        }
+        indigoInchiDispose(sid);
+        indigoReleaseSessionId(sid);
+        emitOnGuiThread(self, [result](IndigoService *s) { emit s->inchiKeyFinished(result); });
+    });
+}
+
+void IndigoService::renderToFile(const QString &molfile, const QUrl &fileUrl, const QString &format) {
+    if (molfile.isEmpty()) { emit renderFinished(false, "No structure to render."); return; }
+    QPointer<IndigoService> self = this;
+    QString path = fileUrl.toLocalFile();
+    (void)QtConcurrent::run([self, molfile, path, format]() {
+        bool ok = false;
+        QString error;
+        unsigned long long sid = indigoAllocSessionId();
+        indigoSetSessionId(sid);
+        indigoRendererInit(sid);
+        try {
+            int mol = isReactionFormat(molfile) ? indigoLoadReactionFromString(molfile.toUtf8().constData())
+                                                 : indigoLoadMoleculeFromString(molfile.toUtf8().constData());
+            if (mol >= 0) {
+                indigoSetOption("render-output-format", format.toUtf8().constData());
+                int res = indigoRenderToFile(mol, path.toUtf8().constData());
+                if (res >= 0) ok = true;
+                else error = QString::fromUtf8(indigoGetLastError());
+                indigoFree(mol);
+            } else {
+                error = QString("Failed to load structure: %1").arg(indigoGetLastError());
+            }
+        } catch (const std::exception &e) {
+            error = QString::fromUtf8(e.what());
+        } catch (...) {
+            error = "Unknown exception during render.";
+        }
+        indigoRendererDispose(sid);
+        indigoReleaseSessionId(sid);
+        emitOnGuiThread(self, [ok, error](IndigoService *s) { emit s->renderFinished(ok, error); });
     });
 }
 
@@ -276,7 +446,7 @@ void IndigoService::normalize(const QString &molfile) {
             }
         } catch (...) {}
         indigoReleaseSessionId(sid);
-        if (self) emit self->normalizeFinished(result);
+        emitOnGuiThread(self, [result](IndigoService *s) { emit s->normalizeFinished(result); });
     });
 }
 
@@ -301,18 +471,18 @@ void IndigoService::standardize(const QString &molfile) {
             }
         } catch (...) {}
         indigoReleaseSessionId(sid);
-        if (self) emit self->standardizeFinished(result);
+        emitOnGuiThread(self, [result](IndigoService *s) { emit s->standardizeFinished(result); });
     });
 }
 
 void IndigoService::calcProperties(const QString &molfile) {
     if (molfile.isEmpty() || isReactionFormat(molfile)) {
-        emit propertiesReady(0, 0, "", 0, 0, 0, 0, 0, 0, 0);
+        emit propertiesReady(0, 0, "", 0, 0, 0, 0, 0, 0, 0, 0, 0);
         return;
     }
     QPointer<IndigoService> self = this;
     (void)QtConcurrent::run([self, molfile]() {
-        double mw = 0, mono = 0, tpsa = 0, logp = 0;
+        double mw = 0, mono = 0, tpsa = 0, logp = 0, molarRefractivity = 0, pka = 0;
         QString mf;
         int atoms = 0, bonds = 0, hba = 0, hbd = 0, rotBonds = 0;
         unsigned long long sid = indigoAllocSessionId();
@@ -329,6 +499,8 @@ void IndigoService::calcProperties(const QString &molfile) {
                 hba      = indigoNumHydrogenBondAcceptors(mol);
                 hbd      = indigoNumHydrogenBondDonors(mol);
                 rotBonds = indigoNumRotatableBonds(mol);
+                molarRefractivity = indigoMolarRefractivity(mol);
+                pka      = indigoPka(mol);
                 int fmHandle = indigoMolecularFormula(mol);
                 if (fmHandle >= 0) {
                     const char* fmStr = indigoToString(fmHandle);
@@ -341,7 +513,7 @@ void IndigoService::calcProperties(const QString &molfile) {
             }
         } catch (...) {}
         indigoReleaseSessionId(sid);
-        if (self) emit self->propertiesReady(mw, mono, mf, atoms, bonds, tpsa, logp, hba, hbd, rotBonds);
+        emitOnGuiThread(self, [=](IndigoService *s) { emit s->propertiesReady(mw, mono, mf, atoms, bonds, tpsa, logp, hba, hbd, rotBonds, molarRefractivity, pka); });
     });
 }
 
@@ -443,81 +615,124 @@ void IndigoService::calcStereoDescriptors(const QString &molfile) {
             }
         } catch (...) {}
         indigoReleaseSessionId(sid);
-        if (self) emit self->stereoDescriptorsReady(result);
+        emitOnGuiThread(self, [result](IndigoService *s) { emit s->stereoDescriptorsReady(result); });
     });
+}
+
+// Parses indigoCheckObj's report shape ({"checkType": "...(id1,id2,...)"}) into
+// structured issues. Shared by checkStructure's molecule and per-reaction-
+// component branches, since indigoCheckObj gives back this exact same shape
+// for a lone molecule handle or a single reaction-component handle alike.
+static QJsonArray parseCheckReport(const QString &rawReport) {
+    QJsonArray issuesArray;
+    QJsonParseError parseErr;
+    QJsonDocument doc = QJsonDocument::fromJson(rawReport.toUtf8(), &parseErr);
+    if (parseErr.error != QJsonParseError::NoError || !doc.isObject()) return issuesArray;
+    static const QSet<QString> atomChecks = {
+        "valence", "radical", "pseudoatom", "stereo",
+        "ambiguous_h", "3d_coord", "overlap_atom"
+    };
+    static const QRegularExpression idRe("\\((\\d+(?:,\\d+)*)\\)\\s*$");
+    // doc.object() must be held in a named variable — QJsonObject::const_iterator
+    // stores a raw pointer back to the QJsonObject it came from, so calling
+    // doc.object() separately for constBegin()/constEnd() (as this used to) creates
+    // two temporaries; the one behind the begin iterator is destroyed at the end of
+    // the for-loop's init-statement, leaving a dangling iterator used for the rest
+    // of the loop.
+    const QJsonObject checkObj = doc.object();
+    for (auto it = checkObj.constBegin(); it != checkObj.constEnd(); ++it) {
+        QString checkType = it.key();
+        QString value = it.value().toString();
+        auto match = idRe.match(value);
+        if (match.hasMatch()) {
+            QStringList idStrs = match.captured(1).split(',');
+            QJsonArray ids;
+            for (const QString& s : idStrs) {
+                bool ok = false;
+                int idx = s.trimmed().toInt(&ok);
+                if (ok && idx >= 1) ids.append(idx - 1); // normalize 1-based to 0-based
+            }
+            if (!ids.isEmpty()) {
+                QJsonObject issue;
+                issue["type"] = checkType;
+                issue["target"] = atomChecks.contains(checkType) ? "atom" : "bond";
+                issue["ids"] = ids;
+                issuesArray.append(issue);
+            }
+        }
+    }
+    return issuesArray;
 }
 
 void IndigoService::checkStructure(const QString &molfile) {
     if (molfile.isEmpty()) { emit checkFinished("No structure to check."); emit checkIssuesReady("{\"issues\":[]}"); return; }
-    if (isReactionFormat(molfile)) { emit checkFinished("Validation is not yet supported for reactions."); emit checkIssuesReady("{\"issues\":[]}"); return; }
+    bool isRxn = isReactionFormat(molfile);
     QPointer<IndigoService> self = this;
-    (void)QtConcurrent::run([self, molfile]() {
+    (void)QtConcurrent::run([self, molfile, isRxn]() {
         QString report;
         QString structured;
         unsigned long long sid = indigoAllocSessionId();
         indigoSetSessionId(sid);
         try {
-            int mol = indigoLoadMoleculeFromString(molfile.toUtf8().constData());
-            if (mol >= 0) {
-                const char* res = indigoCheckObj(mol, "");
-                if (res) report = QString::fromUtf8(res).trimmed();
-
-                // Parse the check report into structured issues
-                QJsonParseError parseErr;
-                QJsonDocument doc = QJsonDocument::fromJson(report.toUtf8(), &parseErr);
-                QJsonArray issuesArray;
-                if (parseErr.error == QJsonParseError::NoError && doc.isObject()) {
-                    static const QSet<QString> atomChecks = {
-                        "valence", "radical", "pseudoatom", "stereo",
-                        "ambiguous_h", "3d_coord", "overlap_atom"
-                    };
-                    static const QRegularExpression idRe("\\((\\d+(?:,\\d+)*)\\)\\s*$");
-                    // doc.object() must be held in a named variable — QJsonObject::const_iterator
-                    // stores a raw pointer back to the QJsonObject it came from, so calling
-                    // doc.object() separately for constBegin()/constEnd() (as this used to) creates
-                    // two temporaries; the one behind the begin iterator is destroyed at the end of
-                    // the for-loop's init-statement, leaving a dangling iterator used for the rest
-                    // of the loop.
-                    const QJsonObject checkObj = doc.object();
-                    for (auto it = checkObj.constBegin(); it != checkObj.constEnd(); ++it) {
-                        QString checkType = it.key();
-                        QString value = it.value().toString();
-                        auto match = idRe.match(value);
-                        if (match.hasMatch()) {
-                            QStringList idStrs = match.captured(1).split(',');
-                            QJsonArray ids;
-                            for (const QString& s : idStrs) {
-                                bool ok = false;
-                                int idx = s.trimmed().toInt(&ok);
-                                if (ok && idx >= 1) ids.append(idx - 1); // normalize 1-based to 0-based
-                            }
-                            if (!ids.isEmpty()) {
-                                QJsonObject issue;
-                                issue["type"] = checkType;
-                                issue["target"] = atomChecks.contains(checkType) ? "atom" : "bond";
-                                issue["ids"] = ids;
-                                issuesArray.append(issue);
+            if (isRxn) {
+                // indigoCheckObj on the whole reaction handle gives back a report shape
+                // (empty-string key, no component association) parseCheckReport can't
+                // use -- checking each reactant/product component individually gives the
+                // same clean per-type shape the molecule branch already parses, just with
+                // ids local to that one component. Inline atom/bond highlighting
+                // (checkIssuesReady below) deliberately stays off for reactions: mapping
+                // those per-component-local ids back to global canvas ids would need
+                // matching chem-core.js's own reactant/product fragment ordering when it
+                // serializes a $RXN string, which isn't a safely verifiable assumption
+                // here -- a wrong mapping would silently highlight the wrong atom.
+                int rx = indigoLoadReactionFromString(molfile.toUtf8().constData());
+                if (rx >= 0) {
+                    // Same "show the raw per-component check JSON" style the molecule
+                    // branch below already uses (it doesn't reformat indigoCheckObj's
+                    // text into prose either) -- just labeled by component here.
+                    QStringList lines;
+                    auto checkComponents = [&](int iterHandle, const char* label) {
+                        int idx = 0;
+                        int comp;
+                        while ((comp = indigoNext(iterHandle)) > 0) {
+                            idx++;
+                            const char* res = indigoCheckObj(comp, "");
+                            QString rawIssue = res ? QString::fromUtf8(res).trimmed() : QString();
+                            if (!rawIssue.isEmpty() && rawIssue != "{}") {
+                                lines << QString("%1 %2: %3").arg(label).arg(idx).arg(rawIssue);
                             }
                         }
-                    }
+                    };
+                    checkComponents(indigoIterateReactants(rx), "Reactant");
+                    checkComponents(indigoIterateProducts(rx), "Product");
+                    report = lines.isEmpty() ? "No problems found." : lines.join("\n");
+                    indigoFree(rx);
+                } else {
+                    report = QString("Parse error: %1").arg(indigoGetLastError());
                 }
-                QJsonObject structuredObj;
-                structuredObj["issues"] = issuesArray;
-                structured = QString::fromUtf8(
-                    QJsonDocument(structuredObj).toJson(QJsonDocument::Compact));
-
-                indigoFree(mol);
+                structured = "{\"issues\":[]}";
             } else {
-                report = QString("Parse error: %1").arg(indigoGetLastError());
+                int mol = indigoLoadMoleculeFromString(molfile.toUtf8().constData());
+                if (mol >= 0) {
+                    const char* res = indigoCheckObj(mol, "");
+                    report = res ? QString::fromUtf8(res).trimmed() : QString();
+                    QJsonObject structuredObj;
+                    structuredObj["issues"] = parseCheckReport(report);
+                    structured = QString::fromUtf8(
+                        QJsonDocument(structuredObj).toJson(QJsonDocument::Compact));
+                    indigoFree(mol);
+                } else {
+                    report = QString("Parse error: %1").arg(indigoGetLastError());
+                }
             }
         } catch (const std::exception &e) {
             report = QString::fromUtf8(e.what());
         }
         indigoReleaseSessionId(sid);
-        if (self) {
-            emit self->checkFinished(report.isEmpty() ? "{}" : report);
-            emit self->checkIssuesReady(structured.isEmpty() ? "{\"issues\":[]}" : structured);
-        }
+        emitOnGuiThread(self, [report, structured](IndigoService *s) {
+            emit s->checkFinished(report.isEmpty() ? "{}" : report);
+            emit s->checkIssuesReady(structured.isEmpty() ? "{\"issues\":[]}" : structured);
+        });
     });
 }
 
@@ -547,10 +762,10 @@ void IndigoService::loadBioSequence(const QString &text, const QString &seqType)
             }
         } catch (const std::exception &e) { err = QString::fromUtf8(e.what()); }
         indigoReleaseSessionId(sid);
-        if (self) {
-            if (!result.isEmpty()) emit self->biopolymerLoaded(result);
-            else emit self->biopolymerLoadError(err.isEmpty() ? "Failed to parse sequence." : err);
-        }
+        emitOnGuiThread(self, [result, err](IndigoService *s) {
+            if (!result.isEmpty()) emit s->biopolymerLoaded(result);
+            else emit s->biopolymerLoadError(err.isEmpty() ? "Failed to parse sequence." : err);
+        });
     });
 }
 
@@ -573,10 +788,10 @@ void IndigoService::loadBioFasta(const QString &text, const QString &seqType) {
             }
         } catch (const std::exception &e) { err = QString::fromUtf8(e.what()); }
         indigoReleaseSessionId(sid);
-        if (self) {
-            if (!result.isEmpty()) emit self->biopolymerLoaded(result);
-            else emit self->biopolymerLoadError(err.isEmpty() ? "Failed to parse FASTA." : err);
-        }
+        emitOnGuiThread(self, [result, err](IndigoService *s) {
+            if (!result.isEmpty()) emit s->biopolymerLoaded(result);
+            else emit s->biopolymerLoadError(err.isEmpty() ? "Failed to parse FASTA." : err);
+        });
     });
 }
 
@@ -598,10 +813,10 @@ void IndigoService::loadBioHelm(const QString &text) {
             }
         } catch (const std::exception &e) { err = QString::fromUtf8(e.what()); }
         indigoReleaseSessionId(sid);
-        if (self) {
-            if (!result.isEmpty()) emit self->biopolymerLoaded(result);
-            else emit self->biopolymerLoadError(err.isEmpty() ? "Failed to parse HELM." : err);
-        }
+        emitOnGuiThread(self, [result, err](IndigoService *s) {
+            if (!result.isEmpty()) emit s->biopolymerLoaded(result);
+            else emit s->biopolymerLoadError(err.isEmpty() ? "Failed to parse HELM." : err);
+        });
     });
 }
 
@@ -623,10 +838,10 @@ void IndigoService::loadBioIdt(const QString &text) {
             }
         } catch (const std::exception &e) { err = QString::fromUtf8(e.what()); }
         indigoReleaseSessionId(sid);
-        if (self) {
-            if (!result.isEmpty()) emit self->biopolymerLoaded(result);
-            else emit self->biopolymerLoadError(err.isEmpty() ? "Failed to parse IDT." : err);
-        }
+        emitOnGuiThread(self, [result, err](IndigoService *s) {
+            if (!result.isEmpty()) emit s->biopolymerLoaded(result);
+            else emit s->biopolymerLoadError(err.isEmpty() ? "Failed to parse IDT." : err);
+        });
     });
 }
 
@@ -648,10 +863,10 @@ void IndigoService::loadBioAxoLabs(const QString &text) {
             }
         } catch (const std::exception &e) { err = QString::fromUtf8(e.what()); }
         indigoReleaseSessionId(sid);
-        if (self) {
-            if (!result.isEmpty()) emit self->biopolymerLoaded(result);
-            else emit self->biopolymerLoadError(err.isEmpty() ? "Failed to parse AxoLabs." : err);
-        }
+        emitOnGuiThread(self, [result, err](IndigoService *s) {
+            if (!result.isEmpty()) emit s->biopolymerLoaded(result);
+            else emit s->biopolymerLoadError(err.isEmpty() ? "Failed to parse AxoLabs." : err);
+        });
     });
 }
 
@@ -678,7 +893,7 @@ void IndigoService::exportBioSequence(const QString &molfile) {
             }
         } catch (...) {}
         indigoReleaseSessionId(sid);
-        if (self) emit self->bioSequenceReady(result);
+        emitOnGuiThread(self, [result](IndigoService *s) { emit s->bioSequenceReady(result); });
     });
 }
 
@@ -702,7 +917,7 @@ void IndigoService::exportBioFasta(const QString &molfile) {
             }
         } catch (...) {}
         indigoReleaseSessionId(sid);
-        if (self) emit self->bioFastaReady(result);
+        emitOnGuiThread(self, [result](IndigoService *s) { emit s->bioFastaReady(result); });
     });
 }
 
@@ -726,7 +941,7 @@ void IndigoService::exportBioHelm(const QString &molfile) {
             }
         } catch (...) {}
         indigoReleaseSessionId(sid);
-        if (self) emit self->bioHelmReady(result);
+        emitOnGuiThread(self, [result](IndigoService *s) { emit s->bioHelmReady(result); });
     });
 }
 
@@ -750,7 +965,7 @@ void IndigoService::exportBioIdt(const QString &molfile) {
             }
         } catch (...) {}
         indigoReleaseSessionId(sid);
-        if (self) emit self->bioIdtReady(result);
+        emitOnGuiThread(self, [result](IndigoService *s) { emit s->bioIdtReady(result); });
     });
 }
 
@@ -774,6 +989,6 @@ void IndigoService::exportBioAxoLabs(const QString &molfile) {
             }
         } catch (...) {}
         indigoReleaseSessionId(sid);
-        if (self) emit self->bioAxoLabsReady(result);
+        emitOnGuiThread(self, [result](IndigoService *s) { emit s->bioAxoLabsReady(result); });
     });
 }

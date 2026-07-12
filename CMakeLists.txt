@@ -8,12 +8,23 @@ find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Qml Quick Concurrent)
 qt_standard_project_setup(REQUIRES 6.6)
 qt_policy(SET QTP0004 OLD)
 
-
+# quickjs-ng: in-process JS engine, replacing the Node.js child-process worker.
+# Vendored as plain source (third_party/quickjs-ng) since it has no prebuilt-binary
+# toolchain mismatch to fight (unlike Indigo) -- CMake compiles it fresh for
+# whichever compiler is active. Only the "qjs" static library target is wanted;
+# the CLI/test/example executables their CMakeLists also defines are excluded
+# from the default build below to keep this minimal.
+add_subdirectory(third_party/quickjs-ng)
+foreach(_qjs_extra_target IN ITEMS qjsc qjs_exe qjs-libc run-test262 api-test lre-test function_source)
+    if (TARGET ${_qjs_extra_target})
+        set_target_properties(${_qjs_extra_target} PROPERTIES EXCLUDE_FROM_ALL TRUE)
+    endif()
+endforeach()
 
 set_source_files_properties(Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 set_source_files_properties(StyleSheets.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
-qt_add_executable(sketch src/app/main.cpp src/app/IndigoService.h src/app/IndigoService.cpp src/v8_process.h src/v8_process.cpp src/app/FileIO.h src/app/PlacementEngines.h src/app/PlacementEngines.cpp src/app/PlacementPreviewManager.h src/app/PlacementPreviewManager.cpp src/app/AppController.h src/app/AppController.cpp src/app/DocumentManager.h src/app/DocumentManager.cpp)
+qt_add_executable(sketch src/app/main.cpp src/app/IndigoService.h src/app/IndigoService.cpp src/v8_process.h src/v8_process.cpp src/qjs_engine.h src/qjs_engine.cpp src/app/FileIO.h src/app/PlacementEngines.h src/app/PlacementEngines.cpp src/app/PlacementPreviewManager.h src/app/PlacementPreviewManager.cpp src/app/AppController.h src/app/AppController.cpp src/app/DocumentManager.h src/app/DocumentManager.cpp)
 
 # set_target_properties( PROPERTIES WIN32_EXECUTABLE TRUE)
 
@@ -35,6 +46,7 @@ qt_add_qml_module(sketch
         BiopolymerDialog.qml
         AtomPropertiesDialog.qml
         RGroupPanel.qml
+        SdfRecordPicker.qml
 
         components/FocusRing.qml
         components/IconCell.qml
@@ -101,6 +113,7 @@ qt_add_qml_module(sketch
         icons/layout.svg
         icons/arom.svg
         icons/dearom.svg
+        icons/explicit-hydrogens.svg
         icons/clean.svg
         icons/analyse.svg
         icons/check.svg
@@ -108,9 +121,12 @@ qt_add_qml_module(sketch
         icons/zoom-in.svg
         icons/zoom-out.svg
         icons/file-thumbnail.svg
+        icons/hand.svg
+        icons/select-lasso.svg
+        icons/add-image.svg
 )
 
-target_link_libraries(sketch PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent
+target_link_libraries(sketch PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent qjs
 )
 
 
@@ -120,15 +136,35 @@ target_include_directories(sketch PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/app
     ${CMAKE_CURRENT_SOURCE_DIR}/build/vcpkg_installed/x64-mingw-dynamic/include
     ${CMAKE_CURRENT_SOURCE_DIR}/indigo/api/c/indigo
+    ${CMAKE_CURRENT_SOURCE_DIR}/indigo/api/c/indigo-inchi
+    ${CMAKE_CURRENT_SOURCE_DIR}/indigo/api/c/indigo-renderer
 )
 
-target_link_libraries(sketch PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/indigo/lib/indigo.dll
-)
+if (MSVC)
+    # Official EPAM MSVC build (indigo-libs-windows-x86_64, v1.43.0) — the vendored
+    # indigo/lib/indigo.dll is MinGW-built (Itanium-mangled exports) and cannot be
+    # linked directly by link.exe. indigo.lib/indigo-inchi.lib here are generated import
+    # libraries (dumpbin /exports -> .def -> lib.exe /def:), since EPAM's MSVC zip ships
+    # only DLLs.
+    set(INDIGO_LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/indigo-libs-windows-x86_64/lib/windows-x86_64)
+    target_link_libraries(sketch PRIVATE ${INDIGO_LIB_DIR}/indigo.lib ${INDIGO_LIB_DIR}/indigo-inchi.lib ${INDIGO_LIB_DIR}/indigo-renderer.lib)
+    set(INDIGO_RUNTIME_FILES
+        ${INDIGO_LIB_DIR}/indigo.dll
+        ${INDIGO_LIB_DIR}/indigo-inchi.dll
+        ${INDIGO_LIB_DIR}/indigo-renderer.dll
+        ${INDIGO_LIB_DIR}/msvcp140.dll
+        ${INDIGO_LIB_DIR}/vcruntime140.dll
+        ${INDIGO_LIB_DIR}/vcruntime140_1.dll
+    )
+else()
+    set(INDIGO_LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/indigo/lib)
+    target_link_libraries(sketch PRIVATE ${INDIGO_LIB_DIR}/indigo.dll ${INDIGO_LIB_DIR}/indigo-inchi.dll ${INDIGO_LIB_DIR}/indigo-renderer.dll)
+    set(INDIGO_RUNTIME_FILES ${INDIGO_LIB_DIR}/indigo.dll ${INDIGO_LIB_DIR}/indigo-inchi.dll ${INDIGO_LIB_DIR}/indigo-renderer.dll)
+endif()
 
 add_custom_command(TARGET sketch POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_SOURCE_DIR}/indigo/lib/indigo.dll
+        ${INDIGO_RUNTIME_FILES}
         $<TARGET_FILE_DIR:sketch>
 )
 

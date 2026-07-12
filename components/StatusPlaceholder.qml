@@ -30,12 +30,14 @@ Item {
             Layout.alignment: Qt.AlignHCenter
         }
         Text {
+            textFormat: Text.PlainText
             text: root.message
             color: root.mode === "loading" ? Theme.textSecondary : Theme.textPrimary
             font { pixelSize: Theme.fontSizeBody; family: Theme.fontDisplay }
             Layout.alignment: Qt.AlignHCenter
         }
         Text {
+            textFormat: Text.PlainText
             visible: root.detail !== ""
             text: root.detail
             color: Theme.textSecondary

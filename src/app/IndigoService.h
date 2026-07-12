@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QUrl>
 #include <QtQml/qqml.h>
 
 class IndigoService : public QObject {
@@ -15,8 +16,13 @@ public:
     Q_INVOKABLE void layout(const QString &molfile);
     Q_INVOKABLE void aromatize(const QString &molfile);
     Q_INVOKABLE void dearomatize(const QString &molfile);
+    Q_INVOKABLE void unfoldHydrogens(const QString &molfile);
+    Q_INVOKABLE void foldHydrogens(const QString &molfile);
     Q_INVOKABLE void smiles(const QString &molfile);
     Q_INVOKABLE void canonicalSmiles(const QString &molfile);
+    Q_INVOKABLE void inchi(const QString &molfile);
+    Q_INVOKABLE void inchiKey(const QString &molfile);
+    Q_INVOKABLE void renderToFile(const QString &molfile, const QUrl &fileUrl, const QString &format);
     Q_INVOKABLE void normalize(const QString &molfile);
     Q_INVOKABLE void standardize(const QString &molfile);
     Q_INVOKABLE void calcProperties(const QString &molfile);
@@ -41,13 +47,19 @@ Q_SIGNALS:
     void layoutFinished(const QString &result);
     void aromatizeFinished(const QString &result);
     void dearomatizeFinished(const QString &result);
+    void unfoldHydrogensFinished(const QString &result);
+    void foldHydrogensFinished(const QString &result);
     void smilesFinished(const QString &result);
     void canonicalSmilesFinished(const QString &result);
+    void inchiFinished(const QString &result);
+    void inchiKeyFinished(const QString &result);
+    void renderFinished(bool success, const QString &error);
     void normalizeFinished(const QString &result);
     void standardizeFinished(const QString &result);
     void propertiesReady(double mw, double mono, const QString &mf,
                          int atoms, int bonds,
-                         double tpsa, double logp, int hba, int hbd, int rotBonds);
+                         double tpsa, double logp, int hba, int hbd, int rotBonds,
+                         double molarRefractivity, double pka);
     void stereoDescriptorsReady(const QString &jsonMap);
     void checkFinished(const QString &report);
     void checkIssuesReady(const QString &structuredJson);

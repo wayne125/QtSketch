@@ -31,7 +31,8 @@ Rectangle {
     // Auto-expand the section owning a tool activated by other means (single-key
     // shortcut, periodic-table pick). Only ever opens sections — never collapses.
     onCurrentToolChanged: {
-        if (currentTool === "SELECT" || currentTool === "SELECT_FRAGMENT" || currentTool === "ERASE" || currentTool === "TEXT")
+        if (currentTool === "SELECT" || currentTool === "SELECT_FRAGMENT" || currentTool === "SELECT_LASSO" ||
+            currentTool === "HAND" || currentTool === "ERASE" || currentTool === "TEXT")
             editOpen = true
         else if (currentTool.indexOf("BOND_") === 0 || currentTool === "CHAIN")
             bondsOpen = true
@@ -119,8 +120,11 @@ Rectangle {
                 model: [
                     { id: "SELECT", icon: "select.svg", tip: "Selection tool (S)" },
                     { id: "SELECT_FRAGMENT", icon: "select-fragment.svg", tip: "Fragment Selection tool" },
+                    { id: "SELECT_LASSO", icon: "select-lasso.svg", tip: "Lasso select tool - freeform selection" },
+                    { id: "HAND", icon: "hand.svg", tip: "Hand tool - drag to pan canvas (H)" },
                     { id: "ERASE", icon: "erase.svg", tip: "Erase tool (E)" },
-                    { id: "TEXT", icon: "text.svg", tip: "Text annotation (click canvas)" }
+                    { id: "TEXT", icon: "text.svg", tip: "Text annotation (click canvas)" },
+                    { id: "IMAGE", icon: "add-image.svg", tip: "Insert image" }
                 ]
                 delegate: IconCell {
                     required property var modelData

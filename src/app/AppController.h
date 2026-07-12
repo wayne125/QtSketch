@@ -18,7 +18,7 @@ public:
     Q_INVOKABLE void setV8Process(V8Process* v8);
 
     Q_INVOKABLE void handleDragStart(const QString& toolId, int hitAtomId, double pressX, double pressY, double chemX, double chemY);
-    Q_INVOKABLE void handleDrag(double mouseX, double mouseY, double bondLength);
+    Q_INVOKABLE void handleDrag(double mouseX, double mouseY, double chemScale, double bondLength);
     Q_INVOKABLE bool handleDragEnd();
 
     Q_INVOKABLE void copyImageToClipboard(const QUrl &imageUrl);
