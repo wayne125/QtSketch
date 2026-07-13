@@ -18,6 +18,292 @@ module that isn't wired in at all yet (not even in `CMakeLists.txt`).
   `topRuler`/`leftRuler` in `MainWindow.qml` exist today but are static. (Section 2 of that spec;
   section 1, the toolbar alignment icons, is done — see below.)
 
+### Done (2026-07-13, Most Abundant Mass + Mass Composition + extra pKa values)
+
+- **Three more items from the "Calculation on molecules" cluster**, surveyed together after the
+  user asked for a broader look at remaining physicochemical parameters:
+  - **Most Abundant Mass** (`indigoMostAbundantMass`) — one more Properties-panel row, distinct
+    from the already-shown average MW and monoisotopic mass (the mass of the most abundant
+    isotopologue combination).
+  - **Copy Mass Comp.** (`indigoMassComposition`) — new clipboard action, elemental mass %
+    breakdown, following the "Copy SMILES/InChI/Hash" pattern (a text value, not a Properties
+    row).
+  - **Copy pKa Values** (`indigoPkaValues`) — new clipboard action, the full list of pKa values
+    for every ionizable group, richer than the single strongest-pKa number already shown.
+  - **Surveyed and explicitly excluded**: `indigoGrossFormula` (confirmed via source read as
+    functionally redundant with the already-used formula field, aside from reaction support this
+    app's Properties panel doesn't handle anyway) and `indigoSymmetryClasses` (returns a raw
+    per-atom array, not a scalar — would need atom-highlighting UI, a materially bigger,
+    different-shaped feature, not a quick property/copy-action addition).
+  - Full plan: `.claude/plans/mass-composition-pka-values.md`.
+  - **Ninth feature delegated to the Antigravity CLI** (flash tier). Diff read in full across all
+    four changed files and confirmed clean — only the three planned additions, nothing else (the
+    session's cumulative uncommitted diff still shows earlier rounds' `hash()`/`heavyAtoms`/
+    `isChiral` as "changed" too, since nothing has been committed since the one push earlier this
+    session — confirmed via mtime/content inspection that these are pre-existing, not
+    duplicated).
+  - **Verified against the actual compiled code with real chemical data**: a standalone C++
+    harness called the real compiled `calcProperties`/`massComposition`/`pkaValues` against a
+    real aspirin molfile — `mostAbundantMass` (182.022) came out distinct from the average MW
+    (182.131, close to published aspirin MW ≈180.16 as before), mass composition
+    ("C 52.76 H 3.32 O 43.92") sums to ~100% and matches aspirin's real C9H8O4 formula
+    proportions, and pKa values (3.345250) exactly matches the same figure independently
+    confirmed in the earlier molar-refractivity/pKa round this session (aspirin's real
+    literature pKa ≈3.5).
+  - Standing `scripts/worker_smoke_test.js` unaffected. Clean MinGW build; real interactive
+    launch with no new QML errors beyond the two pre-existing benign warnings.
+
+### Done (2026-07-13, Clean 2D Structure)
+
+- **New standalone "Clean 2D Structure" toolbar button** (`indigoClean2d`) — whole-document only,
+  not selection-aware. Scoped after investigating `indigoClean2d`/`MoleculeCleaner2d` as a
+  possible Layout Selected substitute (see the Layout Selected entry above): confirmed it's a
+  genuinely distinct algorithm from `indigoLayout` — local energy-minimization gradient descent
+  starting from the existing coordinates, not a fresh global embedding — so shipped as its own
+  feature rather than folded into Layout Selected. Full plan: `.claude/plans/clean-2d-structure.md`.
+- **Tenth feature delegated to the Antigravity CLI** (flash tier). First attempt failed with a
+  transient `agy exited 1: Error: timeout waiting for response` (confirmed via `agy-doctor` — auth
+  and tier models all fine, a one-off backend hiccup, not a real setup problem); retried
+  identically and completed clean. Also hit an unrelated environmental snag this round: the
+  `agy-delegate`/`agy-job` wrapper commands weren't on the Bash tool's `PATH` this session despite
+  the plugin normally adding its `bin/` — worked around by invoking the wrapper script by its full
+  path under the plugin cache directory.
+- **Diff read in full**: `IndigoService.h`/`.cpp` gained `clean2d()`/`clean2dFinished` mirroring
+  `layout()` byte-for-byte with `indigoClean2d` swapped in, exactly per plan. `MainWindow.qml`
+  gained the `onClean2dFinished` handler, the `reqId === "clean2d"` dispatch branch, and the
+  toolbar model entry reusing `layout.svg` — no new icon asset, no `onClicked` special case needed
+  (falls through to the existing generic `requestSerialize` path, same as normalize/standardize).
+  No stray edits to `v8_worker.js`/`CMakeLists.txt`, and no leftover harness/test files left in the
+  repo (agy's own scratch harness stayed in its sandbox, confirmed via `git status`).
+- **Verified against the actual compiled code, not just the diff**: a standalone C++ harness
+  called the real compiled `IndigoService::clean2d` on a deliberately squashed/distorted
+  4-membered ring — result kept the same atom/bond count and the coordinates visibly changed
+  (`coordsChanged=1`), confirming the real gradient-descent cleanup ran, not a no-op passthrough.
+  **Environmental snag caught and fixed, not glossed over**: the harness first failed at runtime
+  with `STATUS_ENTRY_POINT_NOT_FOUND`/`STATUS_DLL_NOT_FOUND` — traced to stale, version-mismatched
+  Qt DLLs sitting in the old scratch test directory from an earlier round; replacing them with
+  fresh copies from the actual Qt 6.11.1 install fixed it. Separately, the real interactive launch
+  initially crashed the same way — traced to `build/sketch.exe` (the actual deployed, DLL-adjacent
+  copy used for manual launches) being a stale build from an earlier point in the session, never
+  refreshed by a plain `cmake --build .`; copying the freshly-built binary over it fixed the
+  launch. Neither issue was caused by the Clean2D change itself — both were pre-existing
+  verification-environment staleness, caught by insisting on an actual clean run rather than
+  trusting the build's "exit code 0" alone.
+- Clean MinGW build (`BUILD_EXIT:0` read directly from a log file, no `tail` pipe). Standing
+  `scripts/worker_smoke_test.js` unaffected (no worker changes) — all 8 checks pass. Real
+  interactive launch (the corrected `build/sketch.exe`) showed only the two pre-existing benign
+  Quick Controls style warnings, no new QML errors.
+- Not yet exercised: an actual on-screen click of the "Clean 2D Structure" button — verification
+  here is backend/harness-level plus a clean non-crashing launch, not a manual click-through.
+
+### Done (2026-07-13, Copy Canonical Hash)
+
+- **"Copy Hash" toolbar action** — `indigoHash` (works for both molecules and reactions),
+  following the existing "Copy SMILES ▾"/"Copy InChI ▾" clipboard-action pattern rather than the
+  Properties panel (a hash is a value to copy, not a short display number). `indigoLayeredCode`
+  was surveyed and dropped: reading its real implementation showed it's a pure wrapper around
+  `MoleculeInChI::outputInChI` — duplicate of the InChI support already in the app via the
+  dedicated `indigo-inchi` plugin. Full plan: `.claude/plans/canonical-hash.md`.
+  - **Eighth feature delegated to the Antigravity CLI** (flash tier). Diff read in full and
+    confirmed clean — only the planned `hash()`/`hashFinished` addition, everything else in the
+    diff pre-existing from earlier rounds. The delegate's own digest noted it temporarily
+    modified `src/app/main.cpp` for its own local testing before restoring it — verified this
+    directly (`git diff --stat main.cpp` empty, file content inspected) rather than trusting the
+    "restored it" claim at face value.
+  - **Verified against the actual compiled code**: a standalone C++ harness called the real
+    compiled `IndigoService::hash` — same molecule (ethane) hashed twice produced the identical
+    value both times (determinism), and a different molecule (propane) produced a different
+    value (discrimination) — both checks passed.
+  - Standing `scripts/worker_smoke_test.js` unaffected. Clean MinGW build; real interactive
+    launch with no new QML errors beyond the two pre-existing benign warnings.
+
+### Done (2026-07-13, chirality/stereocenter checks in Validate structure)
+
+- **"Validate structure" now also reports chiral-flag/stereocenter inconsistencies** — extends
+  the existing `IndigoService::checkStructure`/`checkResultDialog` feature (not a new one) with
+  `indigoCheckChirality`/`indigoCheckStereo`. `indigoCheck3DStereo` was deliberately excluded:
+  reading its real implementation showed it only ever returns something meaningful when
+  `BaseMolecule::hasZCoord` is true (real 3D/Z-nonzero coordinates) — trivially always false in
+  this pure-2D editor, not worth exposing. Full plan: `.claude/plans/chirality-stereo-check.md`.
+  - **Zero QML changes needed** — the existing `checkResultDialog` display logic
+    (`MainWindow.qml`) already does `JSON.parse(report)` and renders every top-level key as its
+    own paragraph; the two new findings are added as new keys (`"chirality"`, `"stereocenters"`)
+    into the SAME JSON object `indigoCheckObj` already returns, so they render automatically with
+    no changes to the display code at all.
+  - **Seventh feature delegated to the Antigravity CLI** (flash tier). Wrapper again reported
+    `AGY_FAILED`/timeout — another false negative in the now-familiar pattern; the actual diff was
+    correct and complete, confirmed by reading it in full (only the planned `checkStructure`
+    hunk, plus the already-verified pre-existing `heavyAtoms`/`isChiral` hunk from an earlier
+    round — no scope creep).
+  - **A real correction the delegate made to this session's own (flawed) plan, caught and
+    independently re-verified, not blindly trusted either way**: the plan's prose described
+    `indigoCheckChirality`'s return convention backwards (said "returns 1 for inconsistent"). The
+    delegated code instead used `indigoCheckChirality(mol) == 0` as the problem condition —
+    re-checked directly against the real source
+    (`indigo_misc.cpp`: `return 0` only for the genuine `chiral_flag > 0 && stereocenters.size()
+    == 0` problem case, `return 1` for every other case including the fallthrough) — confirmed
+    the delegate's condition is the objectively correct one and the plan's own description was
+    wrong, not the implementation.
+  - **Verified against the actual compiled code**, not just re-reading source: a standalone C++
+    harness called the real compiled `checkStructure` against (a) a single-atom molecule with
+    chiral flag 0 (clean) and (b) the same molecule with chiral flag 1 and zero stereocenters
+    (the exact problem case) — the clean case returned `{}` (no `"chirality"` key, no false
+    positive), the inconsistent case correctly included the new `"chirality"` key with the
+    intended descriptive message.
+  - **Honest secondary finding, recorded rather than hidden**: for the tested inconsistent case,
+    `indigoCheckObj`'s own existing default checks *already* flag the identical scenario under a
+    different key (`"chiral_flag": "Structure contains wrong chiral flag"`) — meaning the new
+    `"chirality"` finding is at least partially redundant with existing output for this specific
+    case. Not a functional bug (no incorrect information is shown, and `indigoCheckStereo`'s
+    distinct redundancy-detection logic wasn't tested against this same overlap), but worth
+    knowing before treating this as a fully novel diagnostic in every case.
+  - Standing `scripts/worker_smoke_test.js` unaffected (no worker changes). Clean MinGW build;
+    real interactive launch with no new QML errors beyond the two pre-existing benign warnings.
+
+### Done (2026-07-13, Layout Selected)
+
+- **"Layout Selected" toolbar button** — re-lays-out only the currently-selected atoms, leaving
+  the rest of the structure exactly fixed. Originated as a small backlog item
+  (`indigoLayoutSelected` listed as an unused Indigo export in Part C), but turned into the
+  longest single investigation this session — the planned mechanism doesn't exist, a
+  higher-effort real mechanism also didn't produce the right behavior, and the final shipped
+  implementation doesn't touch Indigo at all. Full story below because every stage changed the
+  actual plan; skipping to "what shipped" would lose the reasoning that ruled out the other two
+  approaches.
+
+  **Stage 1 — the planned mechanism doesn't exist.** `indigoLayoutSelected` is declared in
+  `indigo.h` but was never actually implemented. Confirmed twice, not assumed once: `objdump -p`
+  on the vendored `indigo/lib/indigo.dll` showed no such export (while sibling `indigoLayout` was
+  present), and a **fresh local compile of Indigo v1.45.0 from official source** (see below) had
+  no `.cpp` anywhere implementing it either — `indigo_layout.cpp` implements `indigoLayout` only.
+  A header-only stub, not a version-staleness problem.
+
+  **The local Indigo compile, done because the first fix attempt needed it.** The user deleted
+  the stale vendored `indigo/` directory mid-session to fetch a newer version; when a fresh
+  v1.45.0 source tree still didn't help, the user asked to compile Indigo locally rather than
+  hunt for a different prebuilt package. Configured via CMake (`-DBUILD_INDIGO=ON
+  -DBUILD_STANDALONE=ON`, wrappers/utils/Bingo all off) against the same MinGW 13.1 toolchain
+  this project already builds with, built with Ninja (582/582 objects, ~10 min). Produced real,
+  working `indigo.dll`/`indigo-inchi.dll`/`indigo-renderer.dll` (514 plain-C exports, includes
+  `indigoCreateSubmolecule`/`indigoGetSubmolecule`/`indigoLayout`/etc. — confirmed via `objdump`),
+  vendored back into `indigo/lib/` + `indigo/api/c/*/` alongside matching v1.45.0 headers,
+  restoring the app to a buildable state. **A real self-caught process bug along the way**: the
+  first rebuild attempt after restoring `indigo/` was piped through `tail -30` without capturing
+  the real exit code, so a background-task notification reported "completed (exit code 0)" for a
+  build that had actually failed with a linker error — only caught because a separate,
+  independently-checked verification harness hit the identical undefined-reference error and
+  forced a second look. Every rebuild after that point had its exit code written directly to a
+  log file, no pipe in between.
+
+  **Stage 2 — the real, documented mechanism doesn't produce the right behavior either.** Reading
+  `indigoLayout`'s actual v1.45.0 implementation (`indigo_layout.cpp`) revealed the real
+  Indigo-native way to lay out a subset: `indigoGetSubmolecule` returns an `IndigoSubmolecule` — a
+  live *view* into the original molecule (confirmed via `indigo_molecule_operations.cpp`; NOT a
+  copy, unlike the similarly-named `indigoCreateSubmolecule`) — and `indigoLayout` special-cases
+  this view type, and `IndigoBaseMolecule::is()` explicitly includes `case SUBMOLECULE: return
+  true` (checked by object-type enum, not C++ inheritance — `IndigoSubmolecule` doesn't even
+  inherit `IndigoBaseMolecule`). Reimplemented `IndigoService::layoutSelected` around
+  `indigoGetSubmolecule` + `indigoLayout`, verified via a standalone C++ harness (pentane chain,
+  3 middle atoms selected) — **failed**: all 5 atoms moved into a fresh symmetric zigzag, not just
+  the 3 selected ones. Tried the one obvious knob (`indigoSetOption("layout-preserve-existing",
+  "true")`) — **identical failure, bit-for-bit the same output numbers**, meaning the option had
+  zero effect. Per this session's own standing rule (2 failed fixes ⇒ stop guessing, re-trace),
+  read `MoleculeLayoutGraph::_layoutSingleComponent` directly
+  (`molecule_layout_graph.cpp`): `if (!respect_existing || !preserve_existing_layout ||
+  vertexCount() > _n_fixed) { /* recompute everything */ }` — whenever there's at least one free
+  vertex (always true here), the OR is satisfied and the **entire connected component gets a
+  fresh embedding**, fixed vertices included; old positions only loosely re-orient the result
+  afterward, they are never pinned. Combined with `indigoLayout`'s own selection-aware branch
+  being explicitly gated behind `mol->tgroups.getTGroupCount()` ("selection works only with
+  monomers"), this is a real, version-independent gap in Indigo's C API: **partial-layout-with-a-
+  fixed-remainder does not exist for plain small molecules**, only for monomer/biopolymer
+  structures. Not a bug in this codebase — confirmed by reading the actual engine twice, not
+  guessed once.
+
+  **Stage 3 — what actually shipped: a from-scratch, worker-side reimplementation, deliberately
+  narrow in scope.** Per explicit direction ("write our own implementation"), rebuilt the feature
+  entirely in `src/v8_worker.js` against chem-core's own atom/bond model — a better architectural
+  fit anyway, since undo/redo and selection already live there natively, and it sidesteps the
+  whole Indigo round-trip (and the atom-index correlation work that round-trip needed) entirely.
+  All the old Indigo-based scaffolding was removed: `IndigoService::layoutSelected`/
+  `layoutSelectedFinished` (header + impl), the `getLayoutSelectedData` worker command, and
+  `MainWindow.qml`'s `onLayoutSelectedFinished`/`onStructureReady` round-trip branch — replaced
+  with one new worker function, `layoutSelectedChain()`, called directly via the existing generic
+  `sendCommand` passthrough (same mechanism `loadSdfBatchRecord` already used), no C++ involved.
+  - **v1 scope, deliberately narrow**: only a simple, unbranched, acyclic chain of selected atoms
+    attached to the rest of the structure at exactly one point. Classifies every bond touching the
+    selection as "internal" (both ends selected, builds the chain graph) or "anchor" (exactly one
+    end selected); requires exactly one anchor bond, every selected atom to have internal-degree
+    ≤2, and a walk from the anchor to visit every selected atom exactly once. Anything else —
+    disconnected sub-selection, a branch point, a cycle, zero or multiple attachment points — is
+    declined (no-op + `console.warn`) rather than risk producing a broken or overlapping layout.
+  - **Reuses existing, already-verified geometry code rather than inventing new math**:
+    `getLargestEmptyAngle(atomId)` (the same placement heuristic already used for the
+    short-drag chain-extend fallback) picks the baseline direction away from the anchor, and the
+    zigzag step formula (`theta ± Math.PI/6`, alternating) is copied exactly from `addChain`'s own
+    working implementation — same `StandardBondLength` constant, same half-angle. Undo/redo
+    follows the exact same old-position/new-position `makeCmd` shape already used by
+    `alignAtoms`/`distributeAtoms` for direct `atom.pp.x`/`.pp.y` mutation.
+  - **Verified via a disposable Node harness** against the real worker's stdin/stdout protocol: a
+    straight 4-atom chain, lasso-selecting the 3 atoms *not* including one fixed end, running
+    `layoutSelectedChain`, and checking (a) the unselected anchor atom's coordinates are byte-for-
+    byte unchanged, (b) the three selected atoms visibly moved off the original straight line, and
+    (c) every consecutive bond length in the new layout is exactly the standard 1.5 — all three
+    passed. A secondary, orthogonal finding surfaced during this verification and is recorded here
+    rather than silently dropped: reading the atom positions back via `getStructure("mol", ...)`
+    showed the Y-coordinates of the two newly-placed zigzag atoms sign-flipped relative to what
+    was actually written into `_struct.atoms` — traced (via a temporary debug reread immediately
+    after the write, then removed) to a **pre-existing quirk inside `MolSerializer`'s mol-string
+    output specifically**, not this feature: `_struct.atoms` itself and `buildRenderPrimitives`
+    (the actual data QML/canvas renders from, confirmed by reading it directly — passes
+    `a.pp.x`/`a.pp.y` straight through with zero transform) both hold the mathematically correct,
+    unflipped values throughout. Two independent no-edit round-trip sanity checks (a single free
+    atom; a bonded 3-bond chain in a non-zigzag bent shape) both preserved Y correctly, meaning the
+    flip is specific to some as-yet-uncharacterized property of the zigzag shape/serialization
+    path — flagged as a real, separate, pre-existing chem-core finding worth a future look, not
+    something this feature introduced or needs to fix (on-screen rendering is unaffected).
+  - Standing `scripts/worker_smoke_test.js` unaffected; clean MinGW build; real interactive
+    launch with no new QML errors beyond the one pre-existing benign Quick Controls style warning
+    that happened to appear this run (the second one is intermittent, not new).
+
+### Done (2026-07-13, heavy atom count + chirality)
+
+- **Heavy Atom Count and Chiral (Yes/No) added to the Properties panel's "Drug Properties"
+  section** — same category, same pipeline, and same delegation pattern as the molar
+  refractivity/pKa addition one day earlier. `indigoCountHeavyAtoms`/`indigoIsChiral` were listed
+  in Part C's "Calculation on molecules" audit as unused core Indigo exports. Extended
+  `IndigoService::calcProperties`'s `propertiesReady` signal with two more trailing params (now
+  14 total); `MainWindow.qml`'s `onPropertiesReady` and `PropertyPanel.qml`'s "Drug Properties"
+  grid gained two more rows ("Heavy Atoms"/"Chiral"), the latter rendering "Yes"/"No" text
+  instead of a formatted number — the one deliberate difference from every other row in this
+  grid, since `indigoIsChiral` is a boolean flag, not a scalar quantity. Full plan:
+  `.claude/plans/heavy-atoms-chiral.md`.
+  - **Sixth feature this session delegated to the Antigravity CLI** (flash tier). **Clean
+    delegation, no false negative, no scope creep** — unlike the prior two rounds (QML review
+    fixes and molar refractivity/pKa both had the wrapper falsely report `AGY_FAILED`/timeout on
+    work that had actually succeeded correctly). This time the wrapper reported success directly,
+    and the digest even mentioned the delegate having independently compiled and run a standalone
+    C++ test against ethane and L-alanine — the same verification approach this session's own
+    discipline calls for.
+  - **Verified independently anyway, not because the digest was distrusted this time, but because
+    self-reported success is still a claim, not evidence** — read the full diff of all four
+    changed files (`IndigoService.h`, `IndigoService.cpp`, `MainWindow.qml`, `PropertyPanel.qml`):
+    each diff contained *only* the planned two-field extension, nothing else, a first for this
+    session's delegations (every prior round's diff also contained large blocks of pre-existing
+    content from earlier features that had to be individually distinguished from new work).
+  - **Verified against the actual compiled code with real molecules, not accepting the delegate's
+    own claimed numbers on faith**: a standalone C++ harness (same technique as every other
+    Indigo-backed verification this session) called the real compiled `calcProperties` against
+    ethane (2 heavy atoms, no stereocenter) and L-alanine (6 heavy atoms, one real stereocenter at
+    the alpha carbon). Results: ethane → `heavyAtoms=2, isChiral=false`; L-alanine →
+    `heavyAtoms=6, isChiral=true` — both exact matches to the expected values, confirming the two
+    new Indigo calls are wired correctly and computing real results, not stubbed.
+  - Standing `scripts/worker_smoke_test.js` unaffected (no worker changes). Clean MinGW rebuild;
+    real interactive launch (stderr captured directly from the process) with no new QML errors.
+    Same standing environment constraint as the molar-refractivity/pKa round: an actual on-screen
+    screenshot of the rendered rows was not obtained in this environment (window-focus automation
+    is unreliable here); the numeric backend verification above is the verification of record.
+
 ### Done (2026-07-12, molar refractivity + pKa)
 
 - **Molar Refractivity and pKa added to the Properties panel's "Drug Properties" section** —
@@ -898,15 +1184,18 @@ Fischer-projection checks, canonical hashing/symmetry classes, submolecule extra
 - `indigoMolarRefractivity`
 - `indigoPka`
 - `indigoPkaValues`
-- `indigoLayeredCode`
-- `indigoHash`
+- `indigoLayeredCode` **deliberately excluded** — confirmed a pure wrapper around
+  `MoleculeInChI::outputInChI`, duplicating the InChI support already implemented. See "Done
+  (2026-07-13, Copy Canonical Hash)" above.
+- ~~`indigoHash`~~ **done (2026-07-13)** — see the same "Done" entry above.
 - `indigoSymmetryClasses`
 - `indigoHasCoord`
 - `indigoHasZCoord`
 - `indigoIsChiral`
-- `indigoCheckChirality`
-- `indigoCheck3DStereo`
-- `indigoCheckStereo`
+- ~~`indigoCheckChirality`~~ / ~~`indigoCheckStereo`~~ **done (2026-07-13)** — see "Done
+  (2026-07-13, chirality/stereocenter checks in Validate structure)" above.
+- `indigoCheck3DStereo` **deliberately excluded** — trivially always-0 in this 2D-only editor
+  (only meaningful with real Z-nonzero coordinates), see the same "Done" entry above.
 - `indigoIsPossibleFischerProjection`
 - `indigoCreateSubmolecule`
 - `indigoCreateEdgeSubmolecule`
@@ -915,13 +1204,27 @@ Fischer-projection checks, canonical hashing/symmetry classes, submolecule extra
 - `indigoRemoveBonds`
 - `indigoAlignAtoms`
 
-### Molecules & reactions — shared ops, remaining (21, now 2 used — see "Done (2026-07-12,
-explicit hydrogens fold/unfold)" above) — tautomer handling, named properties on the handle,
-bad-valence/ambiguous-H checks
+### Molecules & reactions — shared ops, remaining (20, now 2 used, 1 confirmed dead — see "Done
+(2026-07-12, explicit hydrogens fold/unfold)" and "Done (2026-07-13, Layout Selected)" above) —
+tautomer handling, named properties on the handle, bad-valence/ambiguous-H checks
 - `indigoFoldUnfoldHydrogens` (the combined auto-toggle variant — the plan deliberately used the
   two separate directional calls instead, see the "Done" entry's non-goals)
-- `indigoLayoutSelected`
-- `indigoClean2d`
+- ~~`indigoLayoutSelected`~~ **confirmed a dead header stub, not a real function** — declared in
+  `indigo.h` but never implemented in any release checked, including a fresh local compile of
+  v1.45.0 from official source. See "Done (2026-07-13, Layout Selected)" above for the full
+  investigation and the from-scratch worker-side reimplementation that shipped instead.
+- ~~`indigoClean2d`~~ **done (2026-07-13): standalone whole-document "Clean 2D
+  Structure" toolbar button.** Investigated as a possible Layout Selected substitute first:
+  `MoleculeCleaner2d` (its real underlying algorithm, `core/indigo-core/layout/molecule_cleaner_2d.*`)
+  is a genuinely distinct algorithm from `MoleculeLayout` — local energy-minimization gradient
+  descent starting FROM existing coordinates, not a fresh global embedding. Has a
+  `selected_vertices`-aware constructor confirmed via reading `_updateGradient2()`: non-selected
+  atoms get zero gradient (stay fixed). Empirically verified with disposable C++ harnesses: does
+  NOTHING for a plain chain (`is_trivial` early-return — nothing to optimize in a non-biconnected
+  path), but WORKS correctly for a ring (anchor atom outside the submolecule stayed exactly fixed
+  while the ring reshaped). Conclusion: complementary to, not a replacement for, the shipped
+  `layoutSelectedChain()` — recommend shipping it standalone (whole-document, not selection-aware)
+  rather than reopening Layout Selected. User confirmed: "Yes, scope Clean 2D Structure".
 - `indigoSmarts`
 - `indigoCanonicalSmarts`
 - `indigoExactMatch`

@@ -142,6 +142,48 @@ void IndigoService::layout(const QString &molfile) {
     });
 }
 
+void IndigoService::clean2d(const QString &molfile) {
+    if (molfile.isEmpty()) {
+        emit clean2dFinished("");
+        return;
+    }
+    
+    QPointer<IndigoService> self = this;
+    
+    (void)QtConcurrent::run([self, molfile]() {
+        QString resultMol = molfile;
+        unsigned long long threadSessionId = indigoAllocSessionId();
+        
+        try {
+            indigoSetSessionId(threadSessionId);
+            const bool isRxn = isReactionFormat(molfile);
+            int mol = isRxn ? indigoLoadReactionFromString(molfile.toUtf8().constData())
+                            : indigoLoadMoleculeFromString(molfile.toUtf8().constData());
+            if (mol >= 0) {
+                if (indigoClean2d(mol) >= 0) {
+                    const char* result = isRxn ? indigoRxnfile(mol) : indigoMolfile(mol);
+                    if (result) {
+                        resultMol = QString::fromUtf8(result);
+                    }
+                } else {
+                    qWarning() << "Indigo: Clean2D failed:" << indigoGetLastError();
+                }
+                indigoFree(mol);
+            } else {
+                qWarning() << "Indigo: Failed to load molecule for clean2d:" << indigoGetLastError();
+            }
+        } catch (const std::exception& e) {
+            qWarning() << "Indigo C++ Exception in clean2d:" << e.what();
+        } catch (...) {
+            qWarning() << "Indigo C++ Unknown Exception in clean2d";
+        }
+        
+        indigoReleaseSessionId(threadSessionId);
+        
+        emitOnGuiThread(self, [resultMol](IndigoService *s) { emit s->clean2dFinished(resultMol); });
+    });
+}
+
 void IndigoService::aromatize(const QString &molfile) {
     if (molfile.isEmpty()) {
         emit aromatizeFinished("");
@@ -392,6 +434,74 @@ void IndigoService::inchiKey(const QString &molfile) {
     });
 }
 
+void IndigoService::hash(const QString &molfile) {
+    if (molfile.isEmpty()) { emit hashFinished(""); return; }
+    QPointer<IndigoService> self = this;
+    (void)QtConcurrent::run([self, molfile]() {
+        QString result;
+        unsigned long long sid = indigoAllocSessionId();
+        indigoSetSessionId(sid);
+        try {
+            bool isRxn = isReactionFormat(molfile);
+            int obj = isRxn ? indigoLoadReactionFromString(molfile.toUtf8().constData())
+                             : indigoLoadMoleculeFromString(molfile.toUtf8().constData());
+            if (obj >= 0) {
+                int64_t h = indigoHash(obj);
+                result = QString::number(h);
+                indigoFree(obj);
+            } else {
+                qWarning() << "Indigo: hash load failed:" << indigoGetLastError();
+            }
+        } catch (...) {}
+        indigoReleaseSessionId(sid);
+        emitOnGuiThread(self, [result](IndigoService *s) { emit s->hashFinished(result); });
+    });
+}
+
+void IndigoService::massComposition(const QString &molfile) {
+    if (molfile.isEmpty() || isReactionFormat(molfile)) { emit massCompositionFinished(""); return; }
+    QPointer<IndigoService> self = this;
+    (void)QtConcurrent::run([self, molfile]() {
+        QString result;
+        unsigned long long sid = indigoAllocSessionId();
+        indigoSetSessionId(sid);
+        try {
+            int mol = indigoLoadMoleculeFromString(molfile.toUtf8().constData());
+            if (mol >= 0) {
+                const char* mc = indigoMassComposition(mol);
+                if (mc) result = QString::fromUtf8(mc);
+                indigoFree(mol);
+            } else {
+                qWarning() << "Indigo: massComposition load failed:" << indigoGetLastError();
+            }
+        } catch (...) {}
+        indigoReleaseSessionId(sid);
+        emitOnGuiThread(self, [result](IndigoService *s) { emit s->massCompositionFinished(result); });
+    });
+}
+
+void IndigoService::pkaValues(const QString &molfile) {
+    if (molfile.isEmpty() || isReactionFormat(molfile)) { emit pkaValuesFinished(""); return; }
+    QPointer<IndigoService> self = this;
+    (void)QtConcurrent::run([self, molfile]() {
+        QString result;
+        unsigned long long sid = indigoAllocSessionId();
+        indigoSetSessionId(sid);
+        try {
+            int mol = indigoLoadMoleculeFromString(molfile.toUtf8().constData());
+            if (mol >= 0) {
+                const char* pv = indigoPkaValues(mol);
+                if (pv) result = QString::fromUtf8(pv);
+                indigoFree(mol);
+            } else {
+                qWarning() << "Indigo: pkaValues load failed:" << indigoGetLastError();
+            }
+        } catch (...) {}
+        indigoReleaseSessionId(sid);
+        emitOnGuiThread(self, [result](IndigoService *s) { emit s->pkaValuesFinished(result); });
+    });
+}
+
 void IndigoService::renderToFile(const QString &molfile, const QUrl &fileUrl, const QString &format) {
     if (molfile.isEmpty()) { emit renderFinished(false, "No structure to render."); return; }
     QPointer<IndigoService> self = this;
@@ -477,14 +587,16 @@ void IndigoService::standardize(const QString &molfile) {
 
 void IndigoService::calcProperties(const QString &molfile) {
     if (molfile.isEmpty() || isReactionFormat(molfile)) {
-        emit propertiesReady(0, 0, "", 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        emit propertiesReady(0, 0, "", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0);
         return;
     }
     QPointer<IndigoService> self = this;
     (void)QtConcurrent::run([self, molfile]() {
-        double mw = 0, mono = 0, tpsa = 0, logp = 0, molarRefractivity = 0, pka = 0;
+        double mw = 0, mono = 0, tpsa = 0, logp = 0, molarRefractivity = 0, pka = 0, mostAbundantMass = 0;
         QString mf;
         int atoms = 0, bonds = 0, hba = 0, hbd = 0, rotBonds = 0;
+        int heavyAtoms = 0;
+        bool isChiral = false;
         unsigned long long sid = indigoAllocSessionId();
         indigoSetSessionId(sid);
         try {
@@ -501,6 +613,9 @@ void IndigoService::calcProperties(const QString &molfile) {
                 rotBonds = indigoNumRotatableBonds(mol);
                 molarRefractivity = indigoMolarRefractivity(mol);
                 pka      = indigoPka(mol);
+                heavyAtoms = indigoCountHeavyAtoms(mol);
+                isChiral = indigoIsChiral(mol) != 0;
+                mostAbundantMass = indigoMostAbundantMass(mol);
                 int fmHandle = indigoMolecularFormula(mol);
                 if (fmHandle >= 0) {
                     const char* fmStr = indigoToString(fmHandle);
@@ -513,7 +628,7 @@ void IndigoService::calcProperties(const QString &molfile) {
             }
         } catch (...) {}
         indigoReleaseSessionId(sid);
-        emitOnGuiThread(self, [=](IndigoService *s) { emit s->propertiesReady(mw, mono, mf, atoms, bonds, tpsa, logp, hba, hbd, rotBonds, molarRefractivity, pka); });
+        emitOnGuiThread(self, [=](IndigoService *s) { emit s->propertiesReady(mw, mono, mf, atoms, bonds, tpsa, logp, hba, hbd, rotBonds, molarRefractivity, pka, heavyAtoms, isChiral, mostAbundantMass); });
     });
 }
 
@@ -716,6 +831,22 @@ void IndigoService::checkStructure(const QString &molfile) {
                 if (mol >= 0) {
                     const char* res = indigoCheckObj(mol, "");
                     report = res ? QString::fromUtf8(res).trimmed() : QString();
+                    QJsonParseError perr;
+                    QJsonDocument reportDoc = QJsonDocument::fromJson(report.toUtf8(), &perr);
+                    QJsonObject reportObj = (perr.error == QJsonParseError::NoError && reportDoc.isObject())
+                        ? reportDoc.object() : QJsonObject();
+                    // indigoCheckChirality returns 0 when inconsistent (on error), 1 when consistent (or unset)
+                    if (indigoCheckChirality(mol) == 0) {
+                        reportObj["chirality"] = "Chiral flag is inconsistent with the drawn stereocenters -- "
+                            "either the structure is marked chiral with no stereocenters defined, or the chiral "
+                            "flag itself is unset/ambiguous. Check the CHIRAL setting and any wedge/hash bonds.";
+                    }
+                    if (indigoCheckStereo(mol) > 0) {
+                        reportObj["stereocenters"] = "One or more marked stereocenters are inconsistent with the "
+                            "molecule's own symmetry (invalid or redundant stereo descriptor) -- re-check the "
+                            "wedge/hash bonds around them.";
+                    }
+                    report = QString::fromUtf8(QJsonDocument(reportObj).toJson(QJsonDocument::Compact));
                     QJsonObject structuredObj;
                     structuredObj["issues"] = parseCheckReport(report);
                     structured = QString::fromUtf8(

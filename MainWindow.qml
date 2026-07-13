@@ -242,6 +242,10 @@ ApplicationWindow {
                 window.isProcessing = false
                 if (newMol && activeCanvas) activeCanvas.loadMolfile(newMol)
             }
+            function onClean2dFinished(newMol) {
+                window.isProcessing = false
+                if (newMol && activeCanvas) activeCanvas.loadMolfile(newMol)
+            }
             function onAromatizeFinished(newMol) {
                 window.isProcessing = false
                 if (newMol && activeCanvas) activeCanvas.loadMolfile(newMol)
@@ -278,13 +282,22 @@ ApplicationWindow {
             function onInchiKeyFinished(inchiKey) {
                 if (inchiKey) indigoSvc.copyToClipboard(inchiKey)
             }
+            function onHashFinished(hash) {
+                if (hash) indigoSvc.copyToClipboard(hash)
+            }
+            function onMassCompositionFinished(result) {
+                if (result) indigoSvc.copyToClipboard(result)
+            }
+            function onPkaValuesFinished(result) {
+                if (result) indigoSvc.copyToClipboard(result)
+            }
             function onRenderFinished(success, error) {
                 if (!success) {
                     workerErrorDialog.errorText = "SVG export failed: " + error
                     workerErrorDialog.open()
                 }
             }
-            function onPropertiesReady(mw, mono, mf, atoms, bonds, tpsa, logp, hba, hbd, rotBonds, molarRefractivity, pka) {
+            function onPropertiesReady(mw, mono, mf, atoms, bonds, tpsa, logp, hba, hbd, rotBonds, molarRefractivity, pka, heavyAtoms, isChiral, mostAbundantMass) {
                 propPanel.molMW       = mw
                 propPanel.molMono     = mono
                 propPanel.molFormula  = mf
@@ -297,6 +310,9 @@ ApplicationWindow {
                 propPanel.molRotBonds = rotBonds
                 propPanel.molMolarRefractivity = molarRefractivity
                 propPanel.molPka      = pka
+                propPanel.molHeavyAtoms = heavyAtoms
+                propPanel.molIsChiral   = isChiral
+                propPanel.molMostAbundantMass = mostAbundantMass
             }
             function onStereoDescriptorsReady(jsonMap) {
                 if (activeSketch) activeSketch.setStereoDescriptors(jsonMap)
@@ -356,9 +372,18 @@ ApplicationWindow {
                     indigoSvc.inchi(data)
                 } else if (reqId === "inchikey") {
                     indigoSvc.inchiKey(data)
+                } else if (reqId === "hash") {
+                    indigoSvc.hash(data)
+                } else if (reqId === "mass_composition") {
+                    indigoSvc.massComposition(data)
+                } else if (reqId === "pka_values") {
+                    indigoSvc.pkaValues(data)
                 } else if (reqId === "layout") {
                     window.isProcessing = true
                     indigoSvc.layout(data)
+                } else if (reqId === "clean2d") {
+                    window.isProcessing = true
+                    indigoSvc.clean2d(data)
                 } else if (reqId === "aromatize") {
                     window.isProcessing = true
                     indigoSvc.aromatize(data)
@@ -535,6 +560,8 @@ ApplicationWindow {
                     Repeater {
                         model: [
                             { id: "layout",      icon: "layout.svg",       tip: "Layout (2D coordinates)" },
+                            { id: "layoutSelected", icon: "layout.svg",    tip: "Layout Selected (2D coordinates)" },
+                            { id: "clean2d",     icon: "layout.svg",       tip: "Clean 2D Structure" },
                             { id: "aromatize",   icon: "arom.svg",         tip: "Aromatize" },
                             { id: "dearomatize", icon: "dearom.svg",       tip: "Dearomatize" },
                             { id: "unfoldH",     icon: "explicit-hydrogens.svg", tip: "Add Explicit Hydrogens" },
@@ -553,7 +580,11 @@ ApplicationWindow {
                             iconSize: 20
                             iconSource: "icons/" + structOpDelegate.modelData.icon
                             tip: structOpDelegate.modelData.tip
-                            enabled: structOpDelegate.modelData.id === "rgroups" || !window.isProcessing
+                            enabled: {
+                                if (structOpDelegate.modelData.id === "layoutSelected")
+                                    return Selection.hasAtoms(activeSketch, 1) && !window.isProcessing
+                                return structOpDelegate.modelData.id === "rgroups" || !window.isProcessing
+                            }
                             onClicked: {
                                 const op = structOpDelegate.modelData.id
                                 if (op === "rgroups") { rgroupPanel.open(); return }
@@ -561,6 +592,10 @@ ApplicationWindow {
                                 if (op === "check") {
                                     window.explicitCheckPending = true
                                     activeSketch.requestSerialize("check")
+                                    return
+                                }
+                                if (op === "layoutSelected") {
+                                    activeSketch.sendCommand("layoutSelectedChain", [])
                                     return
                                 }
                                 if (op !== "layout" && op !== "aromatize") window.isProcessing = true
@@ -791,6 +826,21 @@ ApplicationWindow {
                             MenuItem { text: "Copy InChI"; onTriggered: if (activeSketch) activeSketch.requestSerialize("inchi") }
                             MenuItem { text: "Copy InChIKey"; onTriggered: if (activeSketch) activeSketch.requestSerialize("inchikey") }
                         }
+                    }
+
+                    Button {
+                        text: "Copy Hash"
+                        onClicked: if (activeSketch) activeSketch.requestSerialize("hash")
+                    }
+
+                    Button {
+                        text: "Copy Mass Comp."
+                        onClicked: if (activeSketch) activeSketch.requestSerialize("mass_composition")
+                    }
+
+                    Button {
+                        text: "Copy pKa Values"
+                        onClicked: if (activeSketch) activeSketch.requestSerialize("pka_values")
                     }
 
                     // ── Signature: Publication Style switcher ───────────────────

@@ -14,6 +14,7 @@ public:
     ~IndigoService();
 
     Q_INVOKABLE void layout(const QString &molfile);
+    Q_INVOKABLE void clean2d(const QString &molfile);
     Q_INVOKABLE void aromatize(const QString &molfile);
     Q_INVOKABLE void dearomatize(const QString &molfile);
     Q_INVOKABLE void unfoldHydrogens(const QString &molfile);
@@ -22,6 +23,9 @@ public:
     Q_INVOKABLE void canonicalSmiles(const QString &molfile);
     Q_INVOKABLE void inchi(const QString &molfile);
     Q_INVOKABLE void inchiKey(const QString &molfile);
+    Q_INVOKABLE void hash(const QString &molfile);
+    Q_INVOKABLE void massComposition(const QString &molfile);
+    Q_INVOKABLE void pkaValues(const QString &molfile);
     Q_INVOKABLE void renderToFile(const QString &molfile, const QUrl &fileUrl, const QString &format);
     Q_INVOKABLE void normalize(const QString &molfile);
     Q_INVOKABLE void standardize(const QString &molfile);
@@ -45,6 +49,7 @@ public:
 
 Q_SIGNALS:
     void layoutFinished(const QString &result);
+    void clean2dFinished(const QString &result);
     void aromatizeFinished(const QString &result);
     void dearomatizeFinished(const QString &result);
     void unfoldHydrogensFinished(const QString &result);
@@ -53,13 +58,17 @@ Q_SIGNALS:
     void canonicalSmilesFinished(const QString &result);
     void inchiFinished(const QString &result);
     void inchiKeyFinished(const QString &result);
+    void hashFinished(const QString &result);
+    void massCompositionFinished(const QString &result);
+    void pkaValuesFinished(const QString &result);
     void renderFinished(bool success, const QString &error);
     void normalizeFinished(const QString &result);
     void standardizeFinished(const QString &result);
     void propertiesReady(double mw, double mono, const QString &mf,
                          int atoms, int bonds,
                          double tpsa, double logp, int hba, int hbd, int rotBonds,
-                         double molarRefractivity, double pka);
+                         double molarRefractivity, double pka,
+                         int heavyAtoms, bool isChiral, double mostAbundantMass);
     void stereoDescriptorsReady(const QString &jsonMap);
     void checkFinished(const QString &report);
     void checkIssuesReady(const QString &structuredJson);

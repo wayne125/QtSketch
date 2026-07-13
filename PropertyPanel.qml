@@ -21,6 +21,9 @@ Rectangle {
     property double molLogP:     0
     property double molMolarRefractivity: 0
     property double molPka: 0
+    property int    molHeavyAtoms: 0
+    property bool   molIsChiral: false
+    property double molMostAbundantMass: 0
     property int    molHBA:      0
     property int    molHBD:      0
     property int    molRotBonds: 0
@@ -125,6 +128,15 @@ Rectangle {
 
                 Text { textFormat: Text.PlainText; text: "pKa";     color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
                 Text { textFormat: Text.PlainText; text: root._fmtNum(root.molPka, 2);            color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
+
+                Text { textFormat: Text.PlainText; text: "Heavy Atoms"; color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
+                Text { textFormat: Text.PlainText; text: root.molHeavyAtoms.toString(); color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
+
+                Text { textFormat: Text.PlainText; text: "Chiral"; color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
+                Text { textFormat: Text.PlainText; text: root.molIsChiral ? "Yes" : "No"; color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
+
+                Text { textFormat: Text.PlainText; text: "Abundant Mass"; color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
+                Text { textFormat: Text.PlainText; text: root._fmtNum(root.molMostAbundantMass, 3) + " g/mol"; color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
             }
         }
 

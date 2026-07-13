@@ -1737,6 +1737,128 @@ function distributeAtoms(direction) {
     executeCommand(cmd)
 }
 
+// "Layout Selected": re-position only the selected atoms, leaving everything
+// else exactly fixed. Implemented entirely worker-side against chem-core's
+// own atom/bond model -- NOT via Indigo. Indigo's indigoLayoutSelected is a
+// dead header stub (declared, never implemented, in any release checked
+// including a fresh local v1.45.0 compile), and indigoLayout's real
+// submolecule-filtered mode (_layoutSingleComponent in
+// molecule_layout_graph.cpp) always regenerates the WHOLE connected
+// component once any vertex is free to move, using old positions only to
+// loosely re-orient the result afterward -- it cannot "freeze the rest,
+// recompute a subset" for a plain small molecule (that capability is real
+// only for tgroups/monomer biopolymer structures). Confirmed by reading the
+// source directly and reproducing the exact same (undesired) numeric result
+// twice, not guessed.
+//
+// v1 scope, deliberately narrow to what can be done safely and predictably:
+// only a simple, unbranched, acyclic chain of selected atoms attached to the
+// rest of the structure at exactly one point. Anything else (disconnected
+// sub-selection, a branch point, a cycle, zero or multiple attachment
+// points) is declined -- no-op + console.warn -- rather than risk producing
+// a broken or overlapping layout.
+function layoutSelectedChain() {
+    var sel = _selection.atom_ids || []
+    if (sel.length < 1) return
+    var selSet = {}
+    sel.forEach(function(id) { selSet[id] = true })
+
+    // Classify every bond touching the selection: "internal" (both ends
+    // selected) builds the chain graph; exactly one end selected marks the
+    // single allowed attachment point to the fixed structure.
+    var internalAdj = {}
+    var anchorBonds = []
+    sel.forEach(function(id) { internalAdj[id] = [] })
+    _struct.bonds.forEach(function(b, bid) {
+        var beginSel = !!selSet[b.begin], endSel = !!selSet[b.end]
+        if (beginSel && endSel) {
+            internalAdj[b.begin].push(b.end)
+            internalAdj[b.end].push(b.begin)
+        } else if (beginSel !== endSel) {
+            anchorBonds.push(beginSel ? { insideId: b.begin, outsideId: b.end } : { insideId: b.end, outsideId: b.begin })
+        }
+    })
+
+    if (anchorBonds.length !== 1) {
+        console.warn("layoutSelectedChain: needs exactly one connection point to the rest of the structure, found " + anchorBonds.length)
+        return
+    }
+    for (var i = 0; i < sel.length; i++) {
+        if (internalAdj[sel[i]].length > 2) {
+            console.warn("layoutSelectedChain: branching within the selection is not supported")
+            return
+        }
+    }
+
+    // Walk the chain from the atom bonded to the anchor; must visit every
+    // selected atom exactly once (rules out cycles and any disconnected
+    // sub-group within the selection).
+    var anchor = anchorBonds[0]
+    var chain = [anchor.insideId]
+    var visited = {}
+    visited[anchor.insideId] = true
+    var prevId = null
+    var curId = anchor.insideId
+    while (chain.length < sel.length) {
+        var neighbors = internalAdj[curId] || []
+        var nextId = null
+        for (var j = 0; j < neighbors.length; j++) {
+            if (neighbors[j] !== prevId && !visited[neighbors[j]]) { nextId = neighbors[j]; break }
+        }
+        if (nextId === null) break
+        chain.push(nextId)
+        visited[nextId] = true
+        prevId = curId
+        curId = nextId
+    }
+    if (chain.length !== sel.length) {
+        console.warn("layoutSelectedChain: selection must form a single unbranched, acyclic chain")
+        return
+    }
+
+    var anchorAtom = _struct.atoms.get(anchor.outsideId)
+    if (!anchorAtom) return
+
+    // Reuses addChain's exact zigzag convention (v8_worker.js addChain: same
+    // Math.PI/6 half-angle, same StandardBondLength) and getLargestEmptyAngle's
+    // established single-neighbor placement heuristic (already used for the
+    // short-drag chain-extend fallback) -- not new geometry math.
+    var sbl = CoreLib.ChemCore.StandardBondLength || 1.5
+    var half = Math.PI / 6
+    var theta = getLargestEmptyAngle(anchor.outsideId)
+
+    var oldPositions = chain.map(function(id) {
+        var a = _struct.atoms.get(id)
+        return { id: id, x: a.pp.x, y: a.pp.y }
+    })
+    var newPositions = []
+    var px = anchorAtom.pp.x, py = anchorAtom.pp.y
+    for (var k = 0; k < chain.length; k++) {
+        var ang = theta + ((k % 2 === 0) ? half : -half)
+        px += sbl * Math.cos(ang)
+        py += sbl * Math.sin(ang)
+        newPositions.push({ id: chain[k], x: px, y: py })
+    }
+
+    var cmd = makeCmd(
+        function() {
+            newPositions.forEach(function(p) {
+                var a = _struct.atoms.get(p.id)
+                if (a) { a.pp.x = p.x; a.pp.y = p.y }
+            })
+            _dirty = true
+        },
+        function() {
+            oldPositions.forEach(function(p) {
+                var a = _struct.atoms.get(p.id)
+                if (a) { a.pp.x = p.x; a.pp.y = p.y }
+            })
+            _dirty = true
+        }
+    )
+    executeCommand(cmd)
+}
+
 function setStereoDescriptors(jsonMap) {
     try {
         var map = JSON.parse(jsonMap)
@@ -4109,6 +4231,7 @@ function _dispatchCommand(cmd, args) {
         else if (cmd === 'addMultitailArrow') addMultitailArrow(args[0], args[1]);
         else if (cmd === 'deleteMultitailArrow') deleteMultitailArrow(args[0]);
         else if (cmd === 'addMultitailArrowTail') addMultitailArrowTail(args[0]);
+        else if (cmd === 'layoutSelectedChain') layoutSelectedChain();
         else if (cmd === 'getStructure') {
             const structStr = getStructure(args[0]);
             console.log(JSON.stringify({ type: "structureResponse", reqId: args[1], data: structStr }));
