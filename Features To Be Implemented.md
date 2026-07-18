@@ -11,12 +11,307 @@ module that isn't wired in at all yet (not even in `CMakeLists.txt`).
 
 ## Part A — UI / product features
 
+### Verification sweep (2026-07-17, later same day): remaining tools covered
+
+Closed out every item the previous sweep listed as not-yet-covered, via `pywinauto`:
+
+- **Layout Selected, chain-selection case** — drew a benzene ring with a 3-atom chain attached
+  at exactly one point (`C9H12`), rubber-band selected only the chain atoms (ring excluded from
+  the selection), clicked **Layout Selected**: the chain's geometry visibly changed while the ring
+  stayed pixel-identical — confirms the documented "re-lay-out only the selection, freeze
+  everything else" behavior for real.
+- **R-Group member add/remove round-trip** — selected an atom, clicked **Define** for R1 (label
+  correctly flipped to "Remove Group", count "not defined" → "0 member(s)"); drew a separate `Cl`
+  atom, selected it, clicked **Add Selected** → "1 member(s)", the `Cl` atom correctly vanished
+  from the main canvas (absorbed into the R-group member data); clicked **Remove Last** → back to
+  "0 member(s)", `Cl` atom reappeared on canvas exactly as before. Full round-trip confirmed.
+- **Dark mode toggle** — earlier misses were hitting the adjacent zoom `−` button; the real
+  toggle is the leftmost of the three bottom-right icon buttons. Clicking it correctly re-themes
+  the entire UI (canvas, panels, toolbar) to dark and back.
+- **Toolbar transform/edit actions** — Undo, Rotate 90°, Copy, Paste, Cut all independently
+  confirmed via atom/bond/fragment count changes and visual diffs.
+- **Reaction tools** — the `Reactions ▾` dropdown renders correctly (arrow-style submenu: Filled
+  Triangle/Open Angle/Retrosynthetic/Equilibrium ↔/⇌/Curved Mechanism); drew a real reaction arrow
+  on canvas successfully. Reaction Plus not conclusively exercised (a coordinate miss in the test
+  script, not a reproduced app bug).
+- **Query atoms** — the `Query ▾` dropdown renders correctly (A/AH/Q/QH/M/MH/X/XH query atoms,
+  R1–R8 R-group labels); placed a real "A" (any-atom) query atom on canvas successfully.
+- **Salts & Solvents and Template Library popups** (`ToolPanel.qml`) — both render correctly with
+  real scrollable content (acetic acid/formic acid/... ; the 276-record sugar template library
+  with search box and category filter).
+- **Save round-trip** — saved a real benzene structure to `.mol`, read the file back: valid,
+  well-formed V2000 molfile with correct coordinates and alternating bond orders.
+- **PDF export** — exported to a real `.pdf` file: confirmed valid (`PDF document, version 1.4, 1
+  page(s)`).
+- **Biopolymer Editor — real bug found and fixed.** Typing a DNA sequence and clicking "Load to
+  Canvas" failed with "Load error: Monomer library could not be loaded." Root cause: the app's
+  actual build-linked `indigo/` directory (`CMakeLists.txt`'s `INDIGO_LIB_DIR`, distinct from the
+  full `Indigo-indigo-1.45.0/` reference source checkout used for reading vendored source this
+  session) never had a `data/molecules/basic/monomer_library.ket` — `IndigoService.cpp`'s
+  `monomerLibraryContent()` (line 24) searches `appDir/..` + that relative path and found nothing,
+  every one of its 10 call sites (`loadBioSequence`/`loadFasta`/`loadHelm`/`loadIdt`/`loadBiln`/
+  `loadAxoLabs` and their export counterparts) was silently broken. **Fixed locally** by copying
+  the file from the reference checkout into `indigo/data/molecules/basic/monomer_library.ket` (a
+  plain runtime `QFile` read, not a Qt resource — no rebuild needed, just an app restart since the
+  lookup is cached via `std::call_once` for the process's lifetime). `indigo/` is entirely
+  gitignored (vendored/local-setup directory, confirmed via `.gitignore:22`), so this fix is
+  local-environment-only and doesn't show up in `git status` — **if this environment is ever
+  rebuilt from scratch, this file must be re-copied in from an Indigo v1.45.0 source checkout**,
+  there's no setup script that does it automatically. After the fix + restart: loading `ATGCATGC`
+  (DNA) correctly expanded to a real 163-atom/182-bond structure with correct phosphate backbone,
+  sugar rings, and bases — the underlying feature genuinely works once the data file is present.
+  - **Second, smaller issue found in the same area, NOT fixed**: once a biopolymer structure is
+    loaded, the 600ms property-refresh cycle repeatedly logs `Indigo: calcProperties load failed:
+    scanner: readIntFix(3): invalid number representation: "   "` (and the same for
+    `calcStereoDescriptors`) — the molfile serialization of a biopolymer-expanded structure isn't
+    round-trip-parseable by Indigo's own strict fixed-column V2000 reader, so the Properties panel
+    likely never populates for a biopolymer document (though the structure itself renders
+    correctly via the app's own native path). Confirmed this is scoped to biopolymer documents
+    only — a plain ring-drawing session produces zero such warnings. Root cause (which fixed-width
+    field in the generated molfile is blank) not investigated further this round.
+  - **One unreproduced app-crash observed on the first attempt**, before the monomer-library fix
+    was in place — the process disappeared entirely after clicking "Load to Canvas" once. The
+    identical steps on a fresh relaunch (after the fix) did not crash again. Given it happened
+    exactly once, on the run where the load was guaranteed to fail (library missing), it's plausible
+    but unconfirmed that the failure path itself (not the success path) has a separate crash bug.
+    Noting it honestly rather than either dismissing it or claiming a confirmed root cause.
+
 ### Speced, not yet built
 
-- **Word-style page-aware rulers** — `docs/superpowers/specs/2026-07-08-toolbar-rulers-design.md`
-  has the full design (page-bound tick marks, draggable margins, indent/tab-stop markers).
-  `topRuler`/`leftRuler` in `MainWindow.qml` exist today but are static. (Section 2 of that spec;
-  section 1, the toolbar alignment icons, is done — see below.)
+*(none currently open — see "Done (2026-07-17, Interactive page margins on the rulers)" below;
+the remainder of the ruler spec, indents/tab-stops, is explicitly deferred there, not open)*
+
+### Verification sweep (2026-07-17, click-through pass with `pywinauto`)
+
+User asked to "check the SDF loader and other major implementations." Beyond the SDF batch
+browsing re-confirmation (see its own "Done" entry below) and the six items already covered in
+the prior sweep (Molecule Name, Ruler Margins, SDF Data Fields, Fragment/Ring Count, SMARTS
+Search, Insert Image), this pass exercised on a real 10-atom naphthalene loaded from the batch
+picker:
+- **Copy SMILES** → `c1c2ccccc2ccc1` (valid), **Copy Canonical SMILES** menu item present.
+- **Copy InChI** → `InChI=1S/C10H8/c1-2-6-10-8-4-3-7-9(10)5-1/h1-8H` (valid, matches C10H8).
+- **Copy Hash** → a real hash integer (`1634033630`).
+- **Copy Mass Comp.** → `C 93.71 H 6.29` — verified against hand-calculated composition for
+  C10H8 (120.11/128.174 = 93.71%, 8.064/128.174 = 6.29%): exact match.
+- **Copy pKa Values** → `10.710000`, matching the Properties panel's pKa field.
+- **Add/Remove Explicit Hydrogens** — atom count round-tripped 10 → 18 → 10, bond count 11 → 19
+  → 11 (8 new C–H bonds added and removed correctly), H labels rendered on-screen.
+- **Layout, Clean 2D Structure, Normalize, Standardize** — smoke-tested in sequence on the same
+  structure: none crashed, atom/bond counts and computed properties stayed consistent throughout.
+- **Validate structure** — dialog correctly reported "No issues found." for the valid structure.
+- **R-Groups panel** — opens and renders correctly (R1–R6 rows, Define/Range/ResH checkbox/Add
+  Selected/Remove Last, matching the documented design).
+- **Update (2026-07-17, later same day): toolbar alignment/transform icons confirmed.** Drew two
+  separate benzene rings, rubber-band selected both (`Selected: 24` = 12 atoms + 12 bonds),
+  clicked **Align left edges** — confirmed against the real `alignAtoms()` source
+  (`v8_worker.js:1658`) that this is a genuine per-atom alignment (every selected atom's x set to
+  the same minimum value), not a per-shape/bounding-box alignment — the visible "both rings
+  collapse onto one vertical line" result matches that code exactly, not a bug. **Undo** correctly
+  restored both rings. **Rotate selection 90° clockwise** on a single selected ring visibly
+  rotated its orientation (flat-top → pointy-top). **Copy** then **Paste** added a third ring
+  (Atoms 12→18, Fragments 2→3). **Cut** removed it again (18→12, Fragments 3→2).
+- **Periodic Table popup** — confirmed rendering the full, correct IUPAC-shaped grid (118
+  elements, lanthanides/actinides in their own offset rows, correct per-type color coding).
+- **Style presets (ACS 1996)** — clicking it visibly changed the ring geometry (bond length/atom
+  spacing), confirming `StyleSheets.applySheet()` actually takes effect on the canvas, not just
+  updating the toolbar's own selected-state highlight.
+- **Functional Groups template popup** (`ToolPanel.qml`) — opens and renders a real scrollable
+  grid of functional-group thumbnails (Ac, Bn, Boc, Bu, Bz, C2H5, CCl3, CF3, CN, CO2Et, CO2H,
+  CO2Me, ...).
+- Still not covered: Layout Selected's chain-selection case specifically, R-Group member
+  add/remove round-trip, dark mode toggle (two attempts both mis-clicked the adjacent zoom
+  controls instead — a real coordinate-targeting miss in the test script, not a reproduced app
+  bug; left unverified rather than guessed at), Reaction-tool drawing (arrow/plus/AAM), Query-atom
+  drawing tools, Salts/Library template popups, Biopolymer dialog, PDF export, and a full
+  Save-to-disk round-trip.
+
+### Done (2026-07-17, SMARTS / Substructure Search)
+
+- **New "Search Substructure (SMARTS)" toolbar popup** — enter a SMARTS pattern, matched
+  atoms/bonds get highlighted on the canvas. This closes Part C's "Substructure matching (13)"
+  gap ("no SMARTS/substructure search exists anywhere in the app") — the largest genuinely-missing
+  user-facing feature left in the backlog, picked as the session's explicitly-requested "big item".
+  Full plan: `.claude/plans/smarts-substructure-search.md` (repo-local copy; see the delegation
+  note below for why that mattered).
+- **Scope-collapsing design decision**: reused `SelectionLayer.qml`'s existing highlight-rendering
+  (already used for ordinary click/lasso selection) instead of writing any new Canvas painting
+  code — a match is "highlighted" simply by writing matched atom/bond ids into the worker's
+  `_selection`, exactly like `selectAll()` already does. What could have required inventing a
+  whole overlay-rendering subsystem instead became "compute the right ids, reuse what's there."
+- **Indigo APIs verified NOT dead stubs before committing to the design** (unlike
+  `indigoLayoutSelected` earlier this session): `indigoLoadSmartsFromString` is macro-generated
+  (`WRAPPER_LOAD_FROM_STRING(indigoLoadSmarts)` in `indigo_macros.c`) calling the real, fully
+  implemented `indigoLoadSmarts`; `indigoSubstructureMatcher`/`indigoMatch`/`indigoIterateMatches`/
+  `indigoMapAtom` all have full real implementations, read in full before writing the plan.
+- New `IndigoService::substructureSearch` (mirrors `calcProperties`'s async shape and the existing
+  CIP-stereocenter loop's `indigoNext`/`indigoIndex`/`indigoFree` iterate convention). New
+  `selectSubstructureMatches()` in `src/v8_worker.js` translates 1-based Indigo atom indices back
+  to atom ids (same V2000-order correlation technique the Layout Selected investigation
+  established) and populates both `atom_ids` and `bond_ids`. New `SubstructureSearchPopup.qml`
+  (built on the existing `AnchoredPicker`, no new popup base type), registered in
+  `CMakeLists.txt`'s `QML_FILES`. Toolbar entry reuses the existing `search.svg` icon.
+- **Fifteenth feature delegated to the Antigravity CLI** (pro tier, given the size). First attempt
+  failed immediately with "Plan file missing" — traced to a real, useful discovery: this session's
+  earlier plans had all been written to the global `~/.claude/plans/` path, but this repo has its
+  own `.claude/plans/` directory (used by every pre-this-session round, confirmed via the existing
+  files there) that's the one actually reachable within agy's `--dir`-scoped workspace. Copied the
+  plan into the repo-local directory and retried — completed clean.
+- **A real bug caught by independent verification, not by agy's own report** (agy didn't even
+  claim to have built/tested this round — it said a build "needs to be triggered"): the patch had
+  corrupted an unrelated existing comment two functions away
+  (`// Each function: parse notation → expand monomers to atoms → 2D layout → molfile` got
+  truncated mid-sentence and spliced with stray `return issuesArray; }` residue from a different
+  function), producing a genuine brace-mismatch compile error. Caught immediately by compiling a
+  standalone C++ harness against the real file — never got as far as trusting a self-report because
+  none was offered. Fixed by hand (restored the original comment in its correct place, immediately
+  above the biopolymer-loading functions it documents) and re-verified with a clean recompile.
+- **A second real gap caught only by the real interactive launch**: `icons/search.svg` exists on
+  disk but wasn't registered under `CMakeLists.txt`'s `RESOURCES` list (every icon must be
+  explicitly listed there to be packaged into the Qt resource bundle — this file had simply never
+  been used anywhere in the app before, so it was never added). This was a real gap in the plan
+  itself (my mistake, not agy's — the plan said "reuses `search.svg`, no new icon needed" but never
+  said "register it"), surfaced as `QML QQuickImage: Cannot open: qrc:/qt/qml/Sketch/App/icons/
+  search.svg` in the real launch's stderr. Fixed by adding the one missing `RESOURCES` line and
+  rebuilding.
+- **Independently re-verified end to end, not trusted from agy's self-report** (which explicitly
+  admitted no build/test had been run): a standalone C++ harness against the real compiled
+  `IndigoService::substructureSearch` — (a) `c1ccccc1` on a real benzene molfile: 1 match, all 6
+  indices within the valid atom range (empirically resolved the plan's own open question: Indigo's
+  matcher returns one canonical embedding, not all 12 ring rotations); (b) a deliberately invalid
+  SMARTS string: correctly populated `"error"`, no crash; (c) `[Xe]` (matches nothing organic):
+  `matchCount: 0`, no error — all PASS. A disposable Node harness against the real
+  `src/v8_worker.js` protocol: fed a synthetic match covering two atoms of a 4-atom chain, confirmed
+  `selectSubstructureMatches` selects exactly those two atom ids plus the one bond between them,
+  and confirmed clearing with an empty matches array resets the selection to fully empty — all
+  PASS. Re-ran `scripts/worker_smoke_test.js` myself, unaffected, ALL PASS.
+- Clean MinGW build (`BUILD_EXIT:0`, twice — once after the brace fix, once after the icon-
+  resource fix); real interactive launch, stderr checked both times, final run showed only the two
+  pre-existing benign style-customization warnings, no new QML errors.
+- **Update (2026-07-17, later): the on-screen click-through was subsequently exercised and
+  confirmed.** `pywinauto` (Windows UI Automation) was installed this session — every `IconCell`'s
+  real `Accessible.name` makes controls findable by name, not fragile coordinates. Typed
+  `c1ccccc1` into the popup on a real benzene ring, clicked Search: "1 match found", the ring
+  highlighted (blue outline + selection handles, status bar "Selected: 12" = 6 atoms + 6 bonds),
+  Clear correctly reset to "Selected: 0". Confirmed via real screenshots, not just backend
+  verification.
+
+### Done (2026-07-17, Fragment Count + Ring Count)
+
+- **Two new Properties-panel rows: "Fragments" and "Rings (SSSR)"** — `indigoCountComponents`
+  (number of disconnected pieces, e.g. a salt drawn as two separate groups) and `indigoCountSSSR`
+  (Smallest Set of Smallest Rings, the standard ring-count convention). Same established pattern
+  as the earlier Heavy Atom Count/Chirality round: extend `calcProperties`/`propertiesReady` with
+  two more trailing params, add two more rows to the existing "Drug Properties" grid. No canvas/
+  rendering changes — deliberately kept inside the proven, low-risk "one more scalar field"
+  pattern rather than the larger, riskier scope of things like substructure-match highlighting.
+  Full plan: `.claude/plans/fragment-ring-count.md` (deleted after shipping, per this session's
+  housekeeping).
+- **Fourteenth feature delegated to the Antigravity CLI** (flash tier). First attempt hit the same
+  transient `agy exited 1: Error: timeout waiting for response` seen in earlier rounds; retried
+  identically and completed (agy's own log oddly claimed "already implemented in workspace" —
+  plausible explanation: the first, technically-failed attempt likely did land its file edits
+  before timing out on a later internal step, and the retry found them already present — diff was
+  independently re-verified regardless, so this didn't change the verification bar).
+- **Independently re-verified, not trusted from agy's self-report**: read the full diff by hand
+  across `IndigoService.h`/`.cpp`, `MainWindow.qml`, `PropertyPanel.qml` — matches the plan
+  exactly. Built and ran a standalone C++ harness against the real compiled
+  `IndigoService::calcProperties` with three cases: benzene (expected fragments=1, rings=1),
+  naphthalene (expected fragments=1, rings=2 — confirms SSSR, not "all rings"), and a two-component
+  molfile (expected fragments=2, rings=0) — all three PASS. Re-ran `scripts/worker_smoke_test.js`
+  myself (no worker changes), ALL PASS.
+- Clean MinGW build (`BUILD_EXIT:0`); real interactive launch — process stayed running, stderr
+  showed only the two pre-existing benign style-customization warnings, no new QML errors.
+- **Update (2026-07-17, later): confirmed on-screen.** After installing `pywinauto`, drew a real
+  benzene ring in the running app and the panel showed `Fragments: 1` / `Rings (SSSR): 1` exactly
+  as expected — confirmed via a real screenshot, not just the harness.
+
+### Done (2026-07-17, SDF Data Fields)
+
+- **Read-only "SDF Data Fields" section in the PropertyPanel** — surfaces per-record custom SDF
+  data fields (the `> <FIELDNAME>` / value blocks after `M  END`, e.g. `<IC50>`, `<CAS_NUMBER>`,
+  `<Vendor>`), which `chem-core.js`'s `SdfSerializer` (line 24280) already fully parses into a
+  `props` object per record on load and re-emits on save — entirely in JS, no Indigo. Originated
+  as the `indigoHasProperty`/`indigoGetProperty`/`indigoSetProperty`/`indigoRemoveProperty`/
+  `indigoIterateProperties`/`indigoClearProperties` backlog lines — third instance this session of
+  the same dead-end pattern (`indigoName`/`indigoSetName`, `indigoCheckBadValence`/
+  `indigoCheckAmbiguousH` before it): routing through Indigo's generic-property API would just
+  duplicate work `chem-core.js` already owns end-to-end. All six pruned from Part C below.
+- **The real gap wasn't Indigo at all** — `deserializeSdfBatch`/`loadSdfBatchRecord`
+  (`src/v8_worker.js:3428-3518`) already parsed `item.props` per record but silently discarded it:
+  the picker summary sent to the UI only ever included `{index, label, thumb}`, and loading a
+  record only pulled `.struct`, dropping `.props` entirely — so real SDF data fields (the whole
+  reason people use SDF over plain molfiles) never reached the UI even after a record loaded.
+- **No C++/Indigo changes** — pure `v8_worker.js` + QML, same shape as the Molecule Name field.
+  New module var `_sdfProps` (per-document-worker state, confirmed safe since each open tab has
+  its own separate worker instance via `DocumentManager.documentFor(docId)`), set in
+  `loadSdfBatchRecord`, echoed via a new `getSdfProps()` piggybacked onto the existing 600ms
+  `calc_props` debounce cycle (same cycle `getMoleculeName` uses). New read-only key/value grid
+  in `PropertyPanel.qml`, visible only when the active document's props are non-empty — correctly
+  clears when switching to a document with no SDF props, since that document's own worker
+  instance reports `{}`. Full plan: `.claude/plans/sdf-data-fields.md`.
+- **Thirteenth feature delegated to the Antigravity CLI** (flash tier). Completed on the first
+  attempt this round (no transient timeout).
+- **Independently re-verified, not trusted from agy's "Backend test passed. Build succeeded."
+  self-report** (agy's own log showed a *different*, self-authored test — "PASS v8_worker
+  initialized"/etc. — not this repo's real `scripts/worker_smoke_test.js`): read the full diff by
+  hand across all three files, confirmed it matches the plan exactly; re-ran the real
+  `scripts/worker_smoke_test.js` myself, ALL PASS. Wrote and ran a disposable Node harness against
+  the real `src/v8_worker.js` protocol with a two-record SDF (record 0 carrying `<TestField>` and
+  `<Vendor>`, record 1 with no data fields) — confirmed `getSdfProps` echoes the correct fields for
+  record 0, confirmed record 1 correctly reports empty props (proving per-record isolation and
+  correct clearing), all PASS.
+- Clean MinGW build (`BUILD_EXIT:0`); real interactive launch — process stayed running, stderr
+  showed only the two pre-existing benign style-customization warnings, no new QML errors.
+- **Update (2026-07-17, later): confirmed on-screen.** Opened a real 2-field SDF (`CAS_NUMBER`,
+  `Vendor`) via `pywinauto` driving the actual native Open dialog — the panel's new "SDF Data
+  Fields" section showed both fields with correct values, and the Molecule Name field correctly
+  auto-populated from the file's title line. Confirmed via a real screenshot.
+
+### Done (2026-07-17, Interactive page margins on the rulers)
+
+- **Shaded, draggable margin zones on `topRuler`/`leftRuler`** — v1 of
+  `docs/superpowers/specs/2026-07-08-toolbar-rulers-design.md` Section 2. Investigation found the
+  spec doc's "static rulers" framing stale: `topRuler`/`leftRuler` already drew page/zoom/scroll-
+  aware cm tick marks (reacting to `scrollX`/`zoom`/`docX` etc.) before this round — only the
+  "Interactive Margins" sub-part was a real gap.
+  - New `window.pageMargins` (`{ left, right, top, bottom }`, cm, session-level default 2cm each
+    side, not persisted).
+  - Both rulers' `onPaint` now shade the non-printable margin bands (`Theme.rulerColor` at 0.15
+    alpha) outside `pageMargins`, using the existing `window.pixelsPerCm`/`window.pageSizeMm()`
+    building blocks — no new page-geometry code.
+  - Four 6px-wide `MouseArea` drag handles (left/right on `topRuler`, top/bottom on `leftRuler`),
+    each recomputing its drag delta via `mapToItem(parent, mouse.x, mouse.y)` every event rather
+    than trusting a fixed local origin — avoids the classic QML bug where a MouseArea moving under
+    an in-progress drag desyncs from the mouse. Clamped to keep at least 1cm of printable area on
+    each axis.
+  - **Explicitly deferred, not silently dropped**: indent markers (first-line/hanging/right) and
+    click-to-add tab stops. Both need a "canvas alignment routine" layer this app has no concept
+    of yet (no paragraph/text-alignment model exists to attach them to) — building that now would
+    mean inventing a new subsystem, not just ruler UI, so it's a separate future feature. Same
+    "narrow v1 first" call already made for Layout Selected (chain-only, full submolecule case
+    deferred). Full plan: `.claude/plans/ruler-page-margins.md`.
+- **Twelfth feature delegated to the Antigravity CLI** (flash tier). First attempt hit the same
+  transient `agy exited 1: Error: timeout waiting for response` seen during the Clean 2D Structure
+  round (not an auth/setup problem — confirmed via `agy-doctor` earlier this session); retried
+  identically, completed clean.
+- **Diff read in full, independently** (not trusted from agy's "tests pass" self-report): confirmed
+  exactly one file touched, `MainWindow.qml`, no `CMakeLists.txt`/worker changes despite agy's own
+  log mentioning an unrelated `libsketch.dll`/`test_indigo.exe` build (a pre-existing, separate
+  CMake target in this repo that agy's own internal test loop happened to build — not something
+  this delegation created; `git status`/`git diff --stat` confirmed no stray files or extra
+  targets). Manually verified the drag-handle math: each handle's `onPositionChanged` calls
+  `mapToItem(parent, ...)` fresh every event (correct pattern for a MouseArea whose own position
+  moves during the drag it's handling), and both margins on each axis are read live so the
+  opposite-side clamp always reflects the current value, not a stale one.
+- Clean MinGW build (`BUILD_EXIT:0` from a direct log); real interactive launch — process stayed
+  running, stderr showed only the two pre-existing benign style-customization warnings, no new
+  QML errors. Standing `scripts/worker_smoke_test.js` re-run myself (no worker changes in this
+  round) — unaffected, ALL PASS.
+- **Update (2026-07-17, later): confirmed on-screen.** After installing `pywinauto`, the shaded
+  margin band was visually confirmed at the default 2cm (crop of the ruler region showed a clear
+  shade boundary exactly at the "2" tick), and dragging the left handle genuinely moved it (shaded
+  region grew from 0–2cm to 0–5cm across a drag sequence) — confirmed via real screenshots, not
+  just build/static review.
 
 ### Done (2026-07-13, Most Abundant Mass + Mass Composition + extra pKa values)
 
@@ -159,6 +454,55 @@ module that isn't wired in at all yet (not even in `CMakeLists.txt`).
     knowing before treating this as a fully novel diagnostic in every case.
   - Standing `scripts/worker_smoke_test.js` unaffected (no worker changes). Clean MinGW build;
     real interactive launch with no new QML errors beyond the two pre-existing benign warnings.
+
+### Done (2026-07-17, Molecule Name field)
+
+- **Editable "Molecule Name" field in the PropertyPanel** — surfaces the molfile line-1 title
+  (SDF-style compound name), which `chem-core.js` already parses on load
+  (`struct.name = lines[0].trim()`, V2000 and V3000 paths) and writes back out on serialize
+  (`ifDef(header, "moleculeName", struct.name, "")`) but which no UI field had ever shown or
+  edited. Originated as the `indigoName`/`indigoSetName` backlog line in Part C — investigation
+  found routing through Indigo would be pure redundant round-trip work, since the JS layer
+  already owns this value end-to-end. Same category of dead end as the earlier
+  `indigoCheckBadValence`/`indigoCheckAmbiguousH` finding (both already covered by the existing
+  `indigoCheckObj(mol, "")` default-all-checks call). Both backlog lines pruned from Part C below.
+- **No C++/Indigo changes at all** — pure `v8_worker.js` + QML. New `getMoleculeName()` /
+  `setMoleculeName(name)` worker functions (`setMoleculeName` goes through the standard
+  `makeCmd`/`executeCommand` undo stack, same as every other worker mutation), dispatched via
+  two new `_dispatchCommand` branches next to `layoutSelectedChain`. `MainWindow.qml` piggybacks
+  the existing 600ms `calc_props` debounce timer to also fetch the name on every structure
+  change, and a new `TextField` in `PropertyPanel.qml` (above the molecular-formula display,
+  inside the existing `visible: root.molAtoms > 0` block) edits it via
+  `root.canvas.sketch.sendCommand("setMoleculeName", [text])` — reusing the `canvas.sketch`
+  handle other write actions already use (e.g. `toggleSgroupExpanded`), no new signal plumbing.
+- **Eleventh feature delegated to the Antigravity CLI** (flash tier). First delegation attempt
+  failed at the wrapper level, not agy itself — `agy-delegate`'s full plugin-cache path wasn't
+  resolving through the Bash tool with backslashes (`command not found`); retried with the same
+  path in forward-slash form and it ran cleanly (exit 0).
+- **Independently re-verified, not trusted from agy's self-report**: `git diff --stat` confirmed
+  only the three planned files touched (40 lines total, no stray edits); read the full diff by
+  hand — matches the plan exactly, including using the real `Theme.fontFamily`/`Theme.fontSizeBody`
+  tokens (confirmed present in `Theme.qml`, not invented names). Wrote and ran a disposable Node
+  harness against the real `src/v8_worker.js` stdin/stdout protocol (not agy's claim): loaded a
+  molfile with title line `"AcetylTitle"`, confirmed `getMoleculeName` echoes it, confirmed
+  `setMoleculeName("Renamed Compound")` changes it and the immediately re-serialized molfile's
+  line 1, and confirmed `undo` reverts both the in-memory name and what a follow-up
+  `getMoleculeName` reports — all PASS. Re-ran `scripts/worker_smoke_test.js` myself — unaffected,
+  ALL PASS.
+- **QML changes required a real rebuild, unlike the worker** — confirmed via
+  `V8Process::V8Process` (`src/v8_process.cpp`): it walks up from the app dir at runtime looking
+  for `src/v8_worker.js` on disk and `JS_Eval`s it directly, so worker edits are live with no
+  rebuild. `MainWindow.qml`/`PropertyPanel.qml` are compiled in via `qt_add_qml_module`
+  (`CMakeLists.txt`) into `qrc:/qt/qml/...` at build time, so those needed a real
+  `cmake --build .` (clean, exit 0) before the exe would reflect the change. Copied the fresh
+  `Desktop_Qt_6_11_1_MinGW_64_bit-Debug/sketch.exe` over the deployed `build/sketch.exe` (the
+  actual runnable copy, per the standing staleness trap from earlier sessions) before launching.
+- Real interactive launch: process stayed running, stderr showed only the two pre-existing benign
+  `QQuickRectangle`/`QQuickText` style-customization warnings, no new QML errors.
+- **Update (2026-07-17, later): confirmed on-screen.** After installing `pywinauto`, typed "My
+  Test Molecule" into the field on a real benzene ring — it displayed correctly; separately,
+  opening a real SDF file correctly auto-populated the field from the file's title line. Confirmed
+  via real screenshots.
 
 ### Done (2026-07-13, Layout Selected)
 
@@ -569,12 +913,16 @@ module that isn't wired in at all yet (not even in `CMakeLists.txt`).
     expected behavior, not a bug); a second confirmed the image survives `loadMolfile`'s internal
     round-trip (triggered via `aromatize`). Standing `scripts/worker_smoke_test.js` unaffected.
     Clean MinGW build; real interactive launch showed no new QML errors beyond pre-existing style
-    warnings. **Known verification gap, stated explicitly rather than glossed over**: the actual
-    mouse-driven click-through (select the IMAGE tool, click canvas, pick a real file in the
-    native Windows file dialog, confirm it renders) was not exercised — no UI automation was
-    available in this environment for the native file-picker step. Backend correctness (the
-    higher-risk part) was verified directly; the QML wiring was verified by inspection and a
-    clean launch, not by an actual click-through.
+    warnings.
+  - **Update (2026-07-17): the mouse-driven click-through was subsequently exercised and
+    confirmed, closing the gap above.** Investigated a user report of "Insert Image does nothing"
+    — traced through the whole QML wiring (tool selection, canvas click handler, signal
+    connections) and found nothing wrong; root cause turned out to be the user testing via a
+    stale Qt Creator build. Installed `pywinauto` (Windows UI Automation) this session
+    specifically to settle it: selected the IMAGE tool, clicked the canvas, the native "Open"
+    file dialog genuinely appeared, selected a real test image, and it rendered on the canvas at
+    the clicked position — all confirmed via real screenshots against the actual compiled
+    `build/sketch.exe`.
 
 ### Done (2026-07-12, SDF batch record browsing)
 
@@ -609,6 +957,15 @@ module that isn't wired in at all yet (not even in `CMakeLists.txt`).
     read directly from the raw file, not just "didn't crash"). Standing
     `scripts/worker_smoke_test.js` unaffected. Clean MinGW build; real interactive launch showed
     no new QML errors beyond the pre-existing benign Quick Controls style warnings.
+  - **Update (2026-07-17): the on-screen click-through was subsequently exercised and confirmed**,
+    using `pywinauto` against a real 3-record SDF (benzene/ethane/naphthalene, each with a distinct
+    `CAS_NUMBER`). The "Browse records..." picker opened correctly showing "3 records" with
+    correctly-shaped thumbnails and labels (hexagon/line/fused-rings, matching each molecule's
+    real shape). Clicking "Naphthalene" loaded exactly that record: Molecule Name auto-populated
+    to "Naphthalene", C10H8/MW 128.174/Atoms 10/Bonds 11 all correct, Fragments 1/Rings (SSSR) 2
+    correct, and the SDF Data Fields section showed that specific record's own `CAS_NUMBER`
+    (91-20-3) with no bleed-over from the other two records' values — confirming per-record
+    `props` isolation works correctly end to end, not just in the worker-level harness.
 
 ### Done (2026-07-12, native SVG export)
 
@@ -969,20 +1326,21 @@ now used by the insert/delete/render feature; `imageReferencePositionToCursor` r
 `indigo-inchi.h`, `indigo-renderer.h`). Everything below is linked into the binary via
 `indigo.dll` already — no new dependency needed to use any of it.
 
-### Substructure matching (13) — no SMARTS/substructure search exists anywhere in the app
-- `indigoSubstructureMatcher`
+### Substructure matching (13, now 4 used — see "Done (2026-07-17, SMARTS / Substructure
+Search)" above)
+- ~~`indigoSubstructureMatcher`~~ / ~~`indigoMatch`~~ / ~~`indigoIterateMatches`~~ /
+  ~~`indigoMapAtom`~~ **done 2026-07-17**: power the new "Search Substructure (SMARTS)" popup.
 - `indigoIgnoreAtom`
 - `indigoUnignoreAtom`
 - `indigoUnignoreAllAtoms`
-- `indigoMatch`
 - `indigoCountMatches`
 - `indigoCountMatchesWithLimit`
-- `indigoIterateMatches`
 - `indigoHighlightedTarget`
-- `indigoMapAtom`
-- `indigoMapBond`
+- `indigoMapBond` (bond-level mapping — atom-level was enough for the shipped v1; would matter for
+  a future "highlight bond stereo/type differences per match" refinement)
 - `indigoMapMolecule`
-- `indigoIterateTautomers`
+- `indigoIterateTautomers` (tautomer-aware matching — the shipped v1 uses default/NORMAL mode
+  only, per the plan's non-goals)
 
 ### Fingerprints & similarity (7) — would back "find similar" search
 - `indigoFingerprint`
@@ -1231,18 +1589,25 @@ tautomer handling, named properties on the handle, bad-valence/ambiguous-H check
 - `indigoSetTautomerRule`
 - `indigoRemoveTautomerRule`
 - `indigoClearTautomerRules`
-- `indigoName`
-- `indigoSetName`
+- ~~`indigoName`~~ / ~~`indigoSetName`~~ **redundant, confirmed 2026-07-17: routing through
+  Indigo would duplicate work `chem-core.js` already does natively.** The molfile line-1 title
+  is already parsed on load and re-serialized on save entirely in JS (`struct.name`, no Indigo
+  round-trip). Shipped as a plain worker-side field instead — see "Done (2026-07-17, Molecule
+  Name field)" above.
 - `indigoSerialize`
 - `indigoUnserialize`
-- `indigoHasProperty`
-- `indigoGetProperty`
-- `indigoSetProperty`
-- `indigoRemoveProperty`
-- `indigoIterateProperties`
-- `indigoClearProperties`
-- `indigoCheckBadValence`
-- `indigoCheckAmbiguousH`
+- ~~`indigoHasProperty`~~ / ~~`indigoGetProperty`~~ / ~~`indigoSetProperty`~~ /
+  ~~`indigoRemoveProperty`~~ / ~~`indigoIterateProperties`~~ / ~~`indigoClearProperties`~~
+  **redundant, confirmed 2026-07-17: same dead-end category as `indigoName`/`indigoSetName`.**
+  `chem-core.js`'s `SdfSerializer` (line 24280) already fully parses/writes arbitrary SDF
+  `> <FIELDNAME>` custom data fields per record in JS. Shipped as a plain worker-side read-only
+  panel section instead — see "Done (2026-07-17, SDF Data Fields)" above.
+- ~~`indigoCheckBadValence`~~ / ~~`indigoCheckAmbiguousH`~~ **redundant, confirmed 2026-07-17:**
+  the existing "Validate structure" toolbar button already calls `indigoCheckObj(mol, "")`, and
+  reading `StructureChecker::checkMolecule` (`structure_checker.cpp:712`,
+  `check_types.size() ? check_types : check_names_map.all`) confirms an empty check-types string
+  runs the full check-type set — `CHECK_VALENCE` and `CHECK_AMBIGUOUS_H` included — already, every
+  time. These two standalone exports would only narrow that to a single check type each.
 
 ### Molecules, query molecules, SMARTS — remaining loaders/savers (73) — query-molecule/SMARTS
 loading, CDX/CML/monomer-library save formats, file/buffer-path variants of loaders Sketch

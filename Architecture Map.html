@@ -354,6 +354,31 @@ footer{ margin-top:3rem; padding-top:1.2rem; border-top:1px solid var(--border);
           <td>New standalone whole-document "Clean 2D Structure" toolbar button (<code>indigoClean2d</code>/<code>MoleculeCleaner2d</code> — local gradient-descent cleanup, distinct from <code>indigoLayout</code>'s fresh global embedding). Reuses <code>layout.svg</code>, no new icon. Verified against the real compiled <code>IndigoService::clean2d</code> on a distorted ring; two environmental snags (stale Qt DLLs, stale deployed <code>build/sketch.exe</code>) caught and fixed during verification, neither caused by the feature itself. See <code>Features To Be Implemented.md</code>'s "Done (2026-07-13, Clean 2D Structure)" entry and <code>.claude/plans/clean-2d-structure.md</code>.</td>
         </tr>
         <tr>
+          <td class="feature"><s>Molecule Name field</s> <b>(done 2026-07-17)</b></td>
+          <td class="seamtag"><span class="tag node">① Worker</span></td>
+          <td>Editable "Molecule Name" field in <code>PropertyPanel.qml</code>, surfacing the molfile line-1 title <code>chem-core.js</code> already parses/serializes with zero Indigo involvement (<code>getMoleculeName()</code>/<code>setMoleculeName()</code> in <code>src/v8_worker.js</code>, undo-tracked via the standard <code>makeCmd</code> stack). Originated as the <code>indigoName</code>/<code>indigoSetName</code> backlog line — routing through Indigo would have duplicated work the JS layer already owns; same dead-end category as <code>indigoCheckBadValence</code>/<code>indigoCheckAmbiguousH</code> (already covered by the existing "Validate structure" button's default all-checks call). Verified via a disposable Node harness against the real worker protocol (name parse, get, set, undo, re-serialize — all correct); QML changes required a real rebuild (worker script is read live off disk, QML is compiled into <code>qrc:/qt/qml/...</code>). See <code>Features To Be Implemented.md</code>'s "Done (2026-07-17, Molecule Name field)" entry and <code>.claude/plans/molecule-name-field.md</code>.</td>
+        </tr>
+        <tr>
+          <td class="feature"><s>Interactive page margins on the rulers</s> <b>(done 2026-07-17)</b></td>
+          <td class="seamtag"><span class="tag node">① Worker</span></td>
+          <td>v1 of the toolbar-rulers design spec's Section 2 — shaded, draggable margin zones on <code>topRuler</code>/<code>leftRuler</code> (<code>MainWindow.qml</code>), new <code>window.pageMargins</code>, four drag handles clamped to keep 1cm printable. Indents/tab-stops explicitly deferred — no "canvas alignment routine" layer exists yet to attach them to. Pure QML, no C++/Indigo/worker changes. See <code>Features To Be Implemented.md</code>'s "Done (2026-07-17, Interactive page margins on the rulers)" entry and <code>.claude/plans/ruler-page-margins.md</code>.</td>
+        </tr>
+        <tr>
+          <td class="feature"><s>SDF Data Fields</s> <b>(done 2026-07-17)</b></td>
+          <td class="seamtag"><span class="tag node">① Worker</span></td>
+          <td>Read-only "SDF Data Fields" section in <code>PropertyPanel.qml</code>, surfacing per-record custom SDF fields (<code>&gt;&lt;FIELDNAME&gt;</code> blocks) that <code>chem-core.js</code>'s <code>SdfSerializer</code> already parses/writes in JS. Third instance of the same dead-end pattern as <code>indigoName</code>/<code>indigoSetName</code> and <code>indigoCheckBadValence</code>/<code>indigoCheckAmbiguousH</code> — all six generic-property Indigo exports pruned as redundant. Real gap was <code>deserializeSdfBatch</code>/<code>loadSdfBatchRecord</code> silently discarding already-parsed <code>item.props</code>. Verified via a disposable Node harness against the real worker (per-record isolation, correct clearing for props-less records). See <code>Features To Be Implemented.md</code>'s "Done (2026-07-17, SDF Data Fields)" entry and <code>.claude/plans/sdf-data-fields.md</code>.</td>
+        </tr>
+        <tr>
+          <td class="feature"><s>Fragment Count + Ring Count (SSSR)</s> <b>(done 2026-07-17)</b></td>
+          <td class="seamtag"><span class="tag indigo">② Indigo</span></td>
+          <td>Two more "Drug Properties" rows: <code>indigoCountComponents</code> (disconnected fragments) and <code>indigoCountSSSR</code> (Smallest Set of Smallest Rings). Same pattern as Heavy Atom Count/Chirality. Verified against a real compiled harness: benzene (1/1), naphthalene (1/2 — confirms SSSR not all-rings), a two-component molfile (2/0). See <code>Features To Be Implemented.md</code>'s "Done (2026-07-17, Fragment Count + Ring Count)" entry.</td>
+        </tr>
+        <tr>
+          <td class="feature"><s>SMARTS / Substructure Search</s> <b>(done 2026-07-17)</b></td>
+          <td class="seamtag"><span class="tag indigo">② Indigo</span></td>
+          <td>New "Search Substructure (SMARTS)" toolbar popup — closes the largest genuinely-missing feature in the backlog. Reuses <code>SelectionLayer.qml</code>'s existing highlight rendering (no new Canvas code) by writing matched atom/bond ids into the worker's selection. New <code>IndigoService::substructureSearch</code> (<code>indigoLoadSmartsFromString</code>/<code>indigoSubstructureMatcher</code>/<code>indigoIterateMatches</code>/<code>indigoMapAtom</code> — verified real, not dead stubs) + new <code>SubstructureSearchPopup.qml</code>. Two real bugs caught and fixed during verification: a patch-corrupted comment causing a compile error (caught by an independent C++ harness build, agy hadn't tested at all this round) and a missing <code>CMakeLists.txt</code> <code>RESOURCES</code> entry for <code>search.svg</code> (caught by the real interactive launch). See <code>Features To Be Implemented.md</code>'s "Done (2026-07-17, SMARTS / Substructure Search)" entry and <code>.claude/plans/smarts-substructure-search.md</code>.</td>
+        </tr>
+        <tr>
           <td class="feature">IUPAC nomenclature, 3D viewer, spectral prediction, macros</td>
           <td class="seamtag"><span class="tag mixed">External</span></td>
           <td>None of these are latent in either vendored library — all need a new dependency or licensed engine, so no existing seam applies yet.</td>

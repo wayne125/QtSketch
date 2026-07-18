@@ -47,6 +47,7 @@ qt_add_qml_module(sketch
         AtomPropertiesDialog.qml
         RGroupPanel.qml
         SdfRecordPicker.qml
+        SubstructureSearchPopup.qml
 
         components/FocusRing.qml
         components/IconCell.qml
@@ -55,6 +56,9 @@ qt_add_qml_module(sketch
         components/PopupHeader.qml
         components/AnchoredPicker.qml
         components/SegmentedControl.qml
+        components/AppMenuBar.qml
+        components/AppMenuBarItem.qml
+        components/MenuItemRow.qml
         components/TaskDialog.qml
 
         chem-core.js
@@ -124,6 +128,7 @@ qt_add_qml_module(sketch
         icons/hand.svg
         icons/select-lasso.svg
         icons/add-image.svg
+        icons/search.svg
 )
 
 target_link_libraries(sketch PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent qjs

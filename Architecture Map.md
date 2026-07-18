@@ -612,6 +612,133 @@ shipped standalone instead of folded into Layout Selected. Full plan:
   pre-existing benign warnings. **Known verification gap, stated explicitly**: no actual on-screen
   click of the button was exercised, only backend/harness-level verification plus a clean launch.
 
+### Molecule Name field (2026-07-17)
+
+Editable "Molecule Name" field in the PropertyPanel, surfacing the molfile line-1 title that
+`chem-core.js` already parses on load and re-serializes on save with zero Indigo involvement.
+Originated as the `indigoName`/`indigoSetName` backlog line — investigation found routing through
+Indigo would just duplicate work the JS layer already owns end-to-end, same dead-end category as
+`indigoCheckBadValence`/`indigoCheckAmbiguousH` (both already covered by the existing "Validate
+structure" button's default all-checks `indigoCheckObj(mol, "")` call — confirmed via
+`structure_checker.cpp:712`). Both pairs pruned from the Part C backlog. Full plan:
+`.claude/plans/molecule-name-field.md`.
+
+- **Eleventh feature delegated to the Antigravity CLI** — flash tier. Pure `v8_worker.js` + QML,
+  no C++/Indigo change at all. First delegation attempt failed at the wrapper level (`agy-delegate`
+  full path not resolving through Bash with backslashes — `command not found`); retried with the
+  same path in forward-slash form, ran clean.
+- Diff read in full: exactly the three planned files, 40 lines total, no stray edits. Confirmed
+  `Theme.fontFamily`/`Theme.fontSizeBody` (used by the new TextField) are real existing tokens,
+  not invented names.
+- Verified independently, not from agy's self-report: a disposable Node harness against the real
+  `src/v8_worker.js` stdin/stdout protocol — load a molfile titled `"AcetylTitle"`, confirm
+  `getMoleculeName` echoes it, confirm `setMoleculeName` changes it and the re-serialized
+  molfile's line 1, confirm `undo` reverts both — all PASS. Standing `worker_smoke_test.js`
+  re-run myself, unaffected, ALL PASS.
+- **QML required a real rebuild, unlike the worker**: `V8Process` reads `src/v8_worker.js` live
+  off disk at runtime (`JS_Eval`d directly, walks up from the app dir to find it), so worker edits
+  need no rebuild — but `MainWindow.qml`/`PropertyPanel.qml` are compiled into `qrc:/qt/qml/...`
+  via `qt_add_qml_module` at build time. Clean MinGW build (`BUILD_EXIT:0` from a direct log);
+  copied the fresh binary over the deployed `build/sketch.exe` before launching, per the standing
+  staleness trap from earlier sessions.
+- Real interactive launch: process stayed running, stderr showed only the two pre-existing benign
+  style-customization warnings, no new QML errors. **Known verification gap, stated explicitly**:
+  no on-screen click-through (typing into the field, confirming the Save/re-open round trip) was
+  exercised — no screen-capture/UI-automation tool available in this environment.
+
+### Interactive page margins on the rulers (2026-07-17)
+
+v1 of `docs/superpowers/specs/2026-07-08-toolbar-rulers-design.md` Section 2. The spec doc's
+"static rulers" framing was stale — `topRuler`/`leftRuler` already drew page/zoom/scroll-aware cm
+ticks; the real gap was "Interactive Margins" only. New `window.pageMargins`, shaded non-printable
+bands on both rulers, four drag handles (each recomputing position via `mapToItem` every event to
+avoid the classic "MouseArea moves under its own drag" bug), clamped to keep 1cm printable.
+Indents/tab-stops explicitly deferred — no "canvas alignment routine" layer exists in this app to
+attach them to, so building that now would be a separate, bigger feature. Full plan:
+`.claude/plans/ruler-page-margins.md`.
+
+- **Twelfth feature delegated to the Antigravity CLI** — flash tier. Hit the same transient
+  `agy exited 1: timeout waiting for response` seen during Clean 2D Structure (not an auth/setup
+  issue); retried identically, completed clean.
+- Diff read in full: exactly one file touched (`MainWindow.qml`). agy's own log mentioned an
+  unrelated `libsketch.dll`/`test_indigo.exe` build from a pre-existing separate CMake target it
+  happened to exercise internally — confirmed via `git status`/`git diff --stat` that no stray
+  files or extra targets came from this delegation.
+- Clean MinGW build; real interactive launch with no new QML errors beyond the two pre-existing
+  benign warnings. Standing smoke test re-run myself, unaffected (no worker changes this round).
+  **Known verification gap, stated explicitly**: no on-screen dragging of a margin handle was
+  exercised — no screen-capture/UI-automation tool available in this environment.
+
+### SDF Data Fields (2026-07-17)
+
+Read-only "SDF Data Fields" section in the PropertyPanel, surfacing per-record custom SDF data
+fields (`<IC50>`, `<Vendor>`, etc.) that `chem-core.js`'s `SdfSerializer` already fully parses/
+writes in JS. Third instance this session of the same dead-end pattern as `indigoName`/
+`indigoSetName` and `indigoCheckBadValence`/`indigoCheckAmbiguousH` — the six
+`indigoHasProperty`/`indigoGetProperty`/`indigoSetProperty`/`indigoRemoveProperty`/
+`indigoIterateProperties`/`indigoClearProperties` exports were never needed. The real gap:
+`deserializeSdfBatch`/`loadSdfBatchRecord` already parsed `item.props` per record but silently
+discarded it before this round. Pure `v8_worker.js` + QML, piggybacked on the same 600ms
+`calc_props` cycle the Molecule Name field uses. Full plan: `.claude/plans/sdf-data-fields.md`.
+
+- **Thirteenth feature delegated to the Antigravity CLI** — flash tier, completed clean on the
+  first attempt.
+- Diff read in full, matches the plan. Re-ran the real `scripts/worker_smoke_test.js` myself
+  (agy's own log showed a different, self-authored test, not this repo's real one) — ALL PASS.
+  Disposable Node harness against the real worker: a two-record SDF, record 0 with two custom
+  fields, record 1 with none — confirmed correct per-record field values and correct clearing for
+  the props-less record.
+- Clean MinGW build; real interactive launch with no new QML errors beyond the two pre-existing
+  benign warnings. **Known verification gap, stated explicitly**: no on-screen check of the
+  rendered fields — no screen-capture/UI-automation tool available in this environment.
+
+### Fragment Count + Ring Count (2026-07-17)
+
+Two more "Drug Properties" rows: **Fragments** (`indigoCountComponents`) and **Rings (SSSR)**
+(`indigoCountSSSR`). Same low-risk pattern as Heavy Atom Count/Chirality — extend
+`calcProperties`/`propertiesReady`, add two Grid rows, no canvas changes. Full plan:
+`.claude/plans/fragment-ring-count.md`.
+
+- **Fourteenth feature delegated to the Antigravity CLI** — flash tier, transient timeout on
+  first attempt, clean on retry.
+- Diff read in full, matches plan. Built and ran a standalone C++ harness against the real
+  compiled `calcProperties`: benzene (1 fragment, 1 ring), naphthalene (1 fragment, 2 rings —
+  confirms SSSR not "all rings"), two-component molfile (2 fragments, 0 rings) — all PASS. Real
+  `scripts/worker_smoke_test.js` re-run myself, unaffected.
+- Clean MinGW build; real interactive launch with no new QML errors beyond the two pre-existing
+  benign warnings. **Known verification gap**: no on-screen check — no screen-capture tool here.
+
+### SMARTS / Substructure Search (2026-07-17)
+
+New "Search Substructure (SMARTS)" toolbar popup — closes the largest genuinely-missing feature
+in the backlog. Scope-collapsing decision: reused `SelectionLayer.qml`'s existing highlight
+rendering (no new Canvas code) by writing matched atom/bond ids straight into the worker's
+`_selection`. New `IndigoService::substructureSearch` (`indigoLoadSmartsFromString`/
+`indigoSubstructureMatcher`/`indigoIterateMatches`/`indigoMapAtom` — all verified real
+implementations, not dead stubs like `indigoLayoutSelected`), new `selectSubstructureMatches()`
+worker function (same V2000-index-correlation technique as the Layout Selected investigation),
+new `SubstructureSearchPopup.qml`. Full plan: `.claude/plans/smarts-substructure-search.md`.
+
+- **Fifteenth feature delegated to the Antigravity CLI** — pro tier. First attempt failed
+  immediately ("Plan file missing") — this repo has its own `.claude/plans/` directory (used by
+  every pre-this-session round) distinct from the global path this session's earlier plans were
+  written to; copied the plan there and retried, completed clean.
+- **Real bug caught by independent verification** (agy didn't even claim to have built/tested this
+  round): the patch corrupted an unrelated comment two functions away, producing a genuine brace-
+  mismatch compile error. Caught by compiling a standalone C++ harness against the real file;
+  fixed by hand, re-verified with a clean recompile.
+- **Second real gap caught only by the real interactive launch**: `icons/search.svg` exists on
+  disk but wasn't registered in `CMakeLists.txt`'s `RESOURCES` list (a plan gap on my part, not
+  agy's) — surfaced as a real `Cannot open: qrc:/.../search.svg` QML error in stderr; fixed with
+  one added line and a rebuild.
+- Independently verified end to end: C++ harness against real compiled `substructureSearch`
+  (benzene/`c1ccccc1` → 1 match all indices valid; invalid SMARTS → error not crash; `[Xe]` → zero
+  matches no error); Node harness against the real worker (match selection + bond inclusion +
+  clearing, all correct). Real `scripts/worker_smoke_test.js` re-run myself, unaffected.
+- Clean MinGW build (twice, after each fix); real interactive launch with no new QML errors
+  beyond the two pre-existing benign warnings (final run). **Known verification gap**: no
+  on-screen search was exercised — no screen-capture tool available in this environment.
+
 ### Copy Canonical Hash (2026-07-13)
 
 `indigoHash` (works for molecules and reactions), following the "Copy SMILES/InChI" clipboard-

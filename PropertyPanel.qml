@@ -12,6 +12,8 @@ Rectangle {
     readonly property var selBond: canvas ? canvas.selectedBond : null
     readonly property var selArrow: canvas ? canvas.selectedRxnArrow : null
 
+    property string molName: ""
+    property var sdfProps: ({})
     property double molMW:       0
     property double molMono:     0
     property string molFormula:  ""
@@ -24,6 +26,8 @@ Rectangle {
     property int    molHeavyAtoms: 0
     property bool   molIsChiral: false
     property double molMostAbundantMass: 0
+    property int    molFragmentCount: 0
+    property int    molRingCount: 0
     property int    molHBA:      0
     property int    molHBD:      0
     property int    molRotBonds: 0
@@ -64,6 +68,24 @@ Rectangle {
             Layout.fillWidth: true
             visible: root.molAtoms > 0
             spacing: 6
+
+            TextField {
+                id: molNameInput
+                Layout.fillWidth: true
+                placeholderText: "Untitled"
+                text: root.molName
+                font { pixelSize: Theme.fontSizeBody; family: Theme.fontFamily }
+                onEditingFinished: {
+                    if (root.canvas && root.canvas.sketch) {
+                        root.canvas.sketch.sendCommand("setMoleculeName", [text])
+                    }
+                    focus = false
+                }
+                Keys.onEscapePressed: {
+                    text = root.molName
+                    focus = false
+                }
+            }
 
             Text {
                 textFormat: Text.RichText
@@ -137,6 +159,56 @@ Rectangle {
 
                 Text { textFormat: Text.PlainText; text: "Abundant Mass"; color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
                 Text { textFormat: Text.PlainText; text: root._fmtNum(root.molMostAbundantMass, 3) + " g/mol"; color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
+
+                Text { textFormat: Text.PlainText; text: "Fragments"; color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
+                Text { textFormat: Text.PlainText; text: root.molFragmentCount.toString(); color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
+
+                Text { textFormat: Text.PlainText; text: "Rings (SSSR)"; color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
+                Text { textFormat: Text.PlainText; text: root.molRingCount.toString(); color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
+            }
+        }
+
+        // SDF Data Fields (read-only)
+        ColumnLayout {
+            Layout.fillWidth: true
+            visible: Object.keys(root.sdfProps).length > 0
+            spacing: 6
+
+            Rectangle { Layout.fillWidth: true; height: 1; color: Theme.outline; opacity: 0.5 }
+
+            Text {
+                textFormat: Text.PlainText
+                text: "SDF Data Fields"
+                color: Theme.textSecondary
+                font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontDisplay }
+            }
+
+            Grid {
+                columns: 2
+                columnSpacing: 12
+                rowSpacing: 4
+                Layout.fillWidth: true
+
+                Repeater {
+                    model: {
+                        var keys = Object.keys(root.sdfProps);
+                        var arr = [];
+                        for (var i = 0; i < keys.length; i++) {
+                            arr.push({ isKey: true, val: keys[i] });
+                            arr.push({ isKey: false, val: root.sdfProps[keys[i]] });
+                        }
+                        return arr;
+                    }
+                    delegate: Text {
+                        textFormat: Text.PlainText
+                        text: modelData.val
+                        color: modelData.isKey ? Theme.textSecondary : Theme.textPrimary
+                        font {
+                            pixelSize: Theme.fontSizeLabel
+                            family: modelData.isKey ? Theme.fontDisplay : Theme.fontMono
+                        }
+                    }
+                }
             }
         }
 

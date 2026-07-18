@@ -1075,17 +1075,42 @@ Item {
             if (isDragging) {
                 if (!(m.buttons & Qt.LeftButton)) {
                     isDragging = false
+                    AppController.clearChainPreview()
                     setOverlayState({ hoverAtomId: hoverAtomId, hoverBondId: hoverBondId, dragRect: null, bondPreview: null })
                     return
                 }
 
                 if (currentTool === "CHAIN") {
+                    // Live zigzag ghost (matches what addChain will actually commit) via
+                    // AppController/ChainPlacementEngine, published into overlayState.
+                    // previewAtoms/previewBonds and rendered by ToolOverlay.qml. bondPreview
+                    // itself is deliberately left frozen at its press-time value (a zero-length
+                    // segment) rather than updated to the live mouse position, so the old plain
+                    // rubber-band line this overlay used to draw for CHAIN doesn't render on
+                    // top of the new zigzag ghost.
+                    //
+                    // Ordering matters here: setOverlayState() replaces sketch.overlayState
+                    // wholesale (it's `sketch.overlayState = s`, not a merge), while
+                    // AppController.updateChainPreview() does a proper C++-side read-modify-write
+                    // that preserves whatever is already in overlayState. Calling
+                    // updateChainPreview() AFTER setOverlayState() means its merge is the one
+                    // that lands; doing it the other way around silently wiped out the
+                    // previewAtoms/previewBonds it had just set, one JS tick before any repaint.
                     const bp = sketch.overlayState.bondPreview
                     if (bp) {
-                        setOverlayState({
-                            hoverAtomId: null, hoverBondId: null, dragRect: null,
-                            bondPreview: { startX: bp.startX, startY: bp.startY, endX: m.x, endY: m.y }
-                        })
+                        const curChem = canvasToChem(m.x, m.y)
+                        setOverlayState({ hoverAtomId: null, hoverBondId: null, dragRect: null, bondPreview: bp })
+                        // Chain geometry lives in chem-coordinate space (bp.startX/startY and
+                        // curChem are both canvasToChem output), so the divisor here must be
+                        // v8_worker.js addChain's own chem-unit bond length (chem-core.js:
+                        // StandardBondLength = MonomerSize(0.75) * 2 = 1.5) - NOT root.bondLength
+                        // (Theme.baseBondLength, a PIXEL value used for canvas<->chem scaling
+                        // elsewhere). Passing the pixel value here was the first attempt and
+                        // produced a wildly oversized single-segment ghost: a chem-space distance
+                        // of ~13 units divided by ~19 (pixels, wrong unit) rounds down to 1 bond,
+                        // then that 1 bond's "length" gets stepped by 19 chem-units instead of
+                        // 1.5, landing the second atom ~19x too far away.
+                        AppController.updateChainPreview(bp.startX, bp.startY, curChem.x, curChem.y, 1.5)
                     }
                     return
                 }
@@ -1230,6 +1255,7 @@ Item {
             }
             if (isDragging && currentTool === "CHAIN") {
                 isDragging = false
+                AppController.clearChainPreview()
                 const bp = sketch.overlayState.bondPreview
                 setOverlayState({ hoverAtomId: null, hoverBondId: null, dragRect: null, bondPreview: null })
                 if (bp) {

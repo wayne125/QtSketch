@@ -24,14 +24,17 @@ public:
     Q_INVOKABLE void inchi(const QString &molfile);
     Q_INVOKABLE void inchiKey(const QString &molfile);
     Q_INVOKABLE void hash(const QString &molfile);
+    Q_INVOKABLE void similarity(const QString &molfile, const QString &refSmiles);
     Q_INVOKABLE void massComposition(const QString &molfile);
     Q_INVOKABLE void pkaValues(const QString &molfile);
     Q_INVOKABLE void renderToFile(const QString &molfile, const QUrl &fileUrl, const QString &format);
+    Q_INVOKABLE void renderReactionGridToFile(const QString &molfile, const QUrl &fileUrl, const QString &format);
     Q_INVOKABLE void normalize(const QString &molfile);
     Q_INVOKABLE void standardize(const QString &molfile);
     Q_INVOKABLE void calcProperties(const QString &molfile);
     Q_INVOKABLE void calcStereoDescriptors(const QString &molfile);
     Q_INVOKABLE void checkStructure(const QString &molfile);
+    Q_INVOKABLE void substructureSearch(const QString &molfile, const QString &smarts);
 
     // Biopolymer loading (all emit biopolymerLoaded on success, biopolymerLoadError on failure)
     Q_INVOKABLE void loadBioSequence(const QString &text, const QString &seqType);
@@ -59,6 +62,7 @@ Q_SIGNALS:
     void inchiFinished(const QString &result);
     void inchiKeyFinished(const QString &result);
     void hashFinished(const QString &result);
+    void similarityFinished(const QString &result);
     void massCompositionFinished(const QString &result);
     void pkaValuesFinished(const QString &result);
     void renderFinished(bool success, const QString &error);
@@ -68,10 +72,12 @@ Q_SIGNALS:
                          int atoms, int bonds,
                          double tpsa, double logp, int hba, int hbd, int rotBonds,
                          double molarRefractivity, double pka,
-                         int heavyAtoms, bool isChiral, double mostAbundantMass);
+                         int heavyAtoms, bool isChiral, double mostAbundantMass,
+                         int fragmentCount, int ringCount);
     void stereoDescriptorsReady(const QString &jsonMap);
     void checkFinished(const QString &report);
     void checkIssuesReady(const QString &structuredJson);
+    void substructureSearchFinished(const QString &result);
 
     void biopolymerLoaded(const QString &molfile);
     void biopolymerLoadError(const QString &error);

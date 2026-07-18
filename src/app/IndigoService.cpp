@@ -458,6 +458,42 @@ void IndigoService::hash(const QString &molfile) {
     });
 }
 
+void IndigoService::similarity(const QString &molfile, const QString &refSmiles) {
+    if (molfile.isEmpty() || refSmiles.isEmpty() || isReactionFormat(molfile)) {
+        emit similarityFinished("");
+        return;
+    }
+    QPointer<IndigoService> self = this;
+    (void)QtConcurrent::run([self, molfile, refSmiles]() {
+        QString result;
+        unsigned long long sid = indigoAllocSessionId();
+        indigoSetSessionId(sid);
+        try {
+            int mol = indigoLoadMoleculeFromString(molfile.toUtf8().constData());
+            int ref = indigoLoadMoleculeFromString(refSmiles.toUtf8().constData());
+            if (mol >= 0 && ref >= 0) {
+                // Both structures must be aromatized before comparing - the similarity
+                // fingerprint is sensitive to Kekule-vs-aromatic bond representation, and the
+                // two sides here almost never agree on that by default: the canvas structure
+                // arrives via a molfile (drawn bonds, typically Kekule), while a user-pasted
+                // reference SMILES is very commonly aromatic notation (e.g. "c1ccccc1" from
+                // PubChem/ChemDraw). Verified empirically: without this, comparing benzene
+                // against itself (aromatic reference) scored 0.0769, not ~1.0; with it, 1.0000.
+                if (indigoAromatize(mol) < 0) qWarning() << "Indigo: similarity aromatize(mol) failed:" << indigoGetLastError();
+                if (indigoAromatize(ref) < 0) qWarning() << "Indigo: similarity aromatize(ref) failed:" << indigoGetLastError();
+                float sim = indigoSimilarity(mol, ref, "tanimoto");
+                result = QString::number(sim, 'f', 4);
+            } else {
+                qWarning() << "Indigo: similarity load failed:" << indigoGetLastError();
+            }
+            if (mol >= 0) indigoFree(mol);
+            if (ref >= 0) indigoFree(ref);
+        } catch (...) {}
+        indigoReleaseSessionId(sid);
+        emitOnGuiThread(self, [result](IndigoService *s) { emit s->similarityFinished(result); });
+    });
+}
+
 void IndigoService::massComposition(const QString &molfile) {
     if (molfile.isEmpty() || isReactionFormat(molfile)) { emit massCompositionFinished(""); return; }
     QPointer<IndigoService> self = this;
@@ -535,6 +571,54 @@ void IndigoService::renderToFile(const QString &molfile, const QUrl &fileUrl, co
     });
 }
 
+void IndigoService::renderReactionGridToFile(const QString &molfile, const QUrl &fileUrl, const QString &format) {
+    if (molfile.isEmpty()) { emit renderFinished(false, "No structure to render."); return; }
+    if (!isReactionFormat(molfile)) {
+        emit renderFinished(false, "Grid export is for reactions only - the active document is a plain molecule.");
+        return;
+    }
+    QPointer<IndigoService> self = this;
+    QString path = fileUrl.toLocalFile();
+    (void)QtConcurrent::run([self, molfile, path, format]() {
+        bool ok = false;
+        QString error;
+        unsigned long long sid = indigoAllocSessionId();
+        indigoSetSessionId(sid);
+        indigoRendererInit(sid);
+        try {
+            int rx = indigoLoadReactionFromString(molfile.toUtf8().constData());
+            if (rx >= 0) {
+                int arr = indigoCreateArray();
+                int count = 0;
+                int comp;
+                int reactants = indigoIterateReactants(rx);
+                while ((comp = indigoNext(reactants)) > 0) { indigoArrayAdd(arr, comp); count++; }
+                int products = indigoIterateProducts(rx);
+                while ((comp = indigoNext(products)) > 0) { indigoArrayAdd(arr, comp); count++; }
+                if (count > 0) {
+                    indigoSetOption("render-output-format", format.toUtf8().constData());
+                    int res = indigoRenderGridToFile(arr, nullptr, count, path.toUtf8().constData());
+                    if (res >= 0) ok = true;
+                    else error = QString::fromUtf8(indigoGetLastError());
+                } else {
+                    error = "Reaction has no reactants or products to render.";
+                }
+                indigoFree(arr);
+                indigoFree(rx);
+            } else {
+                error = QString("Failed to load reaction: %1").arg(indigoGetLastError());
+            }
+        } catch (const std::exception &e) {
+            error = QString::fromUtf8(e.what());
+        } catch (...) {
+            error = "Unknown exception during grid render.";
+        }
+        indigoRendererDispose(sid);
+        indigoReleaseSessionId(sid);
+        emitOnGuiThread(self, [ok, error](IndigoService *s) { emit s->renderFinished(ok, error); });
+    });
+}
+
 void IndigoService::normalize(const QString &molfile) {
     if (molfile.isEmpty()) { emit normalizeFinished(""); return; }
     QPointer<IndigoService> self = this;
@@ -587,7 +671,7 @@ void IndigoService::standardize(const QString &molfile) {
 
 void IndigoService::calcProperties(const QString &molfile) {
     if (molfile.isEmpty() || isReactionFormat(molfile)) {
-        emit propertiesReady(0, 0, "", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0);
+        emit propertiesReady(0, 0, "", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, 0, 0);
         return;
     }
     QPointer<IndigoService> self = this;
@@ -597,6 +681,8 @@ void IndigoService::calcProperties(const QString &molfile) {
         int atoms = 0, bonds = 0, hba = 0, hbd = 0, rotBonds = 0;
         int heavyAtoms = 0;
         bool isChiral = false;
+        int fragmentCount = 0;
+        int ringCount = 0;
         unsigned long long sid = indigoAllocSessionId();
         indigoSetSessionId(sid);
         try {
@@ -616,6 +702,8 @@ void IndigoService::calcProperties(const QString &molfile) {
                 heavyAtoms = indigoCountHeavyAtoms(mol);
                 isChiral = indigoIsChiral(mol) != 0;
                 mostAbundantMass = indigoMostAbundantMass(mol);
+                fragmentCount = indigoCountComponents(mol);
+                ringCount = indigoCountSSSR(mol);
                 int fmHandle = indigoMolecularFormula(mol);
                 if (fmHandle >= 0) {
                     const char* fmStr = indigoToString(fmHandle);
@@ -628,7 +716,7 @@ void IndigoService::calcProperties(const QString &molfile) {
             }
         } catch (...) {}
         indigoReleaseSessionId(sid);
-        emitOnGuiThread(self, [=](IndigoService *s) { emit s->propertiesReady(mw, mono, mf, atoms, bonds, tpsa, logp, hba, hbd, rotBonds, molarRefractivity, pka, heavyAtoms, isChiral, mostAbundantMass); });
+        emitOnGuiThread(self, [=](IndigoService *s) { emit s->propertiesReady(mw, mono, mf, atoms, bonds, tpsa, logp, hba, hbd, rotBonds, molarRefractivity, pka, heavyAtoms, isChiral, mostAbundantMass, fragmentCount, ringCount); });
     });
 }
 
@@ -871,9 +959,77 @@ void IndigoService::copyToClipboard(const QString &text) {
     QGuiApplication::clipboard()->setText(text);
 }
 
+void IndigoService::substructureSearch(const QString &molfile, const QString &smarts) {
+    if (molfile.isEmpty() || smarts.isEmpty() || isReactionFormat(molfile)) {
+        emit substructureSearchFinished("{\"error\":\"No structure or empty pattern\"}");
+        return;
+    }
+    QPointer<IndigoService> self = this;
+    (void)QtConcurrent::run([self, molfile, smarts]() {
+        QString result;
+        unsigned long long sid = indigoAllocSessionId();
+        indigoSetSessionId(sid);
+        try {
+            int mol = indigoLoadMoleculeFromString(molfile.toUtf8().constData());
+            if (mol >= 0) {
+                int query = indigoLoadSmartsFromString(smarts.toUtf8().constData());
+                if (query >= 0) {
+                    int matcher = indigoSubstructureMatcher(mol, "");
+                    if (matcher >= 0) {
+                        const int kMaxMatches = 200;
+                        QJsonArray matchesArr;
+                        int matchIter = indigoIterateMatches(matcher, query);
+                        if (matchIter >= 0) {
+                            int mapping;
+                            while (matchesArr.size() < kMaxMatches && (mapping = indigoNext(matchIter)) != 0) {
+                                if (mapping == -1) break;
+                                QJsonArray oneMatch;
+                                int qAtomIter = indigoIterateAtoms(query);
+                                if (qAtomIter >= 0) {
+                                    int qAtom;
+                                    while ((qAtom = indigoNext(qAtomIter)) != 0) {
+                                        if (qAtom == -1) break;
+                                        int tAtom = indigoMapAtom(mapping, qAtom);
+                                        if (tAtom >= 0) { oneMatch.append(indigoIndex(tAtom) + 1); indigoFree(tAtom); }
+                                        indigoFree(qAtom);
+                                    }
+                                    indigoFree(qAtomIter);
+                                }
+                                matchesArr.append(oneMatch);
+                                indigoFree(mapping);
+                            }
+                            indigoFree(matchIter);
+                        }
+                        QJsonObject obj;
+                        obj["matchCount"] = matchesArr.size();
+                        obj["truncated"] = (matchesArr.size() >= kMaxMatches);
+                        obj["matches"] = matchesArr;
+                        result = QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact));
+                        indigoFree(matcher);
+                    } else {
+                        result = "{\"error\":\"Failed to build substructure matcher\"}";
+                    }
+                    indigoFree(query);
+                } else {
+                    QString err = QString::fromUtf8(indigoGetLastError()).replace("\"", "'");
+                    result = QString("{\"error\":\"Invalid SMARTS: %1\"}").arg(err);
+                }
+                indigoFree(mol);
+            } else {
+                result = "{\"error\":\"Failed to load structure\"}";
+            }
+        } catch (const std::exception& e) {
+            result = QString("{\"error\":\"%1\"}").arg(QString::fromUtf8(e.what()).replace("\"", "'"));
+        } catch (...) {
+            result = "{\"error\":\"Unknown exception\"}";
+        }
+        indigoReleaseSessionId(sid);
+        emitOnGuiThread(self, [result](IndigoService *s) { emit s->substructureSearchFinished(result); });
+    });
+}
+
 // ── Biopolymer loading ────────────────────────────────────────────────────────
 // Each function: parse notation → expand monomers to atoms → 2D layout → molfile
-
 void IndigoService::loadBioSequence(const QString &text, const QString &seqType) {
     if (text.isEmpty()) return;
     QPointer<IndigoService> self = this;

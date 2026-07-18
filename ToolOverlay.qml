@@ -245,7 +245,21 @@ Item {
                     ctx.font = "bold " + Theme.clampFontSize(Theme.baseFontSize, root.scale) + "px " + Theme.fontFamilyCss
                     ctx.textAlign = "center"
                     ctx.textBaseline = "middle"
-                    ctx.fillText(pa.label, p.x, p.y)
+                    if (pa.label) ctx.fillText(pa.label, p.x, p.y)
+                }
+
+                // Chain tool: floating bond-count label next to the drag endpoint, matching
+                // the live carbon-count readout other chemistry editors show during a chain
+                // drag. previewAtoms.length - 1 == the bond count (ChainPlacementEngine emits
+                // nBonds+1 atoms).
+                if (canvas.currentTool === "CHAIN" && canvas.sketch.overlayState.previewAtoms.length > 1) {
+                    const lastAtom = canvas.sketch.overlayState.previewAtoms[canvas.sketch.overlayState.previewAtoms.length - 1]
+                    const lp = canvas.chemToCanvas(lastAtom.x, lastAtom.y)
+                    ctx.fillStyle = Theme.textSecondary
+                    ctx.font = Theme.clampFontSize(Theme.fontSizeCaption, root.scale) + "px " + Theme.fontFamilyCss
+                    ctx.textAlign = "left"
+                    ctx.textBaseline = "middle"
+                    ctx.fillText(String(canvas.sketch.overlayState.previewAtoms.length - 1), lp.x + 8, lp.y - 8)
                 }
             }
         }

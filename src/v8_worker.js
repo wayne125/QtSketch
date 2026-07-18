@@ -44,6 +44,7 @@ try {
 }
 
 var _sdfBatchRecords = [];
+var _sdfProps = {};
 
 // ============================================================================
 // ---- Functional Group Library (loaded once at startup) ---------------------
@@ -1859,6 +1860,22 @@ function layoutSelectedChain() {
     executeCommand(cmd)
 }
 
+function getMoleculeName() {
+    console.log(JSON.stringify({ type: "structureResponse", reqId: "mol_name", data: _struct.name || "" }));
+}
+
+function setMoleculeName(name) {
+    var oldName = _struct.name || "";
+    var newName = name || "";
+    if (oldName === newName) return;
+    var cmd = makeCmd(
+        function() { _struct.name = newName; _dirty = true; },
+        function() { _struct.name = oldName; _dirty = true; }
+    );
+    executeCommand(cmd);
+}
+
+
 function setStereoDescriptors(jsonMap) {
     try {
         var map = JSON.parse(jsonMap)
@@ -3495,10 +3512,36 @@ function loadSdfBatchRecord(index) {
         var loaded = _sdfBatchRecords[index].struct
         if (!loaded) return
         _applyLoadedStruct(loaded)
+        _sdfProps = _sdfBatchRecords[index].props || {}
         console.log(JSON.stringify({ type: "structureResponse", reqId: "sdf_batch_load", data: "" }))
     } catch (e) {
         console.warn("loadSdfBatchRecord failed:", e.message)
     }
+}
+
+function selectSubstructureMatches(matchesJson) {
+    var parsed
+    try { parsed = JSON.parse(matchesJson) } catch (e) { parsed = { matches: [] } }
+    var matches = parsed.matches || []
+    var idByIndex = {}
+    var i = 0
+    _struct.atoms.forEach(function(a, id) { i++; idByIndex[i] = id })
+    var atomIdSet = {}
+    matches.forEach(function(match) {
+        match.forEach(function(idx) {
+            if (idByIndex[idx] !== undefined) atomIdSet[idByIndex[idx]] = true
+        })
+    })
+    var atomIds = Object.keys(atomIdSet).map(function(k) { return parseInt(k, 10) })
+    var bondIds = []
+    _struct.bonds.forEach(function(b, id) {
+        if (atomIdSet[b.begin] && atomIdSet[b.end]) bondIds.push(id)
+    })
+    _selection = { atom_ids: atomIds, bond_ids: bondIds, rxnArrow_ids: [], rxnPlus_ids: [], bbox: null }
+}
+
+function getSdfProps() {
+    console.log(JSON.stringify({ type: "structureResponse", reqId: "sdf_props", data: JSON.stringify(_sdfProps) }));
 }
 
 function deserializeKet(data) {
@@ -4232,6 +4275,10 @@ function _dispatchCommand(cmd, args) {
         else if (cmd === 'deleteMultitailArrow') deleteMultitailArrow(args[0]);
         else if (cmd === 'addMultitailArrowTail') addMultitailArrowTail(args[0]);
         else if (cmd === 'layoutSelectedChain') layoutSelectedChain();
+        else if (cmd === 'getMoleculeName') getMoleculeName();
+        else if (cmd === 'setMoleculeName') setMoleculeName(args[0]);
+        else if (cmd === 'selectSubstructureMatches') selectSubstructureMatches(args[0]);
+        else if (cmd === 'getSdfProps') getSdfProps();
         else if (cmd === 'getStructure') {
             const structStr = getStructure(args[0]);
             console.log(JSON.stringify({ type: "structureResponse", reqId: args[1], data: structStr }));

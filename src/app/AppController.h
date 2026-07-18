@@ -21,6 +21,15 @@ public:
     Q_INVOKABLE void handleDrag(double mouseX, double mouseY, double chemScale, double bondLength);
     Q_INVOKABLE bool handleDragEnd();
 
+    // Chain tool's live drag preview - deliberately independent of handleDragStart/handleDrag/
+    // handleDragEnd and PlacementPreviewManager: those are gated on dragging from an existing
+    // atom (hitAtomId >= 0) and their commit path assumes single-atom-attach or ring semantics,
+    // neither of which fits a chain that can start from empty canvas and commits via the
+    // existing V8Process::addChain call already made from ChemCanvas.qml. This only touches the
+    // overlay's previewAtoms/previewBonds for rendering; it never mutates the real structure.
+    Q_INVOKABLE void updateChainPreview(double startChemX, double startChemY, double currentChemX, double currentChemY, double bondLength);
+    Q_INVOKABLE void clearChainPreview();
+
     Q_INVOKABLE void copyImageToClipboard(const QUrl &imageUrl);
     Q_INVOKABLE QString tempPngPath() const;
 
