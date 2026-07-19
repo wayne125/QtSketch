@@ -47,3 +47,20 @@ imago/
 docs/superpowers/
 velvety-meandering-snowglobe.md
 ui-typography-redesign.md
+
+# Other-editor AI agent instruction files (not used by this project's own workflow) -
+# untracked from git, kept on disk locally only.
+.clinerules/
+.windsurf/
+.opencode/
+.github/
+AGENTS.md
+
+# Feature-tracking/planning docs - untracked from git, kept on disk locally only.
+Architecture Map.md
+Architecture Map.html
+Features To Be Implemented.md
+library-audit.html
+
+# Journal/ChemDraw template samples - untracked from git, kept on disk locally only.
+Journal Templates/
