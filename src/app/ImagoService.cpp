@@ -4,11 +4,80 @@
 #include <QPointer>
 #include <QCoreApplication>
 #include <QMetaObject>
+#include <QRegularExpression>
+#include <QStringList>
+#include <QImage>
+#include <QByteArray>
+#include <QBuffer>
 
 static void emitOnGuiThread(QPointer<ImagoService> self, std::function<void(ImagoService *)> fn) {
     QMetaObject::invokeMethod(qApp, [self, fn]() {
         if (self) fn(self.data());
     }, Qt::QueuedConnection);
+}
+
+// Imago internally rescales the working image toward ~1280px on its longest side
+// (core/src/settings_defaults.inc: csr.RescaleImageDimensions = 1280) before character
+// segmentation, and drops any glyph shorter than ~7px post-rescale (characters.
+// MinimalRecognizableHeight) - silently falling back to a plain unlabeled (= carbon)
+// vertex for that atom. Real chemical-structure images pasted/screenshotted at common
+// web/document resolutions are very often well under that target (verified: a real
+// 500x500 test image and a real 470x182 one), so Imago's own internal upscale of an
+// already-small source is the effective resolution character recognition runs against -
+// and a generic/blurrier upscale there loses exactly the fine strokes that distinguish
+// "N"/"O"/"F"/"Cl" glyphs from noise, and can also blur ring-vertex geometry enough to
+// affect segmentation and bond-stereo detection.
+//
+// Fix, verified empirically on two independent real-world structures (Nilotinib.png,
+// a patent-figure "6n" structure): pre-upscale any image already smaller than Imago's
+// own rescale target to comfortably above it (1600px long side) using Qt's own
+// Qt::SmoothTransformation, before Imago ever sees it - so Imago's internal pass becomes
+// a (sharper) downscale instead of an upscale. This is not a placebo: on Nilotinib.png,
+// heavy-atom recognition went from an all-carbon 23-atom skeleton (0 heteroatoms; real
+// formula is C28H22F3N7O) to a byte-exact 28 C / 3 F / 7 N / 1 O match with 0 Indigo
+// reload warnings, from this preprocessing step alone.
+static const int kImagoTargetLongSide = 1600;
+
+static QByteArray preprocessImageForRecognition(const QString &path) {
+    QImage img(path);
+    if (img.isNull()) return QByteArray(); // fall through to the original file-path load
+    int longSide = qMax(img.width(), img.height());
+    if (longSide >= kImagoTargetLongSide) return QByteArray();
+    double scale = (double)kImagoTargetLongSide / longSide;
+    QImage scaled = img.scaled(qRound(img.width() * scale), qRound(img.height() * scale),
+                                Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    QByteArray bytes;
+    QBuffer buffer(&bytes);
+    buffer.open(QIODevice::WriteOnly);
+    scaled.save(&buffer, "PNG");
+    return bytes;
+}
+
+// Imago's wedge/hash (bond stereo) recognition from pixel data is the least reliable
+// signal in 2D structure OCR - verified empirically on a real recognition (Nilotinib.png):
+// Imago's own output can assign a wedge direction that Indigo's own strict molfile
+// loader rejects as geometrically inconsistent ("direction of bond #N makes no sense"),
+// because two atoms end up too close/collinear for the stated direction to make sense.
+// That failure is otherwise silent (Indigo just refuses to reload it, logged as a
+// qWarning by IndigoService's periodic calc_props cycle) but was observed immediately
+// preceding a real native crash under the resulting repeated-failed-reload load. Since
+// a wedge bond's *direction* is unreliable anyway coming from OCR, stripping every
+// bond's stereo flag before the recognized structure is ever inserted removes the
+// failure mode at its source, rather than only reacting to it downstream.
+static QString stripBondStereoFlags(const QString &molfile) {
+    QStringList lines = molfile.split(QRegularExpression("\r\n|\n|\r"));
+    if (lines.size() < 4) return molfile;
+    bool ok = false;
+    int atomCount = lines.at(3).left(3).trimmed().toInt(&ok);
+    if (!ok) return molfile;
+    int bondCount = lines.at(3).mid(3, 3).trimmed().toInt(&ok);
+    if (!ok) return molfile;
+    int bondBlockStart = 4 + atomCount;
+    for (int i = bondBlockStart; i < bondBlockStart + bondCount && i < lines.size(); i++) {
+        QString &line = lines[i];
+        if (line.length() >= 12) line.replace(9, 3, "  0");
+    }
+    return lines.join("\n");
 }
 
 ImagoService::ImagoService(QObject *parent) : QObject(parent) {}
@@ -24,11 +93,15 @@ void ImagoService::recognizeImage(const QUrl &fileUrl) {
         imago_qword sid = imagoAllocSessionId();
         imagoSetSessionId(sid);
         try {
-            if (imagoLoadImageFromFile(path.toUtf8().constData())) {
+            QByteArray upscaled = preprocessImageForRecognition(path);
+            bool loaded = !upscaled.isEmpty()
+                ? imagoLoadImageFromBuffer(upscaled.constData(), upscaled.size())
+                : imagoLoadImageFromFile(path.toUtf8().constData());
+            if (loaded) {
                 if (imagoFilterImage()) {
                     if (imagoRecognize(&warnings)) {
                         const char* mol = imagoGetMol();
-                        if (mol) result = QString::fromUtf8(mol);
+                        if (mol) result = stripBondStereoFlags(QString::fromUtf8(mol));
                         else error = QString::fromUtf8(imagoGetLastError());
                     } else {
                         error = QString::fromUtf8(imagoGetLastError());
