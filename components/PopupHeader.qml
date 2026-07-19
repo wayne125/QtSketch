@@ -4,6 +4,7 @@ import Sketch.App
 // Shared caption style for popup/dialog titles — centralizes what was
 // previously copy-pasted at each of ToolPanel.qml's three popups.
 Text {
+    textFormat: Text.PlainText
     property string title: ""
     text: title
     color: Theme.textSecondary

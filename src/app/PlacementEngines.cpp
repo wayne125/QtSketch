@@ -116,6 +116,36 @@ PlacementResult FragmentPlacementEngine::compute(const QPointF& startPos, const 
         res.bonds.append({startPos, newPos});
         res.valid = true;
     }
-    
+
+    return res;
+}
+
+PlacementResult ChainPlacementEngine::compute(const QPointF& startChem, const QPointF& currentChem, double bondLength) {
+    PlacementResult res;
+    if (bondLength <= 0) { res.valid = false; return res; }
+
+    double dx = currentChem.x() - startChem.x();
+    double dy = currentChem.y() - startChem.y();
+    double dist = std::sqrt(dx * dx + dy * dy);
+    int nBonds = std::max(1, (int)std::round(dist / bondLength));
+    double theta = std::atan2(dy, dx);
+    double half = PI / 6.0;
+
+    double px = startChem.x(), py = startChem.y();
+    bool havePrev = false;
+    QPointF prev;
+    for (int i = 0; i <= nBonds; ++i) {
+        QPointF atomPos(px, py);
+        res.atoms.append({atomPos, QString()});  // unlabeled - carbon vertices render without letters
+        if (havePrev) {
+            res.bonds.append({prev, atomPos});
+        }
+        prev = atomPos;
+        havePrev = true;
+        double ang = theta + ((i % 2 == 0) ? half : -half);
+        px += bondLength * std::cos(ang);
+        py += bondLength * std::sin(ang);
+    }
+    res.valid = true;
     return res;
 }

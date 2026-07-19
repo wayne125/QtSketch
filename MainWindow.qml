@@ -10,6 +10,14 @@ ApplicationWindow {
 
     flags: Qt.Window | Qt.FramelessWindowHint
 
+    // Material Design Icons font — vendored-but-unused until the toolbar
+    // alignment/distribute icon group (below) started using it. Loaded once
+    // here; IconCell glyph-mode cells reference mdiFont.name as their family.
+    FontLoader {
+        id: mdiFont
+        source: "fonts/materialdesignicons-webfont.ttf"
+    }
+
     header: Rectangle {
         height: 32
         color: Theme.surface
@@ -120,6 +128,7 @@ ApplicationWindow {
     property real canvasScaleY: 1.0
     property real zoomLevel: 1.0
     property real pixelsPerCm: 37.8
+    property var pageMargins: ({ left: 2.0, right: 2.0, top: 2.0, bottom: 2.0 })
 
     // The currently-visible ChemCanvas instance and its bound document. Resolved once the
     // per-document Repeater below has instantiated at least one activeCanvas.
@@ -142,6 +151,7 @@ ApplicationWindow {
     property var docFilePaths: ({})
     property int titleRev: 0
     property url pendingSaveUrl
+    property url pendingRenderUrl
     function setDocFile(docId, fileUrl) {
         docFilePaths[docId] = fileUrl
         const s = fileUrl.toString()
@@ -186,7 +196,10 @@ ApplicationWindow {
     title: "sketch" + (activeCanvas && activeCanvas.isDirty ? " *" : "")
     color: Theme.background
 
+    property bool _forceQuit: false
+
     onClosing: function(close_event) {
+        if (window._forceQuit) return
         // Check ALL tabs for unsaved changes, not just the active one
         var anyDirty = false
         for (var i = 0; i < canvasRepeater.count; i++) {
@@ -220,6 +233,26 @@ ApplicationWindow {
             id: indigoSvc
         }
 
+        // Imago OCR Backend — chemical-structure image recognition for Insert Image
+        ImagoService {
+            id: imagoSvc
+            onImageRecognized: function(molfile, warningsCount, error) {
+                window.isProcessing = false
+                if (!error && molfile && warningsCount <= imageFileDialog.maxAcceptableWarnings && activeSketch) {
+                    activeSketch.sendCommand("insertRecognizedStructure", [molfile, imageFileDialog.chemX, imageFileDialog.chemY])
+                } else {
+                    // Recognition failed or low-confidence — fall back to a plain image embed.
+                    const dataUri = fileIO.readImageAsDataUri(imageFileDialog.pendingFileUrl)
+                    if (dataUri === "") {
+                        workerErrorDialog.errorText = "Failed to load image. Ensure it is a supported format (png, jpg, gif, bmp) and under 5 MB."
+                        workerErrorDialog.open()
+                    } else if (activeSketch) {
+                        activeSketch.addImage(dataUri, imageFileDialog.chemX, imageFileDialog.chemY, 1.5, 1.5)
+                    }
+                }
+            }
+        }
+
         // Global Shortcuts
         Shortcut { sequence: "S"; onActivated: if (activeCanvas) activeCanvas.currentTool = "SELECT" }
         Shortcut { sequence: "E"; onActivated: if (activeCanvas) activeCanvas.currentTool = "ERASE" }
@@ -233,11 +266,90 @@ ApplicationWindow {
                 window.isProcessing = false
                 if (newMol && activeCanvas) activeCanvas.loadMolfile(newMol)
             }
+            function onCommonScaffoldFinished(result, error) {
+                window.isProcessing = false
+                if (result && activeCanvas) {
+                    activeCanvas.loadMolfile(result)
+                } else {
+                    workerErrorDialog.errorText = "Find Common Scaffold: " + (error || "unknown error")
+                    workerErrorDialog.open()
+                }
+            }
+            function onRgroupDecompositionFinished(result, error) {
+                window.isProcessing = false
+                if (result && activeCanvas) {
+                    activeCanvas.loadMolfile(result)
+                } else {
+                    workerErrorDialog.errorText = "Decompose to R-Groups: " + (error || "unknown error")
+                    workerErrorDialog.open()
+                }
+            }
+            function onSimilarityRankFinished(resultJson, error) {
+                window.isProcessing = false
+                if (resultJson) {
+                    try {
+                        const arr = JSON.parse(resultJson)
+                        arr.sort((a, b) => b.score - a.score)
+                        const labels = window._pendingBatchLabels || []
+                        const lines = arr.map((r, i) => {
+                            const name = labels[r.index] || ("Record " + (r.index + 1))
+                            return (i + 1) + ". " + name + " — " + (r.score * 100).toFixed(1) + "%"
+                        })
+                        similarityRankResultDialog.text = lines.join("\n")
+                        similarityRankResultDialog.open()
+                    } catch (e) {
+                        workerErrorDialog.errorText = "Rank by Similarity: failed to parse results."
+                        workerErrorDialog.open()
+                    }
+                } else {
+                    workerErrorDialog.errorText = "Rank by Similarity: " + (error || "unknown error")
+                    workerErrorDialog.open()
+                }
+            }
+            function onBatchAlignFinished(resultJson, error) {
+                window.isProcessing = false
+                if (resultJson && activeSketch) {
+                    activeSketch.sendCommand("realignSdfBatch", [resultJson])
+                } else {
+                    workerErrorDialog.errorText = "Align Batch to Common Scaffold: " + (error || "unknown error")
+                    workerErrorDialog.open()
+                }
+            }
+            function onRdfBatchParsed(recordsJson, error) {
+                if (recordsJson && activeSketch) {
+                    activeSketch.sendCommand("deserializeRdfBatch", [recordsJson])
+                } else {
+                    window.isProcessing = false
+                    workerErrorDialog.errorText = "Open RDF: " + (error || "unknown error")
+                    workerErrorDialog.open()
+                }
+            }
+            function onIndigoBatchParsed(recordsJson, error) {
+                if (recordsJson && activeSketch) {
+                    activeSketch.sendCommand("deserializeIndigoBatch", [recordsJson])
+                } else {
+                    window.isProcessing = false
+                    workerErrorDialog.errorText = "Open batch file: " + (error || "unknown error")
+                    workerErrorDialog.open()
+                }
+            }
+            function onClean2dFinished(newMol) {
+                window.isProcessing = false
+                if (newMol && activeCanvas) activeCanvas.loadMolfile(newMol)
+            }
             function onAromatizeFinished(newMol) {
                 window.isProcessing = false
                 if (newMol && activeCanvas) activeCanvas.loadMolfile(newMol)
             }
             function onDearomatizeFinished(newMol) {
+                window.isProcessing = false
+                if (newMol && activeCanvas) activeCanvas.loadMolfile(newMol)
+            }
+            function onUnfoldHydrogensFinished(newMol) {
+                window.isProcessing = false
+                if (newMol && activeCanvas) activeCanvas.loadMolfile(newMol)
+            }
+            function onFoldHydrogensFinished(newMol) {
                 window.isProcessing = false
                 if (newMol && activeCanvas) activeCanvas.loadMolfile(newMol)
             }
@@ -255,7 +367,53 @@ ApplicationWindow {
             function onCanonicalSmilesFinished(smiles) {
                 if (smiles) indigoSvc.copyToClipboard(smiles)
             }
-            function onPropertiesReady(mw, mono, mf, atoms, bonds, tpsa, logp, hba, hbd, rotBonds) {
+            function onInchiFinished(inchi) {
+                if (inchi) indigoSvc.copyToClipboard(inchi)
+            }
+            function onInchiKeyFinished(inchiKey) {
+                if (inchiKey) indigoSvc.copyToClipboard(inchiKey)
+            }
+            function onHashFinished(hash) {
+                if (hash) indigoSvc.copyToClipboard(hash)
+            }
+            function onSimilarityFinished(result) {
+                if (result) {
+                    similarityResultDialog.text = "Tanimoto similarity: " + result
+                    similarityResultDialog.open()
+                }
+            }
+            function onMassCompositionFinished(result) {
+                if (result) indigoSvc.copyToClipboard(result)
+            }
+            function onPkaValuesFinished(result) {
+                if (result) indigoSvc.copyToClipboard(result)
+            }
+            function onRenderFinished(success, error) {
+                if (!success) {
+                    const isPdf = window.pendingRenderUrl.toString().toLowerCase().endsWith(".pdf")
+                    workerErrorDialog.errorText = (isPdf ? "PDF export failed: " : "SVG export failed: ") + error
+                    workerErrorDialog.open()
+                }
+            }
+            function onReactionMappingFinished(result, error) {
+                window.isProcessing = false
+                if (result && activeCanvas) {
+                    activeCanvas.loadMolfile(result)
+                } else {
+                    workerErrorDialog.errorText = "Atom Mapping: " + (error || "unknown error")
+                    workerErrorDialog.open()
+                }
+            }
+            function onIonizeFinished(result, error) {
+                window.isProcessing = false
+                if (result && activeCanvas) {
+                    activeCanvas.loadMolfile(result)
+                } else {
+                    workerErrorDialog.errorText = "Ionize at pH: " + (error || "unknown error")
+                    workerErrorDialog.open()
+                }
+            }
+            function onPropertiesReady(mw, mono, mf, atoms, bonds, tpsa, logp, hba, hbd, rotBonds, molarRefractivity, pka, heavyAtoms, isChiral, mostAbundantMass, fragmentCount, ringCount) {
                 propPanel.molMW       = mw
                 propPanel.molMono     = mono
                 propPanel.molFormula  = mf
@@ -266,12 +424,30 @@ ApplicationWindow {
                 propPanel.molHBA      = hba
                 propPanel.molHBD      = hbd
                 propPanel.molRotBonds = rotBonds
+                propPanel.molMolarRefractivity = molarRefractivity
+                propPanel.molPka      = pka
+                propPanel.molHeavyAtoms = heavyAtoms
+                propPanel.molIsChiral   = isChiral
+                propPanel.molMostAbundantMass = mostAbundantMass
+                propPanel.molFragmentCount = fragmentCount
+                propPanel.molRingCount = ringCount
             }
             function onStereoDescriptorsReady(jsonMap) {
                 if (activeSketch) activeSketch.setStereoDescriptors(jsonMap)
             }
             function onCheckIssuesReady(structuredJson) {
                 if (activeSketch) activeSketch.setCheckIssues(structuredJson)
+            }
+            function onSubstructureSearchFinished(resultJson) {
+                const parsed = JSON.parse(resultJson)
+                if (parsed.error) {
+                    smartsSearchPopup.statusIsError = true
+                    smartsSearchPopup.statusText = parsed.error
+                    return
+                }
+                smartsSearchPopup.statusIsError = false
+                smartsSearchPopup.statusText = parsed.matchCount + " match" + (parsed.matchCount === 1 ? "" : "es") + (parsed.truncated ? " (showing first 200)" : "") + " found"
+                if (activeSketch) activeSketch.sendCommand("selectSubstructureMatches", [JSON.stringify(parsed)])
             }
             function onCheckFinished(report) {
                 // Inline check warnings (badges, red bonds) are driven by checkIssuesReady,
@@ -315,19 +491,54 @@ ApplicationWindow {
             function onStructureReady(reqId, data) {
                 if (reqId === "save") {
                     fileIO.write(window.pendingSaveUrl, data)
+                } else if (reqId === "render_svg") {
+                    indigoSvc.renderToFile(data, window.pendingRenderUrl, "svg")
+                } else if (reqId === "render_pdf") {
+                    indigoSvc.renderToFile(data, window.pendingRenderUrl, "pdf")
+                } else if (reqId === "render_grid") {
+                    indigoSvc.renderReactionGridToFile(data, window.pendingRenderUrl, "pdf")
+                } else if (reqId === "automap") {
+                    indigoSvc.autoMapReaction(data)
+                } else if (reqId === "ionize") {
+                    indigoSvc.ionizeAtPh(data, window.pendingIonizePh)
+                } else if (reqId === "clear_mapping") {
+                    indigoSvc.clearReactionMapping(data)
+                } else if (reqId === "correct_reacting_centers") {
+                    indigoSvc.correctReactingCenters(data)
                 } else if (reqId === "smiles") {
                     indigoSvc.smiles(data)
                 } else if (reqId === "canonical_smiles") {
                     indigoSvc.canonicalSmiles(data)
+                } else if (reqId === "inchi") {
+                    indigoSvc.inchi(data)
+                } else if (reqId === "inchikey") {
+                    indigoSvc.inchiKey(data)
+                } else if (reqId === "hash") {
+                    indigoSvc.hash(data)
+                } else if (reqId === "similarity") {
+                    indigoSvc.similarity(data, window.pendingSimilarityRef)
+                } else if (reqId === "mass_composition") {
+                    indigoSvc.massComposition(data)
+                } else if (reqId === "pka_values") {
+                    indigoSvc.pkaValues(data)
                 } else if (reqId === "layout") {
                     window.isProcessing = true
                     indigoSvc.layout(data)
+                } else if (reqId === "clean2d") {
+                    window.isProcessing = true
+                    indigoSvc.clean2d(data)
                 } else if (reqId === "aromatize") {
                     window.isProcessing = true
                     indigoSvc.aromatize(data)
                 } else if (reqId === "dearomatize") {
                     window.isProcessing = true
                     indigoSvc.dearomatize(data)
+                } else if (reqId === "unfoldH") {
+                    window.isProcessing = true
+                    indigoSvc.unfoldHydrogens(data)
+                } else if (reqId === "foldH") {
+                    window.isProcessing = true
+                    indigoSvc.foldHydrogens(data)
                 } else if (reqId === "normalize") {
                     window.isProcessing = true
                     indigoSvc.normalize(data)
@@ -340,6 +551,10 @@ ApplicationWindow {
                     indigoSvc.calcProperties(data)
                     indigoSvc.calcStereoDescriptors(data)
                     indigoSvc.checkStructure(data)
+                    if (activeSketch) {
+                        activeSketch.sendCommand("getMoleculeName", [])
+                        activeSketch.sendCommand("getSdfProps", [])
+                    }
                 } else if (reqId === "bio_seq") {
                     indigoSvc.exportBioSequence(data)
                 } else if (reqId === "bio_fasta") {
@@ -357,6 +572,63 @@ ApplicationWindow {
                 } else if (reqId === "clipboard_ket") {
                     if (data && data.length > 0 && activeSketch)
                         activeSketch.setOsClipboardText(data)
+                } else if (reqId === "sdf_batch_list") {
+                    window.isProcessing = false
+                    const parsed = JSON.parse(data)
+                    if (parsed.count <= 1) {
+                        if (activeSketch) activeSketch.sendCommand("loadSdfBatchRecord", [0])
+                    } else {
+                        sdfRecordPicker.recordCount = parsed.count
+                        sdfRecordPicker.model = parsed.records
+                        sdfRecordPicker.open()
+                    }
+                } else if (reqId === "sdf_batch_realigned") {
+                    const parsed = JSON.parse(data)
+                    sdfRecordPicker.recordCount = parsed.count
+                    sdfRecordPicker.model = parsed.records
+                } else if (reqId === "sdf_batch_load") {
+                    window.isProcessing = false
+                    if (activeCanvas) {
+                        activeCanvas._needsCentering = true
+                        activeCanvas.refresh()
+                        setDocFile(DocumentManager.activeDocId, pendingSdfBatchUrl)
+                    }
+                } else if (reqId === "sdf_batch_molfiles") {
+                    const parsed = JSON.parse(data)
+                    if (parsed.molfiles && parsed.molfiles.length >= 2) {
+                        if (window._pendingBatchAction === "export_grid") {
+                            window._pendingBatchGridMolfiles = parsed.molfiles
+                            batchGridSaveDialog.open()
+                        } else if (window._pendingBatchAction === "export_file") {
+                            window._pendingBatchGridMolfiles = parsed.molfiles
+                            batchFileSaveDialog.open()
+                        } else if (window._pendingBatchAction === "align") {
+                            indigoSvc.alignBatchToScaffold(parsed.molfiles)
+                        } else if (window._pendingBatchAction === "decompose") {
+                            indigoSvc.decomposeToRGroups(parsed.molfiles)
+                        } else if (window._pendingBatchAction === "similarity") {
+                            window._pendingBatchLabels = parsed.labels || []
+                            if (!window.pendingSimilarityRefMolfile) {
+                                window.isProcessing = false
+                                workerErrorDialog.errorText = "Rank by Similarity: no active structure to compare against."
+                                workerErrorDialog.open()
+                            } else {
+                                indigoSvc.rankBySimilarity(window.pendingSimilarityRefMolfile, parsed.molfiles)
+                            }
+                        } else {
+                            indigoSvc.findCommonScaffold(parsed.molfiles)
+                        }
+                    } else {
+                        window.isProcessing = false
+                        workerErrorDialog.errorText = "Batch structure analysis: not enough valid structures in this batch."
+                        workerErrorDialog.open()
+                    }
+                } else if (reqId === "smarts_search") {
+                    indigoSvc.substructureSearch(data, window.pendingSmartsQuery)
+                } else if (reqId === "mol_name") {
+                    propPanel.molName = data
+                } else if (reqId === "sdf_props") {
+                    propPanel.sdfProps = JSON.parse(data)
                 }
             }
             function onStateUpdated(state, selection, dirty, undoState, redoState, result) {
@@ -370,61 +642,336 @@ ApplicationWindow {
             }
         }
 
+        function executeStructureOp(op) {
+            if (op === "smartsSearch") { smartsSearchPopup.open(); return }
+            if (op === "rgroups") { rgroupPanel.open(); return }
+            if (!activeSketch) return
+            if (op === "check") {
+                window.explicitCheckPending = true
+                activeSketch.requestSerialize("check")
+                return
+            }
+            if (op === "layoutSelected") {
+                activeSketch.sendCommand("layoutSelectedChain", [])
+                return
+            }
+            if (op !== "layout" && op !== "aromatize") window.isProcessing = true
+            activeSketch.requestSerialize(op)
+        }
+
+        AppMenuBar {
+            Layout.fillWidth: true
+            AppMenuBarItem {
+                text: "File"
+                MenuItemRow { text: "New Document"; onTriggered: DocumentManager.addDocument() }
+                MenuItemRow { text: "Open…"; iconSource: "open.svg"; onTriggered: openDialog.open() }
+                MenuItemRow { text: "Save"; iconSource: "save.svg"; shortcutHint: "Ctrl+S"; onTriggered: window.saveActive(false) }
+                MenuItemRow { text: "Save As…"; iconSource: "save.svg"; onTriggered: window.saveActive(true) }
+                Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6 }
+                MenuItemRow { text: "Load from SMILES…"; iconSource: "smiles_in.svg"; onTriggered: smilesDialog.open() }
+                MenuItemRow { text: "Load from InChI…"; iconSource: "smiles_in.svg"; onTriggered: inchiLoadDialog.open() }
+                MenuItemRow { text: "Biopolymer…"; iconSource: "biopolymer.svg"; onTriggered: biopolymerDialog.open() }
+                Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6 }
+                MenuItemRow { text: "Export as PDF…"; iconSource: "file-thumbnail.svg"; onTriggered: window.printToPdf() }
+                MenuItemRow { text: "Export Reaction Scheme (Grid)…"; iconSource: "file-thumbnail.svg"; onTriggered: gridSaveDialog.open() }
+                Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6 }
+                MenuItemRow { text: "Clear Canvas"; iconSource: "clear.svg"; onTriggered: activeCanvas.clearCanvas() }
+            }
+            AppMenuBarItem {
+                text: "Edit"
+                MenuItemRow { text: "Undo"; iconSource: "undo.svg"; shortcutHint: "Ctrl+Z"; enabled: !!(activeCanvas && activeCanvas.canUndo); onTriggered: activeCanvas.undo() }
+                MenuItemRow { text: "Redo"; iconSource: "redo.svg"; shortcutHint: "Ctrl+Y"; enabled: !!(activeCanvas && activeCanvas.canRedo); onTriggered: activeCanvas.redo() }
+                Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6 }
+                MenuItemRow { text: "Cut"; iconSource: "cut.svg"; shortcutHint: "Ctrl+X"; onTriggered: activeCanvas.cutSelection() }
+                MenuItemRow { text: "Copy"; iconSource: "copy.svg"; shortcutHint: "Ctrl+C"; onTriggered: activeCanvas.copySelection() }
+                MenuItemRow { text: "Paste"; iconSource: "paste.svg"; shortcutHint: "Ctrl+V"; onTriggered: activeCanvas.pasteSelection() }
+                Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6 }
+                MenuItemRow { text: "Copy as Image"; iconSource: "copy_image.svg"; shortcutHint: "Ctrl+Shift+C"; onTriggered: activeCanvas.copyAsImage() }
+            }
+            AppMenuBarItem {
+                text: "Structure"
+                MenuItemRow { text: "Layout"; iconSource: "layout.svg"; onTriggered: executeStructureOp("layout") }
+                MenuItemRow { text: "Layout Selected"; iconSource: "layout.svg"; enabled: Selection.hasAtoms(activeSketch, 1) && !window.isProcessing; onTriggered: executeStructureOp("layoutSelected") }
+                MenuItemRow { text: "Clean 2D"; iconSource: "layout.svg"; onTriggered: executeStructureOp("clean2d") }
+                Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6 }
+                MenuItemRow { text: "Aromatize"; iconSource: "arom.svg"; onTriggered: executeStructureOp("aromatize") }
+                MenuItemRow { text: "Dearomatize"; iconSource: "dearom.svg"; onTriggered: executeStructureOp("dearomatize") }
+                MenuItemRow { text: "Add Explicit H"; iconSource: "explicit-hydrogens.svg"; onTriggered: executeStructureOp("unfoldH") }
+                MenuItemRow { text: "Remove Explicit H"; iconSource: "explicit-hydrogens.svg"; onTriggered: executeStructureOp("foldH") }
+                MenuItemRow { text: "Normalize"; iconSource: "clean.svg"; onTriggered: executeStructureOp("normalize") }
+                MenuItemRow { text: "Standardize"; iconSource: "analyse.svg"; onTriggered: executeStructureOp("standardize") }
+                MenuItemRow { text: "Ionize at pH…"; iconSource: "analyse.svg"; onTriggered: ionizeDialog.open() }
+                Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6 }
+                MenuItemRow { text: "Validate"; iconSource: "check.svg"; onTriggered: executeStructureOp("check") }
+                MenuItemRow { text: "Search Substructure (SMARTS)…"; iconSource: "search.svg"; onTriggered: executeStructureOp("smartsSearch") }
+                MenuItemRow { text: "R-Groups…"; iconSource: "rgroup-label.svg"; shortcutHint: "Ctrl+R"; onTriggered: executeStructureOp("rgroups") }
+            }
+            AppMenuBarItem {
+                id: reactionsMenuTrigger
+                text: "Reactions"
+                ColumnLayout {
+                    width: 210
+                    spacing: 6
+
+                    GridLayout {
+                        columns: 4
+                        columnSpacing: Theme.spacingSmall
+                        Layout.alignment: Qt.AlignHCenter
+                        Repeater {
+                            model: [
+                                { id: "RXN_ARROW", icon: "reaction-arrow-open-angle.svg", tip: "Reaction Arrow" },
+                                { id: "MULTITAIL_ARROW", icon: "reaction-arrow-multitail.svg", tip: "Multi-tail Arrow" },
+                                { id: "RXN_PLUS", icon: "reaction-plus.svg", tip: "Reaction Plus" },
+                                { id: "AAM", icon: "reaction-map.svg", tip: "Atom-Atom Mapping" }
+                            ]
+                            delegate: IconCell {
+                                id: rxnToolCell
+                                required property var modelData
+                                cellWidth: 44
+                                cellHeight: Theme.toolCellSize
+                                iconSource: "icons/" + rxnToolCell.modelData.icon
+                                tip: rxnToolCell.modelData.tip
+                                selected: !!(activeCanvas && activeCanvas.currentTool === rxnToolCell.modelData.id)
+                                onClicked: {
+                                    if (!activeCanvas) return
+                                    activeCanvas.currentTool = activeCanvas.currentTool === rxnToolCell.modelData.id ? "SELECT" : rxnToolCell.modelData.id
+                                    reactionsMenuTrigger.close()
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.outline }
+
+                    Text {
+                        text: "Arrow style"
+                        color: Theme.textSecondary
+                        font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontDisplay }
+                    }
+                    Repeater {
+                        model: [
+                            { mode: "filled-triangle", label: "Filled Triangle", icon: "reaction-arrow-filled-triangle.svg" },
+                            { mode: "open-angle", label: "Open Angle", icon: "reaction-arrow-open-angle.svg" },
+                            { mode: "retrosynthetic", label: "Retrosynthetic", icon: "reaction-arrow-retrosynthetic-arrow.svg" },
+                            { mode: "equilibrium-FF", label: "Equilibrium (↔)", icon: "reaction-arrow-equilibrium-filled-triangle.svg" },
+                            { mode: "equilibrium-FH", label: "Equilibrium (⇌)", icon: "reaction-arrow-equilibrium-filled-half-bow.svg" },
+                            { mode: "curved-mechanism", label: "Curved Mechanism", icon: "reaction-arrow-elliptical-arc-arrow-filled-triangle.svg" }
+                        ]
+                        delegate: Rectangle {
+                            id: amRow
+                            required property var modelData
+                            Layout.fillWidth: true
+                            implicitHeight: 24
+                            radius: 3
+                            color: !!(activeCanvas && activeCanvas.currentArrowMode === amRow.modelData.mode) ? Theme.selected : (amRowMouse.containsMouse ? Theme.hover : "transparent")
+                            Behavior on color { ColorAnimation { duration: 150 } }
+                            Image {
+                                id: amRowIcon
+                                anchors { left: parent ? parent.left : undefined; leftMargin: 6; verticalCenter: parent ? parent.verticalCenter : undefined }
+                                source: "icons/" + amRow.modelData.icon
+                                width: 18
+                                height: 18
+                                sourceSize: Qt.size(18, 18)
+                                onStatusChanged: {
+                                    if (status === Image.Error) {
+                                        console.warn("Failed to load icon:", amRow.modelData.icon)
+                                    }
+                                }
+                            }
+                            Text {
+                                anchors { left: amRowIcon.right; leftMargin: 6; verticalCenter: parent ? parent.verticalCenter : undefined }
+                                text: amRow.modelData.label
+                                color: !!(activeCanvas && activeCanvas.currentArrowMode === amRow.modelData.mode) ? Theme.accent : Theme.textPrimary
+                                font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay }
+                            }
+                            MouseArea {
+                                id: amRowMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (activeCanvas) activeCanvas.currentArrowMode = amRow.modelData.mode
+                                    reactionsMenuTrigger.close()
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.outline }
+                    Text {
+                        text: "Atom mapping"
+                        color: Theme.textSecondary
+                        font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontDisplay }
+                    }
+                    MenuItemRow {
+                        Layout.fillWidth: true
+                        text: "Auto-map Reaction"
+                        iconSource: "reaction-map.svg"
+                        onTriggered: {
+                            window.isProcessing = true
+                            if (activeSketch) activeSketch.requestSerialize("automap")
+                            reactionsMenuTrigger.close()
+                        }
+                    }
+                    MenuItemRow {
+                        Layout.fillWidth: true
+                        text: "Clear Mapping"
+                        iconSource: "reaction-map.svg"
+                        onTriggered: {
+                            window.isProcessing = true
+                            if (activeSketch) activeSketch.requestSerialize("clear_mapping")
+                            reactionsMenuTrigger.close()
+                        }
+                    }
+                    MenuItemRow {
+                        Layout.fillWidth: true
+                        text: "Correct Reacting Centers"
+                        iconSource: "reaction-map.svg"
+                        onTriggered: {
+                            window.isProcessing = true
+                            if (activeSketch) activeSketch.requestSerialize("correct_reacting_centers")
+                            reactionsMenuTrigger.close()
+                        }
+                    }
+                }
+            }
+            AppMenuBarItem {
+                id: queryMenuTrigger
+                text: "Query"
+                ColumnLayout {
+                    width: 210
+                    spacing: 6
+
+                    Text {
+                        text: "Query atoms"
+                        color: Theme.textSecondary
+                        font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontDisplay }
+                    }
+                    GridLayout {
+                        columns: 4
+                        columnSpacing: Theme.spacingSmall
+                        rowSpacing: Theme.spacingSmall
+                        Layout.alignment: Qt.AlignHCenter
+                        Repeater {
+                            model: [
+                                { id: "ATOM_A",  icon: "A",  tip: "Any atom" },
+                                { id: "ATOM_AH", icon: "AH", tip: "Any atom including H" },
+                                { id: "ATOM_Q",  icon: "Q",  tip: "Any heteroatom" },
+                                { id: "ATOM_QH", icon: "QH", tip: "Heteroatom or H" },
+                                { id: "ATOM_M",  icon: "M",  tip: "Any metal" },
+                                { id: "ATOM_MH", icon: "MH", tip: "Metal or H" },
+                                { id: "ATOM_X",  icon: "X",  tip: "Any halogen" },
+                                { id: "ATOM_XH", icon: "XH", tip: "Halogen or H" }
+                            ]
+                            delegate: IconCell {
+                                id: qaCell
+                                required property var modelData
+                                cellWidth: 42
+                                cellHeight: 32
+                                glyph: qaCell.modelData.icon
+                                tip: qaCell.modelData.tip
+                                selected: !!(activeCanvas && activeCanvas.currentTool === qaCell.modelData.id)
+                                onClicked: {
+                                    if (!activeCanvas) return
+                                    activeCanvas.currentTool = activeCanvas.currentTool === qaCell.modelData.id ? "SELECT" : qaCell.modelData.id
+                                    queryMenuTrigger.close()
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.outline }
+
+                    Text {
+                        text: "R-group labels"
+                        color: Theme.textSecondary
+                        font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontDisplay }
+                    }
+                    GridLayout {
+                        columns: 4
+                        columnSpacing: Theme.spacingSmall
+                        rowSpacing: Theme.spacingSmall
+                        Layout.alignment: Qt.AlignHCenter
+                        Repeater {
+                            model: ["R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8"]
+                            delegate: IconCell {
+                                id: rgCell
+                                required property string modelData
+                                cellWidth: 42
+                                cellHeight: 28
+                                glyph: rgCell.modelData
+                                hasGlyphColorOverride: true
+                                glyphColor: Theme.rgroupColor
+                                accentColor: Theme.rgroupColor
+                                borderAlwaysVisible: true
+                                onClicked: {
+                                    if (activeCanvas) activeCanvas.currentTool = "ATOM_" + rgCell.modelData
+                                    queryMenuTrigger.close()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            AppMenuBarItem {
+                text: "Copy"
+                MenuItemRow { text: "Copy SMILES"; onTriggered: if (activeSketch) activeSketch.requestSerialize("smiles") }
+                MenuItemRow { text: "Copy Canonical SMILES"; onTriggered: if (activeSketch) activeSketch.requestSerialize("canonical_smiles") }
+                Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6 }
+                MenuItemRow { text: "Copy InChI"; onTriggered: if (activeSketch) activeSketch.requestSerialize("inchi") }
+                MenuItemRow { text: "Copy InChIKey"; onTriggered: if (activeSketch) activeSketch.requestSerialize("inchikey") }
+                Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6 }
+                MenuItemRow { text: "Copy Hash"; onTriggered: if (activeSketch) activeSketch.requestSerialize("hash") }
+                MenuItemRow { text: "Copy Mass Composition"; onTriggered: if (activeSketch) activeSketch.requestSerialize("mass_composition") }
+                MenuItemRow { text: "Copy pKa Values"; onTriggered: if (activeSketch) activeSketch.requestSerialize("pka_values") }
+                Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6 }
+                MenuItemRow { text: "Compare Similarity…"; onTriggered: similarityDialog.open() }
+            }
+            AppMenuBarItem {
+                text: "View"
+                MenuItemRow { text: "Fit to Screen"; iconSource: "fit.svg"; shortcutHint: "Ctrl+0"; onTriggered: activeCanvas.fitToMolecule() }
+                Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6 }
+                MenuItemRow { text: "Zoom In"; iconSource: "zoom-in.svg"; onTriggered: window.zoomLevel = Math.min(3.0, window.zoomLevel + 0.1) }
+                MenuItemRow { text: "Zoom Out"; iconSource: "zoom-out.svg"; onTriggered: window.zoomLevel = Math.max(0.1, window.zoomLevel - 0.1) }
+                MenuItemRow { text: "Reset (100%)"; onTriggered: window.zoomLevel = 1.0 }
+            }
+        }
+
         // Top Toolbar
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: Theme.toolbarHeight * 2 + 4
+            Layout.preferredHeight: Theme.toolbarHeight + 6
             color: Theme.surface
             border {
                 color: Theme.outline
                 width: 1
             }
 
-            ColumnLayout {
+            RowLayout {
                 anchors {
                     fill: parent
                     leftMargin: 16
                 }
-                spacing: 2
-
-                // === Row 1: FILE, EDIT, Structure ops, Validate, R-Groups ===
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 4
+                spacing: 4
 
                 // FILE GROUP
                 RowLayout {
                     spacing: 4
                     Repeater {
                         model: [
-                            { id: "CLEAR", icon: "clear.svg", label: "Clear" },
                             { id: "OPEN", icon: "open.svg", label: "Open" },
-                            { id: "SAVE", icon: "save.svg", label: "Save" },
-                            { id: "FIT", icon: "fit.svg", label: "Fit to screen (Ctrl+0)" },
-                            { id: "COPY_IMG", icon: "copy_image.svg", label: "Copy as image (Ctrl+Shift+C)" },
-                            { id: "SMILES_IN",   icon: "smiles_in.svg",   label: "Load from SMILES" },
-                            { id: "BIOPOLYMER",  icon: "biopolymer.svg",  label: "Biopolymer (FASTA / HELM / Sequence / IDT)" },
-                            { id: "PRINT_PDF",   icon: "file-thumbnail.svg", label: "Export as PDF (page size from combo below)" }
+                            { id: "SAVE", icon: "save.svg", label: "Save" }
                         ]
                         delegate: IconCell {
                             id: fileToolbarDelegate
                             required property var modelData
                             required property int index
                             Layout.alignment: Qt.AlignVCenter
-                            cellWidth: 48
-                            cellHeight: 40
-                            iconSize: 20
                             iconSource: "icons/" + fileToolbarDelegate.modelData.icon
                             tip: fileToolbarDelegate.modelData.label
                             onClicked: {
-                                if (fileToolbarDelegate.modelData.id === "CLEAR") activeCanvas.clearCanvas()
-                                else if (fileToolbarDelegate.modelData.id === "SAVE") window.saveActive(false)
+                                if (fileToolbarDelegate.modelData.id === "SAVE") window.saveActive(false)
                                 else if (fileToolbarDelegate.modelData.id === "OPEN") openDialog.open()
-                                else if (fileToolbarDelegate.modelData.id === "FIT") activeCanvas.fitToMolecule()
-                                else if (fileToolbarDelegate.modelData.id === "COPY_IMG") activeCanvas.copyAsImage()
-                                else if (fileToolbarDelegate.modelData.id === "SMILES_IN")  smilesDialog.open()
-                                else if (fileToolbarDelegate.modelData.id === "BIOPOLYMER") biopolymerDialog.open()
-                                else if (fileToolbarDelegate.modelData.id === "PRINT_PDF") window.printToPdf()
                             }
                         }
                     }
@@ -448,9 +995,6 @@ ApplicationWindow {
                             required property var modelData
                             required property int index
                             Layout.alignment: Qt.AlignVCenter
-                            cellWidth: 48
-                            cellHeight: 40
-                            iconSize: 20
                             iconSource: "icons/" + editToolbarDelegate.modelData.icon
                             tip: editToolbarDelegate.modelData.label
                             enabled: {
@@ -471,359 +1015,123 @@ ApplicationWindow {
 
                 Rectangle { width: 1; height: 24; color: Theme.outline; Layout.alignment: Qt.AlignVCenter; Layout.leftMargin: 4; Layout.rightMargin: 4 }
 
-                // STRUCTURE GROUP — icon buttons with tooltips (labels were ~700px of text)
-                    Repeater {
-                        model: [
-                            { id: "layout",      icon: "layout.svg",       tip: "Layout (2D coordinates)" },
-                            { id: "aromatize",   icon: "arom.svg",         tip: "Aromatize" },
-                            { id: "dearomatize", icon: "dearom.svg",       tip: "Dearomatize" },
-                            { id: "normalize",   icon: "clean.svg",        tip: "Normalize" },
-                            { id: "standardize", icon: "analyse.svg",      tip: "Standardize" },
-                            { id: "check",       icon: "check.svg",        tip: "Validate structure" },
-                            { id: "rgroups",     icon: "rgroup-label.svg", tip: "R-Groups… (Ctrl+R)" }
-                        ]
-                        delegate: IconCell {
-                            id: structOpDelegate
-                            required property var modelData
-                            Layout.alignment: Qt.AlignVCenter
-                            cellWidth: 48
-                            cellHeight: 40
-                            iconSize: 20
-                            iconSource: "icons/" + structOpDelegate.modelData.icon
-                            tip: structOpDelegate.modelData.tip
-                            enabled: structOpDelegate.modelData.id === "rgroups" || !window.isProcessing
-                            onClicked: {
-                                const op = structOpDelegate.modelData.id
-                                if (op === "rgroups") { rgroupPanel.open(); return }
-                                if (!activeSketch) return
-                                if (op === "check") {
-                                    window.explicitCheckPending = true
-                                    activeSketch.requestSerialize("check")
-                                    return
-                                }
-                                if (op !== "layout" && op !== "aromatize") window.isProcessing = true
-                                activeSketch.requestSerialize(op)
-                            }
-                        }
-                    }
-                } // end Row 1
-
-                // === Row 2: Reactions/Query dropdowns, SMILES, Style/Chiral, Align/Dist, Page Size ===
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 4
-
-                    Button {
-                        id: reactionsDropBtn
-                        text: "Reactions ▾"
-                        // Group highlight: an active-but-hidden tool stays discoverable
-                        highlighted: !!(activeCanvas && (activeCanvas.currentTool === "RXN_ARROW"
-                                        || activeCanvas.currentTool === "MULTITAIL_ARROW"
-                                        || activeCanvas.currentTool === "RXN_PLUS"
-                                        || activeCanvas.currentTool === "AAM"))
-                        onClicked: reactionsPopup.open()
-
-                        Popup {
-                            id: reactionsPopup
-                            y: parent.height
-                            width: 210
-                            padding: Theme.marginMedium
-
-                            ColumnLayout {
-                                anchors.fill: parent
-                                spacing: 6
-
-                                GridLayout {
-                                    columns: 4
-                                    columnSpacing: Theme.spacingSmall
-                                    Layout.alignment: Qt.AlignHCenter
-                                    Repeater {
-                                        model: [
-                                            { id: "RXN_ARROW", icon: "reaction-arrow-open-angle.svg", tip: "Reaction Arrow" },
-                                            { id: "MULTITAIL_ARROW", icon: "reaction-arrow-multitail.svg", tip: "Multi-tail Arrow" },
-                                            { id: "RXN_PLUS", icon: "reaction-plus.svg", tip: "Reaction Plus" },
-                                            { id: "AAM", icon: "reaction-map.svg", tip: "Atom-Atom Mapping" }
-                                        ]
-                                        delegate: IconCell {
-                                            id: rxnToolCell
-                                            required property var modelData
-                                            cellWidth: 44
-                                            cellHeight: Theme.toolCellSize
-                                            iconSource: "icons/" + rxnToolCell.modelData.icon
-                                            tip: rxnToolCell.modelData.tip
-                                            selected: !!(activeCanvas && activeCanvas.currentTool === rxnToolCell.modelData.id)
-                                            onClicked: {
-                                                if (!activeCanvas) return
-                                                activeCanvas.currentTool = activeCanvas.currentTool === rxnToolCell.modelData.id ? "SELECT" : rxnToolCell.modelData.id
-                                                reactionsPopup.close()
-                                            }
-                                        }
-                                    }
-                                }
-
-                                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.outline }
-
-                                Text {
-                                    text: "Arrow style"
-                                    color: Theme.textSecondary
-                                    font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontDisplay }
-                                }
-                                Repeater {
-                                    model: [
-                                        { mode: "filled-triangle", label: "Filled Triangle", icon: "reaction-arrow-filled-triangle.svg" },
-                                        { mode: "open-angle", label: "Open Angle", icon: "reaction-arrow-open-angle.svg" },
-                                        { mode: "retrosynthetic", label: "Retrosynthetic", icon: "reaction-arrow-retrosynthetic-arrow.svg" },
-                                        { mode: "equilibrium-FF", label: "Equilibrium (↔)", icon: "reaction-arrow-equilibrium-filled-triangle.svg" },
-                                        { mode: "equilibrium-FH", label: "Equilibrium (⇌)", icon: "reaction-arrow-equilibrium-filled-half-bow.svg" },
-                                        { mode: "curved-mechanism", label: "Curved Mechanism", icon: "reaction-arrow-elliptical-arc-arrow-filled-triangle.svg" }
-                                    ]
-                                    delegate: Rectangle {
-                                        id: amRow
-                                        required property var modelData
-                                        Layout.fillWidth: true
-                                        implicitHeight: 24
-                                        radius: 3
-                                        color: !!(activeCanvas && activeCanvas.currentArrowMode === amRow.modelData.mode) ? Theme.selected : (amRowMouse.containsMouse ? Theme.hover : "transparent")
-                                        Behavior on color { ColorAnimation { duration: 150 } }
-                                        Image {
-                                            id: amRowIcon
-                                            anchors { left: parent.left; leftMargin: 6; verticalCenter: parent.verticalCenter }
-                                            source: "icons/" + amRow.modelData.icon
-                                            width: 18
-                                            height: 18
-                                            sourceSize: Qt.size(18, 18)
-                                        }
-                                        Text {
-                                            anchors { left: amRowIcon.right; leftMargin: 6; verticalCenter: parent.verticalCenter }
-                                            text: amRow.modelData.label
-                                            color: !!(activeCanvas && activeCanvas.currentArrowMode === amRow.modelData.mode) ? Theme.accent : Theme.textPrimary
-                                            font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay }
-                                        }
-                                        MouseArea {
-                                            id: amRowMouse
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: {
-                                                if (activeCanvas) activeCanvas.currentArrowMode = amRow.modelData.mode
-                                                reactionsPopup.close()
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Button {
-                        id: queryDropBtn
-                        text: "Query ▾"
-                        highlighted: !!(activeCanvas && (/^ATOM_(A|AH|Q|QH|M|MH|X|XH|R[1-8])$/.test(activeCanvas.currentTool)))
-                        onClicked: queryPopup.open()
-
-                        Popup {
-                            id: queryPopup
-                            y: parent.height
-                            width: 210
-                            padding: Theme.marginMedium
-
-                            ColumnLayout {
-                                anchors.fill: parent
-                                spacing: 6
-
-                                Text {
-                                    text: "Query atoms"
-                                    color: Theme.textSecondary
-                                    font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontDisplay }
-                                }
-                                GridLayout {
-                                    columns: 4
-                                    columnSpacing: Theme.spacingSmall
-                                    rowSpacing: Theme.spacingSmall
-                                    Layout.alignment: Qt.AlignHCenter
-                                    Repeater {
-                                        model: [
-                                            { id: "ATOM_A",  icon: "A",  tip: "Any atom" },
-                                            { id: "ATOM_AH", icon: "AH", tip: "Any atom including H" },
-                                            { id: "ATOM_Q",  icon: "Q",  tip: "Any heteroatom" },
-                                            { id: "ATOM_QH", icon: "QH", tip: "Heteroatom or H" },
-                                            { id: "ATOM_M",  icon: "M",  tip: "Any metal" },
-                                            { id: "ATOM_MH", icon: "MH", tip: "Metal or H" },
-                                            { id: "ATOM_X",  icon: "X",  tip: "Any halogen" },
-                                            { id: "ATOM_XH", icon: "XH", tip: "Halogen or H" }
-                                        ]
-                                        delegate: IconCell {
-                                            id: qaCell
-                                            required property var modelData
-                                            cellWidth: 42
-                                            cellHeight: 32
-                                            glyph: qaCell.modelData.icon
-                                            tip: qaCell.modelData.tip
-                                            selected: !!(activeCanvas && activeCanvas.currentTool === qaCell.modelData.id)
-                                            onClicked: {
-                                                if (!activeCanvas) return
-                                                activeCanvas.currentTool = activeCanvas.currentTool === qaCell.modelData.id ? "SELECT" : qaCell.modelData.id
-                                                queryPopup.close()
-                                            }
-                                        }
-                                    }
-                                }
-
-                                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.outline }
-
-                                Text {
-                                    text: "R-group labels"
-                                    color: Theme.textSecondary
-                                    font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontDisplay }
-                                }
-                                GridLayout {
-                                    columns: 4
-                                    columnSpacing: Theme.spacingSmall
-                                    rowSpacing: Theme.spacingSmall
-                                    Layout.alignment: Qt.AlignHCenter
-                                    Repeater {
-                                        model: ["R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8"]
-                                        delegate: IconCell {
-                                            id: rgCell
-                                            required property string modelData
-                                            cellWidth: 42
-                                            cellHeight: 28
-                                            glyph: rgCell.modelData
-                                            hasGlyphColorOverride: true
-                                            glyphColor: Theme.rgroupColor
-                                            accentColor: Theme.rgroupColor
-                                            borderAlwaysVisible: true
-                                            onClicked: {
-                                                if (activeCanvas) activeCanvas.currentTool = "ATOM_" + rgCell.modelData
-                                                queryPopup.close()
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Rectangle { width: 1; height: 20; color: Theme.outline; opacity: 0.6 }
-
-                    Button {
-                        text: "Copy SMILES ▾"
-                        onClicked: smilesMenu.open()
-                        Menu {
-                            id: smilesMenu
-                            MenuItem { text: "Copy SMILES"; onTriggered: if (activeSketch) activeSketch.requestSerialize("smiles") }
-                            MenuItem { text: "Copy Canonical SMILES"; onTriggered: if (activeSketch) activeSketch.requestSerialize("canonical_smiles") }
-                        }
-                    }
-
-                    // ── Signature: Publication Style switcher ───────────────────
-                    // A segmented control, not a dropdown. This is the one feature
-                    // that makes this tool different from every other chemistry editor.
-                    // The serif label and tactile segments communicate: "publication-ready."
-                    Text {
-                        text: "STYLE"
-                        color: Theme.textSecondary
-                        font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 2; family: Theme.fontDisplay }
+                // STRUCTURE GROUP
+                Repeater {
+                    model: [
+                        { id: "check",       icon: "check.svg",        tip: "Validate structure" },
+                        { id: "rgroups",     icon: "rgroup-label.svg", tip: "R-Groups… (Ctrl+R)" }
+                    ]
+                    delegate: IconCell {
+                        id: structOpDelegate
+                        required property var modelData
                         Layout.alignment: Qt.AlignVCenter
-                    }
-                    SegmentedControl {
-                        Layout.alignment: Qt.AlignVCenter
-                        model: StyleSheets.sheetNames
-                        currentValue: StyleSheets.currentName
-                        onValueSelected: (value) => StyleSheets.applySheet(value)
-                    }
-
-                    Text {
-                        text: "CHIRAL"
-                        color: Theme.textSecondary
-                        font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 2; family: Theme.fontDisplay }
-                        Layout.alignment: Qt.AlignVCenter
-                    }
-                    ComboBox {
-                        id: stereoFlagsCombo
-                        model: ["Absolute", "Relative"]
-                        currentIndex: 0
-                        onActivated: if (activeSketch) activeSketch.setStereoFlags(currentIndex === 0 ? "abs" : "rel", 0)
-                        Binding on currentIndex {
-                            value: (activeSketch && activeSketch.primitives && activeSketch.primitives.stereoFlags && activeSketch.primitives.stereoFlags.type === "rel") ? 1 : 0
-                            restoreMode: Binding.RestoreBinding
+                        iconSource: "icons/" + structOpDelegate.modelData.icon
+                        tip: structOpDelegate.modelData.tip
+                        enabled: {
+                            return structOpDelegate.modelData.id === "rgroups" || !window.isProcessing
+                        }
+                        onClicked: {
+                            executeStructureOp(structOpDelegate.modelData.id)
                         }
                     }
+                }
 
-                    Rectangle { width: 1; height: 20; color: Theme.outline; opacity: 0.6 }
+                Rectangle { width: 1; height: 24; color: Theme.outline; Layout.alignment: Qt.AlignVCenter; Layout.leftMargin: 4; Layout.rightMargin: 4 }
 
-                    // NOTE: enabled/visible are bool properties; a bare `a && b.c` chain
-                    // yields `undefined` (not false) while the worker hasn't populated
-                    // selection yet — hence the !!() coercion on all of these.
-                    Button {
-                        text: "Align L"
-                        onClicked: if (activeSketch) activeSketch.alignAtoms("left")
-                        enabled: Selection.hasAtoms(activeSketch, 2)
-                    }
-                    Button {
-                        text: "Align R"
-                        onClicked: if (activeSketch) activeSketch.alignAtoms("right")
-                        enabled: Selection.hasAtoms(activeSketch, 2)
-                    }
-                    Button {
-                        text: "Align T"
-                        onClicked: if (activeSketch) activeSketch.alignAtoms("top")
-                        enabled: Selection.hasAtoms(activeSketch, 2)
-                    }
-                    Button {
-                        text: "Align B"
-                        onClicked: if (activeSketch) activeSketch.alignAtoms("bottom")
-                        enabled: Selection.hasAtoms(activeSketch, 2)
-                    }
-                    Button {
-                        text: "Dist H"
-                        onClicked: if (activeSketch) activeSketch.distributeAtoms("horizontal")
-                        enabled: Selection.hasAtoms(activeSketch, 3)
-                    }
-                    Button {
-                        text: "Dist V"
-                        onClicked: if (activeSketch) activeSketch.distributeAtoms("vertical")
-                        enabled: Selection.hasAtoms(activeSketch, 3)
-                    }
+                Text {
+                    text: "STYLE"
+                    color: Theme.textSecondary
+                    font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 2; family: Theme.fontDisplay }
+                    Layout.alignment: Qt.AlignVCenter
+                }
+                SegmentedControl {
+                    Layout.alignment: Qt.AlignVCenter
+                    model: StyleSheets.sheetNames
+                    currentValue: StyleSheets.currentName
+                    onValueSelected: (value) => StyleSheets.applySheet(value)
+                }
 
-                    Rectangle { width: 1; height: 20; color: Theme.outline; opacity: 0.6 }
+                Text {
+                    text: "CHIRAL"
+                    color: Theme.textSecondary
+                    font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 2; family: Theme.fontDisplay }
+                    Layout.alignment: Qt.AlignVCenter
+                }
+                ComboBox {
+                    id: stereoFlagsCombo
+                    model: ["Absolute", "Relative"]
+                    currentIndex: 0
+                    onActivated: if (activeSketch) activeSketch.setStereoFlags(currentIndex === 0 ? "abs" : "rel", 0)
+                    Binding on currentIndex {
+                        value: (activeSketch && activeSketch.primitives && activeSketch.primitives.stereoFlags && activeSketch.primitives.stereoFlags.type === "rel") ? 1 : 0
+                        restoreMode: Binding.RestoreBinding
+                    }
+                }
 
-                    // Rotate / flip the current selection
-                    Repeater {
-                        model: [
-                            { mode: "rotate_ccw", icon: "transform-rotate.svg", tip: "Rotate selection 90° counter-clockwise", mirror: false },
-                            { mode: "rotate_cw", icon: "transform-rotate.svg", tip: "Rotate selection 90° clockwise", mirror: true },
-                            { mode: "flip_h", icon: "transform-flip-h.svg", tip: "Flip selection horizontally", mirror: false },
-                            { mode: "flip_v", icon: "transform-flip-v.svg", tip: "Flip selection vertically", mirror: false }
-                        ]
-                        delegate: IconCell {
-                            id: xformDelegate
-                            required property var modelData
-                            Layout.alignment: Qt.AlignVCenter
-                            iconSource: "icons/" + xformDelegate.modelData.icon
-                            tip: xformDelegate.modelData.tip
-                            mirrorIcon: xformDelegate.modelData.mirror
-                            enabled: Selection.hasAtoms(activeSketch, 2)
-                            onClicked: if (activeSketch) activeSketch.transformSelection(xformDelegate.modelData.mode)
+                Rectangle { width: 1; height: 20; color: Theme.outline; opacity: 0.6 }
+
+                Repeater {
+                    model: [
+                        { mode: "left",       fn: "align",       glyph: "\u{f11c2}", tip: "Align left edges",  minAtoms: 2 },
+                        { mode: "right",      fn: "align",       glyph: "\u{f11c4}", tip: "Align right edges", minAtoms: 2 },
+                        { mode: "top",        fn: "align",       glyph: "\u{f11c7}", tip: "Align top edges",   minAtoms: 2 },
+                        { mode: "bottom",     fn: "align",       glyph: "\u{f11c5}", tip: "Align bottom edges", minAtoms: 2 },
+                        { mode: "horizontal", fn: "distribute",  glyph: "\u{f11c9}", tip: "Distribute horizontally", minAtoms: 3 },
+                        { mode: "vertical",   fn: "distribute",  glyph: "\u{f11cc}", tip: "Distribute vertically",   minAtoms: 3 }
+                    ]
+                    delegate: IconCell {
+                        id: alignDelegate
+                        required property var modelData
+                        Layout.alignment: Qt.AlignVCenter
+                        glyph: alignDelegate.modelData.glyph
+                        glyphFontFamily: mdiFont.name
+                        glyphIsIcon: true
+                        tip: alignDelegate.modelData.tip
+                        enabled: Selection.hasAtoms(activeSketch, alignDelegate.modelData.minAtoms)
+                        onClicked: {
+                            if (!activeSketch) return
+                            if (alignDelegate.modelData.fn === "align") activeSketch.alignAtoms(alignDelegate.modelData.mode)
+                            else activeSketch.distributeAtoms(alignDelegate.modelData.mode)
                         }
                     }
+                }
 
-                    Item { Layout.fillWidth: true } // spacer
+                Rectangle { width: 1; height: 20; color: Theme.outline; opacity: 0.6 }
 
-                    Text {
-                        text: "PAGE"
-                        color: Theme.textSecondary
-                        font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 2; family: Theme.fontDisplay }
+                Repeater {
+                    model: [
+                        { mode: "rotate_ccw", icon: "transform-rotate.svg", tip: "Rotate selection 90° counter-clockwise", mirror: false },
+                        { mode: "rotate_cw", icon: "transform-rotate.svg", tip: "Rotate selection 90° clockwise", mirror: true },
+                        { mode: "flip_h", icon: "transform-flip-h.svg", tip: "Flip selection horizontally", mirror: false },
+                        { mode: "flip_v", icon: "transform-flip-v.svg", tip: "Flip selection vertically", mirror: false }
+                    ]
+                    delegate: IconCell {
+                        id: xformDelegate
+                        required property var modelData
                         Layout.alignment: Qt.AlignVCenter
+                        iconSource: "icons/" + xformDelegate.modelData.icon
+                        tip: xformDelegate.modelData.tip
+                        mirrorIcon: xformDelegate.modelData.mirror
+                        enabled: Selection.hasAtoms(activeSketch, 2)
+                        onClicked: if (activeSketch) activeSketch.transformSelection(xformDelegate.modelData.mode)
                     }
+                }
 
-                    ComboBox {
-                        id: pageSizeCombo
-                        model: ["A4", "A3", "A5", "Letter"]
-                        currentIndex: 0
-                    }
-                } // end Row 2
-            } // end ColumnLayout
+                Item { Layout.fillWidth: true } // spacer
+
+                Text {
+                    text: "PAGE"
+                    color: Theme.textSecondary
+                    font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 2; family: Theme.fontDisplay }
+                    Layout.alignment: Qt.AlignVCenter
+                }
+
+                ComboBox {
+                    id: pageSizeCombo
+                    model: ["A4", "A3", "A5", "Letter"]
+                    currentIndex: 0
+                }
+            } // end RowLayout
         }
 
         // Horizontal separator
@@ -862,8 +1170,8 @@ ApplicationWindow {
 
                         Text {
                             text: "✕"
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.right: parent ? parent.right : undefined
+                            anchors.verticalCenter: parent ? parent.verticalCenter : undefined
                             anchors.rightMargin: 8
                             font.pixelSize: Theme.fontSizeCaption
                             color: tabMouseArea.containsMouse ? Theme.error : Theme.textSecondary
@@ -872,7 +1180,14 @@ ApplicationWindow {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 onClicked: {
+                                    if (DocumentManager.docIds.length <= 1) return
                                     if (window.dirtyDocs[tabBtn.modelData]) {
+                                        // Switch to the tab being closed first: saveDialog/the
+                                        // structureReady Connections below only ever operate on
+                                        // activeSketch/activeCanvas, so saving a *different*,
+                                        // still-background tab here would silently save the
+                                        // wrong document's content instead.
+                                        DocumentManager.activeDocId = tabBtn.modelData
                                         window._pendingCloseDocId = tabBtn.modelData
                                         unsavedChangesDialog.open()
                                     } else {
@@ -938,11 +1253,18 @@ ApplicationWindow {
                     property real scrollX: scrollView.contentItem.contentX
                     property real zoom: window.zoomLevel
                     property real docX: docRect.x
+                    property var margins: window.pageMargins
+                    property string pageSize: pageSizeCombo.currentText
+                    
+                    readonly property real cmPixels: window.pixelsPerCm * zoom
+                    readonly property real startX: docX - scrollX
                     
                     onScrollXChanged: requestPaint()
                     onZoomChanged: requestPaint()
                     onDocXChanged: requestPaint()
                     onWidthChanged: requestPaint()
+                    onMarginsChanged: requestPaint()
+                    onPageSizeChanged: requestPaint()
                     
                     onPaint: {
                         const ctx = getContext("2d");
@@ -954,8 +1276,6 @@ ApplicationWindow {
                         ctx.font = Theme.fontSizeCaption + "px " + Theme.fontMonoCss;
                         ctx.beginPath();
                         
-                        const cmPixels = window.pixelsPerCm * zoom;
-                        const startX = docX - scrollX;
                         for (let i = -50; i < 150; i += 0.1) {
                             const x = startX + (i * cmPixels);
                             if (x < 0) continue;
@@ -972,10 +1292,110 @@ ApplicationWindow {
                         }
                         ctx.stroke();
                         
+                        // Shade left and right margins
+                        ctx.save();
+                        ctx.globalAlpha = 0.15;
+                        ctx.fillStyle = Theme.rulerColor;
+                        
+                        const pWidthMm = window.pageSizeMm(pageSizeCombo.currentText).w;
+                        const marginLeftPx = startX + (window.pageMargins.left * cmPixels);
+                        const marginRightPx = startX + ((pWidthMm/10 - window.pageMargins.right) * cmPixels);
+                        const pageWidthPx = startX + ((pWidthMm/10) * cmPixels);
+                        
+                        const leftRectW = Math.max(0, Math.min(marginLeftPx, width));
+                        ctx.fillRect(0, 0, leftRectW, height);
+                        
+                        const rightRectX = Math.max(0, Math.min(marginRightPx, width));
+                        const rightRectW = Math.max(0, Math.min(pageWidthPx, width) - rightRectX);
+                        ctx.fillRect(rightRectX, 0, rightRectW, height);
+                        
+                        ctx.restore();
+                        
                         ctx.beginPath();
                         ctx.moveTo(0, height);
                         ctx.lineTo(width, height);
                         ctx.stroke();
+                    }
+
+                    MouseArea {
+                        id: leftMarginDrag
+                        width: 6
+                        height: parent.height
+                        x: parent.startX + (window.pageMargins.left * parent.cmPixels) - 3
+                        y: 0
+                        cursorShape: Qt.SizeHorCursor
+                        
+                        property real dragStartX: 0
+                        property real marginStartX: 0
+                        
+                        onPressed: (mouse) => {
+                            let parentPos = mapToItem(parent, mouse.x, mouse.y)
+                            dragStartX = parentPos.x
+                            marginStartX = window.pageMargins.left
+                        }
+                        
+                        onPositionChanged: (mouse) => {
+                            if (pressed) {
+                                let parentPos = mapToItem(parent, mouse.x, mouse.y)
+                                let deltaX = parentPos.x - dragStartX
+                                let deltaCm = deltaX / parent.cmPixels
+                                let newMargin = marginStartX + deltaCm
+                                
+                                let pWidthCm = window.pageSizeMm(pageSizeCombo.currentText).w / 10
+                                let maxMargin = pWidthCm - window.pageMargins.right - 1.0
+                                newMargin = Math.max(0.0, Math.min(newMargin, maxMargin))
+                                
+                                let margins = {
+                                    left: newMargin,
+                                    right: window.pageMargins.right,
+                                    top: window.pageMargins.top,
+                                    bottom: window.pageMargins.bottom
+                                }
+                                window.pageMargins = margins
+                            }
+                        }
+                    }
+
+                    MouseArea {
+                        id: rightMarginDrag
+                        width: 6
+                        height: parent.height
+                        x: {
+                            let pWidthCm = window.pageSizeMm(pageSizeCombo.currentText).w / 10
+                            return parent.startX + ((pWidthCm - window.pageMargins.right) * parent.cmPixels) - 3
+                        }
+                        y: 0
+                        cursorShape: Qt.SizeHorCursor
+                        
+                        property real dragStartX: 0
+                        property real marginStartX: 0
+                        
+                        onPressed: (mouse) => {
+                            let parentPos = mapToItem(parent, mouse.x, mouse.y)
+                            dragStartX = parentPos.x
+                            marginStartX = window.pageMargins.right
+                        }
+                        
+                        onPositionChanged: (mouse) => {
+                            if (pressed) {
+                                let parentPos = mapToItem(parent, mouse.x, mouse.y)
+                                let deltaX = parentPos.x - dragStartX
+                                let deltaCm = deltaX / parent.cmPixels
+                                let newMargin = marginStartX - deltaCm
+                                
+                                let pWidthCm = window.pageSizeMm(pageSizeCombo.currentText).w / 10
+                                let maxMargin = pWidthCm - window.pageMargins.left - 1.0
+                                newMargin = Math.max(0.0, Math.min(newMargin, maxMargin))
+                                
+                                let margins = {
+                                    left: window.pageMargins.left,
+                                    right: newMargin,
+                                    top: window.pageMargins.top,
+                                    bottom: window.pageMargins.bottom
+                                }
+                                window.pageMargins = margins
+                            }
+                        }
                     }
                 }
 
@@ -994,11 +1414,18 @@ ApplicationWindow {
                         property real scrollY: scrollView.contentItem.contentY
                         property real zoom: window.zoomLevel
                         property real docY: docRect.y
+                        property var margins: window.pageMargins
+                        property string pageSize: pageSizeCombo.currentText
+                        
+                        readonly property real cmPixels: window.pixelsPerCm * zoom
+                        readonly property real startY: docY - scrollY
                         
                         onScrollYChanged: requestPaint()
                         onZoomChanged: requestPaint()
                         onDocYChanged: requestPaint()
                         onHeightChanged: requestPaint()
+                        onMarginsChanged: requestPaint()
+                        onPageSizeChanged: requestPaint()
                         
                         onPaint: {
                             const ctx = getContext("2d");
@@ -1009,9 +1436,6 @@ ApplicationWindow {
                             ctx.fillStyle = Theme.rulerColor;
                             ctx.font = Theme.fontSizeCaption + "px " + Theme.fontMonoCss;
                             ctx.beginPath();
-                            
-                            const cmPixels = window.pixelsPerCm * zoom;
-                            const startY = docY - scrollY;
                             
                             for (let i = -50; i < 150; i += 0.1) {
                                 const y = startY + (i * cmPixels);
@@ -1029,10 +1453,110 @@ ApplicationWindow {
                             }
                             ctx.stroke();
                             
+                            // Shade top and bottom margins
+                            ctx.save();
+                            ctx.globalAlpha = 0.15;
+                            ctx.fillStyle = Theme.rulerColor;
+                            
+                            const pHeightMm = window.pageSizeMm(pageSizeCombo.currentText).h;
+                            const marginTopPx = startY + (window.pageMargins.top * cmPixels);
+                            const marginBottomPx = startY + ((pHeightMm/10 - window.pageMargins.bottom) * cmPixels);
+                            const pageHeightPx = startY + ((pHeightMm/10) * cmPixels);
+                            
+                            const topRectH = Math.max(0, Math.min(marginTopPx, height));
+                            ctx.fillRect(0, 0, width, topRectH);
+                            
+                            const bottomRectY = Math.max(0, Math.min(marginBottomPx, height));
+                            const bottomRectH = Math.max(0, Math.min(pageHeightPx, height) - bottomRectY);
+                            ctx.fillRect(0, bottomRectY, width, bottomRectH);
+                            
+                            ctx.restore();
+                            
                             ctx.beginPath();
                             ctx.moveTo(width, 0);
                             ctx.lineTo(width, height);
                             ctx.stroke();
+                        }
+
+                        MouseArea {
+                            id: topMarginDrag
+                            width: parent.width
+                            height: 6
+                            x: 0
+                            y: parent.startY + (window.pageMargins.top * parent.cmPixels) - 3
+                            cursorShape: Qt.SizeVerCursor
+                            
+                            property real dragStartY: 0
+                            property real marginStartY: 0
+                            
+                            onPressed: (mouse) => {
+                                let parentPos = mapToItem(parent, mouse.x, mouse.y)
+                                dragStartY = parentPos.y
+                                marginStartY = window.pageMargins.top
+                            }
+                            
+                            onPositionChanged: (mouse) => {
+                                if (pressed) {
+                                    let parentPos = mapToItem(parent, mouse.x, mouse.y)
+                                    let deltaY = parentPos.y - dragStartY
+                                    let deltaCm = deltaY / parent.cmPixels
+                                    let newMargin = marginStartY + deltaCm
+                                    
+                                    let pHeightCm = window.pageSizeMm(pageSizeCombo.currentText).h / 10
+                                    let maxMargin = pHeightCm - window.pageMargins.bottom - 1.0
+                                    newMargin = Math.max(0.0, Math.min(newMargin, maxMargin))
+                                    
+                                    let margins = {
+                                        left: window.pageMargins.left,
+                                        right: window.pageMargins.right,
+                                        top: newMargin,
+                                        bottom: window.pageMargins.bottom
+                                    }
+                                    window.pageMargins = margins
+                                }
+                            }
+                        }
+
+                        MouseArea {
+                            id: bottomMarginDrag
+                            width: parent.width
+                            height: 6
+                            x: 0
+                            y: {
+                                const pHeightCm = window.pageSizeMm(pageSizeCombo.currentText).h / 10
+                                return parent.startY + ((pHeightCm - window.pageMargins.bottom) * parent.cmPixels) - 3
+                            }
+                            cursorShape: Qt.SizeVerCursor
+                            
+                            property real dragStartY: 0
+                            property real marginStartY: 0
+                            
+                            onPressed: (mouse) => {
+                                let parentPos = mapToItem(parent, mouse.x, mouse.y)
+                                dragStartY = parentPos.y
+                                marginStartY = window.pageMargins.bottom
+                            }
+                            
+                            onPositionChanged: (mouse) => {
+                                if (pressed) {
+                                    let parentPos = mapToItem(parent, mouse.x, mouse.y)
+                                    let deltaY = parentPos.y - dragStartY
+                                    let deltaCm = deltaY / parent.cmPixels
+                                    let newMargin = marginStartY - deltaCm
+                                    
+                                    let pHeightCm = window.pageSizeMm(pageSizeCombo.currentText).h / 10
+                                    let maxMargin = pHeightCm - window.pageMargins.top - 1.0
+                                    newMargin = Math.max(0.0, Math.min(newMargin, maxMargin))
+                                    
+                                    let margins = {
+                                        left: window.pageMargins.left,
+                                        right: window.pageMargins.right,
+                                        top: window.pageMargins.top,
+                                        bottom: newMargin
+                                    }
+                                    window.pageMargins = margins
+                                }
+                            }
                         }
                     }
 
@@ -1117,6 +1641,11 @@ ApplicationWindow {
                                             textDialog.inputText = content
                                             textDialog.open()
                                         }
+                                        onImageInsertRequested: (cx, cy) => {
+                                            imageFileDialog.chemX = cx
+                                            imageFileDialog.chemY = cy
+                                            imageFileDialog.open()
+                                        }
                                     }
                                 }
 
@@ -1155,7 +1684,7 @@ ApplicationWindow {
         // Bottom atom bar: the most-used atoms one click away, Ketcher-style
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 48
+            Layout.preferredHeight: Theme.toolCellSize + 8
             color: Theme.surface
 
             Rectangle {
@@ -1167,7 +1696,7 @@ ApplicationWindow {
 
             RowLayout {
                 anchors.centerIn: parent
-                spacing: Theme.toolGridGap
+                spacing: Theme.spacingSmall
 
                 Repeater {
                     model: [
@@ -1186,6 +1715,8 @@ ApplicationWindow {
                         required property var modelData
                         iconSource: atomBarCell.modelData.icon.indexOf(".svg") !== -1 ? "icons/" + atomBarCell.modelData.icon : ""
                         glyph: atomBarCell.modelData.icon.indexOf(".svg") === -1 ? atomBarCell.modelData.icon : ""
+                        hasGlyphColorOverride: atomBarCell.modelData.icon.indexOf(".svg") === -1
+                        glyphColor: atomBarCell.modelData.icon === "C" ? Theme.textPrimary : Theme.getElementColor(atomBarCell.modelData.icon)
                         tip: atomBarCell.modelData.tip
                         selected: !!(activeCanvas && activeCanvas.currentTool === atomBarCell.modelData.id)
                         onClicked: {
@@ -1218,9 +1749,9 @@ ApplicationWindow {
 
             RowLayout {
                 anchors {
-                    left: parent.left
+                    left: parent ? parent.left : undefined
                     leftMargin: 16
-                    verticalCenter: parent.verticalCenter
+                    verticalCenter: parent ? parent.verticalCenter : undefined
                 }
                 spacing: 12
 
@@ -1253,9 +1784,9 @@ ApplicationWindow {
 
             RowLayout {
                 anchors {
-                    right: parent.right
+                    right: parent ? parent.right : undefined
                     rightMargin: 16
-                    verticalCenter: parent.verticalCenter
+                    verticalCenter: parent ? parent.verticalCenter : undefined
                 }
                 spacing: 8
 
@@ -1322,16 +1853,78 @@ ApplicationWindow {
         }
     }
 
+    property url pendingSdfBatchUrl: ""
+    property string _pendingBatchAction: "scaffold"
+    property var _pendingBatchLabels: []
+    property var _pendingBatchGridMolfiles: []
+    property string pendingSimilarityRefMolfile: ""
+
     FileIO {
         id: fileIO
     }
+
+    SdfRecordPicker {
+        id: sdfRecordPicker
+        onRecordChosen: function(index) {
+            if (activeSketch) activeSketch.sendCommand("loadSdfBatchRecord", [index])
+        }
+        onFindScaffoldRequested: {
+            window.isProcessing = true
+            _pendingBatchAction = "scaffold"
+            if (activeSketch) activeSketch.sendCommand("getSdfBatchMolfiles")
+            sdfRecordPicker.close()
+        }
+        onDecomposeRequested: {
+            window.isProcessing = true
+            _pendingBatchAction = "decompose"
+            if (activeSketch) activeSketch.sendCommand("getSdfBatchMolfiles")
+            sdfRecordPicker.close()
+        }
+        onRankBySimilarityRequested: {
+            window.isProcessing = true
+            _pendingBatchAction = "similarity"
+            window.pendingSimilarityRefMolfile = activeCanvas ? activeCanvas.getMolfile() : ""
+            if (activeSketch) activeSketch.sendCommand("getSdfBatchMolfiles")
+            sdfRecordPicker.close()
+        }
+        onAlignToScaffoldRequested: {
+            window.isProcessing = true
+            _pendingBatchAction = "align"
+            if (activeSketch) activeSketch.sendCommand("getSdfBatchMolfiles")
+        }
+        onExportGridRequested: {
+            _pendingBatchAction = "export_grid"
+            if (activeSketch) activeSketch.sendCommand("getSdfBatchMolfiles")
+            sdfRecordPicker.close()
+        }
+        onExportBatchFileRequested: {
+            _pendingBatchAction = "export_file"
+            if (activeSketch) activeSketch.sendCommand("getSdfBatchMolfiles")
+        }
+    }
+
+    SubstructureSearchPopup {
+        id: smartsSearchPopup
+        onSearchRequested: function(smarts) {
+            if (!activeSketch) return
+            window.pendingSmartsQuery = smarts
+            activeSketch.requestSerialize("smarts_search")
+        }
+        onClearRequested: {
+            if (activeSketch) activeSketch.sendCommand("selectSubstructureMatches", ["{\"matches\":[]}"])
+        }
+    }
+    property string pendingSmartsQuery: ""
+    property string pendingSimilarityRef: ""
+    property double pendingIonizePh: 7.4
 
     FileDialog {
         id: openDialog
         title: "Open Molecule"
         fileMode: FileDialog.OpenFile
         nameFilters: [
-            "Molfile (*.mol)", "SDF (*.sdf)", "Ketcher JSON (*.ket)",
+            "Molfile (*.mol)", "SDF (*.sdf)", "RDF (*.rdf)", "SMILES (*.smi *.smiles)",
+            "CML (*.cml)", "CDX (*.cdx)", "Ketcher JSON (*.ket)",
             "FASTA (*.fasta *.fa)", "HELM (*.helm)", "IDT Oligo (*.idt)",
             "All files (*)"
         ]
@@ -1350,12 +1943,32 @@ ApplicationWindow {
 
     function printToPdf() {
         if (!activeCanvas) return
-        const tmp = AppController.tempPngPath()
-        const tmpUrl = Qt.url("file:///" + tmp.replace(/\\/g, "/"))
-        activeCanvas.exportForPrint(tmpUrl, function() { pdfSaveDialog.open() })
+        pdfSaveDialog.open()
     }
 
     function loadFromFile(fileUrl) {
+        const fileStrEarly = fileUrl.toString().toLowerCase()
+        if (fileStrEarly.endsWith(".rdf")) {
+            pendingSdfBatchUrl = fileUrl
+            window.isProcessing = true
+            indigoSvc.parseRdfBatch(fileUrl)
+            return
+        } else if (fileStrEarly.endsWith(".smi") || fileStrEarly.endsWith(".smiles")) {
+            pendingSdfBatchUrl = fileUrl
+            window.isProcessing = true
+            indigoSvc.parseIndigoBatchFile(fileUrl, "smiles")
+            return
+        } else if (fileStrEarly.endsWith(".cml")) {
+            pendingSdfBatchUrl = fileUrl
+            window.isProcessing = true
+            indigoSvc.parseIndigoBatchFile(fileUrl, "cml")
+            return
+        } else if (fileStrEarly.endsWith(".cdx")) {
+            pendingSdfBatchUrl = fileUrl
+            window.isProcessing = true
+            indigoSvc.parseIndigoBatchFile(fileUrl, "cdx")
+            return
+        }
         const data = fileIO.read(fileUrl)
         if (data === "") return
         const fileStr = fileUrl.toString().toLowerCase()
@@ -1373,7 +1986,11 @@ ApplicationWindow {
             let fmt = "mol"
             if (fileStr.endsWith(".sdf")) fmt = "sdf"
             else if (fileStr.endsWith(".ket")) fmt = "ket"
-            if (activeCanvas) {
+            
+            if (fmt === "sdf" && activeSketch) {
+                pendingSdfBatchUrl = fileUrl
+                activeSketch.sendCommand("deserializeSdfBatch", [data])
+            } else if (activeCanvas) {
                 activeCanvas.loadStructure(fmt, data)
                 setDocFile(DocumentManager.activeDocId, fileUrl)
             }
@@ -1395,11 +2012,16 @@ ApplicationWindow {
         id: saveDialog
         title: "Save Molecule"
         fileMode: FileDialog.SaveFile
-        nameFilters: ["Molfile (*.mol)", "SDF (*.sdf)", "Ketcher JSON (*.ket)", "PNG image (*.png)", "All files (*)"]
+        nameFilters: ["Molfile (*.mol)", "SDF (*.sdf)", "Ketcher JSON (*.ket)", "PNG image (*.png)", "SVG image (*.svg)", "All files (*)"]
         onAccepted: {
             const fileStr = selectedFile.toString().toLowerCase()
             if (fileStr.endsWith(".png")) {
                 activeCanvas.exportPNG(selectedFile)
+                return
+            }
+            if (fileStr.endsWith(".svg")) {
+                window.pendingRenderUrl = selectedFile
+                if (activeSketch) activeSketch.requestStructure("mol", "render_svg")
                 return
             }
             let fmt = "mol"
@@ -1418,12 +2040,47 @@ ApplicationWindow {
         fileMode: FileDialog.SaveFile
         nameFilters: ["PDF document (*.pdf)"]
         onAccepted: {
-            const tmp = AppController.tempPngPath()
-            const tmpUrl = Qt.url("file:///" + tmp.replace(/\\/g, "/"))
-            const size = window.pageSizeMm(pageSizeCombo.currentText)
-            const ok = AppController.exportPdf(tmpUrl, selectedFile, size.w, size.h, 10)
-            if (!ok) workerErrorDialog.errorText = "Failed to write PDF."
-            if (!ok) workerErrorDialog.open()
+            window.pendingRenderUrl = selectedFile
+            if (activeSketch) activeSketch.requestStructure("mol", "render_pdf")
+        }
+    }
+
+    FileDialog {
+        id: gridSaveDialog
+        title: "Export Reaction Scheme"
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["PDF document (*.pdf)"]
+        onAccepted: {
+            window.pendingRenderUrl = selectedFile
+            if (activeSketch) activeSketch.requestStructure("mol", "render_grid")
+        }
+    }
+
+    FileDialog {
+        id: batchGridSaveDialog
+        title: "Export Batch as Image Grid"
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["PDF document (*.pdf)", "PNG image (*.png)"]
+        onAccepted: {
+            window.pendingRenderUrl = selectedFile
+            const fileStr = selectedFile.toString().toLowerCase()
+            const format = fileStr.endsWith(".png") ? "png" : "pdf"
+            indigoSvc.exportBatchGridToFile(window._pendingBatchGridMolfiles, selectedFile, format)
+        }
+    }
+
+    FileDialog {
+        id: batchFileSaveDialog
+        title: "Export Batch to File"
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["SDF (*.sdf)", "RDF (*.rdf)", "SMILES (*.smi)", "CML (*.cml)"]
+        onAccepted: {
+            const fileStr = selectedFile.toString().toLowerCase()
+            let format = "sdf"
+            if (fileStr.endsWith(".rdf")) format = "rdf"
+            else if (fileStr.endsWith(".smi")) format = "smiles"
+            else if (fileStr.endsWith(".cml")) format = "cml"
+            indigoSvc.exportBatchToFile(window._pendingBatchGridMolfiles, selectedFile, format)
         }
     }
 
@@ -1442,6 +2099,7 @@ ApplicationWindow {
                     window._pendingCloseDocId = -1
                     DocumentManager.closeDocument(docId)
                 } else {
+                    window._forceQuit = true
                     Qt.quit()
                 }
             }
@@ -1594,6 +2252,29 @@ ApplicationWindow {
         }
     }
 
+    FileDialog {
+        id: imageFileDialog
+        nameFilters: ["Images (*.png *.jpg *.jpeg *.gif *.bmp)"]
+
+        property real chemX: 0
+        property real chemY: 0
+        property url pendingFileUrl
+        // Tunable confidence threshold on Imago's reported recognition-warning count.
+        // Verified empirically: a real chemical-structure image reported 0 warnings, an
+        // unrelated screenshot reported 34 while still producing a (garbage) molfile — Imago
+        // never refuses outright, so this count is the real signal to gate on. Not pinned at
+        // exactly 0 since an imperfect scan may legitimately produce a few warnings and still
+        // recognize correctly; revisit this number against real user images.
+        property int maxAcceptableWarnings: 5
+
+        onAccepted: {
+            if (!activeSketch) return
+            pendingFileUrl = selectedFile
+            window.isProcessing = true
+            imagoSvc.recognizeImage(selectedFile)
+        }
+    }
+
     BiopolymerDialog {
         id: biopolymerDialog
 
@@ -1684,6 +2365,98 @@ ApplicationWindow {
         }
     }
 
+    TaskDialog {
+        id: similarityDialog
+        title: "Compare Similarity"
+        standardButtons: Dialog.Ok | Dialog.Cancel
+
+        TextField {
+            id: similarityRefInput
+            width: 380
+            placeholderText: "Reference SMILES, e.g. c1ccccc1"
+            Keys.onReturnPressed: similarityDialog.accept()
+        }
+
+        onOpened: { similarityRefInput.text = ""; similarityRefInput.forceActiveFocus() }
+        onAccepted: {
+            const ref = similarityRefInput.text.trim()
+            if (ref && activeSketch) {
+                window.pendingSimilarityRef = ref
+                activeSketch.requestSerialize("similarity")
+            }
+        }
+    }
+
+    TaskDialog {
+        id: ionizeDialog
+        title: "Ionize at pH"
+        standardButtons: Dialog.Ok | Dialog.Cancel
+
+        TextField {
+            id: ionizePhInput
+            width: 380
+            placeholderText: "pH, e.g. 7.4"
+            validator: DoubleValidator { bottom: 0; top: 14; decimals: 2 }
+            Keys.onReturnPressed: ionizeDialog.accept()
+        }
+
+        onOpened: { ionizePhInput.text = "7.4"; ionizePhInput.forceActiveFocus() }
+        onAccepted: {
+            const pH = parseFloat(ionizePhInput.text)
+            if (!isNaN(pH) && activeSketch) {
+                window.isProcessing = true
+                window.pendingIonizePh = pH
+                activeSketch.requestSerialize("ionize")
+            }
+        }
+    }
+
+    TaskDialog {
+        id: inchiLoadDialog
+        title: "Load from InChI"
+        standardButtons: Dialog.Ok | Dialog.Cancel
+
+        ColumnLayout {
+            spacing: 4
+
+            TextField {
+                id: inchiLoadInput
+                Layout.preferredWidth: 460
+                placeholderText: "InChI=1S/C6H6/c1-2-4-6-5-3-1/h1-6H"
+                Keys.onReturnPressed: inchiLoadDialog.accept()
+            }
+
+            // InChIKey (the 27-char hash, e.g. UHOVQNZJYSORNB-UHFFFAOYSA-N) is a
+            // one-way hash of an InChI -- there is no algorithm that reverses it
+            // back into a structure, unlike the full InChI string. This is exactly
+            // the mix-up this dialog exists to prevent, so it's flagged live
+            // rather than only after a confusing load failure.
+            Text {
+                visible: /^[A-Z]{14}-[A-Z]{10}-[A-Z]$/.test(inchiLoadInput.text.trim())
+                text: "That looks like an InChIKey, not a full InChI — InChIKey is a one-way hash and can't be loaded back into a structure. Paste the full \"InChI=1S/...\" string instead."
+                color: "#c0392b"
+                wrapMode: Text.WordWrap
+                Layout.preferredWidth: 460
+                font.pixelSize: Theme.fontSizeCaption
+            }
+        }
+
+        onOpened: { inchiLoadInput.text = ""; inchiLoadInput.forceActiveFocus() }
+        onAccepted: {
+            // Indigo's generic loader auto-detects and parses InChI directly
+            // (confirmed: no separate indigo-inchi-plugin call needed for this
+            // direction, unlike generating an InChI/InChIKey from a structure,
+            // which does need the plugin) -- same layout() call "Load from
+            // SMILES" already uses. InChI carries no 2D coordinates, so the
+            // layout step here isn't optional the way it might seem.
+            const txt = inchiLoadInput.text.trim()
+            if (txt) {
+                window.isProcessing = true
+                indigoSvc.layout(txt)
+            }
+        }
+    }
+
     MessageDialog {
         id: workerErrorDialog
         property string errorText: ""
@@ -1691,5 +2464,17 @@ ApplicationWindow {
         buttons: MessageDialog.Ok
         text: "The chemistry engine encountered an error and may have stopped.\n\n" + errorText +
               "\n\nPlease save your work and restart the application."
+    }
+
+    MessageDialog {
+        id: similarityResultDialog
+        title: "Similarity Result"
+        text: ""
+    }
+
+    MessageDialog {
+        id: similarityRankResultDialog
+        title: "Similarity Ranking"
+        text: ""
     }
 }

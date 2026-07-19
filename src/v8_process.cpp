@@ -12,16 +12,11 @@
 #define _USE_MATH_DEFINES
 #include <cmath>
 
-V8Process::V8Process(QObject *parent) : QObject(parent), m_process(new QProcess(this)) {
-    connect(m_process, &QProcess::readyReadStandardOutput, this, &V8Process::onReadyReadStandardOutput);
-    connect(m_process, QOverload<QProcess::ProcessError>::of(&QProcess::errorOccurred), this, &V8Process::onProcessError);
-    connect(m_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, &V8Process::onProcessFinished);
-    connect(m_process, &QProcess::started, this, &V8Process::onProcessStarted);
-    
-    m_process->setProcessChannelMode(QProcess::ForwardedErrorChannel);
-
+V8Process::V8Process(QObject *parent) : QObject(parent) {
     QString appDir = QCoreApplication::applicationDirPath();
     // Walk up from the binary to find src/v8_worker.js regardless of build layout depth.
+    // Same discovery logic as before Node was removed -- the file is now read and
+    // JS_Eval'd directly instead of spawned, but it still lives in the same place.
     QString scriptPath;
     QDir dir(appDir);
     for (int i = 0; i < 5; ++i) {
@@ -40,45 +35,28 @@ V8Process::V8Process(QObject *parent) : QObject(parent), m_process(new QProcess(
         return;
     }
 
-    QString localNode = QDir(appDir).filePath("node.exe");
-    QString nodeExecutable = QFile::exists(localNode) ? localNode : "node";
-    
-    m_process->start(nodeExecutable, QStringList() << scriptPath);
+    m_engine = std::make_unique<QjsEngine>(
+        scriptPath,
+        [this](const QString &line) { handleWorkerLine(line); },
+        [this](const QString &msg) {
+            // Deferred for the same reason as the scriptPath.isEmpty() case above:
+            // this can fire synchronously from inside the QjsEngine constructor,
+            // i.e. before DocumentManager::addDocument() has even returned this
+            // V8Process's docId to QML -- emitting immediately means no QML
+            // Connections exists yet and the signal is silently lost.
+            QTimer::singleShot(0, this, [this, msg]() { emit errorOccurred(msg); });
+        }
+    );
 }
 
-V8Process::~V8Process() {
-    if (m_process->state() == QProcess::Running) {
-        m_process->write("{}\n");
-        m_process->closeWriteChannel();
-        if (!m_process->waitForFinished(2000)) {
-            m_process->kill();
-            m_process->waitForFinished(3000);
-        }
-    }
-}
+V8Process::~V8Process() = default;
 
 void V8Process::sendCommand(const QString& cmd, const QVariantList& args) {
-    QJsonObject obj;
-    obj["cmd"] = cmd;
-    obj["args"] = QJsonArray::fromVariantList(args);
-
-    QJsonDocument doc(obj);
-    QByteArray data = doc.toJson(QJsonDocument::Compact) + "\n";
-
-    if (m_process->state() == QProcess::Running) {
-        m_process->write(data);
-    } else if (m_process->state() == QProcess::Starting) {
-        m_pendingCommands.append(data);
-    } else {
+    if (!m_engine || !m_engine->isValid()) {
         qWarning() << "V8Process is not running!";
+        return;
     }
-}
-
-void V8Process::onProcessStarted() {
-    for (const QByteArray &cmd : m_pendingCommands) {
-        m_process->write(cmd);
-    }
-    m_pendingCommands.clear();
+    m_engine->dispatch(cmd, args);
 }
 
 void V8Process::init() { sendCommand("init"); }
@@ -146,6 +124,9 @@ void V8Process::insertFunctionalGroup(const QString& fgName, double cx, double c
     else
         sendCommand("insertFunctionalGroup", {fgName, cx, cy});
 }
+void V8Process::insertLibraryTemplateFused(const QString& fgName, double cx, double cy, int targetBondId) {
+    sendCommand("insertLibraryTemplateFused", {fgName, cx, cy, targetBondId});
+}
 void V8Process::requestSaltsAndSolventsList() { sendCommand("getSaltsAndSolventsList"); }
 void V8Process::requestFunctionalGroupsList() { sendCommand("getFunctionalGroupsList"); }
 void V8Process::requestTemplateLibraryList() { sendCommand("getTemplateLibraryList"); }
@@ -161,6 +142,8 @@ void V8Process::addChain(double x1, double y1, double x2, double y2) { sendComma
 void V8Process::addText(const QString& content, double x, double y) { sendCommand("addText", {content, x, y}); }
 void V8Process::updateText(int id, const QString& content) { sendCommand("updateText", {id, content}); }
 void V8Process::deleteText(int id) { sendCommand("deleteText", {id}); }
+void V8Process::addImage(const QString& base64DataUri, double cx, double cy, double halfW, double halfH) { sendCommand("addImage", {base64DataUri, cx, cy, halfW, halfH}); }
+void V8Process::deleteImage(int id) { sendCommand("deleteImage", {id}); }
 void V8Process::addRGroup(int rgroupNumber) { sendCommand("addRGroup", {rgroupNumber}); }
 void V8Process::deleteRGroup(int rgroupNumber) { sendCommand("deleteRGroup", {rgroupNumber}); }
 void V8Process::setRGroupLogic(int rgroupNumber, const QString& range, bool resth, int ifthen) { sendCommand("setRGroupLogic", {rgroupNumber, range, resth, ifthen}); }
@@ -175,18 +158,24 @@ void V8Process::changeAtomLabel(int id, const QString& label) { sendCommand("cha
 void V8Process::setAtomMapping(int id, int mapping) { sendCommand("setAtomMapping", {id, mapping}); }
 void V8Process::changeBondType(int id, int type, int stereo) { sendCommand("changeBondType", {id, type, stereo}); }
 void V8Process::changeAtomCharge(int id, int charge) { sendCommand("changeAtomCharge", {id, charge}); }
+void V8Process::setAttachmentPoint(int id, int order) { sendCommand("setAttachmentPoint", {id, order}); }
 void V8Process::changeAtomIsotope(int id, int isotope) { sendCommand("changeAtomIsotope", {id, isotope}); }
 void V8Process::changeAtomRadical(int id, int radical) { sendCommand("changeAtomRadical", {id, radical}); }
 void V8Process::changeAtomValence(int id, int valence) { sendCommand("changeAtomValence", {id, valence}); }
 void V8Process::requestAtomProperties(int id) { sendCommand("getAtomProperties", {id}); }
 void V8Process::selectByRect(double x1, double y1, double x2, double y2) { sendCommand("selectByRect", {x1, y1, x2, y2}); }
 void V8Process::addSelectionByRect(double x1, double y1, double x2, double y2) { sendCommand("addSelectionByRect", {x1, y1, x2, y2}); }
+void V8Process::selectByLasso(const QVariantList& pointsFlat) { sendCommand("selectByLasso", {QVariant(pointsFlat)}); }
 void V8Process::selectItem(const QVariant& atomId, const QVariant& bondId, const QVariant& rxnArrowId, const QVariant& rxnPlusId, const QVariant& multitailArrowId) { sendCommand("selectItem", {atomId, bondId, rxnArrowId, rxnPlusId, multitailArrowId}); }
 void V8Process::addItemToSelection(const QVariant& atomId, const QVariant& bondId) { sendCommand("addItemToSelection", {atomId, bondId}); }
 void V8Process::removeItemFromSelection(const QVariant& atomId, const QVariant& bondId) { sendCommand("removeItemFromSelection", {atomId, bondId}); }
 void V8Process::selectFragment(const QVariant& atomId, const QVariant& bondId) { sendCommand("selectFragment", {atomId, bondId}); }
 void V8Process::moveSelection(double dx, double dy) { sendCommand("moveSelection", {dx, dy}); }
 void V8Process::commitMove() { sendCommand("commitMove"); }
+void V8Process::rotateSelectionLive(double angleDelta) { sendCommand("rotateSelectionLive", {angleDelta}); }
+void V8Process::commitRotate() { sendCommand("commitRotate"); }
+void V8Process::scaleSelectionLive(double factor, double anchorX, double anchorY) { sendCommand("scaleSelectionLive", {factor, anchorX, anchorY}); }
+void V8Process::commitScale() { sendCommand("commitScale"); }
 void V8Process::centerStructure() { sendCommand("centerStructure"); }
 void V8Process::normalizeStructure() { sendCommand("normalizeStructure"); }
 
@@ -266,8 +255,21 @@ double V8Process::getLargestEmptyAngle(const QVariant& atomId, const QVariantMap
 }
 
 QVariantList V8Process::getRingPreviewCoords(int n, double cx, double cy, const QVariant& hoverAtomId, const QVariant& hoverBondId) {
+    // Page/canvas boundary hard clamp, mirroring src/v8_worker.js's PAGE_MIN_X/
+    // MAX_X/MIN_Y/MAX_Y (kept in sync manually -- must match). Only affects the
+    // free-floating ring case below: when fusing onto an existing hover atom/bond
+    // (checked further down), the ring's geometry is derived from that atom's own
+    // already-in-bounds position instead, not from cx/cy, so clamping here can't
+    // misalign a fused ring's seam.
+    cx = std::max(-30.0, std::min(30.0, cx));
+    cy = std::max(-21.0, std::min(21.0, cy));
     QVariantList coords;
-    double L = 1.0;
+    // Must match chem-core.js's StandardBondLength (MonomerSize * 2 = 0.75 * 2 = 1.5),
+    // not an arbitrary 1.0 -- this function's output is used directly as the final
+    // ring geometry passed to addRing() (see ChemCanvas.qml's call sites), not just a
+    // cosmetic hover preview, so every ring placed via a TEMPLATE_ tool was rendering
+    // at 1.0/1.5 (~67%) of the standard bond length used everywhere else in the app.
+    double L = 1.5;
     double R = L / (2 * std::sin(M_PI / n));
     double angleStep = (2 * M_PI) / n;
     
@@ -370,67 +372,38 @@ QVariantList V8Process::getRingPreviewCoords(int n, double cx, double cy, const 
     return coords;
 }
 
-void V8Process::onReadyReadStandardOutput() {
-    while (m_process->canReadLine()) {
-        QByteArray line = m_process->readLine();
-        QJsonParseError error;
-        QJsonDocument doc = QJsonDocument::fromJson(line, &error);
-        if (error.error != QJsonParseError::NoError) {
-            qWarning() << "Failed to parse JSON from V8:" << error.errorString() << line;
-            continue;
-        }
+void V8Process::handleWorkerLine(const QString &line) {
+    QJsonParseError error;
+    QJsonDocument doc = QJsonDocument::fromJson(line.toUtf8(), &error);
+    if (error.error != QJsonParseError::NoError) {
+        qWarning() << "Failed to parse JSON from worker:" << error.errorString() << line;
+        return;
+    }
 
-        QJsonObject obj = doc.object();
-        if (obj["type"].toString() == "structureResponse") {
-            emit structureReady(obj["reqId"].toString(), obj["data"].toString());
-            continue;
-        }
+    QJsonObject obj = doc.object();
+    if (obj["type"].toString() == "structureResponse") {
+        emit structureReady(obj["reqId"].toString(), obj["data"].toString());
+        return;
+    }
 
-        if (obj["status"].toString() == "ok") {
-            m_primitives = obj["state"].toVariant().toMap();
-            m_selection = obj["selection"].toVariant().toMap();
-            emit primitivesChanged();
-            emit selectionChanged();
+    if (obj["status"].toString() == "ok") {
+        m_primitives = obj["state"].toVariant().toMap();
+        m_selection = obj["selection"].toVariant().toMap();
+        emit primitivesChanged();
+        emit selectionChanged();
 
-            emit stateUpdated(
-                m_primitives, 
-                m_selection, 
-                obj["isDirty"].toBool(),
-                obj["canUndo"].toBool(),
-                obj["canRedo"].toBool(),
-                obj["result"].toVariant()
-            );
-        } else if (obj["status"].toString() == "error") {
-            qWarning() << "V8 Worker Error:" << obj["message"].toString();
-            QFile f("worker_error.log"); if(f.open(QIODevice::Append)) { f.write(obj["message"].toString().toUtf8() + "\n"); f.close(); }
-            emit errorOccurred(obj["message"].toString());
-        }
+        emit stateUpdated(
+            m_primitives,
+            m_selection,
+            obj["isDirty"].toBool(),
+            obj["canUndo"].toBool(),
+            obj["canRedo"].toBool(),
+            obj["result"].toVariant()
+        );
+    } else if (obj["status"].toString() == "error") {
+        qWarning() << "Worker Error:" << obj["message"].toString();
+        QFile f("worker_error.log"); if(f.open(QIODevice::Append)) { f.write(obj["message"].toString().toUtf8() + "\n"); f.close(); }
+        emit errorOccurred(obj["message"].toString());
     }
 }
-
-void V8Process::onProcessError(QProcess::ProcessError error) {
-    QString msg;
-    switch (error) {
-        case QProcess::FailedToStart:
-            msg = "Node.js could not be started. Make sure Node.js is installed and on PATH.";
-            break;
-        case QProcess::Crashed:
-            msg = "The chemistry engine crashed unexpectedly.";
-            break;
-        default:
-            msg = QString("Chemistry engine process error (code %1).").arg(static_cast<int>(error));
-            break;
-    }
-    qWarning() << "V8Process error:" << msg;
-    emit errorOccurred(msg);
-}
-
-void V8Process::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus) {
-    if (exitStatus == QProcess::CrashExit || exitCode != 0) {
-        QString msg = QString("The chemistry engine exited unexpectedly (code %1). Your unsaved work may be lost.").arg(exitCode);
-        qWarning() << "V8Process finished:" << msg;
-        emit errorOccurred(msg);
-    }
-}
-
 

@@ -20,7 +20,10 @@ Item {
         const fontSize = Math.max(12, 16 * scale)
         const padX = 5 * scale
         const padY = 3 * scale
-        for (let i = 0; i < atoms.length; ++i) {
+        // Scan back-to-front: LabelLayer draws atoms[0] first (bottom) and the
+        // highest index last (topmost), so for overlapping atoms a forward scan
+        // that returns on first match picks the visually-hidden one underneath.
+        for (let i = atoms.length - 1; i >= 0; --i) {
             const a = atoms[i]
             const p = canvas.chemToCanvas(a.x, a.y)
             const dx = p.x - cx
@@ -56,7 +59,9 @@ Item {
         const bonds = canvas.sketch.primitives.bonds || []
         const threshold = Math.max(8, Theme.atomRadius * scale)
         const t2 = threshold * threshold
-        for (let i = 0; i < bonds.length; ++i) {
+        // Same reasoning as hitTestAtom above: scan back-to-front to prefer the
+        // topmost (last-drawn) bond on overlap.
+        for (let i = bonds.length - 1; i >= 0; --i) {
             const b = bonds[i]
             const beginStr = b.begin.toString()
             const endStr = b.end.toString()

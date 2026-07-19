@@ -1,4 +1,5 @@
 #include "AppController.h"
+#include "PlacementEngines.h"
 #include "v8_process.h"
 #include <QDebug>
 #include <QJsonArray>
@@ -30,9 +31,9 @@ void AppController::handleDragStart(const QString& toolId, int hitAtomId, double
     }
 }
 
-void AppController::handleDrag(double mouseX, double mouseY, double bondLength) {
+void AppController::handleDrag(double mouseX, double mouseY, double chemScale, double bondLength) {
     if (m_previewManager) {
-        m_previewManager->updatePreview(QPointF(mouseX, mouseY), bondLength);
+        m_previewManager->updatePreview(QPointF(mouseX, mouseY), chemScale, bondLength);
     }
 }
 
@@ -82,6 +83,42 @@ bool AppController::handleDragEnd() {
         return false;
     }
     return false;
+}
+
+void AppController::updateChainPreview(double startChemX, double startChemY, double currentChemX, double currentChemY, double bondLength) {
+    if (!m_v8) return;
+    PlacementResult result = ChainPlacementEngine::compute(
+        QPointF(startChemX, startChemY), QPointF(currentChemX, currentChemY), bondLength);
+
+    QVariantMap overlay = m_v8->overlayState();
+    QVariantList pAtoms;
+    for (const auto& a : result.atoms) {
+        QVariantMap amap;
+        amap["x"] = a.pos.x();
+        amap["y"] = a.pos.y();
+        amap["label"] = a.label;
+        pAtoms.append(amap);
+    }
+    QVariantList pBonds;
+    for (const auto& b : result.bonds) {
+        QVariantMap bmap;
+        bmap["startX"] = b.start.x();
+        bmap["startY"] = b.start.y();
+        bmap["endX"] = b.end.x();
+        bmap["endY"] = b.end.y();
+        pBonds.append(bmap);
+    }
+    overlay["previewAtoms"] = pAtoms;
+    overlay["previewBonds"] = pBonds;
+    m_v8->setOverlayState(overlay);
+}
+
+void AppController::clearChainPreview() {
+    if (!m_v8) return;
+    QVariantMap overlay = m_v8->overlayState();
+    overlay.remove("previewAtoms");
+    overlay.remove("previewBonds");
+    m_v8->setOverlayState(overlay);
 }
 
 void AppController::copyImageToClipboard(const QUrl &imageUrl) {

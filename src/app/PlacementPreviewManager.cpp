@@ -55,11 +55,12 @@ QList<double> PlacementPreviewManager::getExistingAngles(int atomId) const {
     return angles;
 }
 
-void PlacementPreviewManager::updatePreview(const QPointF& currentMouse, double bondLength) {
+void PlacementPreviewManager::updatePreview(const QPointF& currentMouse, double chemScale, double bondLength) {
     if (!m_active) return;
-    
-    QPointF currentChem(m_startChemPos.x() + (currentMouse.x() - m_startPixelPos.x()) / 37.8,
-                        m_startChemPos.y() + (currentMouse.y() - m_startPixelPos.y()) / 37.8);
+    if (chemScale == 0.0) return; // guard against a divide-by-zero if ever called with a degenerate scale
+
+    QPointF currentChem(m_startChemPos.x() + (currentMouse.x() - m_startPixelPos.x()) / chemScale,
+                        m_startChemPos.y() + (currentMouse.y() - m_startPixelPos.y()) / chemScale);
     
     QList<double> angles = getExistingAngles(m_startAtomId);
     

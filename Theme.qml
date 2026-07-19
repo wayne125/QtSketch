@@ -22,6 +22,7 @@ QtObject {
     readonly property color workspaceBackground: darkMode ? "#0A0A12" : "#E8E6DE"
     readonly property color error: "#C0392B"
     readonly property color badgeAam: "#B7540A"
+    readonly property color badgeReactingCenter: "#8E44AD"
     readonly property color badgeText: "#FFFFFF"
 
     // ── Typography — "Journal Caption" ─────────────────────────────────────
@@ -56,13 +57,14 @@ QtObject {
     readonly property color dragFill: "#0F4FC3F7"
     
     // Layout
-    readonly property real toolbarHeight: 48
+    readonly property real toolbarHeight: 36
+    readonly property real menuBarHeight: 28
     // Tool button density (left panel, bottom atom bar, toolbar dropdowns)
-    readonly property real toolCellSize: 36
-    readonly property real toolIconSize: 26
+    readonly property real toolCellSize: 30
+    readonly property real toolIconSize: 20
     readonly property real toolGridGap: 2
     // Wide enough for three toolCellSize columns + gaps + scrollbar
-    readonly property real toolPanelWidth: 136
+    readonly property real toolPanelWidth: 112
     readonly property real propertyPanelWidth: 240
     readonly property real marginSmall: 4
     readonly property real marginMedium: 8
@@ -84,7 +86,7 @@ QtObject {
 
     // Chemistry UI Constants (style-sheet driven) — proxied from StyleSheets.currentSheet.
     // Theme.qml owns UI chrome tokens (colors/typography/layout/interaction states above);
-    // StyleSheets.qml owns user-selectable chemistry-rendering presets (ACS 1996, Nature, etc).
+    // StyleSheets.qml owns user-selectable chemistry-rendering presets (ACD/ChemSketch, RSC, etc).
     // Don't add new literal overrides here — add new presets to StyleSheets.qml instead.
     property real atomRadius: StyleSheets.currentSheet.atomRadius
     property real bondWidth: StyleSheets.currentSheet.bondWidth
@@ -94,8 +96,11 @@ QtObject {
     property real baseBondLength: StyleSheets.currentSheet.baseBondLength
 
     // Stroke-width clamping (Phase 0): prevents lines from vanishing at low zoom
-    // or becoming bloated at high zoom
-    readonly property real strokeWidthMin: 0.8
+    // or becoming bloated at high zoom. Floor lowered from 0.8 to 0.4 (2026-07-18): the old
+    // value happened to sit almost exactly at the old (unverified) ACS 1996 preset's line
+    // width and would clamp RSC's real, verified 0.53px line thicker than the actual RSC
+    // ChemDraw template specifies.
+    readonly property real strokeWidthMin: 0.4
     readonly property real strokeWidthMax: 4.0
     property real wedgeTaperRatio: StyleSheets.currentSheet.wedgeTaperRatio
     property real doubleBondSpacing: StyleSheets.currentSheet.doubleBondSpacing
