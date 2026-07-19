@@ -53,6 +53,7 @@ Row {
             }
 
             contentItem: Text {
+                textFormat: Text.PlainText
                 id: segText
                 text: seg.modelData
                 horizontalAlignment: Text.AlignHCenter

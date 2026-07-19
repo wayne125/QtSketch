@@ -1,19 +1,45 @@
-const fs = require("fs");
-const path = require("path");
-const readline = require("readline");
+// ---- Engine shims ----------------------------------------------------------
+// Under Node.js, __native is absent; the real fs/path/process globals are used
+// instead (see the fallback branch below). Under the embedded QuickJS engine,
+// V8Process's bridge binds a global `__native` object with these methods
+// before this file is eval'd, and there is no fs/path/process/console at all.
+const _hasNative = typeof __native !== "undefined";
 
-process.on("uncaughtException", (e) => {
-    process.stderr.write("UNCAUGHT: " + e.message + "\n" + (e.stack || "") + "\n");
-    try {
-        process.stdout.write(JSON.stringify({ status: "error", message: "Unhandled engine error: " + e.message }) + "\n");
-    } catch (_) {}
-    process.exit(1);
-});
+const fs = _hasNative
+    ? { readFileSync: function(p) { return __native.readFileSync(p); },
+        existsSync: function(p) { return __native.existsSync(p); } }
+    : require("fs");
+const path = _hasNative
+    ? { join: function() { return Array.prototype.slice.call(arguments).join("/"); } }
+    : require("path");
+// Not named __dirname on purpose: Node wraps this whole file in one function
+// with __dirname as a parameter, so a `var __dirname` anywhere in the file
+// (even unexecuted) would hoist and shadow that parameter for every reference
+// in the file, not just after the point of declaration.
+const _workerDir = _hasNative ? __native.dirname : __dirname;
+
+// Same reasoning rules out `var console =`/`var process =` here: hoisting would
+// shadow Node's real globals to `undefined` everywhere else in this file, even
+// on the Node path where this assignment never runs. Plain property writes on
+// globalThis carry no hoisting risk and are a no-op when _hasNative is false.
+if (_hasNative) {
+    globalThis.console = {
+        log: function(s) { __native.log(String(s)); },
+        warn: function() { __native.log(Array.prototype.slice.call(arguments).map(String).join(" ")); },
+        error: function() { __native.errorLog(Array.prototype.slice.call(arguments).map(String).join(" ")); }
+    };
+    globalThis.process = {
+        stderr: { write: function(s) { __native.errorLog(String(s)); } },
+        stdout: { write: function(s) { __native.log(String(s)); } },
+        exit: function(code) { __native.fatal("worker exited with code " + code); },
+        on: function() {} // uncaughtException has no meaning in-process; dispatch() below wraps every call in try/catch instead
+    };
+}
 
 // Load chem-core.js
 let CoreLib = {};
 try {
-    const chemCorePath = path.join(__dirname, "..", "chem-core.js");
+    const chemCorePath = path.join(_workerDir, "..", "chem-core.js");
     const chemCoreCode = fs.readFileSync(chemCorePath, "utf8").replace(/\.pragma library\s*/, "");
     eval(chemCoreCode + "\nCoreLib.ChemCore = ChemCore;");
 } catch (e) {
@@ -21,7 +47,8 @@ try {
     process.exit(1);
 }
 
-
+var _sdfBatchRecords = [];
+var _sdfProps = {};
 
 // ============================================================================
 // ---- Functional Group Library (loaded once at startup) ---------------------
@@ -34,7 +61,7 @@ var _libraryMeta = {}  // name -> { group }
 
 ;(function loadTemplates() {
     function loadSdf(relPath, target) {
-        var fullPath = path.join(__dirname, "..", relPath)
+        var fullPath = path.join(_workerDir, "..", relPath)
         if (!fs.existsSync(fullPath)) return
         try {
             var items = new CoreLib.ChemCore.SdfSerializer().deserialize(fs.readFileSync(fullPath, "utf8"))
@@ -46,7 +73,7 @@ var _libraryMeta = {}  // name -> { group }
         }
     }
     function parseGroupMeta(relPath, target) {
-        var fullPath = path.join(__dirname, "..", relPath)
+        var fullPath = path.join(_workerDir, "..", relPath)
         if (!fs.existsSync(fullPath)) return
         try {
             var content = fs.readFileSync(fullPath, "utf8")
@@ -57,6 +84,17 @@ var _libraryMeta = {}  // name -> { group }
                 if (!name) return
                 var m = entry.match(/>  <group>\s*\n([^\n]+)/)
                 target[name] = { group: m ? m[1].trim() : '' }
+                // Ketcher's template-fusion attachment metadata: atomid = which atom
+                // aligns when dropping onto an existing atom, bondid = which bond
+                // aligns when dropping onto an existing bond. The two are independent
+                // references (the atom need not be an endpoint of the bond).
+                // 0-based, mapping directly onto Pool ids: verified against all 235
+                // carrying templates (every value in range 0..n-1, and 104 templates
+                // use the value 0, which a 1-based scheme could not produce).
+                var am = entry.match(/>  <atomid>\s*\n(\d+)/)
+                var bm = entry.match(/>  <bondid>\s*\n(\d+)/)
+                if (am) target[name].atomIdx = parseInt(am[1], 10)
+                if (bm) target[name].bondIdx = parseInt(bm[1], 10)
             })
         } catch (e) {}
     }
@@ -67,6 +105,16 @@ var _libraryMeta = {}  // name -> { group }
     CoreLib.ChemCore.SaltsAndSolventsProvider.getInstance().setSaltsAndSolventsList(Object.values(_saltsStructs))
     loadSdf("templates/library.sdf", _libraryStructs)
     parseGroupMeta("templates/library.sdf", _libraryMeta)
+    // Defensive validation: clear fusion indices that don't resolve against the
+    // parsed struct, so malformed metadata degrades to plain (non-fused)
+    // placement instead of failing later inside insertLibraryTemplateFused.
+    Object.keys(_libraryMeta).forEach(function(name) {
+        var meta = _libraryMeta[name]
+        var st = _libraryStructs[name]
+        if (!st) { delete meta.atomIdx; delete meta.bondIdx; return }
+        if (meta.atomIdx !== undefined && st.atoms.get(meta.atomIdx) === undefined) delete meta.atomIdx
+        if (meta.bondIdx !== undefined && st.bonds.get(meta.bondIdx) === undefined) delete meta.bondIdx
+    })
 })()
 
 // ---- Atom Label Validator --------------------------------------------------
@@ -174,6 +222,81 @@ function getRingCenterAngle(atomId) {
     return getAngle(cx, cy, atom.pp.x, atom.pp.y);
 }
 
+// Returns a function mapping any (x, y) through the rotate + uniform-scale +
+// translate that sends P1→Q1 and P2→Q2 exactly. Always orientation-preserving
+// (positive determinant, no reflection), so cross-product side tests keep
+// their sign through the transform — insertLibraryTemplateFused relies on that
+// to steer which side of the target bond the template lands on purely by the
+// choice of endpoint mapping. Returns null for a degenerate (zero-length) P1P2.
+function makeSimilarityTransform(p1x, p1y, p2x, p2y, q1x, q1y, q2x, q2y) {
+    var dp = getDistance(p1x, p1y, p2x, p2y)
+    if (dp < 1e-9) return null
+    var s = getDistance(q1x, q1y, q2x, q2y) / dp
+    var rot = getAngle(q1x, q1y, q2x, q2y) - getAngle(p1x, p1y, p2x, p2y)
+    var cosR = Math.cos(rot), sinR = Math.sin(rot)
+    return function(x, y) {
+        var rx = x - p1x, ry = y - p1y
+        return {
+            x: q1x + s * (rx * cosR - ry * sinR),
+            y: q1y + s * (rx * sinR + ry * cosR)
+        }
+    }
+}
+
+// Smallest ring containing the given bond, as an ordered atom-id cycle
+// (consecutive entries bonded; last connects back to first via bondId itself),
+// or null if the bond is not part of any ring. BFS shortest path between the
+// bond's endpoints with the bond itself removed. Read-only.
+function shortestRingThroughBond(struct, bondId) {
+    var bond = struct.bonds.get(bondId)
+    if (!bond) return null
+    var adj = {}
+    struct.bonds.forEach(function(b, bid) {
+        if (bid === bondId) return
+        if (!adj[b.begin]) adj[b.begin] = []
+        if (!adj[b.end]) adj[b.end] = []
+        adj[b.begin].push(b.end)
+        adj[b.end].push(b.begin)
+    })
+    var start = bond.begin, goal = bond.end
+    var prev = {}
+    prev[start] = null
+    var queue = [start]
+    while (queue.length > 0) {
+        var cur = queue.shift()
+        if (cur === goal) break
+        var nbrs = adj[cur] || []
+        for (var i = 0; i < nbrs.length; i++) {
+            if (!(nbrs[i] in prev)) { prev[nbrs[i]] = cur; queue.push(nbrs[i]) }
+        }
+    }
+    if (!(goal in prev)) return null
+    var cycle = []
+    for (var a = goal; a !== null; a = prev[a]) cycle.push(a)
+    return cycle
+}
+
+// Which side of the segment QA→QB has less existing structure to grow a ring
+// onto? Returns +1 or -1: the sign of cross((B-A), (P-A)) for points P on the
+// chosen side. Mass-scoring heuristic matching V8Process::getRingPreviewCoords'
+// bond-hover branch; the cursor position only breaks the tie when both sides
+// are empty (same precedent as the interactive TEMPLATE_ ring tool).
+function chooseEmptySide(qax, qay, qbx, qby, excludeAids, cx, cy) {
+    var vx = qbx - qax, vy = qby - qay
+    var scorePos = 0, scoreNeg = 0
+    _struct.atoms.forEach(function(a, aid) {
+        if (excludeAids.indexOf(aid) >= 0) return
+        var cross = vx * (a.pp.y - qay) - vy * (a.pp.x - qax)
+        if (cross > 0) scorePos += cross
+        else if (cross < 0) scoreNeg -= cross
+    })
+    if (scorePos === 0 && scoreNeg === 0) {
+        var cursorCross = vx * (cy - qay) - vy * (cx - qax)
+        return cursorCross >= 0 ? 1 : -1
+    }
+    return scorePos <= scoreNeg ? 1 : -1
+}
+
 function fuseOverlappingAtoms() {
     var toDelete = [];
     var mergeMap = {};
@@ -226,11 +349,37 @@ function fuseOverlappingAtoms() {
 }
 
 
+// Page/canvas boundary, in chemical-coordinate space (see chem-core.js's
+// StandardBondLength = 1.5 for scale), centered on the origin. Proportioned
+// roughly like A4 landscape and sized generously so a typical reaction
+// scheme fits comfortably (~40 bond-lengths wide). Confirmed as a hard
+// clamp with the user (unlike ChemDraw itself, whose page lines are only a
+// soft print/layout guide) -- exact real-world mm mapping is deliberately
+// left to the future full-rulers system, not this pass.
+var PAGE_MIN_X = -30, PAGE_MAX_X = 30
+var PAGE_MIN_Y = -21, PAGE_MAX_Y = 21
+
+function _clampToPage(x, y) {
+    return {
+        x: Math.max(PAGE_MIN_X, Math.min(PAGE_MAX_X, x)),
+        y: Math.max(PAGE_MIN_Y, Math.min(PAGE_MAX_Y, y))
+    }
+}
+
 var _dragDelta = { x: 0, y: 0 }
 var _dragSelection = []
 var _dragArrowSelection = []
 var _dragPlusSelection = []
 var _dragMultitailSelection = []
+var _dragOrigBBox = null  // atom bbox snapshot at drag start, for page-boundary clamping
+
+var _rotateDragOrigPos = []   // [{kind, id, [idx], x, y}] snapshot at rotate-drag start
+var _rotateDragTotalAngle = 0
+var _rotateDragCenter = { x: 0, y: 0 }
+
+var _scaleDragOrigPos = []    // [{kind, id, [idx], x, y}] snapshot at resize-drag start
+var _scaleDragAnchor = { x: 0, y: 0 }
+var _scaleDragTotalFactor = 1
 
 function executeCommand(cmd) {
     // Remove future redo states
@@ -323,6 +472,11 @@ function snapshotStruct(s) {
             copy.texts.set(id, t.clone ? t.clone() : t)
         })
     }
+    if (s.images && s.images.forEach) {
+        s.images.forEach(function(img, id) {
+            copy.images.set(id, img.clone ? img.clone() : img)
+        })
+    }
     copy.stereoFlags = s.stereoFlags ? Object.assign({}, s.stereoFlags) : { type: 'abs', groupId: 0 }
     if (copy.initHalfBonds) { copy.initHalfBonds(); copy.initNeighbors(); copy.updateHalfBonds(); copy.sortNeighbors() }
     if (copy.markFragments) copy.markFragments()
@@ -348,7 +502,8 @@ function init() {
 
 function addAtom(label, x, y, charge) {
     if (charge !== undefined && charge !== null) charge = Math.max(-3, Math.min(3, Math.round(charge)))
-    var p = new CoreLib.ChemCore.Vec2(x, y)
+    var clamped = _clampToPage(x, y)
+    var p = new CoreLib.ChemCore.Vec2(clamped.x, clamped.y)
     var atomId = null
     var cmd = makeCmd(
         function() {
@@ -425,23 +580,54 @@ function moveSelection(dx, dy) {
         _dragArrowSelection = _selection.rxnArrow_ids ? _selection.rxnArrow_ids.slice() : []
         _dragPlusSelection = _selection.rxnPlus_ids ? _selection.rxnPlus_ids.slice() : []
         _dragMultitailSelection = _selection.multitailArrow_ids ? _selection.multitailArrow_ids.slice() : []
+        _dragOrigBBox = null
+        if (_dragSelection.length > 0) {
+            var _bMinX = Infinity, _bMinY = Infinity, _bMaxX = -Infinity, _bMaxY = -Infinity
+            _dragSelection.forEach(function(aid) {
+                var a = _struct.atoms.get(aid)
+                if (a) {
+                    if (a.pp.x < _bMinX) _bMinX = a.pp.x
+                    if (a.pp.x > _bMaxX) _bMaxX = a.pp.x
+                    if (a.pp.y < _bMinY) _bMinY = a.pp.y
+                    if (a.pp.y > _bMaxY) _bMaxY = a.pp.y
+                }
+            })
+            if (_bMinX <= _bMaxX) _dragOrigBBox = { minX: _bMinX, minY: _bMinY, maxX: _bMaxX, maxY: _bMaxY }
+        }
     }
-    _dragDelta.x += dx
-    _dragDelta.y += dy
+    // Page-boundary hard clamp: cap the cumulative delta against the
+    // selection's ORIGINAL bbox (captured above) so the whole selection stops
+    // together at the edge, like dragging a window against a screen edge,
+    // rather than each atom clamping independently and flattening the shape.
+    // If the selection itself is wider/taller than the page, leave that axis
+    // unclamped rather than fighting it into an impossible state.
+    var newDeltaX = _dragDelta.x + dx
+    var newDeltaY = _dragDelta.y + dy
+    if (_dragOrigBBox) {
+        var _b = _dragOrigBBox
+        var minDx = PAGE_MIN_X - _b.minX, maxDx = PAGE_MAX_X - _b.maxX
+        var minDy = PAGE_MIN_Y - _b.minY, maxDy = PAGE_MAX_Y - _b.maxY
+        if (minDx <= maxDx) newDeltaX = Math.max(minDx, Math.min(maxDx, newDeltaX))
+        if (minDy <= maxDy) newDeltaY = Math.max(minDy, Math.min(maxDy, newDeltaY))
+    }
+    var appliedDx = newDeltaX - _dragDelta.x
+    var appliedDy = newDeltaY - _dragDelta.y
+    _dragDelta.x = newDeltaX
+    _dragDelta.y = newDeltaY
 
     _dragSelection.forEach(function(aid) {
         var a = _struct.atoms.get(aid)
-        if (a) a.pp.add_(new CoreLib.ChemCore.Vec2(dx, dy))
+        if (a) a.pp.add_(new CoreLib.ChemCore.Vec2(appliedDx, appliedDy))
     })
     if (_selection.rxnArrow_ids) {
         _selection.rxnArrow_ids.forEach(function(arId) {
             var ar = _struct.rxnArrows.get(arId)
             if (ar) {
                 if (ar.pos) {
-                    ar.pos.forEach(function(p) { p.add_(new CoreLib.ChemCore.Vec2(dx, dy)) })
+                    ar.pos.forEach(function(p) { p.add_(new CoreLib.ChemCore.Vec2(appliedDx, appliedDy)) })
                 } else {
-                    if (ar.p1) ar.p1.add_(new CoreLib.ChemCore.Vec2(dx, dy))
-                    if (ar.p2) ar.p2.add_(new CoreLib.ChemCore.Vec2(dx, dy))
+                    if (ar.p1) ar.p1.add_(new CoreLib.ChemCore.Vec2(appliedDx, appliedDy))
+                    if (ar.p2) ar.p2.add_(new CoreLib.ChemCore.Vec2(appliedDx, appliedDy))
                 }
             }
         })
@@ -450,8 +636,8 @@ function moveSelection(dx, dy) {
         _selection.rxnPlus_ids.forEach(function(plId) {
             var pl = _struct.rxnPluses.get(plId)
             if (pl) {
-                if (pl.pp) pl.pp.add_(new CoreLib.ChemCore.Vec2(dx, dy))
-                else if (pl.x !== undefined) { pl.x += dx; pl.y += dy }
+                if (pl.pp) pl.pp.add_(new CoreLib.ChemCore.Vec2(appliedDx, appliedDy))
+                else if (pl.x !== undefined) { pl.x += appliedDx; pl.y += appliedDy }
             }
         })
     }
@@ -459,8 +645,8 @@ function moveSelection(dx, dy) {
         _selection.multitailArrow_ids.forEach(function(mtaId) {
             var mta = _struct.multitailArrows.get(mtaId)
             if (mta) {
-                mta.spineTopX += dx
-                mta.spineTopY += dy
+                mta.spineTopX += appliedDx
+                mta.spineTopY += appliedDy
             }
         })
     }
@@ -517,7 +703,177 @@ function commitMove() {
         _dragArrowSelection = []
         _dragPlusSelection = []
         _dragMultitailSelection = []
+        _dragOrigBBox = null
     }
+}
+
+// ---- ROTATE tool: live drag rotation around the selection centroid --------
+// Mirrors moveSelection/commitMove's shape: repeated non-undoable live calls
+// during the drag, snapshotting original positions once so repeated re-
+// application from the same snapshot avoids floating-point drift, then a
+// single undoable commit wrapping the whole gesture.
+// Shared by rotate/scale: every selected item's position(s), across all four
+// selection id lists (mirrors moveSelection's own multi-type handling), as a
+// flat point list with enough tag info to write each one back afterward.
+function _snapshotSelectionPoints() {
+    var pts = []
+    _resolveAtomMoveIds(_selection.atom_ids).forEach(function(aid) {
+        var a = _struct.atoms.get(aid)
+        if (a) pts.push({ kind: 'atom', id: aid, x: a.pp.x, y: a.pp.y })
+    })
+    if (_selection.rxnArrow_ids) {
+        _selection.rxnArrow_ids.forEach(function(arId) {
+            var ar = _struct.rxnArrows.get(arId)
+            if (!ar) return
+            if (ar.pos) {
+                ar.pos.forEach(function(p, idx) { pts.push({ kind: 'rxnArrowPos', id: arId, idx: idx, x: p.x, y: p.y }) })
+            } else {
+                if (ar.p1) pts.push({ kind: 'rxnArrowP1', id: arId, x: ar.p1.x, y: ar.p1.y })
+                if (ar.p2) pts.push({ kind: 'rxnArrowP2', id: arId, x: ar.p2.x, y: ar.p2.y })
+            }
+        })
+    }
+    if (_selection.rxnPlus_ids) {
+        _selection.rxnPlus_ids.forEach(function(plId) {
+            var pl = _struct.rxnPluses.get(plId)
+            if (!pl) return
+            if (pl.pp) pts.push({ kind: 'rxnPlusPP', id: plId, x: pl.pp.x, y: pl.pp.y })
+            else if (pl.x !== undefined) pts.push({ kind: 'rxnPlusXY', id: plId, x: pl.x, y: pl.y })
+        })
+    }
+    if (_selection.multitailArrow_ids) {
+        _selection.multitailArrow_ids.forEach(function(mtaId) {
+            var mta = _struct.multitailArrows.get(mtaId)
+            if (mta) pts.push({ kind: 'multitail', id: mtaId, x: mta.spineTopX, y: mta.spineTopY })
+        })
+    }
+    return pts
+}
+
+function _writeSelectionPoint(pt, nx, ny) {
+    if (pt.kind === 'atom') { var a = _struct.atoms.get(pt.id); if (a) { a.pp.x = nx; a.pp.y = ny } }
+    else if (pt.kind === 'rxnArrowPos') { var ar = _struct.rxnArrows.get(pt.id); if (ar && ar.pos && ar.pos[pt.idx]) { ar.pos[pt.idx].x = nx; ar.pos[pt.idx].y = ny } }
+    else if (pt.kind === 'rxnArrowP1') { var ar1 = _struct.rxnArrows.get(pt.id); if (ar1 && ar1.p1) { ar1.p1.x = nx; ar1.p1.y = ny } }
+    else if (pt.kind === 'rxnArrowP2') { var ar2 = _struct.rxnArrows.get(pt.id); if (ar2 && ar2.p2) { ar2.p2.x = nx; ar2.p2.y = ny } }
+    else if (pt.kind === 'rxnPlusPP') { var pl1 = _struct.rxnPluses.get(pt.id); if (pl1 && pl1.pp) { pl1.pp.x = nx; pl1.pp.y = ny } }
+    else if (pt.kind === 'rxnPlusXY') { var pl2 = _struct.rxnPluses.get(pt.id); if (pl2) { pl2.x = nx; pl2.y = ny } }
+    else if (pt.kind === 'multitail') { var mta = _struct.multitailArrows.get(pt.id); if (mta) { mta.spineTopX = nx; mta.spineTopY = ny } }
+}
+
+// ---- Selection handles: rotate (generalized to every selected type) -------
+function rotateSelectionLive(angleDelta) {
+    if (_rotateDragOrigPos.length === 0) {
+        var pts = _snapshotSelectionPoints()
+        if (pts.length < 2) return
+        var cx = 0, cy = 0
+        pts.forEach(function(p) { cx += p.x; cy += p.y })
+        _rotateDragOrigPos = pts
+        _rotateDragCenter = { x: cx / pts.length, y: cy / pts.length }
+        _rotateDragTotalAngle = 0
+    }
+    var cx = _rotateDragCenter.x, cy = _rotateDragCenter.y
+    var candidateTotal = _rotateDragTotalAngle + angleDelta
+    var cosA = Math.cos(candidateTotal), sinA = Math.sin(candidateTotal)
+
+    // Page-boundary hard clamp: unlike the move case, a rotation's effect on
+    // the bbox isn't a simple linear delta, so instead of solving for an exact
+    // boundary angle, just refuse to advance rotation past the point where any
+    // point would land outside the page -- the drag freezes there instead of
+    // pushing content off-page (the user can still rotate back the other way).
+    for (var i = 0; i < _rotateDragOrigPos.length; ++i) {
+        var op = _rotateDragOrigPos[i]
+        var odx = op.x - cx, ody = op.y - cy
+        var nx = cx + odx * cosA - ody * sinA
+        var ny = cy + odx * sinA + ody * cosA
+        if (nx < PAGE_MIN_X || nx > PAGE_MAX_X || ny < PAGE_MIN_Y || ny > PAGE_MAX_Y) return
+    }
+
+    _rotateDragTotalAngle = candidateTotal
+    _rotateDragOrigPos.forEach(function(p) {
+        var dx = p.x - cx, dy = p.y - cy
+        _writeSelectionPoint(p, cx + dx * cosA - dy * sinA, cy + dx * sinA + dy * cosA)
+    })
+    _dirty = true
+}
+
+function commitRotate() {
+    if (_rotateDragOrigPos.length > 0 && _rotateDragTotalAngle !== 0) {
+        var origPos = _rotateDragOrigPos.slice()
+        var totalAngle = _rotateDragTotalAngle
+        var cx = _rotateDragCenter.x, cy = _rotateDragCenter.y
+        function applyAngle(angle) {
+            var cosA = Math.cos(angle), sinA = Math.sin(angle)
+            origPos.forEach(function(p) {
+                var dx = p.x - cx, dy = p.y - cy
+                _writeSelectionPoint(p, cx + dx * cosA - dy * sinA, cy + dx * sinA + dy * cosA)
+            })
+            _dirty = true
+        }
+        var isFirst = true
+        var cmd = makeCmd(
+            function() { if (isFirst) { isFirst = false; return } applyAngle(totalAngle) },
+            function() { isFirst = false; applyAngle(0) }
+        )
+        executeCommand(cmd)
+    }
+    _rotateDragOrigPos = []
+    _rotateDragTotalAngle = 0
+    _rotateDragCenter = { x: 0, y: 0 }
+}
+
+// ---- Selection handles: resize (uniform scale about a fixed anchor point) --
+// anchorX/anchorY is the handle's geometric opposite on the bbox (stays fixed
+// through the drag) -- NOT the centroid, matching real corner-drag resize
+// behavior (PowerPoint/ChemDraw-adjacent), unlike rotate which is centroid-based.
+function scaleSelectionLive(factor, anchorX, anchorY) {
+    if (_scaleDragOrigPos.length === 0) {
+        var pts = _snapshotSelectionPoints()
+        if (pts.length < 2) return
+        _scaleDragOrigPos = pts
+        _scaleDragAnchor = { x: anchorX, y: anchorY }
+        _scaleDragTotalFactor = 1
+    }
+    // Guard against a handle dragged through its own anchor (collapse/invert).
+    var candidateFactor = Math.max(0.05, factor)
+    var ax = _scaleDragAnchor.x, ay = _scaleDragAnchor.y
+
+    // Page-boundary hard clamp: freeze before any point would leave the page,
+    // same "check candidate, refuse if out of bounds" approach rotate uses.
+    for (var i = 0; i < _scaleDragOrigPos.length; ++i) {
+        var op = _scaleDragOrigPos[i]
+        var nx = ax + (op.x - ax) * candidateFactor
+        var ny = ay + (op.y - ay) * candidateFactor
+        if (nx < PAGE_MIN_X || nx > PAGE_MAX_X || ny < PAGE_MIN_Y || ny > PAGE_MAX_Y) return
+    }
+
+    _scaleDragTotalFactor = candidateFactor
+    _scaleDragOrigPos.forEach(function(p) {
+        _writeSelectionPoint(p, ax + (p.x - ax) * candidateFactor, ay + (p.y - ay) * candidateFactor)
+    })
+    _dirty = true
+}
+
+function commitScale() {
+    if (_scaleDragOrigPos.length > 0 && _scaleDragTotalFactor !== 1) {
+        var origPos = _scaleDragOrigPos.slice()
+        var totalFactor = _scaleDragTotalFactor
+        var ax = _scaleDragAnchor.x, ay = _scaleDragAnchor.y
+        function applyFactor(factor) {
+            origPos.forEach(function(p) {
+                _writeSelectionPoint(p, ax + (p.x - ax) * factor, ay + (p.y - ay) * factor)
+            })
+            _dirty = true
+        }
+        var isFirst = true
+        var cmd = makeCmd(
+            function() { if (isFirst) { isFirst = false; return } applyFactor(totalFactor) },
+            function() { isFirst = false; applyFactor(1) }
+        )
+        executeCommand(cmd)
+    }
+    _scaleDragOrigPos = []
+    _scaleDragAnchor = { x: 0, y: 0 }
+    _scaleDragTotalFactor = 1
 }
 
 function deleteAtomById(atomId) {
@@ -561,9 +917,24 @@ function deleteAtomById(atomId) {
             bondsData.push({ id: bid, bond: b })
         }
     })
+    // If this atom is a member of an *expanded* (visible) sgroup, deleting it here
+    // (as opposed to the contracted-pill branch above, which deletes the whole
+    // group) must also trim it from that sgroup's own atoms list -- otherwise the
+    // sgroup silently keeps referencing a deleted atom id, which Struct.clone()
+    // (every copySelection/KET export) treats as corruption on the next round-trip.
+    var sgroupMemberships = []
+    if (a.sgs && a.sgs.size > 0) {
+        a.sgs.forEach(function(sgId) {
+            var sg = _struct.sgroups.get(sgId)
+            if (!sg || !sg.atoms) return
+            var idx = sg.atoms.indexOf(atomId)
+            if (idx >= 0) sgroupMemberships.push({ sg: sg, idx: idx })
+        })
+    }
     var cmd = makeCmd(
         function() {
             bondsData.forEach(function(bd) { _struct.bonds.delete(bd.id) })
+            sgroupMemberships.forEach(function(m) { m.sg.atoms.splice(m.idx, 1) })
             _struct.atoms.delete(atomId)
             _struct.initHalfBonds()
             _struct.initNeighbors()
@@ -573,6 +944,7 @@ function deleteAtomById(atomId) {
         function() {
             _struct.atoms.set(atomId, a)
             bondsData.forEach(function(bd) { _struct.bonds.set(bd.id, bd.bond) })
+            sgroupMemberships.forEach(function(m) { m.sg.atoms.splice(m.idx, 0, atomId) })
             _struct.initHalfBonds()
             _struct.initNeighbors()
             _struct.updateHalfBonds()
@@ -618,6 +990,29 @@ function changeAtomCharge(atomId, newCharge) {
         )
         executeCommand(cmd)
     }
+}
+
+function setAttachmentPoint(atomId, order) {
+    var a = _struct.atoms.get(atomId)
+    if (!a) return
+    var old = a.attachmentPoints
+    var cmd = makeCmd(
+        function() {
+            var a2 = _struct.atoms.get(atomId);
+            if (a2) {
+                a2.attachmentPoints = order || null;
+                _dirty = true;
+            }
+        },
+        function() {
+            var a2 = _struct.atoms.get(atomId);
+            if (a2) {
+                a2.attachmentPoints = old;
+                _dirty = true;
+            }
+        }
+    )
+    executeCommand(cmd)
 }
 
 function changeAtomIsotope(atomId, isotope) {
@@ -751,7 +1146,8 @@ function addBondAndAtom(startId, label, x, y, type, stereo) {
         return;
     }
 
-    var p = new CoreLib.ChemCore.Vec2(finalX, finalY)
+    var clampedEnd = _clampToPage(finalX, finalY)
+    var p = new CoreLib.ChemCore.Vec2(clampedEnd.x, clampedEnd.y)
     var atomId = null
     var bondId = null
     var cmd = makeCmd(
@@ -776,8 +1172,10 @@ function addBondAndAtom(startId, label, x, y, type, stereo) {
 
     function addBondBetweenCoords(x1, y1, x2, y2, type, stereo) {
         // Creates a bond between two empty coordinate points
-        var p1 = new CoreLib.ChemCore.Vec2(x1, y1);
-        var p2 = new CoreLib.ChemCore.Vec2(x2, y2);
+        var c1 = _clampToPage(x1, y1);
+        var c2 = _clampToPage(x2, y2);
+        var p1 = new CoreLib.ChemCore.Vec2(c1.x, c1.y);
+        var p2 = new CoreLib.ChemCore.Vec2(c2.x, c2.y);
         var atomId1 = null;
         var atomId2 = null;
         var bondId = null;
@@ -1015,6 +1413,86 @@ function selectByRect(x1, y1, x2, y2) {
     _selection = { atom_ids: aids, bond_ids: bids, rxnArrow_ids: raid, rxnPlus_ids: rpid, bbox: null }
 }
 
+function _pointInPolygon(px, py, poly) {
+    var inside = false
+    for (var i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        var xi = poly[i].x, yi = poly[i].y
+        var xj = poly[j].x, yj = poly[j].y
+        var intersect = ((yi > py) !== (yj > py)) &&
+            (px < (xj - xi) * (py - yi) / (yj - yi) + xi)
+        if (intersect) inside = !inside
+    }
+    return inside
+}
+
+// Lasso select. ChemDraw semantics (confirmed, not a naive "touched" test): an
+// atom is selected only if inside the freeform path, and a bond only if BOTH
+// its atoms are -- entirely enclosed, no partial/crossing inclusion. Mirrors
+// selectByRect's structure (sgroup-pill handling via representative point)
+// but swaps the rectangle contains-test for point-in-polygon and drops
+// selectByRect's own edge-crossing fallback for bonds/arrows, since that
+// fallback is exactly the "touched" behavior ChemDraw's lasso does not use.
+function selectByLasso(pointsFlat) {
+    if (!pointsFlat || pointsFlat.length < 6) {
+        _selection = { atom_ids: [], bond_ids: [], rxnArrow_ids: [], rxnPlus_ids: [], bbox: null }
+        return
+    }
+    var poly = []
+    for (var i = 0; i < pointsFlat.length; i += 2) poly.push({ x: pointsFlat[i], y: pointsFlat[i + 1] })
+
+    var hiddenAtoms = {}
+    var contractedSgroupIds = []
+    if (_struct.sgroups) {
+        _struct.sgroups.forEach(function(sg, sgId) {
+            if (sg.type !== 'SUP' || (sg.isExpanded && sg.isExpanded())) return
+            if (!sg.atoms || sg.atoms.length === 0) return
+            var px = 0, py = 0
+            var attachId = (sg.attachmentPoints && sg.attachmentPoints.length > 0) ? sg.attachmentPoints[0].atomId : null
+            if (attachId !== null) {
+                var aa = _struct.atoms.get(attachId)
+                if (aa) { px = aa.pp.x; py = aa.pp.y }
+            } else {
+                sg.atoms.forEach(function(aid) { var ra = _struct.atoms.get(aid); if (ra) { px += ra.pp.x; py += ra.pp.y } })
+                px /= sg.atoms.length; py /= sg.atoms.length
+            }
+            sg.atoms.forEach(function(aid) { hiddenAtoms[aid] = true })
+            if (_pointInPolygon(px, py, poly)) contractedSgroupIds.push(sgId)
+        })
+    }
+
+    var aids = contractedSgroupIds.slice()
+    _struct.atoms.forEach(function(a, id) {
+        if (hiddenAtoms[id]) return
+        if (_pointInPolygon(a.pp.x, a.pp.y, poly)) aids.push(id)
+    })
+
+    var aidSet = {}
+    for (var k = 0; k < aids.length; ++k) aidSet[aids[k]] = true
+
+    var bids = []
+    _struct.bonds.forEach(function(b, id) {
+        if (aidSet[b.begin] && aidSet[b.end]) bids.push(id)
+    })
+
+    var raid = []
+    if (_struct.rxnArrows) {
+        _struct.rxnArrows.forEach(function(ar, id) {
+            var p1 = (ar.pos && ar.pos[0]) ? ar.pos[0] : (ar.p1 || { x: 0, y: 0 })
+            var p2 = (ar.pos && ar.pos[1]) ? ar.pos[1] : (ar.p2 || { x: 0, y: 0 })
+            if (_pointInPolygon(p1.x, p1.y, poly) && _pointInPolygon(p2.x, p2.y, poly)) raid.push(id)
+        })
+    }
+    var rpid = []
+    if (_struct.rxnPluses) {
+        _struct.rxnPluses.forEach(function(pl, id) {
+            var px = pl.pp ? pl.pp.x : pl.x
+            var py = pl.pp ? pl.pp.y : pl.y
+            if (_pointInPolygon(px, py, poly)) rpid.push(id)
+        })
+    }
+    _selection = { atom_ids: aids, bond_ids: bids, rxnArrow_ids: raid, rxnPlus_ids: rpid, bbox: null }
+}
+
 function addSelectionByRect(x1, y1, x2, y2) {
     var minX = Math.min(x1, x2), maxX = Math.max(x1, x2)
     var minY = Math.min(y1, y2), maxY = Math.max(y1, y2)
@@ -1076,13 +1554,33 @@ function copySelection() {
     }
 }
 
+// KetSerializer.serializeMicromolecules (chem-core.js) walks struct.multitailArrows
+// directly and calls .toKetNode() on each entry, assuming a real chem-core
+// MultitailArrow class instance -- this app's own multitail arrows
+// (_makeMultitailArrow) are plain data objects with no such method, so
+// serializeMicromolecules throws the instant one exists (confirmed via a
+// standalone repro: "TypeError: multitailArrow.toKetNode is not a function").
+// Swap in an empty pool for just the call's duration; every caller already
+// re-injects the correct KET nodes afterward via _injectMultitailArrows, built
+// directly from the plain-object data, so nothing is lost.
+function _serializeMicromoleculesSafe(struct) {
+    var saved = struct.multitailArrows
+    struct.multitailArrows = new CoreLib.ChemCore.Pool()
+    try {
+        return new CoreLib.ChemCore.KetSerializer().serializeMicromolecules(struct)
+    } finally {
+        struct.multitailArrows = saved
+    }
+}
+
 function getClipboardAsKet() {
     var ketStr = ""
     if (_clipboard && CoreLib.ChemCore.KetSerializer) {
         try {
             // serializeMicromolecules already returns a JSON string, not an object
-            var ketObj = JSON.parse(new CoreLib.ChemCore.KetSerializer().serializeMicromolecules(_clipboard))
+            var ketObj = JSON.parse(_serializeMicromoleculesSafe(_clipboard))
             _injectArrowExtras(ketObj, _clipboard)
+            _injectMultitailArrows(ketObj, _clipboard)
             ketStr = JSON.stringify(ketObj)
         } catch (e) { ketStr = "" }
     }
@@ -1244,6 +1742,144 @@ function distributeAtoms(direction) {
     executeCommand(cmd)
 }
 
+// "Layout Selected": re-position only the selected atoms, leaving everything
+// else exactly fixed. Implemented entirely worker-side against chem-core's
+// own atom/bond model -- NOT via Indigo. Indigo's indigoLayoutSelected is a
+// dead header stub (declared, never implemented, in any release checked
+// including a fresh local v1.45.0 compile), and indigoLayout's real
+// submolecule-filtered mode (_layoutSingleComponent in
+// molecule_layout_graph.cpp) always regenerates the WHOLE connected
+// component once any vertex is free to move, using old positions only to
+// loosely re-orient the result afterward -- it cannot "freeze the rest,
+// recompute a subset" for a plain small molecule (that capability is real
+// only for tgroups/monomer biopolymer structures). Confirmed by reading the
+// source directly and reproducing the exact same (undesired) numeric result
+// twice, not guessed.
+//
+// v1 scope, deliberately narrow to what can be done safely and predictably:
+// only a simple, unbranched, acyclic chain of selected atoms attached to the
+// rest of the structure at exactly one point. Anything else (disconnected
+// sub-selection, a branch point, a cycle, zero or multiple attachment
+// points) is declined -- no-op + console.warn -- rather than risk producing
+// a broken or overlapping layout.
+function layoutSelectedChain() {
+    var sel = _selection.atom_ids || []
+    if (sel.length < 1) return
+    var selSet = {}
+    sel.forEach(function(id) { selSet[id] = true })
+
+    // Classify every bond touching the selection: "internal" (both ends
+    // selected) builds the chain graph; exactly one end selected marks the
+    // single allowed attachment point to the fixed structure.
+    var internalAdj = {}
+    var anchorBonds = []
+    sel.forEach(function(id) { internalAdj[id] = [] })
+    _struct.bonds.forEach(function(b, bid) {
+        var beginSel = !!selSet[b.begin], endSel = !!selSet[b.end]
+        if (beginSel && endSel) {
+            internalAdj[b.begin].push(b.end)
+            internalAdj[b.end].push(b.begin)
+        } else if (beginSel !== endSel) {
+            anchorBonds.push(beginSel ? { insideId: b.begin, outsideId: b.end } : { insideId: b.end, outsideId: b.begin })
+        }
+    })
+
+    if (anchorBonds.length !== 1) {
+        console.warn("layoutSelectedChain: needs exactly one connection point to the rest of the structure, found " + anchorBonds.length)
+        return
+    }
+    for (var i = 0; i < sel.length; i++) {
+        if (internalAdj[sel[i]].length > 2) {
+            console.warn("layoutSelectedChain: branching within the selection is not supported")
+            return
+        }
+    }
+
+    // Walk the chain from the atom bonded to the anchor; must visit every
+    // selected atom exactly once (rules out cycles and any disconnected
+    // sub-group within the selection).
+    var anchor = anchorBonds[0]
+    var chain = [anchor.insideId]
+    var visited = {}
+    visited[anchor.insideId] = true
+    var prevId = null
+    var curId = anchor.insideId
+    while (chain.length < sel.length) {
+        var neighbors = internalAdj[curId] || []
+        var nextId = null
+        for (var j = 0; j < neighbors.length; j++) {
+            if (neighbors[j] !== prevId && !visited[neighbors[j]]) { nextId = neighbors[j]; break }
+        }
+        if (nextId === null) break
+        chain.push(nextId)
+        visited[nextId] = true
+        prevId = curId
+        curId = nextId
+    }
+    if (chain.length !== sel.length) {
+        console.warn("layoutSelectedChain: selection must form a single unbranched, acyclic chain")
+        return
+    }
+
+    var anchorAtom = _struct.atoms.get(anchor.outsideId)
+    if (!anchorAtom) return
+
+    // Reuses addChain's exact zigzag convention (v8_worker.js addChain: same
+    // Math.PI/6 half-angle, same StandardBondLength) and getLargestEmptyAngle's
+    // established single-neighbor placement heuristic (already used for the
+    // short-drag chain-extend fallback) -- not new geometry math.
+    var sbl = CoreLib.ChemCore.StandardBondLength || 1.5
+    var half = Math.PI / 6
+    var theta = getLargestEmptyAngle(anchor.outsideId)
+
+    var oldPositions = chain.map(function(id) {
+        var a = _struct.atoms.get(id)
+        return { id: id, x: a.pp.x, y: a.pp.y }
+    })
+    var newPositions = []
+    var px = anchorAtom.pp.x, py = anchorAtom.pp.y
+    for (var k = 0; k < chain.length; k++) {
+        var ang = theta + ((k % 2 === 0) ? half : -half)
+        px += sbl * Math.cos(ang)
+        py += sbl * Math.sin(ang)
+        newPositions.push({ id: chain[k], x: px, y: py })
+    }
+
+    var cmd = makeCmd(
+        function() {
+            newPositions.forEach(function(p) {
+                var a = _struct.atoms.get(p.id)
+                if (a) { a.pp.x = p.x; a.pp.y = p.y }
+            })
+            _dirty = true
+        },
+        function() {
+            oldPositions.forEach(function(p) {
+                var a = _struct.atoms.get(p.id)
+                if (a) { a.pp.x = p.x; a.pp.y = p.y }
+            })
+            _dirty = true
+        }
+    )
+    executeCommand(cmd)
+}
+
+function getMoleculeName() {
+    console.log(JSON.stringify({ type: "structureResponse", reqId: "mol_name", data: _struct.name || "" }));
+}
+
+function setMoleculeName(name) {
+    var oldName = _struct.name || "";
+    var newName = name || "";
+    if (oldName === newName) return;
+    var cmd = makeCmd(
+        function() { _struct.name = newName; _dirty = true; },
+        function() { _struct.name = oldName; _dirty = true; }
+    );
+    executeCommand(cmd);
+}
+
+
 function setStereoDescriptors(jsonMap) {
     try {
         var map = JSON.parse(jsonMap)
@@ -1355,13 +1991,33 @@ function setCheckIssues(jsonMap) {
 }
 
 function pasteSelection(cx, cy) {
-    // console.error("pasteSelection triggered. Clipboard present: " + (_clipboard !== null))
     if (!_clipboard) return
-    
+    _insertStructAt(_clipboard, cx, cy)
+}
+
+function insertRecognizedStructure(molfile, cx, cy) {
     try {
-        var pastedStruct = _clipboard.clone()
-        // console.error("pastedStruct cloned successfully. Atoms: " + pastedStruct.atoms.size)
-        
+        var recognized = _deserializeStruct("mol", molfile)
+        if (!recognized || recognized.atoms.size === 0) {
+            console.warn("insertRecognizedStructure: empty or unparseable molfile")
+            return
+        }
+        _insertStructAt(recognized, cx, cy)
+    } catch (e) {
+        console.warn("insertRecognizedStructure failed:", e.message)
+    }
+}
+
+// Shared by pasteSelection (source: _clipboard) and insertRecognizedStructure (source: an
+// Imago-recognized structure) - clones sourceStruct's atoms/bonds/SUP-sgroups into _struct,
+// centered at (cx, cy). Deliberately takes the source struct as a parameter rather than reading
+// _clipboard directly, so callers other than paste never touch the user's real clipboard.
+function _insertStructAt(sourceStruct, cx, cy) {
+    var _clampedPaste = _clampToPage(cx, cy); cx = _clampedPaste.x; cy = _clampedPaste.y
+
+    try {
+        var pastedStruct = sourceStruct.clone()
+
         var minX = null, minY = null, maxX = null, maxY = null
         pastedStruct.atoms.forEach(function(a) {
         if (minX === null || a.pp.x < minX) minX = a.pp.x
@@ -1460,6 +2116,16 @@ function pasteSelection(cx, cy) {
                     if (atom) atom.sgs.delete(sd.id)
                 })
                 _struct.sgroups.delete(sd.id)
+                // Mirror insertFunctionalGroup's invert: bindSGroupsToFunctionalGroups()
+                // (called in execute, above) creates a FunctionalGroup entry per SUP
+                // sgroup; without this cleanup it survives as a zombie reference to a
+                // now-deleted sgroup, which Struct.clone() picks back up on the next
+                // copy/paste or KET export.
+                if (_struct.functionalGroups) {
+                    _struct.functionalGroups.forEach(function(fg, fgId) {
+                        if (fg.relatedSGroupId === sd.id) _struct.functionalGroups.delete(fgId)
+                    })
+                }
             })
             addedBonds.forEach(function(bd) { _struct.bonds.delete(bd.id) })
             addedAtoms.forEach(function(ad) { _struct.atoms.delete(ad.id) })
@@ -1536,10 +2202,33 @@ function deleteSelection() {
             if (mta) multitailData.push({ id: mtaId, mta: mta })
         })
     }
-    
+
+    // As in deleteAtomById: an atom being deleted here may be an individually-selected
+    // member of an *expanded* sgroup (as opposed to sgroupsData above, which only
+    // covers deleting a whole contracted pill) -- its id must come out of that
+    // sgroup's own atoms list too, or the sgroup keeps referencing a deleted atom.
+    // Grouped per-sgroup since a multi-select can remove several members of the same
+    // group at once; restores the correct member *set* on undo, not necessarily each
+    // atom's exact original position in the array (not meaningful here -- sgroup.atoms
+    // is read elsewhere by membership, never by position).
+    var sgroupAtomRemovals = {}
+    atomsData.forEach(function(ad) {
+        if (!ad.atom.sgs || ad.atom.sgs.size === 0) return
+        ad.atom.sgs.forEach(function(sgId) {
+            var sg = _struct.sgroups.get(sgId)
+            if (!sg || !sg.atoms || sg.atoms.indexOf(ad.id) < 0) return
+            if (!sgroupAtomRemovals[sgId]) sgroupAtomRemovals[sgId] = { sg: sg, removedIds: [] }
+            sgroupAtomRemovals[sgId].removedIds.push(ad.id)
+        })
+    })
+    var sgroupAtomRemovalList = Object.keys(sgroupAtomRemovals).map(function(k) { return sgroupAtomRemovals[k] })
+
     var cmd = makeCmd(
         function() {
             bondsData.forEach(function(bd) { _struct.bonds.delete(bd.id) })
+            sgroupAtomRemovalList.forEach(function(m) {
+                m.sg.atoms = m.sg.atoms.filter(function(id) { return m.removedIds.indexOf(id) < 0 })
+            })
             atomsData.forEach(function(ad) { _struct.atoms.delete(ad.id) })
             sgroupsData.forEach(function(sd) { if (_struct.sgroups) _struct.sgroups.delete(sd.id) })
             arrowsData.forEach(function(ad) { _struct.rxnArrows.delete(ad.id) })
@@ -1552,6 +2241,9 @@ function deleteSelection() {
         },
         function() {
             atomsData.forEach(function(ad) { _struct.atoms.set(ad.id, ad.atom) })
+            sgroupAtomRemovalList.forEach(function(m) {
+                m.removedIds.forEach(function(id) { m.sg.atoms.push(id) })
+            })
             bondsData.forEach(function(bd) { _struct.bonds.set(bd.id, bd.bond) })
             sgroupsData.forEach(function(sd) { if (_struct.sgroups) _struct.sgroups.set(sd.id, sd.sg) })
             arrowsData.forEach(function(ad) { _struct.rxnArrows.set(ad.id, ad.arrow) })
@@ -1667,6 +2359,7 @@ function buildRenderPrimitives(showExplicitH) {
                 element: '',
                 color: '#202020',
                 aam: 0,
+                attachmentPoints: 0,
                 checkWarning: ''
             }
         })
@@ -1738,6 +2431,7 @@ function buildRenderPrimitives(showExplicitH) {
             radical: a.radical || 0,
             explicitValence: (a.explicitValence !== undefined && a.explicitValence >= 0) ? a.explicitValence : -1,
             aam: a.aam || 0,
+            attachmentPoints: a.attachmentPoints || 0,
             checkWarning: a.checkWarning || "",
             isAtomList: !!isAtomList,
             atomListElements: isAtomList ? a.atomList.ids.map(function(num) {
@@ -1884,6 +2578,7 @@ function buildRenderPrimitives(showExplicitH) {
             beginIsSgroup: beginSgId !== undefined,
             endIsSgroup: endSgId !== undefined,
             cipLabel: b.cipLabel || "",
+            reactingCenterStatus: b.reactingCenterStatus || 0,
             ringCenterX: ringCenter !== undefined ? ringCenter.x : undefined,
             ringCenterY: ringCenter !== undefined ? ringCenter.y : undefined
         })
@@ -1960,6 +2655,14 @@ function buildRenderPrimitives(showExplicitH) {
             var out = []
             if (_struct.texts) _struct.texts.forEach(function(t, id) {
                 out.push({ id: id, x: t.position.x, y: t.position.y, content: _plainFromTextJson(t.content || "") })
+            })
+            return out
+        })(),
+        images: (function() {
+            var out = []
+            if (_struct.images) _struct.images.forEach(function(img, id) {
+                var tl = img.getTopLeftPosition ? img.getTopLeftPosition() : img._center.sub(img.halfSize)
+                out.push({ id: id, x: tl.x, y: tl.y, w: img.halfSize.x * 2, h: img.halfSize.y * 2, bitmap: img.bitmap })
             })
             return out
         })(),
@@ -2177,6 +2880,7 @@ function clearCanvas() {
 // ---- Functional Groups -----------------------------------------------------
 
 function insertFunctionalGroup(fgName, cx, cy, targetAtomId) {
+    var _clampedAnchor = _clampToPage(cx, cy); cx = _clampedAnchor.x; cy = _clampedAnchor.y
     var fgStruct = _fgStructs[fgName] || _saltsStructs[fgName] || _libraryStructs[fgName]
 
     if (!fgStruct || fgStruct.atoms.size === 0) {
@@ -2326,6 +3030,138 @@ function insertFunctionalGroup(fgName, cx, cy, targetAtomId) {
         }
     )
     executeCommand(cmd2)
+}
+
+// Bond-fused placement of a library ring template: maps the template's
+// designated fusion bond (from library.sdf's <bondid> metadata, parsed into
+// _libraryMeta[].bondIdx) exactly onto the clicked existing bond via a 2-point
+// similarity transform, then reuses addRing's merge/fuse/re-alternate shape so
+// the seam bond keeps its pre-existing type and the new ring Kekulizes
+// consistently with the structure it fused onto. Falls back to plain
+// insertFunctionalGroup placement whenever fusion isn't applicable (template
+// without metadata, stale/missing target bond, template bond not in a ring) —
+// QML never needs to know which of the 235/41 templates support fusion.
+// Out of scope (same documented limitation as addRing/perceiveRingAlternation):
+// dropping onto a bond already shared between two fused rings (multi-seam).
+function insertLibraryTemplateFused(fgName, cx, cy, targetBondId) {
+    var fgStruct = _libraryStructs[fgName]
+    var meta = _libraryMeta[fgName]
+    var targetBond = (targetBondId !== null && targetBondId !== undefined)
+        ? _struct.bonds.get(targetBondId) : undefined
+
+    var fusionBond = (fgStruct && meta && meta.bondIdx !== undefined)
+        ? fgStruct.bonds.get(meta.bondIdx) : undefined
+    var ringCycle = fusionBond ? shortestRingThroughBond(fgStruct, meta.bondIdx) : null
+
+    if (!targetBond || !fusionBond || !ringCycle) {
+        insertFunctionalGroup(fgName, cx, cy)
+        return
+    }
+
+    var pa = fgStruct.atoms.get(fusionBond.begin)
+    var pb = fgStruct.atoms.get(fusionBond.end)
+    var qa = _struct.atoms.get(targetBond.begin)
+    var qb = _struct.atoms.get(targetBond.end)
+    if (!pa || !pb || !qa || !qb) {
+        insertFunctionalGroup(fgName, cx, cy)
+        return
+    }
+
+    // Which side of its own fusion bond does the template's ring mass sit on?
+    var ccx = 0, ccy = 0
+    ringCycle.forEach(function(aid) {
+        var a = fgStruct.atoms.get(aid)
+        ccx += a.pp.x; ccy += a.pp.y
+    })
+    ccx /= ringCycle.length; ccy /= ringCycle.length
+    var templSide = ((pb.pp.x - pa.pp.x) * (ccy - pa.pp.y) -
+                     (pb.pp.y - pa.pp.y) * (ccx - pa.pp.x)) >= 0 ? 1 : -1
+
+    // Which side of the target bond should the ring grow onto?
+    var targetSide = chooseEmptySide(qa.pp.x, qa.pp.y, qb.pp.x, qb.pp.y,
+                                     [targetBond.begin, targetBond.end], cx, cy)
+
+    // The transform is orientation-preserving, so mapping PA→QA,PB→QB lands the
+    // ring on side `templSide` of QA→QB; the swapped mapping flips it. Pick the
+    // endpoint assignment that puts the ring on the emptier side.
+    var t = (templSide === targetSide)
+        ? makeSimilarityTransform(pa.pp.x, pa.pp.y, pb.pp.x, pb.pp.y, qa.pp.x, qa.pp.y, qb.pp.x, qb.pp.y)
+        : makeSimilarityTransform(pa.pp.x, pa.pp.y, pb.pp.x, pb.pp.y, qb.pp.x, qb.pp.y, qa.pp.x, qa.pp.y)
+    if (!t) {
+        insertFunctionalGroup(fgName, cx, cy)
+        return
+    }
+
+    // Alternation mode for the fused ring, from the template's own authored
+    // bond types around that cycle: any non-single bond → aromatic-style
+    // alternation (undefined); all single → saturated, leave single (false).
+    var ringAromatic = undefined
+    var allSingle = true
+    for (var rc = 0; rc < ringCycle.length; rc++) {
+        var ra1 = ringCycle[rc], ra2 = ringCycle[(rc + 1) % ringCycle.length]
+        fgStruct.bonds.forEach(function(b) {
+            if ((b.begin === ra1 && b.end === ra2) || (b.begin === ra2 && b.end === ra1)) {
+                if (b.type !== 1) allSingle = false
+            }
+        })
+    }
+    if (allSingle) ringAromatic = false
+
+    var oldStruct = snapshotStruct(_struct)
+    var newStruct = null
+    var cmd = makeCmd(
+        function() {
+            if (newStruct !== null) { _struct = newStruct; return }
+
+            var oldBondTypesByPair = {}
+            oldStruct.bonds.forEach(function(b) {
+                var key = Math.min(b.begin, b.end) + "-" + Math.max(b.begin, b.end)
+                oldBondTypesByPair[key] = b.type
+            })
+
+            // Build the transformed template copy. Authored bond types are
+            // preserved (substituents, heteroatom bonds, other rings of a
+            // polycyclic template); the fusion ring's non-seam edges get
+            // re-derived by perceiveRingAlternation below, and the seam edge
+            // itself keeps the pre-existing bond's type via fuseOverlappingAtoms'
+            // first-seen-wins dedup.
+            var tempStruct = new CoreLib.ChemCore.Struct()
+            var localIdMap = new Map()
+            fgStruct.atoms.forEach(function(a, aid) {
+                var p = t(a.pp.x, a.pp.y)
+                var newA = new CoreLib.ChemCore.Atom({
+                    label: a.label, charge: a.charge || 0,
+                    pp: new CoreLib.ChemCore.Vec2(p.x, p.y)
+                })
+                localIdMap.set(aid, tempStruct.atoms.add(newA))
+            })
+            fgStruct.bonds.forEach(function(b) {
+                tempStruct.bonds.add(new CoreLib.ChemCore.Bond({
+                    type: b.type, stereo: b.stereo || 0,
+                    begin: localIdMap.get(b.begin), end: localIdMap.get(b.end)
+                }))
+            })
+
+            var aidMap = new Map()
+            tempStruct.mergeInto(_struct, undefined, undefined, undefined, undefined, aidMap)
+            var fuseMergeMap = fuseOverlappingAtoms()
+
+            var finalRingAtoms = ringCycle.map(function(aid) {
+                var merged = aidMap.get(localIdMap.get(aid))
+                return fuseMergeMap[merged] !== undefined ? fuseMergeMap[merged] : merged
+            })
+
+            perceiveRingAlternation(finalRingAtoms, oldBondTypesByPair, ringAromatic)
+
+            if (_struct.initHalfBonds) { _struct.initHalfBonds(); _struct.initNeighbors(); _struct.updateHalfBonds(); _struct.sortNeighbors() }
+            newStruct = snapshotStruct(_struct)
+        },
+        function() {
+            _struct = oldStruct
+            if (_struct.initHalfBonds) { _struct.initHalfBonds(); _struct.initNeighbors(); _struct.updateHalfBonds(); _struct.sortNeighbors() }
+        }
+    )
+    executeCommand(cmd)
 }
 
 // ---- SGroup expand/contract toggle ----------------------------------------
@@ -2514,6 +3350,26 @@ function loadMolfile(molStr) {
         loaded.initNeighbors()
         loaded.updateHalfBonds()
         loaded.sortNeighbors()
+
+        // MDL molfile/RXN (what every loadMolfile() caller round-trips through --
+        // the 5 Indigo write-back ops, plus biopolymer expansion; genuine file-open
+        // goes through loadStructure() instead, never here) has no concept of
+        // Ketcher's own text annotations or multitail arrows. Without this, clicking
+        // Layout/Aromatize/Dearomatize/Normalize/Standardize on a canvas with either
+        // silently deletes them -- confirmed by direct testing. Carry them over from
+        // the struct being replaced; a text label's position is an absolute x,y with
+        // no atom anchor, so it may end up visually off if Layout moves things a lot,
+        // but that's a smaller problem than losing it outright.
+        if (_struct.texts && loaded.texts) {
+            _struct.texts.forEach(function(t, id) { loaded.texts.set(id, t) })
+        }
+        if (_struct.multitailArrows && loaded.multitailArrows) {
+            _struct.multitailArrows.forEach(function(mta, id) { loaded.multitailArrows.set(id, mta) })
+        }
+        if (_struct.images && loaded.images) {
+            _struct.images.forEach(function(img, id) { loaded.images.set(id, img) })
+        }
+
         var oldStruct = _struct
         var oldSelection = {
             atom_ids: _selection.atom_ids.slice(),
@@ -2541,7 +3397,7 @@ function getStructure(fmt) {
             return new CoreLib.ChemCore.SdfSerializer().serialize([{ struct: _struct, props: {} }])
         } else if (fmt === "ket" && CoreLib.ChemCore.KetSerializer) {
             // serializeMicromolecules already returns a JSON string, not an object
-            var ketObj = JSON.parse(new CoreLib.ChemCore.KetSerializer().serializeMicromolecules(_struct))
+            var ketObj = JSON.parse(_serializeMicromoleculesSafe(_struct))
             _injectArrowExtras(ketObj, _struct)
             _injectMultitailArrows(ketObj, _struct)
             if (ketObj.root) ketObj.root.stereoFlags = _struct.stereoFlags || { type: 'abs', groupId: 0 }
@@ -2592,6 +3448,227 @@ function deserializeSdf(data) {
     } catch (e) {
         console.warn("deserializeSdf failed:", e.message)
     }
+}
+
+function _buildBatchRecordsFromStructs(items) {
+    var count = items.length
+    var limit = Math.min(count, 500)
+    var records = []
+    var savedStruct = _struct
+    var savedShowH = _showExplicitH
+
+    for (var i = 0; i < limit; i++) {
+        var item = items[i]
+        var label = (item.struct && item.struct.name && item.struct.name.trim().length > 0) ? item.struct.name.trim() : "Record " + (i + 1)
+        
+        _struct = item.struct
+        _showExplicitH = false
+        var thumbState
+        try {
+            thumbState = buildRenderPrimitives(false)
+        } catch (e) {
+            thumbState = { atoms: [], bonds: [] }
+        }
+        
+        var bbox = thumbState.bbox
+        var atoms = []
+        var bonds = []
+        if (bbox) {
+            var w = bbox.maxX - bbox.minX || 1
+            var h = bbox.maxY - bbox.minY || 1
+            var pad = 0.1
+            var scale = (1 - 2 * pad) / Math.max(w, h)
+            var offX = pad + (1 - 2 * pad - w * scale) / 2
+            var offY = pad + (1 - 2 * pad - h * scale) / 2
+            if (thumbState.atoms) {
+                thumbState.atoms.forEach(function(a) {
+                    atoms.push({
+                        x: offX + (a.x - bbox.minX) * scale,
+                        y: offY + (a.y - bbox.minY) * scale,
+                        label: a.element || ""
+                    })
+                })
+            }
+            if (thumbState.bonds) {
+                thumbState.bonds.forEach(function(b) {
+                    var a1 = thumbState.atomsById[b.begin.toString()]
+                    var a2 = thumbState.atomsById[b.end.toString()]
+                    if (a1 && a2) {
+                        bonds.push({
+                            x1: offX + (a1.x - bbox.minX) * scale,
+                            y1: offY + (a1.y - bbox.minY) * scale,
+                            x2: offX + (a2.x - bbox.minX) * scale,
+                            y2: offY + (a2.y - bbox.minY) * scale,
+                            type: b.type
+                        })
+                    }
+                })
+            }
+        }
+        records.push({ index: i, label: label, thumb: { atoms: atoms, bonds: bonds } })
+    }
+    
+    _struct = savedStruct
+    _showExplicitH = savedShowH
+    
+    return { count: count, records: records }
+}
+
+function deserializeRdfBatch(recordsJson) {
+    try {
+        var parsed
+        try { parsed = JSON.parse(recordsJson) } catch (e) { parsed = [] }
+        var recs = Array.isArray(parsed) ? parsed : []
+        if (recs.length === 0) {
+            console.log(JSON.stringify({ type: "structureResponse", reqId: "sdf_batch_list", data: JSON.stringify({ count: 0, records: [] }) }))
+            return
+        }
+        var items = []
+        for (var i = 0; i < recs.length; i++) {
+            try {
+                var struct = _deserializeStruct("mol", recs[i].molfile)
+                if (struct) items.push({ struct: struct })
+            } catch (e) { /* skip a record that fails to parse, don't abort the whole batch */ }
+        }
+        _sdfBatchRecords = items
+        var result = _buildBatchRecordsFromStructs(items)
+        console.log(JSON.stringify({ type: "structureResponse", reqId: "sdf_batch_list", data: JSON.stringify(result) }))
+    } catch (e) {
+        console.warn("deserializeRdfBatch failed:", e.message)
+        console.log(JSON.stringify({ type: "structureResponse", reqId: "sdf_batch_list", data: JSON.stringify({ count: 0, records: [] }) }))
+    }
+}
+
+function deserializeIndigoBatch(recordsJson) {
+    try {
+        var parsed
+        try { parsed = JSON.parse(recordsJson) } catch (e) { parsed = [] }
+        var recs = Array.isArray(parsed) ? parsed : []
+        if (recs.length === 0) {
+            console.log(JSON.stringify({ type: "structureResponse", reqId: "sdf_batch_list", data: JSON.stringify({ count: 0, records: [] }) }))
+            return
+        }
+        var items = []
+        for (var i = 0; i < recs.length; i++) {
+            try {
+                var struct = _deserializeStruct("mol", recs[i].molfile)
+                if (struct) items.push({ struct: struct })
+            } catch (e) { /* skip a record that fails to parse, don't abort the whole batch */ }
+        }
+        _sdfBatchRecords = items
+        var result = _buildBatchRecordsFromStructs(items)
+        console.log(JSON.stringify({ type: "structureResponse", reqId: "sdf_batch_list", data: JSON.stringify(result) }))
+    } catch (e) {
+        console.warn("deserializeIndigoBatch failed:", e.message)
+        console.log(JSON.stringify({ type: "structureResponse", reqId: "sdf_batch_list", data: JSON.stringify({ count: 0, records: [] }) }))
+    }
+}
+
+function deserializeSdfBatch(data) {
+    try {
+        var items = null
+        if (CoreLib.ChemCore.SdfSerializer) {
+            items = new CoreLib.ChemCore.SdfSerializer().deserialize(data)
+        }
+        if (!items || items.length === 0) {
+            console.log(JSON.stringify({ type: "structureResponse", reqId: "sdf_batch_list", data: JSON.stringify({ count: 0, records: [] }) }))
+            return
+        }
+
+        _sdfBatchRecords = items
+        var result = _buildBatchRecordsFromStructs(items)
+        console.log(JSON.stringify({ type: "structureResponse", reqId: "sdf_batch_list", data: JSON.stringify(result) }))
+    } catch (e) {
+        console.warn("deserializeSdfBatch failed:", e.message)
+        console.log(JSON.stringify({ type: "structureResponse", reqId: "sdf_batch_list", data: JSON.stringify({ count: 0, records: [] }) }))
+    }
+}
+
+function loadSdfBatchRecord(index) {
+    try {
+        if (!_sdfBatchRecords || index < 0 || index >= _sdfBatchRecords.length) return
+        var loaded = _sdfBatchRecords[index].struct
+        if (!loaded) return
+        _applyLoadedStruct(loaded)
+        _sdfProps = _sdfBatchRecords[index].props || {}
+        console.log(JSON.stringify({ type: "structureResponse", reqId: "sdf_batch_load", data: "" }))
+    } catch (e) {
+        console.warn("loadSdfBatchRecord failed:", e.message)
+    }
+}
+
+function getSdfBatchMolfiles() {
+    try {
+        if (!_sdfBatchRecords || _sdfBatchRecords.length === 0) {
+            console.log(JSON.stringify({ type: "structureResponse", reqId: "sdf_batch_molfiles", data: JSON.stringify({ molfiles: [], labels: [] }) }))
+            return
+        }
+        var molfiles = []
+        var labels = []
+        var serializer = new CoreLib.ChemCore.MolSerializer()
+        var limit = Math.min(_sdfBatchRecords.length, 500)
+        for (var i = 0; i < limit; i++) {
+            try {
+                var item = _sdfBatchRecords[i]
+                var mf = serializer.serialize(item.struct)
+                if (mf) {
+                    molfiles.push(mf)
+                    labels.push((item.struct && item.struct.name && item.struct.name.trim().length > 0) ? item.struct.name.trim() : "Record " + (i + 1))
+                }
+            } catch (e) { /* skip a record that fails to serialize, don't abort the whole batch */ }
+        }
+        console.log(JSON.stringify({ type: "structureResponse", reqId: "sdf_batch_molfiles", data: JSON.stringify({ molfiles: molfiles, labels: labels }) }))
+    } catch (e) {
+        console.warn("getSdfBatchMolfiles failed:", e.message)
+        console.log(JSON.stringify({ type: "structureResponse", reqId: "sdf_batch_molfiles", data: JSON.stringify({ molfiles: [], labels: [] }) }))
+    }
+}
+
+function realignSdfBatch(alignedMolfilesJson) {
+    try {
+        var molfiles = JSON.parse(alignedMolfilesJson)
+        if (!Array.isArray(molfiles) || !_sdfBatchRecords || molfiles.length !== _sdfBatchRecords.length) {
+            console.warn("realignSdfBatch: length mismatch or no open batch")
+            return
+        }
+        var items = []
+        for (var i = 0; i < molfiles.length; i++) {
+            var struct = null
+            try { struct = _deserializeStruct("mol", molfiles[i]) } catch (e) { /* fall through */ }
+            items.push({ struct: struct || _sdfBatchRecords[i].struct })
+        }
+        _sdfBatchRecords = items
+        var result = _buildBatchRecordsFromStructs(items)
+        console.log(JSON.stringify({ type: "structureResponse", reqId: "sdf_batch_realigned", data: JSON.stringify(result) }))
+    } catch (e) {
+        console.warn("realignSdfBatch failed:", e.message)
+    }
+}
+
+
+function selectSubstructureMatches(matchesJson) {
+    var parsed
+    try { parsed = JSON.parse(matchesJson) } catch (e) { parsed = { matches: [] } }
+    var matches = parsed.matches || []
+    var idByIndex = {}
+    var i = 0
+    _struct.atoms.forEach(function(a, id) { i++; idByIndex[i] = id })
+    var atomIdSet = {}
+    matches.forEach(function(match) {
+        match.forEach(function(idx) {
+            if (idByIndex[idx] !== undefined) atomIdSet[idByIndex[idx]] = true
+        })
+    })
+    var atomIds = Object.keys(atomIdSet).map(function(k) { return parseInt(k, 10) })
+    var bondIds = []
+    _struct.bonds.forEach(function(b, id) {
+        if (atomIdSet[b.begin] && atomIdSet[b.end]) bondIds.push(id)
+    })
+    _selection = { atom_ids: atomIds, bond_ids: bondIds, rxnArrow_ids: [], rxnPlus_ids: [], bbox: null }
+}
+
+function getSdfProps() {
+    console.log(JSON.stringify({ type: "structureResponse", reqId: "sdf_props", data: JSON.stringify(_sdfProps) }));
 }
 
 function deserializeKet(data) {
@@ -2864,6 +3941,8 @@ function transformSelection(mode) {
 // from the drag distance. Reuses addRing's merge+fuse pattern so chain endpoints
 // graft onto existing atoms they overlap.
 function addChain(x1, y1, x2, y2) {
+    var _c1 = _clampToPage(x1, y1); x1 = _c1.x; y1 = _c1.y
+    var _c2 = _clampToPage(x2, y2); x2 = _c2.x; y2 = _c2.y
     var bondLen = CoreLib.ChemCore.StandardBondLength || 1.5
     var dx = x2 - x1, dy = y2 - y1
     var dist = Math.sqrt(dx * dx + dy * dy)
@@ -2983,6 +4062,84 @@ function deleteText(id) {
     var cmd = makeCmd(
         function() { _struct.texts.delete(id); _dirty = true },
         function() { _struct.texts.set(id, t); _dirty = true }
+    )
+    executeCommand(cmd)
+}
+
+function _makeImage(bitmap, cx, cy, halfW, halfH) {
+    var _center = new CoreLib.ChemCore.Vec2(cx, cy);
+    var halfSize = new CoreLib.ChemCore.Vec2(halfW, halfH);
+    return {
+        bitmap: bitmap,
+        _center: _center,
+        halfSize: halfSize,
+        clone: function() { return _makeImage(this.bitmap, this._center.x, this._center.y, this.halfSize.x, this.halfSize.y); },
+        addPositionOffset: function(offset) { this._center = this._center.add(offset); },
+        rescaleSize: function(scale) { this.halfSize = this.halfSize.scaled(scale); },
+        center: function() { return this._center; },
+        toKetNode: function() {
+            var topLeftCorner = this._center.sub(this.halfSize);
+            var base64Data = this.bitmap.replace(/^.*;base64,/, "");
+            var match = /^data:(image\/.*);base64,/.exec(this.bitmap);
+            var format = match ? match[1] : undefined;
+            return {
+                type: 'image',
+                center: { x: this._center.x, y: -this._center.y, z: 0 },
+                format: format,
+                boundingBox: {
+                    x: topLeftCorner.x,
+                    y: -topLeftCorner.y,
+                    z: 0,
+                    width: this.halfSize.x * 2,
+                    height: this.halfSize.y * 2
+                },
+                data: base64Data,
+                selected: this.getInitiallySelected()
+            };
+        },
+        getInitiallySelected: function() { return false; },
+        resetInitiallySelected: function() {},
+        setInitiallySelected: function() {}
+    };
+}
+
+function addImage(base64DataUri, cx, cy, halfW, halfH) {
+    if (!base64DataUri) return
+    var img = _makeImage(base64DataUri, cx, cy, halfW, halfH)
+    var id = null
+    var cmd = makeCmd(
+        function() { if (id === null) id = _struct.images.add(img); else _struct.images.set(id, img); _dirty = true },
+        function() { _struct.images.delete(id); _dirty = true }
+    )
+    executeCommand(cmd)
+}
+
+function deleteImage(id) {
+    var img = _struct.images.get(id)
+    if (!img) return
+    var cmd = makeCmd(
+        function() { _struct.images.delete(id); _dirty = true },
+        function() { _struct.images.set(id, img); _dirty = true }
+    )
+    executeCommand(cmd)
+}
+
+function moveImage(id, dx, dy) {
+    var img = _struct.images.get(id)
+    if (!img) return
+    var cmd = makeCmd(
+        function() { img.addPositionOffset(new CoreLib.ChemCore.Vec2(dx, dy)); _dirty = true },
+        function() { img.addPositionOffset(new CoreLib.ChemCore.Vec2(-dx, -dy)); _dirty = true }
+    )
+    executeCommand(cmd)
+}
+
+function resizeImage(id, scaleFactor) {
+    var img = _struct.images.get(id)
+    if (!img) return
+    var cmd = makeCmd(
+        function() { img.rescaleSize(scaleFactor); _dirty = true },
+        function() { img.rescaleSize(1 / scaleFactor); _dirty = true }
     )
     executeCommand(cmd)
 }
@@ -3171,25 +4328,17 @@ function addMultitailArrowTail(id) {
     executeCommand(cmd)
 }
 
-// ---- Node.js IPC Interface -------------------------------------------------
+// ---- Command dispatch -------------------------------------------------
+// Shared by both transports below: the Node stdin/readline loop parses one
+// JSON line per call and hands off (cmd, args) here; the native engine's C++
+// bridge calls this directly with a real JS array (no JSON round-trip needed).
 
 init();
 
-const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-    terminal: false
-});
-
-rl.on('line', (line) => {
-    if (!line.trim()) return;
+function _dispatchCommand(cmd, args) {
     try {
-        const msg = JSON.parse(line);
-        const cmd = msg.cmd;
-        const args = msg.args || [];
-        
         let result = null;
-        
+
         if (cmd === 'init') init();
         else if (cmd === 'loadMol') loadMolfile(args[0]);
         else if (cmd === 'addAtom') result = addAtom(args[0], args[1], args[2], args[3]);
@@ -3206,6 +4355,7 @@ rl.on('line', (line) => {
         else if (cmd === 'setAtomMapping') setAtomMapping(args[0], args[1]);
         else if (cmd === 'changeBondType') changeBondType(args[0], args[1], args[2]);
         else if (cmd === 'changeAtomCharge') changeAtomCharge(args[0], args[1]);
+        else if (cmd === 'setAttachmentPoint') setAttachmentPoint(args[0], args[1]);
         else if (cmd === 'changeAtomIsotope') changeAtomIsotope(args[0], args[1]);
         else if (cmd === 'changeAtomRadical') changeAtomRadical(args[0], args[1]);
         else if (cmd === 'changeAtomValence') changeAtomValence(args[0], args[1]);
@@ -3216,12 +4366,17 @@ rl.on('line', (line) => {
         }
         else if (cmd === 'selectByRect') selectByRect(args[0], args[1], args[2], args[3]);
         else if (cmd === 'addSelectionByRect') addSelectionByRect(args[0], args[1], args[2], args[3]);
+        else if (cmd === 'selectByLasso') selectByLasso(args[0]);
         else if (cmd === 'selectItem') selectItem(args[0], args[1], args[2], args[3], args[4]);
         else if (cmd === 'addItemToSelection') addItemToSelection(args[0], args[1]);
         else if (cmd === 'removeItemFromSelection') removeItemFromSelection(args[0], args[1]);
         else if (cmd === 'selectFragment') selectFragment(args[0], args[1]);
         else if (cmd === 'moveSelection') moveSelection(args[0], args[1]);
         else if (cmd === 'commitMove') commitMove();
+        else if (cmd === 'rotateSelectionLive') rotateSelectionLive(args[0]);
+        else if (cmd === 'commitRotate') commitRotate();
+        else if (cmd === 'scaleSelectionLive') scaleSelectionLive(args[0], args[1], args[2]);
+        else if (cmd === 'commitScale') commitScale();
         else if (cmd === 'centerStructure') centerStructure();
         else if (cmd === 'normalizeStructure') normalizeStructure();
         else if (cmd === 'alignAtoms') alignAtoms(args[0]);
@@ -3231,6 +4386,7 @@ rl.on('line', (line) => {
         else if (cmd === 'copySelection') copySelection();
         else if (cmd === 'cutSelection') cutSelection();
         else if (cmd === 'pasteSelection') pasteSelection(args[0], args[1]);
+        else if (cmd === 'insertRecognizedStructure') insertRecognizedStructure(args[0], args[1], args[2]);
         else if (cmd === 'getClipboardAsKet') { getClipboardAsKet(); return; }
         else if (cmd === 'importKetAtPosition') importKetAtPosition(args[0], args[1], args[2]);
         else if (cmd === 'selectAll') selectAll();
@@ -3238,6 +4394,12 @@ rl.on('line', (line) => {
         else if (cmd === 'loadBenzene') loadBenzene();
         else if (cmd === 'deserializeMol') deserializeMol(args[0]);
         else if (cmd === 'deserializeSdf') deserializeSdf(args[0]);
+        else if (cmd === 'deserializeRdfBatch') deserializeRdfBatch(args[0]);
+        else if (cmd === 'deserializeIndigoBatch') deserializeIndigoBatch(args[0]);
+        else if (cmd === 'deserializeSdfBatch') deserializeSdfBatch(args[0]);
+        else if (cmd === 'loadSdfBatchRecord') loadSdfBatchRecord(args[0]);
+        else if (cmd === 'getSdfBatchMolfiles') getSdfBatchMolfiles();
+        else if (cmd === 'realignSdfBatch') realignSdfBatch(args[0]);
         else if (cmd === 'deserializeKet') deserializeKet(args[0]);
         else if (cmd === 'addRxnArrow') addRxnArrow(args[0], args[1], args[2]);
         else if (cmd === 'addCurvedArrow') addCurvedArrow(args[0], args[1], args[2], args[3], args[4], args[5]);
@@ -3254,6 +4416,10 @@ rl.on('line', (line) => {
         else if (cmd === 'addText') addText(args[0], args[1], args[2]);
         else if (cmd === 'updateText') updateText(args[0], args[1]);
         else if (cmd === 'deleteText') deleteText(args[0]);
+        else if (cmd === 'addImage') addImage(args[0], args[1], args[2], args[3], args[4]);
+        else if (cmd === 'deleteImage') deleteImage(args[0]);
+        else if (cmd === 'moveImage') moveImage(args[0], args[1], args[2]);
+        else if (cmd === 'resizeImage') resizeImage(args[0], args[1]);
         else if (cmd === 'setAtomQueryList') setAtomQueryList(args[0], args[1], args[2]);
         else if (cmd === 'clearAtomQueryList') clearAtomQueryList(args[0], args[1]);
         else if (cmd === 'addRxnPlus') addRxnPlus(args[0], args[1]);
@@ -3262,6 +4428,11 @@ rl.on('line', (line) => {
         else if (cmd === 'addMultitailArrow') addMultitailArrow(args[0], args[1]);
         else if (cmd === 'deleteMultitailArrow') deleteMultitailArrow(args[0]);
         else if (cmd === 'addMultitailArrowTail') addMultitailArrowTail(args[0]);
+        else if (cmd === 'layoutSelectedChain') layoutSelectedChain();
+        else if (cmd === 'getMoleculeName') getMoleculeName();
+        else if (cmd === 'setMoleculeName') setMoleculeName(args[0]);
+        else if (cmd === 'selectSubstructureMatches') selectSubstructureMatches(args[0]);
+        else if (cmd === 'getSdfProps') getSdfProps();
         else if (cmd === 'getStructure') {
             const structStr = getStructure(args[0]);
             console.log(JSON.stringify({ type: "structureResponse", reqId: args[1], data: structStr }));
@@ -3269,6 +4440,7 @@ rl.on('line', (line) => {
         }
         else if (cmd === 'setShowExplicitH') { _showExplicitH = args[0]; }
         else if (cmd === 'insertFunctionalGroup') insertFunctionalGroup(args[0], args[1], args[2], args[3]);
+        else if (cmd === 'insertLibraryTemplateFused') insertLibraryTemplateFused(args[0], args[1], args[2], args[3]);
         else if (cmd === 'toggleSgroupExpanded') toggleSgroupExpanded(args[0]);
         else if (cmd === 'getGenericsList') {
             var gList = CoreLib.ChemCore.genericsList.map(function(label) { return { label: label } })
@@ -3375,8 +4547,28 @@ rl.on('line', (line) => {
     } catch (e) {
         console.log(JSON.stringify({ status: "error", message: e.toString() }))
     }
-});
+}
 
+// ---- Transport -------------------------------------------------------------
 
-
-
+if (_hasNative) {
+    // The C++ bridge fetches this function off the global object and calls it
+    // directly with a real JS array for args -- no JSON stringify/parse round-trip.
+    globalThis.__dispatchCommand = _dispatchCommand;
+} else {
+    const readline = require("readline");
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+        terminal: false
+    });
+    rl.on('line', (line) => {
+        if (!line.trim()) return;
+        try {
+            const msg = JSON.parse(line);
+            _dispatchCommand(msg.cmd, msg.args || []);
+        } catch (e) {
+            console.log(JSON.stringify({ status: "error", message: e.toString() }))
+        }
+    });
+}

@@ -90,10 +90,11 @@ Item {
                 const hasRadical  = a.radical && a.radical > 0
                 const hasValence  = a.explicitValence !== undefined && a.explicitValence >= 0
                 const hasH        = (a.implicitHCount || 0) > 0
+                const hasAttachment = a.attachmentPoints && a.attachmentPoints > 0
 
                 // Skip unlabelled carbons
                 if (a.element === "C" && a.charge === 0 && !a.stereoLabel &&
-                        !canvas.showExplicitH && !hasIsotope && !hasRadical && !hasValence) {
+                        !canvas.showExplicitH && !hasIsotope && !hasRadical && !hasValence && !hasAttachment) {
                     if (!hasH) continue
                     // Terminal carbons with showExplicitH off still show no label if renderLabel === "C"
                     if (a.label === "C") continue
@@ -135,6 +136,14 @@ Item {
                 ctx.font = "bold " + superSize + "px " + Theme.fontFamilyCss
                 const chargeW = chargeText ? root.measureCached(ctx, chargeText) : 0
 
+                // Attachment point badge ("*1", "*2" etc.)
+                let apText = ""
+                if (hasAttachment) {
+                    apText = "*" + a.attachmentPoints
+                }
+                ctx.font = "bold " + superSize + "px " + Theme.fontFamilyCss
+                const apW = apText ? root.measureCached(ctx, apText) : 0
+
                 // Isotope prefix ("13" for ¹³C)
                 const isoText = hasIsotope ? a.isotope.toString() : ""
                 ctx.font = "bold " + superSize + "px " + Theme.fontFamilyCss
@@ -145,7 +154,7 @@ Item {
                 ctx.font = "bold " + subSize + "px " + Theme.fontFamilyCss
                 const valW = valText ? root.measureCached(ctx, valText) : 0
 
-                let totalWidth = isoW + elemW + hW + hSubW + chargeW + valW
+                let totalWidth = isoW + elemW + hW + hSubW + chargeW + valW + apW
                 let stereoW = 0
                 if (stereoLabel) {
                     ctx.font = "bold " + subSize + "px " + Theme.fontFamilyCss
@@ -227,6 +236,14 @@ Item {
                     ctx.fillStyle = textColor
                     ctx.fillText(chargeText, cx, p.y - fontSize * Theme.superscriptOffset)
                     cx += chargeW
+                }
+
+                // Attachment point superscript
+                if (apText) {
+                    ctx.font = "bold " + superSize + "px " + Theme.fontFamilyCss
+                    ctx.fillStyle = textColor
+                    ctx.fillText(apText, cx, p.y - fontSize * Theme.superscriptOffset)
+                    cx += apW
                 }
 
                 // Explicit valence subscript
@@ -338,6 +355,40 @@ Item {
                     }
                 }
             }
+
+            // Images
+            if (canvas.sketch.primitives.images) {
+                for (let ii = 0; ii < canvas.sketch.primitives.images.length; ii++) {
+                    const imgNode = canvas.sketch.primitives.images[ii]
+                    let tp = canvas.chemToCanvas(imgNode.x, imgNode.y)
+                    let pixelW = imgNode.w * canvas.chemScale
+                    let pixelH = imgNode.h * canvas.chemScale
+
+                    if (canvas.selectedImageId === imgNode.id) {
+                        const ma = canvas.mouseArea
+                        if (ma && ma.resizingSelection) {
+                            const ax = ma.resizeAnchorCanvasX
+                            const ay = ma.resizeAnchorCanvasY
+                            const x1 = ax + (tp.x - ax) * ma.currentResizeFactor
+                            const y1 = ay + (tp.y - ay) * ma.currentResizeFactor
+                            const x2 = ax + (tp.x + pixelW - ax) * ma.currentResizeFactor
+                            const y2 = ay + (tp.y + pixelH - ay) * ma.currentResizeFactor
+                            tp = Qt.point(Math.min(x1, x2), Math.min(y1, y2))
+                            pixelW = Math.abs(x2 - x1)
+                            pixelH = Math.abs(y2 - y1)
+                        } else if (ma && ma.movingImage) {
+                            const dx = ma.mouseX - ma.pressX
+                            const dy = ma.mouseY - ma.pressY
+                            tp = Qt.point(tp.x + dx, tp.y + dy)
+                        }
+                    }
+
+                    const imgItem = imageRepeater.itemAt(ii)
+                    if (imgItem && imgItem.status === Image.Ready) {
+                        ctx.drawImage(imgItem, tp.x, tp.y, pixelW, pixelH)
+                    }
+                }
+            }
         }
 
         Connections {
@@ -346,6 +397,21 @@ Item {
             function onScaleChanged()         { labelCanvas.requestPaint() }
             function onOffsetXChanged()        { if (!canvas || !canvas._panningActive) labelCanvas.requestPaint() }
             function onOffsetYChanged()        { if (!canvas || !canvas._panningActive) labelCanvas.requestPaint() }
+        }
+    }
+
+    Repeater {
+        id: imageRepeater
+        model: canvas && canvas.sketch && canvas.sketch.primitives ? (canvas.sketch.primitives.images || []) : []
+        Image {
+            visible: false
+            source: modelData.bitmap
+            onStatusChanged: {
+                if (status === Image.Ready)
+                    labelCanvas.requestPaint()
+                else if (status === Image.Error)
+                    console.warn("Failed to load embedded image:", modelData.bitmap ? modelData.bitmap.substring(0, 40) : "")
+            }
         }
     }
 }

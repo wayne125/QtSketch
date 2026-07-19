@@ -50,6 +50,7 @@ T.AbstractButton {
             }
         }
         Text {
+            textFormat: Text.PlainText
             anchors { left: parent.left; bottom: parent.bottom; leftMargin: 4; bottomMargin: 2 }
             text: root.label
             color: Theme.textPrimary

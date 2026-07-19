@@ -24,11 +24,22 @@ This application incorporates the following third-party components.
 - **License:** Apache License, Version 2.0 (full text: `indigo/LICENSE`)
 - **Copyright:** © EPAM Systems, Inc.
 
+## Imago (EPAM Systems)
+
+- **What is used:** the Imago C API (`imago.dll` and header under `imago/`) for
+  chemical-structure-image recognition (OCR) on the Insert Image feature.
+- **Source:** https://github.com/epam/Imago
+- **License:** Apache License, Version 2.0 (full text: `imago/LICENSE`)
+- **Copyright:** © EPAM Systems, Inc.
+- **Note:** Imago's own history includes an earlier GPLv3-licensed release (v1, before the
+  2.1 relicense) — this application vendors a build made from current, Apache-2.0-licensed
+  source only, confirmed via the upstream repository's `LICENSE`/`LICENSE-history` files.
+
 ## Apache License 2.0
 
-Both components above are licensed under the Apache License, Version 2.0.
+All three components above are licensed under the Apache License, Version 2.0.
 A full copy of the license text is included in this repository at `indigo/LICENSE`,
 and is also available at: http://www.apache.org/licenses/LICENSE-2.0
 
-Neither the Ketcher nor Indigo names, nor the EPAM Systems name, are used to endorse
-or promote this application.
+Neither the Ketcher, Indigo, nor Imago names, nor the EPAM Systems name, are used to
+endorse or promote this application.

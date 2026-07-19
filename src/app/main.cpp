@@ -5,6 +5,7 @@
 
 #include <QUrl>
 #include "IndigoService.h"
+#include "ImagoService.h"
 #include "FileIO.h"
 #include "AppController.h"
 

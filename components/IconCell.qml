@@ -18,6 +18,12 @@ T.AbstractButton {
     // one directory down, in components/.
     property string iconSource: ""
     property string glyph: ""
+    // Font family + icon-mode flag for glyph-mode call sites that want an
+    // icon-font pictogram (e.g. Material Design Icons) rather than a short
+    // bold text label. Defaults preserve every existing glyph-mode call site
+    // (ToolPanel ring digits, R-group labels, atom-bar labels) unchanged.
+    property string glyphFontFamily: Theme.fontDisplay
+    property bool glyphIsIcon: false
 
     // tip doubles as the ToolTip text and the default accessible name.
     property string tip: ""
@@ -75,15 +81,25 @@ T.AbstractButton {
             opacity: !root.enabled ? Theme.disabledOpacity
                      : root.selected ? 1.0
                      : (root.hovered ? Theme.hoverOpacity : Theme.restOpacity)
+            onStatusChanged: {
+                if (status === Image.Error) {
+                    console.warn("Failed to load icon:", root.iconSource, "(glyphFontFamily: " + root.glyphFontFamily + ")")
+                }
+            }
         }
         Text {
+            textFormat: Text.PlainText
             anchors.centerIn: parent
             visible: root.iconSource === ""
             text: root.glyph
             color: !root.enabled ? Theme.textSecondary
                    : root.hasGlyphColorOverride ? root.glyphColor
                    : root.selected ? root.accentColor : Theme.textPrimary
-            font { pixelSize: root.glyph.length > 2 ? 12 : 18; bold: true; family: Theme.fontDisplay }
+            font {
+                pixelSize: root.glyphIsIcon ? root.iconSize : (root.glyph.length > 2 ? 12 : 18)
+                bold: !root.glyphIsIcon
+                family: root.glyphFontFamily
+            }
         }
     }
 

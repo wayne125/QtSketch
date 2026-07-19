@@ -1,11 +1,12 @@
 #pragma once
 #include <QObject>
-#include <QProcess>
 #include <QVariantMap>
 #include <QVariantList>
 #include <QList>
 #include <QByteArray>
 #include <QtQml/qqml.h>
+#include <memory>
+#include "qjs_engine.h"
 
 class V8Process : public QObject {
     Q_OBJECT
@@ -50,6 +51,7 @@ public:
     Q_INVOKABLE QString serializeMol();
     Q_INVOKABLE void loadStructure(const QString& format, const QString& data);
     Q_INVOKABLE void insertFunctionalGroup(const QString& fgName, double cx, double cy, int targetAtomId = -1);
+    Q_INVOKABLE void insertLibraryTemplateFused(const QString& fgName, double cx, double cy, int targetBondId);
     Q_INVOKABLE void requestSaltsAndSolventsList();
     Q_INVOKABLE void requestFunctionalGroupsList();
     Q_INVOKABLE void requestTemplateLibraryList();
@@ -74,18 +76,24 @@ public:
     Q_INVOKABLE void setAtomMapping(int id, int mapping);
     Q_INVOKABLE void changeBondType(int id, int type, int stereo = 0);
     Q_INVOKABLE void changeAtomCharge(int id, int charge);
+    Q_INVOKABLE void setAttachmentPoint(int id, int order);
     Q_INVOKABLE void changeAtomIsotope(int id, int isotope);
     Q_INVOKABLE void changeAtomRadical(int id, int radical);
     Q_INVOKABLE void changeAtomValence(int id, int valence);
     Q_INVOKABLE void requestAtomProperties(int id);
     Q_INVOKABLE void selectByRect(double x1, double y1, double x2, double y2);
     Q_INVOKABLE void addSelectionByRect(double x1, double y1, double x2, double y2);
+    Q_INVOKABLE void selectByLasso(const QVariantList& pointsFlat);
     Q_INVOKABLE void selectItem(const QVariant& atomId, const QVariant& bondId, const QVariant& rxnArrowId = QVariant(), const QVariant& rxnPlusId = QVariant(), const QVariant& multitailArrowId = QVariant());
     Q_INVOKABLE void addItemToSelection(const QVariant& atomId, const QVariant& bondId);
     Q_INVOKABLE void removeItemFromSelection(const QVariant& atomId, const QVariant& bondId);
     Q_INVOKABLE void selectFragment(const QVariant& atomId, const QVariant& bondId);
     Q_INVOKABLE void moveSelection(double dx, double dy);
     Q_INVOKABLE void commitMove();
+    Q_INVOKABLE void rotateSelectionLive(double angleDelta);
+    Q_INVOKABLE void commitRotate();
+    Q_INVOKABLE void scaleSelectionLive(double factor, double anchorX, double anchorY);
+    Q_INVOKABLE void commitScale();
     Q_INVOKABLE void centerStructure();
     Q_INVOKABLE void normalizeStructure();
 
@@ -96,6 +104,8 @@ public:
     Q_INVOKABLE void addText(const QString& content, double x, double y);
     Q_INVOKABLE void updateText(int id, const QString& content);
     Q_INVOKABLE void deleteText(int id);
+    Q_INVOKABLE void addImage(const QString& base64DataUri, double cx, double cy, double halfW, double halfH);
+    Q_INVOKABLE void deleteImage(int id);
 
     Q_INVOKABLE void setStereoDescriptors(const QString& jsonMap);
 
@@ -120,15 +130,13 @@ signals:
     void structureReady(const QString& reqId, const QString& data);
     void errorOccurred(const QString& error);
 
-private slots:
-    void onReadyReadStandardOutput();
-    void onProcessError(QProcess::ProcessError error);
-    void onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus);
-    void onProcessStarted();
-
 private:
-    QProcess *m_process;
-    QList<QByteArray> m_pendingCommands;
+    // Replaces the old QProcess-based onReadyReadStandardOutput: called once per
+    // JSON line the worker emits via console.log, whether that line came from
+    // QjsEngine's synchronous native_log callback (see qjs_engine.cpp).
+    void handleWorkerLine(const QString &line);
+
+    std::unique_ptr<QjsEngine> m_engine;
     QVariantMap m_primitives;
     QVariantMap m_selection;
     QVariantMap m_overlayState;

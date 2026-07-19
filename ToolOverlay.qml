@@ -98,6 +98,80 @@ Item {
                 ctx.setLineDash([])
             }
 
+            // Lasso select: freehand path, visually closed back to its start point.
+            const lassoPath = canvas.sketch.overlayState.lassoPath
+            if (lassoPath && lassoPath.length > 1) {
+                ctx.beginPath()
+                ctx.moveTo(lassoPath[0].x, lassoPath[0].y)
+                for (let i = 1; i < lassoPath.length; i++) ctx.lineTo(lassoPath[i].x, lassoPath[i].y)
+                ctx.closePath()
+                ctx.strokeStyle = Theme.dragRect
+                ctx.lineWidth = 1
+                ctx.setLineDash([4, 3])
+                ctx.stroke()
+                ctx.fillStyle = Theme.dragFill
+                ctx.fill()
+                ctx.setLineDash([])
+            }
+
+            // Rotate tool: bbox outline + drag handle at the top-right corner,
+            // shown only once a qualifying (>=2 atom) selection exists.
+            // PowerPoint-style selection handles: appear automatically whenever
+            // SELECT/SELECT_FRAGMENT has a qualifying (>=2 point) selection --
+            // no separate tool needed (see selectionBBoxCanvas/selectionHandles
+            // in ChemCanvas.qml).
+            if (canvas.currentTool === "SELECT" || canvas.currentTool === "SELECT_FRAGMENT") {
+                const bbox = canvas.selectionBBoxCanvas()
+                if (bbox) {
+                    ctx.strokeStyle = Theme.selectionOverlayStrong
+                    ctx.lineWidth = 1
+                    ctx.setLineDash([4, 3])
+                    ctx.strokeRect(bbox.minX, bbox.minY, bbox.maxX - bbox.minX, bbox.maxY - bbox.minY)
+                    ctx.setLineDash([])
+
+                    const handles = canvas.selectionHandles(bbox)
+
+                    ctx.fillStyle = Theme.accent
+                    ctx.strokeStyle = Theme.surface
+                    ctx.lineWidth = 1
+                    const corner = 4  // 4 corner handles are the first 4 entries
+                    for (let hi = 0; hi < handles.resize.length; ++hi) {
+                        const h = handles.resize[hi]
+                        const sz = 5
+                        if (hi < corner) {
+                            // Filled square corner handle
+                            ctx.fillRect(h.x - sz, h.y - sz, sz * 2, sz * 2)
+                            ctx.strokeRect(h.x - sz, h.y - sz, sz * 2, sz * 2)
+                        } else {
+                            // Hollow square side/middle handle
+                            ctx.fillStyle = Theme.surface
+                            ctx.fillRect(h.x - sz, h.y - sz, sz * 2, sz * 2)
+                            ctx.strokeRect(h.x - sz, h.y - sz, sz * 2, sz * 2)
+                            ctx.fillStyle = Theme.accent
+                        }
+                    }
+
+                    if (canvas.selectedImageId < 0) {
+                        // Rotate handle: line connecting it to the top edge, plus a
+                        // circular handle.
+                        ctx.strokeStyle = Theme.selectionOverlayStrong
+                        ctx.lineWidth = 1
+                        ctx.beginPath()
+                        ctx.moveTo(handles.rotate.x, bbox.minY)
+                        ctx.lineTo(handles.rotate.x, handles.rotate.y)
+                        ctx.stroke()
+
+                        ctx.beginPath()
+                        ctx.arc(handles.rotate.x, handles.rotate.y, 6, 0, Math.PI * 2)
+                        ctx.fillStyle = Theme.accent
+                        ctx.fill()
+                        ctx.strokeStyle = Theme.surface
+                        ctx.lineWidth = 1.5
+                        ctx.stroke()
+                    }
+                }
+            }
+
             if (canvas.sketch.overlayState.bondPreview) {
                 let p1 = null
                 if (canvas.sketch.overlayState.bondPreview.startAtomId !== null && canvas.sketch.overlayState.bondPreview.startAtomId !== undefined && canvas.sketch.primitives.atomsById[canvas.sketch.overlayState.bondPreview.startAtomId.toString()]) {
@@ -173,7 +247,21 @@ Item {
                     ctx.font = "bold " + Theme.clampFontSize(Theme.baseFontSize, root.scale) + "px " + Theme.fontFamilyCss
                     ctx.textAlign = "center"
                     ctx.textBaseline = "middle"
-                    ctx.fillText(pa.label, p.x, p.y)
+                    if (pa.label) ctx.fillText(pa.label, p.x, p.y)
+                }
+
+                // Chain tool: floating bond-count label next to the drag endpoint, matching
+                // the live carbon-count readout other chemistry editors show during a chain
+                // drag. previewAtoms.length - 1 == the bond count (ChainPlacementEngine emits
+                // nBonds+1 atoms).
+                if (canvas.currentTool === "CHAIN" && canvas.sketch.overlayState.previewAtoms.length > 1) {
+                    const lastAtom = canvas.sketch.overlayState.previewAtoms[canvas.sketch.overlayState.previewAtoms.length - 1]
+                    const lp = canvas.chemToCanvas(lastAtom.x, lastAtom.y)
+                    ctx.fillStyle = Theme.textSecondary
+                    ctx.font = Theme.clampFontSize(Theme.fontSizeCaption, root.scale) + "px " + Theme.fontFamilyCss
+                    ctx.textAlign = "left"
+                    ctx.textBaseline = "middle"
+                    ctx.fillText(String(canvas.sketch.overlayState.previewAtoms.length - 1), lp.x + 8, lp.y - 8)
                 }
             }
         }
@@ -288,5 +376,11 @@ Item {
     Connections {
         target: canvas ? canvas.sketch : null
         function onOverlayStateChanged() { overlayCanvas.requestPaint() }
+        function onSelectionChanged() { overlayCanvas.requestPaint() }
+    }
+
+    Connections {
+        target: canvas
+        function onCurrentToolChanged() { overlayCanvas.requestPaint() }
     }
 }

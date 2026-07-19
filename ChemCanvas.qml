@@ -1,4 +1,4 @@
-﻿import QtQuick
+import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Shapes
@@ -17,6 +17,12 @@ Item {
     // runs inside the Node.js worker process, not the QML engine).
     readonly property real chemScale: scale * bondLength
 
+    // Page/canvas boundary, in chemical-coordinate space. Must match
+    // src/v8_worker.js's PAGE_MIN_X/MAX_X/MIN_Y/MAX_Y (kept in sync manually) --
+    // this is only the visual outline; the actual hard clamp lives in the
+    // worker functions that place/move/rotate content.
+    readonly property rect pageBounds: Qt.rect(-30, -21, 60, 42)
+
     // Bound by MainWindow's per-document Repeater to this canvas's V8Process instance.
     property var sketch: null
     property string currentTool: "SELECT" // "SELECT", "BOND", "ATOM", "BENZENE"
@@ -31,6 +37,11 @@ Item {
     property bool isDirty: false
     property bool canUndo: false
     property bool canRedo: false
+    property int selectedImageId: -1
+    property alias mouseArea: mouse
+    onCurrentToolChanged: {
+        selectedImageId = -1
+    }
 
     property int _renderVersion: 0
     property int _overlayVersion: 0
@@ -45,6 +56,7 @@ Item {
     signal atomPropertiesRequested(int atomId)
     // Emitted by the TEXT tool: textId is -1 for "create new at (chemX, chemY)"
     signal textEditRequested(int textId, string content, real chemX, real chemY)
+    signal imageInsertRequested(real cx, real cy)
 
     // Finds a text annotation near a canvas point (px tolerance), or null.
     function hitTestText(cx, cy) {
@@ -53,6 +65,18 @@ Item {
             const t = sketch.primitives.texts[i]
             const p = chemToCanvas(t.x, t.y)
             if (Math.abs(p.x - cx) < 60 && Math.abs(p.y - cy) < 20) return t
+        }
+        return null
+    }
+
+    function hitTestImage(cx, cy) {
+        if (!sketch || !sketch.primitives || !sketch.primitives.images) return null
+        for (let i = 0; i < sketch.primitives.images.length; i++) {
+            const img = sketch.primitives.images[i]
+            const tl = chemToCanvas(img.x, img.y)
+            const pw = img.w * chemScale
+            const ph = img.h * chemScale
+            if (cx >= tl.x && cx <= tl.x + pw && cy >= tl.y && cy <= tl.y + ph) return img
         }
         return null
     }
@@ -159,6 +183,7 @@ Item {
             else if (event.key === Qt.Key_B) { currentTool = "BOND_1"; event.accepted = true }
             else if (event.key === Qt.Key_E) { currentTool = "ERASE"; event.accepted = true }
             else if (event.key === Qt.Key_R) { currentTool = "TEMPLATE_BENZENE"; event.accepted = true }
+            else if (event.key === Qt.Key_H) { currentTool = "HAND"; event.accepted = true }
         }
         if (event.key === Qt.Key_Left || event.key === Qt.Key_Right ||
                 event.key === Qt.Key_Up || event.key === Qt.Key_Down) {
@@ -386,6 +411,115 @@ Item {
         return Qt.point((cx - offsetX) / f, (cy - offsetY) / f)
     }
 
+    // Canvas-space bounding box of the current selection, across every
+    // selectable type (atoms, reaction arrows, rxn-plus signs, multitail
+    // arrows -- mirrors moveSelection's own multi-type handling in
+    // src/v8_worker.js), or null if fewer than 2 distinct points are present.
+    // Drives the PowerPoint-style resize/rotate handles drawn on the selection.
+    function selectionBBoxCanvas() {
+        if (selectedImageId >= 0 && sketch && sketch.primitives && sketch.primitives.images) {
+            for (let i = 0; i < sketch.primitives.images.length; i++) {
+                const img = sketch.primitives.images[i]
+                if (img.id === selectedImageId) {
+                    const tp = chemToCanvas(img.x, img.y)
+                    let pixelW = img.w * chemScale
+                    let pixelH = img.h * chemScale
+                    let x1 = tp.x
+                    let y1 = tp.y
+                    let x2 = tp.x + pixelW
+                    let y2 = tp.y + pixelH
+                    if (mouse.resizingSelection) {
+                        const ax = mouse.resizeAnchorCanvasX
+                        const ay = mouse.resizeAnchorCanvasY
+                        x1 = ax + (x1 - ax) * mouse.currentResizeFactor
+                        y1 = ay + (y1 - ay) * mouse.currentResizeFactor
+                        x2 = ax + (x2 - ax) * mouse.currentResizeFactor
+                        y2 = ay + (y2 - ay) * mouse.currentResizeFactor
+                    } else if (mouse.movingImage) {
+                        const dx = mouse.mouseX - mouse.pressX
+                        const dy = mouse.mouseY - mouse.pressY
+                        x1 += dx
+                        y1 += dy
+                        x2 += dx
+                        y2 += dy
+                    }
+                    return {
+                        minX: Math.min(x1, x2),
+                        minY: Math.min(y1, y2),
+                        maxX: Math.max(x1, x2),
+                        maxY: Math.max(y1, y2)
+                    }
+                }
+            }
+        }
+        if (!sketch || !sketch.selection || !sketch.primitives) return null
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+        let count = 0
+        function feed(cx, cy) {
+            const p = chemToCanvas(cx, cy)
+            if (p.x < minX) minX = p.x
+            if (p.x > maxX) maxX = p.x
+            if (p.y < minY) minY = p.y
+            if (p.y > maxY) maxY = p.y
+            count++
+        }
+        const atomIds = sketch.selection.atom_ids || []
+        for (let i = 0; i < atomIds.length; ++i) {
+            const a = sketch.primitives.atomsById ? sketch.primitives.atomsById[atomIds[i].toString()] : null
+            if (a) feed(a.x, a.y)
+        }
+        const arrowIds = sketch.selection.rxnArrow_ids || []
+        if (arrowIds.length > 0 && sketch.primitives.rxnArrows) {
+            for (let i = 0; i < sketch.primitives.rxnArrows.length; ++i) {
+                const ar = sketch.primitives.rxnArrows[i]
+                if (arrowIds.indexOf(ar.id) < 0) continue
+                if (ar.p1) feed(ar.p1.x, ar.p1.y)
+                if (ar.p2) feed(ar.p2.x, ar.p2.y)
+            }
+        }
+        const plusIds = sketch.selection.rxnPlus_ids || []
+        if (plusIds.length > 0 && sketch.primitives.rxnPluses) {
+            for (let i = 0; i < sketch.primitives.rxnPluses.length; ++i) {
+                const pl = sketch.primitives.rxnPluses[i]
+                if (plusIds.indexOf(pl.id) >= 0) feed(pl.x, pl.y)
+            }
+        }
+        const mtaIds = sketch.selection.multitailArrow_ids || []
+        if (mtaIds.length > 0 && sketch.primitives.multitailArrows) {
+            for (let i = 0; i < sketch.primitives.multitailArrows.length; ++i) {
+                const mta = sketch.primitives.multitailArrows[i]
+                if (mtaIds.indexOf(mta.id) < 0) continue
+                feed(mta.spineTopX, mta.spineTopY)
+                feed(mta.spineTopX, mta.spineTopY + mta.height)
+            }
+        }
+        if (count < 2) return null
+        return { minX: minX, minY: minY, maxX: maxX, maxY: maxY }
+    }
+
+    // PowerPoint-style handle geometry for a selection bbox: 4 corner handles,
+    // 4 edge-midpoint handles, and 1 rotate handle above the top edge. Each
+    // resize handle carries its geometric opposite point ("anchor") -- the
+    // point that stays fixed while dragging that handle -- since resize scales
+    // about the opposite corner/edge, not the centroid (unlike rotate).
+    function selectionHandles(bbox) {
+        const cxm = (bbox.minX + bbox.maxX) / 2
+        const cym = (bbox.minY + bbox.maxY) / 2
+        return {
+            rotate: { x: cxm, y: bbox.minY - 24 },
+            resize: [
+                { x: bbox.minX, y: bbox.minY, anchorX: bbox.maxX, anchorY: bbox.maxY, cursor: Qt.SizeFDiagCursor },
+                { x: bbox.maxX, y: bbox.minY, anchorX: bbox.minX, anchorY: bbox.maxY, cursor: Qt.SizeBDiagCursor },
+                { x: bbox.maxX, y: bbox.maxY, anchorX: bbox.minX, anchorY: bbox.minY, cursor: Qt.SizeFDiagCursor },
+                { x: bbox.minX, y: bbox.maxY, anchorX: bbox.maxX, anchorY: bbox.minY, cursor: Qt.SizeBDiagCursor },
+                { x: cxm, y: bbox.minY, anchorX: cxm, anchorY: bbox.maxY, cursor: Qt.SizeVerCursor },
+                { x: cxm, y: bbox.maxY, anchorX: cxm, anchorY: bbox.minY, cursor: Qt.SizeVerCursor },
+                { x: bbox.minX, y: cym, anchorX: bbox.maxX, anchorY: cym, cursor: Qt.SizeHorCursor },
+                { x: bbox.maxX, y: cym, anchorX: bbox.minX, anchorY: cym, cursor: Qt.SizeHorCursor }
+            ]
+        }
+    }
+
     function fitToMolecule() {
         const prims = sketch.primitives
         if (!prims || !prims.bbox) return
@@ -470,13 +604,18 @@ Item {
             ctx.globalAlpha = 0.18
             const startX = root.offsetX % gridSize
             const startY = root.offsetY % gridSize
+            ctx.beginPath()
             for (let x = startX; x < width; x += gridSize) {
                 for (let y = startY; y < height; y += gridSize) {
-                    ctx.beginPath()
+                    // moveTo before each arc starts a fresh subpath at the circle's own
+                    // starting point -- without it, arc() draws a straight connecting line
+                    // from the previous circle's endpoint to this one's start, turning the
+                    // whole column into one continuous filled wedge instead of separate dots.
+                    ctx.moveTo(x + dotRadius, y)
                     ctx.arc(x, y, dotRadius, 0, Math.PI * 2)
-                    ctx.fill()
                 }
             }
+            ctx.fill()
             ctx.globalAlpha = 1.0
         }
     }
@@ -550,7 +689,24 @@ Item {
         acceptedButtons: Qt.AllButtons
         cursorShape: {
             if (mouse.panning) return Qt.ClosedHandCursor
-            if (currentTool === "SELECT" || currentTool === "SELECT_FRAGMENT") return Qt.ArrowCursor
+            if (rotatingSelection) return Qt.CrossCursor
+            if (resizingSelection) return Qt.SizeAllCursor
+            if (currentTool === "HAND") return Qt.OpenHandCursor
+            if (currentTool === "SELECT" || currentTool === "SELECT_FRAGMENT") {
+                const hb = selectionBBoxCanvas()
+                if (hb) {
+                    const handles = selectionHandles(hb)
+                    const rdx = mouse.mouseX - handles.rotate.x, rdy = mouse.mouseY - handles.rotate.y
+                    if (rdx * rdx + rdy * rdy <= 100) return Qt.CrossCursor
+                    for (let hi = 0; hi < handles.resize.length; ++hi) {
+                        const h = handles.resize[hi]
+                        const hdx = mouse.mouseX - h.x, hdy = mouse.mouseY - h.y
+                        if (hdx * hdx + hdy * hdy <= 64) return h.cursor
+                    }
+                }
+                return Qt.ArrowCursor
+            }
+            if (currentTool === "SELECT_LASSO") return Qt.ArrowCursor
             if (currentTool === "ERASE") return Qt.PointingHandCursor
             return Qt.CrossCursor
         }
@@ -565,6 +721,29 @@ Item {
         property bool movingSelection: false
         property bool shiftAtPress: false
 
+        // Selection-handle rotate drag state (canvas-space center + unwrapped
+        // accumulated angle, so a full-circle drag doesn't jump at the atan2
+        // +-pi seam). Triggered by grabbing the bbox's rotate handle directly
+        // in SELECT/SELECT_FRAGMENT mode -- no separate tool needed.
+        property bool rotatingSelection: false
+        property real rotateCenterX: 0
+        property real rotateCenterY: 0
+        property real rotateLastAngle: 0
+        property real rotateRawTotal: 0
+        property real rotateAppliedTotal: 0
+
+        // Selection-handle resize drag state. The anchor (canvas-space at
+        // press time, chem-space for the backend call) is the handle's
+        // geometric opposite point and stays fixed for the whole drag.
+        property bool resizingSelection: false
+        property real resizeAnchorCanvasX: 0
+        property real resizeAnchorCanvasY: 0
+        property real resizeAnchorChemX: 0
+        property real resizeAnchorChemY: 0
+        property real resizeOrigDist: 0
+        property bool movingImage: false
+        property real currentResizeFactor: 1.0
+
         onWheel: (wheel) => {
             const factor = wheel.angleDelta.y > 0 ? 1.15 : (1.0 / 1.15)
             zoomAt(wheel.x, wheel.y, factor)
@@ -577,7 +756,7 @@ Item {
             startPressX = m.x
             startPressY = m.y
             shiftAtPress = (m.modifiers & Qt.ShiftModifier) !== 0
-            if (m.button === Qt.MiddleButton) {
+            if (m.button === Qt.MiddleButton || (m.button === Qt.LeftButton && currentTool === "HAND")) {
                 panning = true
                 _panningActive = true
                 return
@@ -598,6 +777,46 @@ Item {
                 const hitMultitailArrow = (hitAtom === null && hitBond === null && hitRxnArrow === null && hitRxnPlus === null) ? selectionLayer.hitTestMultitailArrow(m.x, m.y) : null
                 
                 if (currentTool === "SELECT" || currentTool === "SELECT_FRAGMENT") {
+                    // PowerPoint-style selection handles take priority over the
+                    // normal hit-test below since they're drawn on top and only
+                    // exist when a qualifying selection is already present.
+                    const handleBBox = selectionBBoxCanvas()
+                    if (handleBBox) {
+                        const handles = selectionHandles(handleBBox)
+                        const rdx = m.x - handles.rotate.x, rdy = m.y - handles.rotate.y
+                        if (rdx * rdx + rdy * rdy <= 100) {
+                            if (selectedImageId >= 0) return
+                            const cxm = (handleBBox.minX + handleBBox.maxX) / 2
+                            const cym = (handleBBox.minY + handleBBox.maxY) / 2
+                            rotatingSelection = true
+                            rotateCenterX = cxm
+                            rotateCenterY = cym
+                            rotateLastAngle = Math.atan2(m.y - cym, m.x - cxm)
+                            rotateRawTotal = 0
+                            rotateAppliedTotal = 0
+                            return
+                        }
+                        for (let hi = 0; hi < handles.resize.length; ++hi) {
+                            const h = handles.resize[hi]
+                            const hdx = m.x - h.x, hdy = m.y - h.y
+                            if (hdx * hdx + hdy * hdy <= 64) {
+                                const anchorChem = canvasToChem(h.anchorX, h.anchorY)
+                                resizingSelection = true
+                                resizeAnchorCanvasX = h.anchorX
+                                resizeAnchorCanvasY = h.anchorY
+                                resizeAnchorChemX = anchorChem.x
+                                resizeAnchorChemY = anchorChem.y
+                                resizeOrigDist = Math.sqrt((h.x - h.anchorX) * (h.x - h.anchorX) + (h.y - h.anchorY) * (h.y - h.anchorY))
+                                currentResizeFactor = 1.0
+                                return
+                            }
+                        }
+                    }
+
+                    if (hitAtom !== null || hitBond !== null || hitRxnArrow !== null || hitRxnPlus !== null || hitMultitailArrow !== null) {
+                        selectedImageId = -1
+                    }
+
                     const shiftHeld = (m.modifiers & Qt.ShiftModifier) !== 0
                     if (shiftHeld && hitAtom !== null) {
                         // Shift+click atom: toggle membership in selection
@@ -644,19 +863,13 @@ Item {
                                 movingSelection = true
                                 setOverlayState({ hoverAtomId: hitAtom, hoverBondId: null, dragRect: null, bondPreview: null })
                             } else {
-                                sketch.selectItem(null, null)
+                                // Dragging an unselected atom moves it (ChemDraw-style: drag always
+                                // moves). Extending a structure by dragging out a bond is still
+                                // available via the dedicated BOND_* tools.
+                                sketch.selectItem(hitAtom, null)
                                 isDragging = true
-                                movingSelection = false
-                                setOverlayState({
-                                    hoverAtomId: hitAtom,
-                                    hoverBondId: hitBond,
-                                    dragRect: null,
-                                    bondPreview: {
-                                        startAtomId: hitAtom,
-                                        endX: m.x,
-                                        endY: m.y
-                                    }
-                                })
+                                movingSelection = true
+                                setOverlayState({ hoverAtomId: hitAtom, hoverBondId: null, dragRect: null, bondPreview: null })
                             }
                         }
                     } else if (hitBond !== null) {
@@ -670,14 +883,11 @@ Item {
                             isDragging = true
                             movingSelection = true
                         } else {
+                            // Dragging an unselected bond moves it (matches the atom case above).
+                            sketch.selectItem(null, hitBond)
                             isDragging = true
-                            movingSelection = false
-                            setOverlayState({
-                                hoverAtomId: null,
-                                hoverBondId: hitBond,
-                                dragRect: Qt.rect(m.x, m.y, 0, 0),
-                                bondPreview: null
-                            })
+                            movingSelection = true
+                            setOverlayState({ hoverAtomId: null, hoverBondId: hitBond, dragRect: null, bondPreview: null })
                         }
                     } else if (hitRxnArrow !== null) {
                         sketch.selectItem(null, null, hitRxnArrow, null)
@@ -692,15 +902,26 @@ Item {
                         isDragging = true
                         movingSelection = true
                     } else {
-                        sketch.selectItem(null, null)
-                        isDragging = true
-                        movingSelection = false
-                        setOverlayState({
-                            hoverAtomId: null,
-                            hoverBondId: null,
-                            dragRect: Qt.rect(m.x, m.y, 0, 0),
-                            bondPreview: null
-                        })
+                        // Nothing chemical hit. Check image hit.
+                        const hitImg = hitTestImage(m.x, m.y)
+                        if (hitImg) {
+                            selectedImageId = hitImg.id
+                            isDragging = true
+                            movingImage = true
+                            sketch.selectItem(null, null)
+                            refresh()
+                        } else {
+                            selectedImageId = -1
+                            sketch.selectItem(null, null)
+                            isDragging = true
+                            movingSelection = false
+                            setOverlayState({
+                                hoverAtomId: null,
+                                hoverBondId: null,
+                                dragRect: Qt.rect(m.x, m.y, 0, 0),
+                                bondPreview: null
+                            })
+                        }
                     }
                 } else if (currentTool === "ERASE") {
                     if (hitAtom !== null) {
@@ -749,7 +970,12 @@ Item {
                 } else if (currentTool.startsWith("ATOM_") || currentTool.startsWith("FG_") || currentTool.startsWith("SS_") || currentTool.startsWith("LIB_") || currentTool.startsWith("TEMPLATE_")) {
                     if (hitAtom !== null) {
                         const cP = canvasToChem(m.x, m.y)
-                        AppController.handleDragStart(currentTool, hitAtom, m.x, m.y, cP.x, cP.y)
+                        // resolveHitAtom: hitAtom may be a contracted sgroup pill id here.
+                        // The drag-end fallback path already resolves this (see
+                        // resolveHitAtom(hid) below); without it here too, starting a drag
+                        // on top of an existing pill grafts nothing and the new group lands
+                        // as a disconnected fragment instead of bonding to it.
+                        AppController.handleDragStart(currentTool, resolveHitAtom(hitAtom), m.x, m.y, cP.x, cP.y)
                         isAppControllerDragging = true
                     } else {
                         if (currentTool.startsWith("ATOM_")) {
@@ -764,7 +990,16 @@ Item {
                             refresh()
                         } else if (currentTool.startsWith("LIB_")) {
                             const cP = canvasToChem(m.x, m.y)
-                            sketch.insertFunctionalGroup(currentTool.substring(4), cP.x, cP.y)
+                            // Clicking directly on an existing bond fuses the template's
+                            // designated ring edge onto it (library.sdf <bondid> metadata);
+                            // the worker falls back to plain placement itself when the
+                            // template has no fusion metadata, so no check needed here.
+                            // Mirrors the TEMPLATE_ branch below, which already passes
+                            // hitBond into getRingPreviewCoords the same way.
+                            if (hitBond !== null)
+                                sketch.insertLibraryTemplateFused(currentTool.substring(4), cP.x, cP.y, hitBond)
+                            else
+                                sketch.insertFunctionalGroup(currentTool.substring(4), cP.x, cP.y)
                             refresh()
                         } else if (currentTool.startsWith("TEMPLATE_")) {
                             const cP2 = canvasToChem(m.x, m.y)
@@ -805,6 +1040,9 @@ Item {
                     } else {
                         textEditRequested(-1, "", cP.x, cP.y)
                     }
+                } else if (currentTool === "IMAGE") {
+                    const cP = canvasToChem(m.x, m.y)
+                    imageInsertRequested(cP.x, cP.y)
                 } else if (currentTool === "RXN_ARROW") {
                     const cP = canvasToChem(m.x, m.y)
                     sketch.addRxnArrow(cP.x, cP.y, currentArrowMode)
@@ -819,24 +1057,33 @@ Item {
                     refresh()
                 } else if (currentTool.startsWith("CHARGE_")) {
                     if (hitAtom !== null) {
-                        const atom = sketch.primitives.atomsById[hitAtom.toString()]
+                        // resolveHitAtom: hitAtom may be a contracted sgroup pill id, which
+                        // isn't a real entry in the backend's atom table -- changeAtomCharge
+                        // would silently do nothing without this (same fix as resolveHitAtom's
+                        // other callers, e.g. bond drawing).
+                        const realAtomId = resolveHitAtom(hitAtom)
+                        const atom = sketch.primitives.atomsById[realAtomId.toString()]
                         if (atom) {
                             const currentCharge = atom.charge || 0
                             const newCharge = currentTool === "CHARGE_PLUS" ? currentCharge + 1 : currentCharge - 1
-                            sketch.changeAtomCharge(hitAtom, newCharge)
+                            sketch.changeAtomCharge(realAtomId, newCharge)
                             refresh()
                         }
                     }
                 } else if (currentTool === "AAM") {
                     if (hitAtom !== null) {
-                        const atom = sketch.primitives.atomsById[hitAtom.toString()]
+                        const realAtomId = resolveHitAtom(hitAtom)
+                        const atom = sketch.primitives.atomsById[realAtomId.toString()]
                         if (atom) {
                             const currentAam = atom.aam || 0
                             const newAam = (m.modifiers & Qt.ShiftModifier) ? 0 : (currentAam >= 99 ? 0 : currentAam + 1)
-                            sketch.setAtomMapping(hitAtom, newAam)
+                            sketch.setAtomMapping(realAtomId, newAam)
                             refresh()
                         }
                     }
+                } else if (currentTool === "SELECT_LASSO") {
+                    isDragging = true
+                    setOverlayState({ hoverAtomId: null, hoverBondId: null, dragRect: null, bondPreview: null, lassoPath: [Qt.point(m.x, m.y)] })
                 }
             }
         }
@@ -850,35 +1097,110 @@ Item {
                 setOverlayState({ hoverAtomId: null, hoverBondId: null, dragRect: null, bondPreview: null })
                 return
             }
-            
+
+            if (rotatingSelection) {
+                const angleNow = Math.atan2(m.y - rotateCenterY, m.x - rotateCenterX)
+                let d = angleNow - rotateLastAngle
+                if (d > Math.PI) d -= 2 * Math.PI
+                if (d < -Math.PI) d += 2 * Math.PI
+                rotateRawTotal += d
+                rotateLastAngle = angleNow
+                const shiftHeld = (m.modifiers & Qt.ShiftModifier) !== 0
+                const step = Math.PI / 12  // 15 degrees
+                const desiredTotal = shiftHeld ? Math.round(rotateRawTotal / step) * step : rotateRawTotal
+                const incremental = desiredTotal - rotateAppliedTotal
+                if (incremental !== 0) {
+                    sketch.rotateSelectionLive(incremental)
+                    rotateAppliedTotal = desiredTotal
+                    refresh()
+                }
+                return
+            }
+
+            if (resizingSelection) {
+                const rdx = m.x - resizeAnchorCanvasX, rdy = m.y - resizeAnchorCanvasY
+                const dist = Math.sqrt(rdx * rdx + rdy * rdy)
+                if (resizeOrigDist > 0) {
+                    const factor = dist / resizeOrigDist
+                    if (selectedImageId >= 0) {
+                        currentResizeFactor = factor
+                        _renderVersion++
+                    } else {
+                        sketch.scaleSelectionLive(factor, resizeAnchorChemX, resizeAnchorChemY)
+                        refresh()
+                    }
+                }
+                return
+            }
+
             const hoverAtomId = selectionLayer.hitTestAtom(m.x, m.y)
             const hoverBondId = hoverAtomId === null ? selectionLayer.hitTestBond(m.x, m.y) : null
 
             if (isAppControllerDragging) {
-                AppController.handleDrag(m.x, m.y, 1.0)
+                // Was hardcoded (m.x, m.y, 1.0): the pixel-to-chemical conversion inside
+                // PlacementPreviewManager::updatePreview used a stale hardcoded 37.8
+                // instead of the actual zoom-aware chemScale (pixels per 1 chemical unit,
+                // same value canvasToChem/chemToCanvas use), and the placement distance was
+                // 1.0 chemical units instead of 1.5 (chem-core.js's StandardBondLength) --
+                // together, every drag-placed atom/fragment landed at the wrong distance
+                // from its neighbor, worse the more zoomed in/out you were.
+                AppController.handleDrag(m.x, m.y, chemScale, 1.5)
                 return
             }
 
             if (isDragging) {
                 if (!(m.buttons & Qt.LeftButton)) {
                     isDragging = false
+                    AppController.clearChainPreview()
                     setOverlayState({ hoverAtomId: hoverAtomId, hoverBondId: hoverBondId, dragRect: null, bondPreview: null })
                     return
                 }
 
                 if (currentTool === "CHAIN") {
+                    // Live zigzag ghost (matches what addChain will actually commit) via
+                    // AppController/ChainPlacementEngine, published into overlayState.
+                    // previewAtoms/previewBonds and rendered by ToolOverlay.qml. bondPreview
+                    // itself is deliberately left frozen at its press-time value (a zero-length
+                    // segment) rather than updated to the live mouse position, so the old plain
+                    // rubber-band line this overlay used to draw for CHAIN doesn't render on
+                    // top of the new zigzag ghost.
+                    //
+                    // Ordering matters here: setOverlayState() replaces sketch.overlayState
+                    // wholesale (it's `sketch.overlayState = s`, not a merge), while
+                    // AppController.updateChainPreview() does a proper C++-side read-modify-write
+                    // that preserves whatever is already in overlayState. Calling
+                    // updateChainPreview() AFTER setOverlayState() means its merge is the one
+                    // that lands; doing it the other way around silently wiped out the
+                    // previewAtoms/previewBonds it had just set, one JS tick before any repaint.
                     const bp = sketch.overlayState.bondPreview
                     if (bp) {
-                        setOverlayState({
-                            hoverAtomId: null, hoverBondId: null, dragRect: null,
-                            bondPreview: { startX: bp.startX, startY: bp.startY, endX: m.x, endY: m.y }
-                        })
+                        const curChem = canvasToChem(m.x, m.y)
+                        setOverlayState({ hoverAtomId: null, hoverBondId: null, dragRect: null, bondPreview: bp })
+                        // Chain geometry lives in chem-coordinate space (bp.startX/startY and
+                        // curChem are both canvasToChem output), so the divisor here must be
+                        // v8_worker.js addChain's own chem-unit bond length (chem-core.js:
+                        // StandardBondLength = MonomerSize(0.75) * 2 = 1.5) - NOT root.bondLength
+                        // (Theme.baseBondLength, a PIXEL value used for canvas<->chem scaling
+                        // elsewhere). Passing the pixel value here was the first attempt and
+                        // produced a wildly oversized single-segment ghost: a chem-space distance
+                        // of ~13 units divided by ~19 (pixels, wrong unit) rounds down to 1 bond,
+                        // then that 1 bond's "length" gets stepped by 19 chem-units instead of
+                        // 1.5, landing the second atom ~19x too far away.
+                        AppController.updateChainPreview(bp.startX, bp.startY, curChem.x, curChem.y, 1.5)
                     }
                     return
                 }
 
+                if (currentTool === "SELECT_LASSO") {
+                    const path = (sketch.overlayState.lassoPath || []).concat([Qt.point(m.x, m.y)])
+                    setOverlayState({ hoverAtomId: null, hoverBondId: null, dragRect: null, bondPreview: null, lassoPath: path })
+                    return
+                }
+
                 if (currentTool === "SELECT" || currentTool === "SELECT_FRAGMENT") {
-                    if (movingSelection) {
+                    if (movingImage) {
+                        _renderVersion++
+                    } else if (movingSelection) {
                         const dx = m.x - pressX
                         const dy = m.y - pressY
                         const chemDx = dx / root.chemScale
@@ -983,8 +1305,56 @@ Item {
                 _renderVersion++  // force full repaint of all layers
                 return
             }
+            if (rotatingSelection) {
+                rotatingSelection = false
+                if (selectedImageId >= 0) {
+                    // Images are not rotatable, ignore
+                } else if (rotateAppliedTotal !== 0) {
+                    sketch.commitRotate()
+                }
+                return
+            }
+            if (resizingSelection) {
+                resizingSelection = false
+                if (selectedImageId >= 0) {
+                    const factor = currentResizeFactor
+                    sketch.sendCommand("resizeImage", [selectedImageId, factor])
+                    refresh()
+                } else {
+                    sketch.commitScale()
+                }
+                return
+            }
+            if (movingImage) {
+                movingImage = false
+                isDragging = false
+                const dx = m.x - startPressX
+                const dy = m.y - startPressY
+                const chemDx = dx / root.chemScale
+                const chemDy = dy / root.chemScale
+                if (dx * dx + dy * dy > 4) {
+                    sketch.sendCommand("moveImage", [selectedImageId, chemDx, chemDy])
+                }
+                refresh()
+                return
+            }
+            if (isDragging && currentTool === "SELECT_LASSO") {
+                isDragging = false
+                const path = sketch.overlayState.lassoPath || []
+                setOverlayState({ hoverAtomId: null, hoverBondId: null, dragRect: null, bondPreview: null, lassoPath: null })
+                if (path.length >= 3) {
+                    const flat = []
+                    for (let i = 0; i < path.length; ++i) {
+                        const cp = canvasToChem(path[i].x, path[i].y)
+                        flat.push(cp.x); flat.push(cp.y)
+                    }
+                    sketch.selectByLasso(flat)
+                }
+                return
+            }
             if (isDragging && currentTool === "CHAIN") {
                 isDragging = false
+                AppController.clearChainPreview()
                 const bp = sketch.overlayState.bondPreview
                 setOverlayState({ hoverAtomId: null, hoverBondId: null, dragRect: null, bondPreview: null })
                 if (bp) {
@@ -1186,27 +1556,49 @@ Item {
         MenuItem {
             text: "Properties…"
             visible: contextMenu._hitAtom !== null
-            onTriggered: if (contextMenu._hitAtom !== null) sketch.requestAtomProperties(contextMenu._hitAtom)
+            // resolveHitAtom: _hitAtom may be a contracted sgroup pill id here, which
+            // requestAtomProperties/changeAtomCharge don't understand (unlike
+            // deleteAtomById below, which deliberately handles both cases itself).
+            onTriggered: if (contextMenu._hitAtom !== null) sketch.requestAtomProperties(resolveHitAtom(contextMenu._hitAtom))
         }
         MenuItem {
             text: "Charge +"
             visible: contextMenu._hitAtom !== null
             onTriggered: if (contextMenu._hitAtom !== null) {
-                const atom = sketch.primitives.atomsById[contextMenu._hitAtom.toString()]
-                if (atom) sketch.changeAtomCharge(contextMenu._hitAtom, (atom.charge || 0) + 1)
+                const realAtomId = resolveHitAtom(contextMenu._hitAtom)
+                const atom = sketch.primitives.atomsById[realAtomId.toString()]
+                if (atom) sketch.changeAtomCharge(realAtomId, (atom.charge || 0) + 1)
             }
         }
         MenuItem {
             text: "Charge −"
             visible: contextMenu._hitAtom !== null
             onTriggered: if (contextMenu._hitAtom !== null) {
-                const atom = sketch.primitives.atomsById[contextMenu._hitAtom.toString()]
-                if (atom) sketch.changeAtomCharge(contextMenu._hitAtom, (atom.charge || 0) - 1)
+                const realAtomId = resolveHitAtom(contextMenu._hitAtom)
+                const atom = sketch.primitives.atomsById[realAtomId.toString()]
+                if (atom) sketch.changeAtomCharge(realAtomId, (atom.charge || 0) - 1)
             }
+        }
+        MenuItem {
+            text: "Attachment Point 1"
+            visible: contextMenu._hitAtom !== null
+            onTriggered: if (contextMenu._hitAtom !== null) sketch.setAttachmentPoint(resolveHitAtom(contextMenu._hitAtom), 1)
+        }
+        MenuItem {
+            text: "Attachment Point 2"
+            visible: contextMenu._hitAtom !== null
+            onTriggered: if (contextMenu._hitAtom !== null) sketch.setAttachmentPoint(resolveHitAtom(contextMenu._hitAtom), 2)
+        }
+        MenuItem {
+            text: "Clear Attachment Point"
+            visible: contextMenu._hitAtom !== null
+            onTriggered: if (contextMenu._hitAtom !== null) sketch.setAttachmentPoint(resolveHitAtom(contextMenu._hitAtom), 0)
         }
         MenuItem {
             text: "Delete Atom"
             visible: contextMenu._hitAtom !== null
+            // deleteAtomById already handles a contracted sgroup pill id itself
+            // (deletes the whole group) -- do NOT resolve here, unlike the items above.
             onTriggered: if (contextMenu._hitAtom !== null) { sketch.deleteAtomById(contextMenu._hitAtom); refresh() }
         }
 
