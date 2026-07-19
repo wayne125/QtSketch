@@ -23,7 +23,11 @@ const _workerDir = _hasNative ? __native.dirname : __dirname;
 // on the Node path where this assignment never runs. Plain property writes on
 // globalThis carry no hoisting risk and are a no-op when _hasNative is false.
 if (_hasNative) {
-    globalThis.console = { log: function(s) { __native.log(String(s)); } };
+    globalThis.console = {
+        log: function(s) { __native.log(String(s)); },
+        warn: function() { __native.log(Array.prototype.slice.call(arguments).map(String).join(" ")); },
+        error: function() { __native.errorLog(Array.prototype.slice.call(arguments).map(String).join(" ")); }
+    };
     globalThis.process = {
         stderr: { write: function(s) { __native.errorLog(String(s)); } },
         stdout: { write: function(s) { __native.log(String(s)); } },
@@ -1987,14 +1991,33 @@ function setCheckIssues(jsonMap) {
 }
 
 function pasteSelection(cx, cy) {
-    // console.error("pasteSelection triggered. Clipboard present: " + (_clipboard !== null))
     if (!_clipboard) return
+    _insertStructAt(_clipboard, cx, cy)
+}
+
+function insertRecognizedStructure(molfile, cx, cy) {
+    try {
+        var recognized = _deserializeStruct("mol", molfile)
+        if (!recognized || recognized.atoms.size === 0) {
+            console.warn("insertRecognizedStructure: empty or unparseable molfile")
+            return
+        }
+        _insertStructAt(recognized, cx, cy)
+    } catch (e) {
+        console.warn("insertRecognizedStructure failed:", e.message)
+    }
+}
+
+// Shared by pasteSelection (source: _clipboard) and insertRecognizedStructure (source: an
+// Imago-recognized structure) - clones sourceStruct's atoms/bonds/SUP-sgroups into _struct,
+// centered at (cx, cy). Deliberately takes the source struct as a parameter rather than reading
+// _clipboard directly, so callers other than paste never touch the user's real clipboard.
+function _insertStructAt(sourceStruct, cx, cy) {
     var _clampedPaste = _clampToPage(cx, cy); cx = _clampedPaste.x; cy = _clampedPaste.y
 
     try {
-        var pastedStruct = _clipboard.clone()
-        // console.error("pastedStruct cloned successfully. Atoms: " + pastedStruct.atoms.size)
-        
+        var pastedStruct = sourceStruct.clone()
+
         var minX = null, minY = null, maxX = null, maxY = null
         pastedStruct.atoms.forEach(function(a) {
         if (minX === null || a.pp.x < minX) minX = a.pp.x
@@ -2555,6 +2578,7 @@ function buildRenderPrimitives(showExplicitH) {
             beginIsSgroup: beginSgId !== undefined,
             endIsSgroup: endSgId !== undefined,
             cipLabel: b.cipLabel || "",
+            reactingCenterStatus: b.reactingCenterStatus || 0,
             ringCenterX: ringCenter !== undefined ? ringCenter.x : undefined,
             ringCenterY: ringCenter !== undefined ? ringCenter.y : undefined
         })
@@ -3426,6 +3450,120 @@ function deserializeSdf(data) {
     }
 }
 
+function _buildBatchRecordsFromStructs(items) {
+    var count = items.length
+    var limit = Math.min(count, 500)
+    var records = []
+    var savedStruct = _struct
+    var savedShowH = _showExplicitH
+
+    for (var i = 0; i < limit; i++) {
+        var item = items[i]
+        var label = (item.struct && item.struct.name && item.struct.name.trim().length > 0) ? item.struct.name.trim() : "Record " + (i + 1)
+        
+        _struct = item.struct
+        _showExplicitH = false
+        var thumbState
+        try {
+            thumbState = buildRenderPrimitives(false)
+        } catch (e) {
+            thumbState = { atoms: [], bonds: [] }
+        }
+        
+        var bbox = thumbState.bbox
+        var atoms = []
+        var bonds = []
+        if (bbox) {
+            var w = bbox.maxX - bbox.minX || 1
+            var h = bbox.maxY - bbox.minY || 1
+            var pad = 0.1
+            var scale = (1 - 2 * pad) / Math.max(w, h)
+            var offX = pad + (1 - 2 * pad - w * scale) / 2
+            var offY = pad + (1 - 2 * pad - h * scale) / 2
+            if (thumbState.atoms) {
+                thumbState.atoms.forEach(function(a) {
+                    atoms.push({
+                        x: offX + (a.x - bbox.minX) * scale,
+                        y: offY + (a.y - bbox.minY) * scale,
+                        label: a.element || ""
+                    })
+                })
+            }
+            if (thumbState.bonds) {
+                thumbState.bonds.forEach(function(b) {
+                    var a1 = thumbState.atomsById[b.begin.toString()]
+                    var a2 = thumbState.atomsById[b.end.toString()]
+                    if (a1 && a2) {
+                        bonds.push({
+                            x1: offX + (a1.x - bbox.minX) * scale,
+                            y1: offY + (a1.y - bbox.minY) * scale,
+                            x2: offX + (a2.x - bbox.minX) * scale,
+                            y2: offY + (a2.y - bbox.minY) * scale,
+                            type: b.type
+                        })
+                    }
+                })
+            }
+        }
+        records.push({ index: i, label: label, thumb: { atoms: atoms, bonds: bonds } })
+    }
+    
+    _struct = savedStruct
+    _showExplicitH = savedShowH
+    
+    return { count: count, records: records }
+}
+
+function deserializeRdfBatch(recordsJson) {
+    try {
+        var parsed
+        try { parsed = JSON.parse(recordsJson) } catch (e) { parsed = [] }
+        var recs = Array.isArray(parsed) ? parsed : []
+        if (recs.length === 0) {
+            console.log(JSON.stringify({ type: "structureResponse", reqId: "sdf_batch_list", data: JSON.stringify({ count: 0, records: [] }) }))
+            return
+        }
+        var items = []
+        for (var i = 0; i < recs.length; i++) {
+            try {
+                var struct = _deserializeStruct("mol", recs[i].molfile)
+                if (struct) items.push({ struct: struct })
+            } catch (e) { /* skip a record that fails to parse, don't abort the whole batch */ }
+        }
+        _sdfBatchRecords = items
+        var result = _buildBatchRecordsFromStructs(items)
+        console.log(JSON.stringify({ type: "structureResponse", reqId: "sdf_batch_list", data: JSON.stringify(result) }))
+    } catch (e) {
+        console.warn("deserializeRdfBatch failed:", e.message)
+        console.log(JSON.stringify({ type: "structureResponse", reqId: "sdf_batch_list", data: JSON.stringify({ count: 0, records: [] }) }))
+    }
+}
+
+function deserializeIndigoBatch(recordsJson) {
+    try {
+        var parsed
+        try { parsed = JSON.parse(recordsJson) } catch (e) { parsed = [] }
+        var recs = Array.isArray(parsed) ? parsed : []
+        if (recs.length === 0) {
+            console.log(JSON.stringify({ type: "structureResponse", reqId: "sdf_batch_list", data: JSON.stringify({ count: 0, records: [] }) }))
+            return
+        }
+        var items = []
+        for (var i = 0; i < recs.length; i++) {
+            try {
+                var struct = _deserializeStruct("mol", recs[i].molfile)
+                if (struct) items.push({ struct: struct })
+            } catch (e) { /* skip a record that fails to parse, don't abort the whole batch */ }
+        }
+        _sdfBatchRecords = items
+        var result = _buildBatchRecordsFromStructs(items)
+        console.log(JSON.stringify({ type: "structureResponse", reqId: "sdf_batch_list", data: JSON.stringify(result) }))
+    } catch (e) {
+        console.warn("deserializeIndigoBatch failed:", e.message)
+        console.log(JSON.stringify({ type: "structureResponse", reqId: "sdf_batch_list", data: JSON.stringify({ count: 0, records: [] }) }))
+    }
+}
+
 function deserializeSdfBatch(data) {
     try {
         var items = null
@@ -3437,69 +3575,9 @@ function deserializeSdfBatch(data) {
             return
         }
 
-        var count = items.length
         _sdfBatchRecords = items
-        
-        var limit = Math.min(count, 500)
-        var records = []
-        var savedStruct = _struct
-        var savedShowH = _showExplicitH
-
-        for (var i = 0; i < limit; i++) {
-            var item = items[i]
-            var label = (item.struct && item.struct.name && item.struct.name.trim().length > 0) ? item.struct.name.trim() : "Record " + (i + 1)
-            
-            _struct = item.struct
-            _showExplicitH = false
-            var thumbState
-            try {
-                thumbState = buildRenderPrimitives(false)
-            } catch (e) {
-                thumbState = { atoms: [], bonds: [] }
-            }
-            
-            var bbox = thumbState.bbox
-            var atoms = []
-            var bonds = []
-            if (bbox) {
-                var w = bbox.maxX - bbox.minX || 1
-                var h = bbox.maxY - bbox.minY || 1
-                var pad = 0.1
-                var scale = (1 - 2 * pad) / Math.max(w, h)
-                var offX = pad + (1 - 2 * pad - w * scale) / 2
-                var offY = pad + (1 - 2 * pad - h * scale) / 2
-                if (thumbState.atoms) {
-                    thumbState.atoms.forEach(function(a) {
-                        atoms.push({
-                            x: offX + (a.x - bbox.minX) * scale,
-                            y: offY + (a.y - bbox.minY) * scale,
-                            label: a.element || ""
-                        })
-                    })
-                }
-                if (thumbState.bonds) {
-                    thumbState.bonds.forEach(function(b) {
-                        var a1 = thumbState.atomsById[b.begin.toString()]
-                        var a2 = thumbState.atomsById[b.end.toString()]
-                        if (a1 && a2) {
-                            bonds.push({
-                                x1: offX + (a1.x - bbox.minX) * scale,
-                                y1: offY + (a1.y - bbox.minY) * scale,
-                                x2: offX + (a2.x - bbox.minX) * scale,
-                                y2: offY + (a2.y - bbox.minY) * scale,
-                                type: b.type
-                            })
-                        }
-                    })
-                }
-            }
-            records.push({ index: i, label: label, thumb: { atoms: atoms, bonds: bonds } })
-        }
-        
-        _struct = savedStruct
-        _showExplicitH = savedShowH
-        
-        console.log(JSON.stringify({ type: "structureResponse", reqId: "sdf_batch_list", data: JSON.stringify({ count: count, records: records }) }))
+        var result = _buildBatchRecordsFromStructs(items)
+        console.log(JSON.stringify({ type: "structureResponse", reqId: "sdf_batch_list", data: JSON.stringify(result) }))
     } catch (e) {
         console.warn("deserializeSdfBatch failed:", e.message)
         console.log(JSON.stringify({ type: "structureResponse", reqId: "sdf_batch_list", data: JSON.stringify({ count: 0, records: [] }) }))
@@ -3518,6 +3596,55 @@ function loadSdfBatchRecord(index) {
         console.warn("loadSdfBatchRecord failed:", e.message)
     }
 }
+
+function getSdfBatchMolfiles() {
+    try {
+        if (!_sdfBatchRecords || _sdfBatchRecords.length === 0) {
+            console.log(JSON.stringify({ type: "structureResponse", reqId: "sdf_batch_molfiles", data: JSON.stringify({ molfiles: [], labels: [] }) }))
+            return
+        }
+        var molfiles = []
+        var labels = []
+        var serializer = new CoreLib.ChemCore.MolSerializer()
+        var limit = Math.min(_sdfBatchRecords.length, 500)
+        for (var i = 0; i < limit; i++) {
+            try {
+                var item = _sdfBatchRecords[i]
+                var mf = serializer.serialize(item.struct)
+                if (mf) {
+                    molfiles.push(mf)
+                    labels.push((item.struct && item.struct.name && item.struct.name.trim().length > 0) ? item.struct.name.trim() : "Record " + (i + 1))
+                }
+            } catch (e) { /* skip a record that fails to serialize, don't abort the whole batch */ }
+        }
+        console.log(JSON.stringify({ type: "structureResponse", reqId: "sdf_batch_molfiles", data: JSON.stringify({ molfiles: molfiles, labels: labels }) }))
+    } catch (e) {
+        console.warn("getSdfBatchMolfiles failed:", e.message)
+        console.log(JSON.stringify({ type: "structureResponse", reqId: "sdf_batch_molfiles", data: JSON.stringify({ molfiles: [], labels: [] }) }))
+    }
+}
+
+function realignSdfBatch(alignedMolfilesJson) {
+    try {
+        var molfiles = JSON.parse(alignedMolfilesJson)
+        if (!Array.isArray(molfiles) || !_sdfBatchRecords || molfiles.length !== _sdfBatchRecords.length) {
+            console.warn("realignSdfBatch: length mismatch or no open batch")
+            return
+        }
+        var items = []
+        for (var i = 0; i < molfiles.length; i++) {
+            var struct = null
+            try { struct = _deserializeStruct("mol", molfiles[i]) } catch (e) { /* fall through */ }
+            items.push({ struct: struct || _sdfBatchRecords[i].struct })
+        }
+        _sdfBatchRecords = items
+        var result = _buildBatchRecordsFromStructs(items)
+        console.log(JSON.stringify({ type: "structureResponse", reqId: "sdf_batch_realigned", data: JSON.stringify(result) }))
+    } catch (e) {
+        console.warn("realignSdfBatch failed:", e.message)
+    }
+}
+
 
 function selectSubstructureMatches(matchesJson) {
     var parsed
@@ -3997,6 +4124,26 @@ function deleteImage(id) {
     executeCommand(cmd)
 }
 
+function moveImage(id, dx, dy) {
+    var img = _struct.images.get(id)
+    if (!img) return
+    var cmd = makeCmd(
+        function() { img.addPositionOffset(new CoreLib.ChemCore.Vec2(dx, dy)); _dirty = true },
+        function() { img.addPositionOffset(new CoreLib.ChemCore.Vec2(-dx, -dy)); _dirty = true }
+    )
+    executeCommand(cmd)
+}
+
+function resizeImage(id, scaleFactor) {
+    var img = _struct.images.get(id)
+    if (!img) return
+    var cmd = makeCmd(
+        function() { img.rescaleSize(scaleFactor); _dirty = true },
+        function() { img.rescaleSize(1 / scaleFactor); _dirty = true }
+    )
+    executeCommand(cmd)
+}
+
 // ---- Generic query atoms (atom lists) --------------------------------------
 // chem-core.js's Atom already has native atomList/queryProperties fields and the
 // KetSerializer/MolSerializer already read/write them (atomToKet's "atom-list" branch),
@@ -4239,6 +4386,7 @@ function _dispatchCommand(cmd, args) {
         else if (cmd === 'copySelection') copySelection();
         else if (cmd === 'cutSelection') cutSelection();
         else if (cmd === 'pasteSelection') pasteSelection(args[0], args[1]);
+        else if (cmd === 'insertRecognizedStructure') insertRecognizedStructure(args[0], args[1], args[2]);
         else if (cmd === 'getClipboardAsKet') { getClipboardAsKet(); return; }
         else if (cmd === 'importKetAtPosition') importKetAtPosition(args[0], args[1], args[2]);
         else if (cmd === 'selectAll') selectAll();
@@ -4246,8 +4394,12 @@ function _dispatchCommand(cmd, args) {
         else if (cmd === 'loadBenzene') loadBenzene();
         else if (cmd === 'deserializeMol') deserializeMol(args[0]);
         else if (cmd === 'deserializeSdf') deserializeSdf(args[0]);
+        else if (cmd === 'deserializeRdfBatch') deserializeRdfBatch(args[0]);
+        else if (cmd === 'deserializeIndigoBatch') deserializeIndigoBatch(args[0]);
         else if (cmd === 'deserializeSdfBatch') deserializeSdfBatch(args[0]);
         else if (cmd === 'loadSdfBatchRecord') loadSdfBatchRecord(args[0]);
+        else if (cmd === 'getSdfBatchMolfiles') getSdfBatchMolfiles();
+        else if (cmd === 'realignSdfBatch') realignSdfBatch(args[0]);
         else if (cmd === 'deserializeKet') deserializeKet(args[0]);
         else if (cmd === 'addRxnArrow') addRxnArrow(args[0], args[1], args[2]);
         else if (cmd === 'addCurvedArrow') addCurvedArrow(args[0], args[1], args[2], args[3], args[4], args[5]);
@@ -4266,6 +4418,8 @@ function _dispatchCommand(cmd, args) {
         else if (cmd === 'deleteText') deleteText(args[0]);
         else if (cmd === 'addImage') addImage(args[0], args[1], args[2], args[3], args[4]);
         else if (cmd === 'deleteImage') deleteImage(args[0]);
+        else if (cmd === 'moveImage') moveImage(args[0], args[1], args[2]);
+        else if (cmd === 'resizeImage') resizeImage(args[0], args[1]);
         else if (cmd === 'setAtomQueryList') setAtomQueryList(args[0], args[1], args[2]);
         else if (cmd === 'clearAtomQueryList') clearAtomQueryList(args[0], args[1]);
         else if (cmd === 'addRxnPlus') addRxnPlus(args[0], args[1]);

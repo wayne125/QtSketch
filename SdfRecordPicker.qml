@@ -13,6 +13,12 @@ AnchoredPicker {
     property int recordCount: 0
 
     signal recordChosen(int index)
+    signal findScaffoldRequested()
+    signal decomposeRequested()
+    signal rankBySimilarityRequested()
+    signal alignToScaffoldRequested()
+    signal exportGridRequested()
+    signal exportBatchFileRequested()
 
     ColumnLayout {
         anchors.fill: parent
@@ -25,6 +31,48 @@ AnchoredPicker {
             color: Theme.textSecondary
             horizontalAlignment: Text.AlignHCenter
             visible: root.recordCount > 1
+        }
+
+        Button {
+            Layout.fillWidth: true
+            text: "Find Common Scaffold"
+            visible: root.recordCount > 1
+            onClicked: root.findScaffoldRequested()
+        }
+
+        Button {
+            Layout.fillWidth: true
+            text: "Decompose to R-Groups"
+            visible: root.recordCount > 1
+            onClicked: root.decomposeRequested()
+        }
+
+        Button {
+            Layout.fillWidth: true
+            text: "Rank by Similarity to Active Structure"
+            visible: root.recordCount > 1
+            onClicked: root.rankBySimilarityRequested()
+        }
+
+        Button {
+            Layout.fillWidth: true
+            text: "Align Batch to Common Scaffold"
+            visible: root.recordCount > 1
+            onClicked: root.alignToScaffoldRequested()
+        }
+
+        Button {
+            Layout.fillWidth: true
+            text: "Export Batch as Image Grid…"
+            visible: root.recordCount > 1
+            onClicked: root.exportGridRequested()
+        }
+
+        Button {
+            Layout.fillWidth: true
+            text: "Export Batch to File…"
+            visible: root.recordCount > 1
+            onClicked: root.exportBatchFileRequested()
         }
 
         GridView {

@@ -151,22 +151,24 @@ Item {
                         }
                     }
 
-                    // Rotate handle: line connecting it to the top edge, plus a
-                    // circular handle.
-                    ctx.strokeStyle = Theme.selectionOverlayStrong
-                    ctx.lineWidth = 1
-                    ctx.beginPath()
-                    ctx.moveTo(handles.rotate.x, bbox.minY)
-                    ctx.lineTo(handles.rotate.x, handles.rotate.y)
-                    ctx.stroke()
+                    if (canvas.selectedImageId < 0) {
+                        // Rotate handle: line connecting it to the top edge, plus a
+                        // circular handle.
+                        ctx.strokeStyle = Theme.selectionOverlayStrong
+                        ctx.lineWidth = 1
+                        ctx.beginPath()
+                        ctx.moveTo(handles.rotate.x, bbox.minY)
+                        ctx.lineTo(handles.rotate.x, handles.rotate.y)
+                        ctx.stroke()
 
-                    ctx.beginPath()
-                    ctx.arc(handles.rotate.x, handles.rotate.y, 6, 0, Math.PI * 2)
-                    ctx.fillStyle = Theme.accent
-                    ctx.fill()
-                    ctx.strokeStyle = Theme.surface
-                    ctx.lineWidth = 1.5
-                    ctx.stroke()
+                        ctx.beginPath()
+                        ctx.arc(handles.rotate.x, handles.rotate.y, 6, 0, Math.PI * 2)
+                        ctx.fillStyle = Theme.accent
+                        ctx.fill()
+                        ctx.strokeStyle = Theme.surface
+                        ctx.lineWidth = 1.5
+                        ctx.stroke()
+                    }
                 }
             }
 

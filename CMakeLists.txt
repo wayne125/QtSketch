@@ -24,7 +24,7 @@ endforeach()
 set_source_files_properties(Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 set_source_files_properties(StyleSheets.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
-qt_add_executable(sketch src/app/main.cpp src/app/IndigoService.h src/app/IndigoService.cpp src/v8_process.h src/v8_process.cpp src/qjs_engine.h src/qjs_engine.cpp src/app/FileIO.h src/app/PlacementEngines.h src/app/PlacementEngines.cpp src/app/PlacementPreviewManager.h src/app/PlacementPreviewManager.cpp src/app/AppController.h src/app/AppController.cpp src/app/DocumentManager.h src/app/DocumentManager.cpp)
+qt_add_executable(sketch src/app/main.cpp src/app/IndigoService.h src/app/IndigoService.cpp src/app/ImagoService.h src/app/ImagoService.cpp src/v8_process.h src/v8_process.cpp src/qjs_engine.h src/qjs_engine.cpp src/app/FileIO.h src/app/PlacementEngines.h src/app/PlacementEngines.cpp src/app/PlacementPreviewManager.h src/app/PlacementPreviewManager.cpp src/app/AppController.h src/app/AppController.cpp src/app/DocumentManager.h src/app/DocumentManager.cpp)
 
 # set_target_properties( PROPERTIES WIN32_EXECUTABLE TRUE)
 
@@ -143,6 +143,7 @@ target_include_directories(sketch PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/indigo/api/c/indigo
     ${CMAKE_CURRENT_SOURCE_DIR}/indigo/api/c/indigo-inchi
     ${CMAKE_CURRENT_SOURCE_DIR}/indigo/api/c/indigo-renderer
+    ${CMAKE_CURRENT_SOURCE_DIR}/imago/include
 )
 
 if (MSVC)
@@ -163,8 +164,9 @@ if (MSVC)
     )
 else()
     set(INDIGO_LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/indigo/lib)
-    target_link_libraries(sketch PRIVATE ${INDIGO_LIB_DIR}/indigo.dll ${INDIGO_LIB_DIR}/indigo-inchi.dll ${INDIGO_LIB_DIR}/indigo-renderer.dll)
-    set(INDIGO_RUNTIME_FILES ${INDIGO_LIB_DIR}/indigo.dll ${INDIGO_LIB_DIR}/indigo-inchi.dll ${INDIGO_LIB_DIR}/indigo-renderer.dll)
+    set(IMAGO_LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/imago/lib)
+    target_link_libraries(sketch PRIVATE ${INDIGO_LIB_DIR}/indigo.dll ${INDIGO_LIB_DIR}/indigo-inchi.dll ${INDIGO_LIB_DIR}/indigo-renderer.dll ${IMAGO_LIB_DIR}/imago.dll)
+    set(INDIGO_RUNTIME_FILES ${INDIGO_LIB_DIR}/indigo.dll ${INDIGO_LIB_DIR}/indigo-inchi.dll ${INDIGO_LIB_DIR}/indigo-renderer.dll ${IMAGO_LIB_DIR}/imago.dll)
 endif()
 
 add_custom_command(TARGET sketch POST_BUILD

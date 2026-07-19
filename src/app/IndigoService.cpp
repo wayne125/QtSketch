@@ -1,4 +1,5 @@
 #include "IndigoService.h"
+#include <cmath>
 #include <QDebug>
 #include <QGuiApplication>
 #include <QClipboard>
@@ -619,6 +620,302 @@ void IndigoService::renderReactionGridToFile(const QString &molfile, const QUrl 
     });
 }
 
+void IndigoService::exportBatchGridToFile(const QStringList &molfiles, const QUrl &fileUrl, const QString &format) {
+    if (molfiles.isEmpty()) { emit renderFinished(false, "No structures to export."); return; }
+    QPointer<IndigoService> self = this;
+    QString path = fileUrl.toLocalFile();
+    (void)QtConcurrent::run([self, molfiles, path, format]() {
+        bool ok = false;
+        QString error;
+        unsigned long long sid = indigoAllocSessionId();
+        indigoSetSessionId(sid);
+        indigoRendererInit(sid);
+        try {
+            int arr = indigoCreateArray();
+            QList<int> loadedMols;
+            for (const QString &mf : molfiles) {
+                int mol = indigoLoadMoleculeFromString(mf.toUtf8().constData());
+                if (mol >= 0) {
+                    indigoLayout(mol);
+                    indigoArrayAdd(arr, mol);
+                    loadedMols.append(mol);
+                }
+            }
+            if (!loadedMols.isEmpty()) {
+                int nColumns = static_cast<int>(std::ceil(std::sqrt(static_cast<double>(loadedMols.size()))));
+                indigoSetOption("render-output-format", format.toUtf8().constData());
+                int res = indigoRenderGridToFile(arr, nullptr, nColumns, path.toUtf8().constData());
+                if (res >= 0) ok = true;
+                else error = QString::fromUtf8(indigoGetLastError());
+            } else {
+                error = "No valid structures could be parsed from this batch.";
+            }
+            for (int m : loadedMols) indigoFree(m);
+            indigoFree(arr);
+        } catch (const std::exception &e) {
+            error = QString::fromUtf8(e.what());
+        } catch (...) {
+            error = "Unknown exception during batch grid export.";
+        }
+        indigoRendererDispose(sid);
+        indigoReleaseSessionId(sid);
+        emitOnGuiThread(self, [ok, error](IndigoService *s) { emit s->renderFinished(ok, error); });
+    });
+}
+
+void IndigoService::parseRdfBatch(const QUrl &fileUrl) {
+    QString path = fileUrl.toLocalFile();
+    if (path.isEmpty()) { emit rdfBatchParsed("", "Invalid file path."); return; }
+    QPointer<IndigoService> self = this;
+    (void)QtConcurrent::run([self, path]() {
+        QString error;
+        QJsonArray records;
+        unsigned long long sid = indigoAllocSessionId();
+        indigoSetSessionId(sid);
+        try {
+            int reader = indigoIterateRDFile(path.toUtf8().constData());
+            if (reader >= 0) {
+                int item;
+                int count = 0;
+                const int limit = 500;  // same cap the SDF batch path already uses
+                while (count < limit && (item = indigoNext(reader)) > 0) {
+                    bool isRxn = indigoCountReactants(item) >= 0;
+                    const char* text = isRxn ? indigoRxnfile(item) : indigoMolfile(item);
+                    if (text) {
+                        QJsonObject rec;
+                        // Copy immediately via QString::fromUtf8 - text is a pointer into an
+                        // internal buffer invalidated by the next Indigo call (verified: this
+                        // exact mistake produced "scanner: BufferScanner::read() error" when
+                        // the copy was deferred past a subsequent Indigo call).
+                        rec["molfile"] = QString::fromUtf8(text);
+                        rec["label"] = QString("Record %1").arg(count + 1);
+                        records.append(rec);
+                    }
+                    indigoFree(item);
+                    count++;
+                }
+                indigoFree(reader);
+            } else {
+                error = QString("Failed to open RDF file: %1").arg(indigoGetLastError());
+            }
+        } catch (const std::exception &e) {
+            error = QString::fromUtf8(e.what());
+        } catch (...) {
+            error = "Unknown exception while parsing RDF file.";
+        }
+        indigoReleaseSessionId(sid);
+        QString json;
+        if (error.isEmpty()) json = QString::fromUtf8(QJsonDocument(records).toJson(QJsonDocument::Compact));
+        emitOnGuiThread(self, [json, error](IndigoService *s) { emit s->rdfBatchParsed(json, error); });
+    });
+}
+
+void IndigoService::parseIndigoBatchFile(const QUrl &fileUrl, const QString &format) {
+    QString path = fileUrl.toLocalFile();
+    if (path.isEmpty()) { emit indigoBatchParsed("", "Invalid file path."); return; }
+    QPointer<IndigoService> self = this;
+    (void)QtConcurrent::run([self, path, format]() {
+        QString error;
+        QJsonArray records;
+        unsigned long long sid = indigoAllocSessionId();
+        indigoSetSessionId(sid);
+        try {
+            int reader = -1;
+            if (format == "smiles") reader = indigoIterateSmilesFile(path.toUtf8().constData());
+            else if (format == "cml") reader = indigoIterateCMLFile(path.toUtf8().constData());
+            else if (format == "cdx") reader = indigoIterateCDXFile(path.toUtf8().constData());
+            if (reader >= 0) {
+                int item;
+                int count = 0;
+                const int limit = 500;
+                while (count < limit && (item = indigoNext(reader)) > 0) {
+                    // SMILES (and some CDX/CML sources) carry no 2D coordinates - indigoLayout()
+                    // must run before serializing, or every atom collapses onto (0,0) and the
+                    // batch picker's thumbnail renders as a blank point (same bug class as the
+                    // indigoExtractCommonScaffold collapse fixed earlier for scaffold detection).
+                    indigoLayout(item);
+                    bool isRxn = indigoCountReactants(item) >= 0;
+                    const char* text = isRxn ? indigoRxnfile(item) : indigoMolfile(item);
+                    if (text) {
+                        QJsonObject rec;
+                        rec["molfile"] = QString::fromUtf8(text);
+                        rec["label"] = QString("Record %1").arg(count + 1);
+                        records.append(rec);
+                    }
+                    indigoFree(item);
+                    count++;
+                }
+                indigoFree(reader);
+            } else {
+                error = QString("Failed to open %1 file: %2").arg(format, QString::fromUtf8(indigoGetLastError()));
+            }
+        } catch (const std::exception &e) {
+            error = QString::fromUtf8(e.what());
+        } catch (...) {
+            error = "Unknown exception while parsing batch file.";
+        }
+        indigoReleaseSessionId(sid);
+        QString json;
+        if (error.isEmpty()) json = QString::fromUtf8(QJsonDocument(records).toJson(QJsonDocument::Compact));
+        emitOnGuiThread(self, [json, error](IndigoService *s) { emit s->indigoBatchParsed(json, error); });
+    });
+}
+
+void IndigoService::exportBatchToFile(const QStringList &molfiles, const QUrl &fileUrl, const QString &format) {
+    if (molfiles.isEmpty()) { emit renderFinished(false, "No structures to export."); return; }
+    QPointer<IndigoService> self = this;
+    QString path = fileUrl.toLocalFile();
+    (void)QtConcurrent::run([self, molfiles, path, format]() {
+        bool ok = false;
+        QString error;
+        unsigned long long sid = indigoAllocSessionId();
+        indigoSetSessionId(sid);
+        try {
+            int saver = indigoCreateFileSaver(path.toUtf8().constData(), format.toUtf8().constData());
+            if (saver >= 0) {
+                int written = 0;
+                int recordNum = 0;
+                for (const QString &mf : molfiles) {
+                    recordNum++;
+                    bool isRxn = isReactionFormat(mf);
+                    int obj = isRxn ? indigoLoadReactionFromString(mf.toUtf8().constData())
+                                    : indigoLoadMoleculeFromString(mf.toUtf8().constData());
+                    if (obj >= 0) {
+                        // A blank molecule-name header line makes chem-core.js's own
+                        // MolSerializer.deserialize() reject the record on read-back
+                        // (badHeaderRecover defaults to false) - always give every
+                        // record a real name before writing so exported files stay
+                        // fully round-trippable by this app's own SDF/RDF reader.
+                        const char* existingName = indigoName(obj);
+                        if (!existingName || existingName[0] == '\0') {
+                            indigoSetName(obj, QString("Record %1").arg(recordNum).toUtf8().constData());
+                        }
+                        if (indigoAppend(saver, obj) >= 0) written++;
+                        indigoFree(obj);
+                    }
+                }
+                indigoClose(saver);
+                if (written > 0) ok = true;
+                else error = "No valid structures could be written.";
+            } else {
+                error = QString("Failed to create %1 saver: %2").arg(format, QString::fromUtf8(indigoGetLastError()));
+            }
+        } catch (const std::exception &e) {
+            error = QString::fromUtf8(e.what());
+        } catch (...) {
+            error = "Unknown exception during batch export.";
+        }
+        indigoReleaseSessionId(sid);
+        emitOnGuiThread(self, [ok, error](IndigoService *s) { emit s->renderFinished(ok, error); });
+    });
+}
+
+
+void IndigoService::autoMapReaction(const QString &molfile) {
+    if (molfile.isEmpty()) { emit reactionMappingFinished("", "No structure to map."); return; }
+    if (!isReactionFormat(molfile)) {
+        emit reactionMappingFinished("", "Atom mapping is for reactions only - the active document is a plain molecule.");
+        return;
+    }
+    QPointer<IndigoService> self = this;
+    (void)QtConcurrent::run([self, molfile]() {
+        QString result, error;
+        unsigned long long sid = indigoAllocSessionId();
+        indigoSetSessionId(sid);
+        try {
+            int rx = indigoLoadReactionFromString(molfile.toUtf8().constData());
+            if (rx >= 0) {
+                if (indigoAutomap(rx, "discard") >= 0) {
+                    const char* rf = indigoRxnfile(rx);
+                    if (rf) result = QString::fromUtf8(rf);
+                    else error = QString::fromUtf8(indigoGetLastError());
+                } else {
+                    error = QString("Auto-mapping failed: %1").arg(indigoGetLastError());
+                }
+                indigoFree(rx);
+            } else {
+                error = QString("Failed to load reaction: %1").arg(indigoGetLastError());
+            }
+        } catch (const std::exception &e) {
+            error = QString::fromUtf8(e.what());
+        } catch (...) {
+            error = "Unknown exception during atom mapping.";
+        }
+        indigoReleaseSessionId(sid);
+        emitOnGuiThread(self, [result, error](IndigoService *s) { emit s->reactionMappingFinished(result, error); });
+    });
+}
+
+void IndigoService::clearReactionMapping(const QString &molfile) {
+    if (molfile.isEmpty()) { emit reactionMappingFinished("", "No structure to clear mapping from."); return; }
+    if (!isReactionFormat(molfile)) {
+        emit reactionMappingFinished("", "Atom mapping is for reactions only - the active document is a plain molecule.");
+        return;
+    }
+    QPointer<IndigoService> self = this;
+    (void)QtConcurrent::run([self, molfile]() {
+        QString result, error;
+        unsigned long long sid = indigoAllocSessionId();
+        indigoSetSessionId(sid);
+        try {
+            int rx = indigoLoadReactionFromString(molfile.toUtf8().constData());
+            if (rx >= 0) {
+                if (indigoClearAAM(rx) >= 0) {
+                    const char* rf = indigoRxnfile(rx);
+                    if (rf) result = QString::fromUtf8(rf);
+                    else error = QString::fromUtf8(indigoGetLastError());
+                } else {
+                    error = QString("Clear mapping failed: %1").arg(indigoGetLastError());
+                }
+                indigoFree(rx);
+            } else {
+                error = QString("Failed to load reaction: %1").arg(indigoGetLastError());
+            }
+        } catch (const std::exception &e) {
+            error = QString::fromUtf8(e.what());
+        } catch (...) {
+            error = "Unknown exception clearing atom mapping.";
+        }
+        indigoReleaseSessionId(sid);
+        emitOnGuiThread(self, [result, error](IndigoService *s) { emit s->reactionMappingFinished(result, error); });
+    });
+}
+
+void IndigoService::correctReactingCenters(const QString &molfile) {
+    if (molfile.isEmpty()) { emit reactionMappingFinished("", "No structure to analyze."); return; }
+    if (!isReactionFormat(molfile)) {
+        emit reactionMappingFinished("", "Reacting centers are for reactions only - the active document is a plain molecule.");
+        return;
+    }
+    QPointer<IndigoService> self = this;
+    (void)QtConcurrent::run([self, molfile]() {
+        QString result, error;
+        unsigned long long sid = indigoAllocSessionId();
+        indigoSetSessionId(sid);
+        try {
+            int rx = indigoLoadReactionFromString(molfile.toUtf8().constData());
+            if (rx >= 0) {
+                if (indigoCorrectReactingCenters(rx) >= 0) {
+                    const char* rf = indigoRxnfile(rx);
+                    if (rf) result = QString::fromUtf8(rf);
+                    else error = QString::fromUtf8(indigoGetLastError());
+                } else {
+                    error = QString("Reacting-center correction failed: %1").arg(indigoGetLastError());
+                }
+                indigoFree(rx);
+            } else {
+                error = QString("Failed to load reaction: %1").arg(indigoGetLastError());
+            }
+        } catch (const std::exception &e) {
+            error = QString::fromUtf8(e.what());
+        } catch (...) {
+            error = "Unknown exception during reacting-center correction.";
+        }
+        indigoReleaseSessionId(sid);
+        emitOnGuiThread(self, [result, error](IndigoService *s) { emit s->reactionMappingFinished(result, error); });
+    });
+}
+
 void IndigoService::normalize(const QString &molfile) {
     if (molfile.isEmpty()) { emit normalizeFinished(""); return; }
     QPointer<IndigoService> self = this;
@@ -666,6 +963,39 @@ void IndigoService::standardize(const QString &molfile) {
         } catch (...) {}
         indigoReleaseSessionId(sid);
         emitOnGuiThread(self, [result](IndigoService *s) { emit s->standardizeFinished(result); });
+    });
+}
+
+void IndigoService::ionizeAtPh(const QString &molfile, double pH) {
+    if (molfile.isEmpty()) { emit ionizeFinished("", "No structure to ionize."); return; }
+    QPointer<IndigoService> self = this;
+    (void)QtConcurrent::run([self, molfile, pH]() {
+        QString result, error;
+        unsigned long long sid = indigoAllocSessionId();
+        indigoSetSessionId(sid);
+        try {
+            const bool isRxn = isReactionFormat(molfile);
+            int obj = isRxn ? indigoLoadReactionFromString(molfile.toUtf8().constData())
+                            : indigoLoadMoleculeFromString(molfile.toUtf8().constData());
+            if (obj >= 0) {
+                if (indigoIonize(obj, static_cast<float>(pH), 1.0f) >= 0) {
+                    const char* out = isRxn ? indigoRxnfile(obj) : indigoMolfile(obj);
+                    if (out) result = QString::fromUtf8(out);
+                    else error = QString::fromUtf8(indigoGetLastError());
+                } else {
+                    error = QString("Ionization failed: %1").arg(indigoGetLastError());
+                }
+                indigoFree(obj);
+            } else {
+                error = QString("Failed to load structure: %1").arg(indigoGetLastError());
+            }
+        } catch (const std::exception &e) {
+            error = QString::fromUtf8(e.what());
+        } catch (...) {
+            error = "Unknown exception during ionization.";
+        }
+        indigoReleaseSessionId(sid);
+        emitOnGuiThread(self, [result, error](IndigoService *s) { emit s->ionizeFinished(result, error); });
     });
 }
 
@@ -1279,3 +1609,254 @@ void IndigoService::exportBioAxoLabs(const QString &molfile) {
         emitOnGuiThread(self, [result](IndigoService *s) { emit s->bioAxoLabsReady(result); });
     });
 }
+
+void IndigoService::findCommonScaffold(const QStringList &molfiles) {
+    if (molfiles.size() < 2) {
+        emit commonScaffoldFinished("", "Need at least 2 structures to find a common scaffold.");
+        return;
+    }
+    QPointer<IndigoService> self = this;
+    (void)QtConcurrent::run([self, molfiles]() {
+        QString result, error;
+        unsigned long long sid = indigoAllocSessionId();
+        indigoSetSessionId(sid);
+        try {
+            int arr = indigoCreateArray();
+            QList<int> loadedMols;
+            for (const QString &mf : molfiles) {
+                int mol = indigoLoadMoleculeFromString(mf.toUtf8().constData());
+                if (mol >= 0) {
+                    if (indigoAromatize(mol) < 0) qWarning() << "Indigo: findCommonScaffold aromatize failed:" << indigoGetLastError();
+                    indigoArrayAdd(arr, mol);
+                    loadedMols.append(mol);
+                }
+            }
+            if (loadedMols.size() >= 2) {
+                int scaffold = indigoExtractCommonScaffold(arr, "");
+                if (scaffold > 0) {
+                    // indigoExtractCommonScaffold never assigns 2D coordinates on its own -
+                    // without an explicit layout, every atom lands at (0,0,0) and the result
+                    // renders as a single collapsed point. Verified empirically.
+                    if (indigoLayout(scaffold) < 0) qWarning() << "Indigo: findCommonScaffold layout failed:" << indigoGetLastError();
+                    const char* mf = indigoMolfile(scaffold);
+                    if (mf) result = QString::fromUtf8(mf);
+                    else error = QString::fromUtf8(indigoGetLastError());
+                    indigoFree(scaffold);
+                } else {
+                    error = "No common scaffold found across these structures.";
+                }
+            } else {
+                error = "Fewer than 2 structures could be parsed.";
+            }
+            for (int m : loadedMols) indigoFree(m);
+            indigoFree(arr);
+        } catch (const std::exception &e) {
+            error = QString::fromUtf8(e.what());
+        } catch (...) {
+            error = "Unknown exception during scaffold extraction.";
+        }
+        indigoReleaseSessionId(sid);
+        emitOnGuiThread(self, [result, error](IndigoService *s) { emit s->commonScaffoldFinished(result, error); });
+    });
+}
+
+void IndigoService::decomposeToRGroups(const QStringList &molfiles) {
+    if (molfiles.size() < 2) {
+        emit rgroupDecompositionFinished("", "Need at least 2 structures to decompose.");
+        return;
+    }
+    QPointer<IndigoService> self = this;
+    (void)QtConcurrent::run([self, molfiles]() {
+        QString result, error;
+        unsigned long long sid = indigoAllocSessionId();
+        indigoSetSessionId(sid);
+        try {
+            int arr = indigoCreateArray();
+            QList<int> loadedMols;
+            for (const QString &mf : molfiles) {
+                int mol = indigoLoadMoleculeFromString(mf.toUtf8().constData());
+                if (mol >= 0) {
+                    // Same aromatize-before-matching fix as findCommonScaffold/similarity().
+                    if (indigoAromatize(mol) < 0) qWarning() << "Indigo: decomposeToRGroups aromatize failed:" << indigoGetLastError();
+                    indigoArrayAdd(arr, mol);
+                    loadedMols.append(mol);
+                }
+            }
+            if (loadedMols.size() >= 2) {
+                int scaffold = indigoExtractCommonScaffold(arr, "");
+                if (scaffold > 0) {
+                    int decomp = indigoDecomposeMolecules(scaffold, arr);
+                    if (decomp >= 0) {
+                        int scaffoldWithRSites = indigoDecomposedMoleculeScaffold(decomp);
+                        if (scaffoldWithRSites >= 0) {
+                            const char* mf = indigoMolfile(scaffoldWithRSites);
+                            if (mf) result = QString::fromUtf8(mf);
+                            else error = QString::fromUtf8(indigoGetLastError());
+                        } else {
+                            error = QString::fromUtf8(indigoGetLastError());
+                        }
+                        indigoFree(decomp);
+                    } else {
+                        error = QString("Decomposition failed: %1").arg(indigoGetLastError());
+                    }
+                    indigoFree(scaffold);
+                } else {
+                    error = "No common scaffold found - cannot decompose without one.";
+                }
+            } else {
+                error = "Fewer than 2 structures could be parsed.";
+            }
+            for (int m : loadedMols) indigoFree(m);
+            indigoFree(arr);
+        } catch (const std::exception &e) {
+            error = QString::fromUtf8(e.what());
+        } catch (...) {
+            error = "Unknown exception during R-group decomposition.";
+        }
+        indigoReleaseSessionId(sid);
+        emitOnGuiThread(self, [result, error](IndigoService *s) { emit s->rgroupDecompositionFinished(result, error); });
+    });
+}
+
+void IndigoService::rankBySimilarity(const QString &refMolfile, const QStringList &molfiles) {
+    if (refMolfile.isEmpty() || molfiles.isEmpty()) {
+        emit similarityRankFinished("", "Need an active structure and at least one candidate to rank.");
+        return;
+    }
+    QPointer<IndigoService> self = this;
+    (void)QtConcurrent::run([self, refMolfile, molfiles]() {
+        QString error;
+        QJsonArray results;
+        unsigned long long sid = indigoAllocSessionId();
+        indigoSetSessionId(sid);
+        try {
+            int ref = indigoLoadMoleculeFromString(refMolfile.toUtf8().constData());
+            if (ref >= 0) {
+                // Same aromatize-before-compare fix as similarity() - verified there that
+                // comparing benzene to itself scores 0.0769 without it, 1.0000 with it.
+                if (indigoAromatize(ref) < 0) qWarning() << "Indigo: rankBySimilarity aromatize(ref) failed:" << indigoGetLastError();
+                for (int i = 0; i < molfiles.size(); ++i) {
+                    int mol = indigoLoadMoleculeFromString(molfiles[i].toUtf8().constData());
+                    if (mol >= 0) {
+                        if (indigoAromatize(mol) < 0) qWarning() << "Indigo: rankBySimilarity aromatize(mol) failed:" << indigoGetLastError();
+                        float sim = indigoSimilarity(ref, mol, "tanimoto");
+                        QJsonObject o;
+                        o["index"] = i;
+                        o["score"] = sim;
+                        results.append(o);
+                        indigoFree(mol);
+                    }
+                }
+                indigoFree(ref);
+            } else {
+                error = "Could not parse the active structure.";
+            }
+        } catch (const std::exception &e) {
+            error = QString::fromUtf8(e.what());
+        } catch (...) {
+            error = "Unknown exception during similarity ranking.";
+        }
+        indigoReleaseSessionId(sid);
+        QString json;
+        if (error.isEmpty()) json = QString::fromUtf8(QJsonDocument(results).toJson(QJsonDocument::Compact));
+        emitOnGuiThread(self, [json, error](IndigoService *s) { emit s->similarityRankFinished(json, error); });
+    });
+}
+
+void IndigoService::alignBatchToScaffold(const QStringList &molfiles) {
+    if (molfiles.size() < 2) {
+        emit batchAlignFinished("", "Need at least 2 structures to align to a common scaffold.");
+        return;
+    }
+    QPointer<IndigoService> self = this;
+    (void)QtConcurrent::run([self, molfiles]() {
+        QString error;
+        QJsonArray results;
+        unsigned long long sid = indigoAllocSessionId();
+        indigoSetSessionId(sid);
+        try {
+            int arr = indigoCreateArray();
+            QList<int> loadedMols;
+            for (const QString &mf : molfiles) {
+                int mol = indigoLoadMoleculeFromString(mf.toUtf8().constData());
+                if (mol >= 0) {
+                    if (indigoAromatize(mol) < 0) qWarning() << "Indigo: alignBatchToScaffold aromatize failed:" << indigoGetLastError();
+                    indigoArrayAdd(arr, mol);
+                    loadedMols.append(mol);
+                } else {
+                    loadedMols.append(-1);
+                }
+            }
+            int validCount = 0;
+            for (int m : loadedMols) {
+                if (m >= 0) validCount++;
+            }
+            if (validCount >= 2) {
+                int scaffold = indigoExtractCommonScaffold(arr, "");
+                if (scaffold > 0) {
+                    if (indigoLayout(scaffold) < 0) qWarning() << "Indigo: alignBatchToScaffold scaffold layout failed:" << indigoGetLastError();
+                    QVector<float> scaffXYZ;
+                    QVector<int> scaffAtoms;
+                    int satoms = indigoIterateAtoms(scaffold);
+                    int sa;
+                    while ((sa = indigoNext(satoms)) > 0) {
+                        float* xyz = indigoXYZ(sa);
+                        scaffXYZ << xyz[0] << xyz[1] << xyz[2];
+                        scaffAtoms << sa;
+                    }
+                    if (satoms > 0) indigoFree(satoms);
+
+                    for (int i = 0; i < molfiles.size(); ++i) {
+                        int mol = loadedMols[i];
+                        if (mol >= 0) {
+                            int matcher = indigoSubstructureMatcher(mol, "");
+                            int match = matcher >= 0 ? indigoMatch(matcher, scaffold) : -1;
+                            QVector<int> atomIds;
+                            QVector<float> desired;
+                            if (match > 0) {
+                                for (int j = 0; j < scaffAtoms.size(); ++j) {
+                                    int mapped = indigoMapAtom(match, scaffAtoms[j]);
+                                    if (mapped > 0) {
+                                        atomIds << indigoIndex(mapped);
+                                        desired << scaffXYZ[j*3] << scaffXYZ[j*3+1] << scaffXYZ[j*3+2];
+                                        indigoFree(mapped);
+                                    }
+                                }
+                                indigoFree(match);
+                            }
+                            if (matcher >= 0) indigoFree(matcher);
+
+                            if (!atomIds.isEmpty()) {
+                                indigoAlignAtoms(mol, atomIds.size(), atomIds.data(), desired.data());
+                            }
+                            const char* mf = indigoMolfile(mol);
+                            results.append(mf ? QString::fromUtf8(mf) : molfiles[i]);
+                        } else {
+                            results.append(molfiles[i]);
+                        }
+                    }
+                    indigoFree(scaffold);
+                } else {
+                    error = "No common scaffold found - cannot align without one.";
+                }
+            } else {
+                error = "Fewer than 2 structures could be parsed.";
+            }
+            for (int m : loadedMols) {
+                if (m >= 0) indigoFree(m);
+            }
+            indigoFree(arr);
+        } catch (const std::exception &e) {
+            error = QString::fromUtf8(e.what());
+        } catch (...) {
+            error = "Unknown exception during batch alignment.";
+        }
+        indigoReleaseSessionId(sid);
+        QString json;
+        if (error.isEmpty()) json = QString::fromUtf8(QJsonDocument(results).toJson(QJsonDocument::Compact));
+        emitOnGuiThread(self, [json, error](IndigoService *s) { emit s->batchAlignFinished(json, error); });
+    });
+}
+
+
+

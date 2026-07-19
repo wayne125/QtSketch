@@ -360,9 +360,29 @@ Item {
             if (canvas.sketch.primitives.images) {
                 for (let ii = 0; ii < canvas.sketch.primitives.images.length; ii++) {
                     const imgNode = canvas.sketch.primitives.images[ii]
-                    const tp = canvas.chemToCanvas(imgNode.x, imgNode.y)
-                    const pixelW = imgNode.w * canvas.chemScale
-                    const pixelH = imgNode.h * canvas.chemScale
+                    let tp = canvas.chemToCanvas(imgNode.x, imgNode.y)
+                    let pixelW = imgNode.w * canvas.chemScale
+                    let pixelH = imgNode.h * canvas.chemScale
+
+                    if (canvas.selectedImageId === imgNode.id) {
+                        const ma = canvas.mouseArea
+                        if (ma && ma.resizingSelection) {
+                            const ax = ma.resizeAnchorCanvasX
+                            const ay = ma.resizeAnchorCanvasY
+                            const x1 = ax + (tp.x - ax) * ma.currentResizeFactor
+                            const y1 = ay + (tp.y - ay) * ma.currentResizeFactor
+                            const x2 = ax + (tp.x + pixelW - ax) * ma.currentResizeFactor
+                            const y2 = ay + (tp.y + pixelH - ay) * ma.currentResizeFactor
+                            tp = Qt.point(Math.min(x1, x2), Math.min(y1, y2))
+                            pixelW = Math.abs(x2 - x1)
+                            pixelH = Math.abs(y2 - y1)
+                        } else if (ma && ma.movingImage) {
+                            const dx = ma.mouseX - ma.pressX
+                            const dy = ma.mouseY - ma.pressY
+                            tp = Qt.point(tp.x + dx, tp.y + dy)
+                        }
+                    }
+
                     const imgItem = imageRepeater.itemAt(ii)
                     if (imgItem && imgItem.status === Image.Ready) {
                         ctx.drawImage(imgItem, tp.x, tp.y, pixelW, pixelH)

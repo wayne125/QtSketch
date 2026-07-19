@@ -22,6 +22,7 @@ QtObject {
     readonly property color workspaceBackground: darkMode ? "#0A0A12" : "#E8E6DE"
     readonly property color error: "#C0392B"
     readonly property color badgeAam: "#B7540A"
+    readonly property color badgeReactingCenter: "#8E44AD"
     readonly property color badgeText: "#FFFFFF"
 
     // ── Typography — "Journal Caption" ─────────────────────────────────────

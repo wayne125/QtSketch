@@ -29,12 +29,24 @@ public:
     Q_INVOKABLE void pkaValues(const QString &molfile);
     Q_INVOKABLE void renderToFile(const QString &molfile, const QUrl &fileUrl, const QString &format);
     Q_INVOKABLE void renderReactionGridToFile(const QString &molfile, const QUrl &fileUrl, const QString &format);
+    Q_INVOKABLE void exportBatchGridToFile(const QStringList &molfiles, const QUrl &fileUrl, const QString &format);
+    Q_INVOKABLE void parseRdfBatch(const QUrl &fileUrl);
+    Q_INVOKABLE void parseIndigoBatchFile(const QUrl &fileUrl, const QString &format);
+    Q_INVOKABLE void exportBatchToFile(const QStringList &molfiles, const QUrl &fileUrl, const QString &format);
+    Q_INVOKABLE void autoMapReaction(const QString &molfile);
+    Q_INVOKABLE void clearReactionMapping(const QString &molfile);
+    Q_INVOKABLE void correctReactingCenters(const QString &molfile);
     Q_INVOKABLE void normalize(const QString &molfile);
     Q_INVOKABLE void standardize(const QString &molfile);
+    Q_INVOKABLE void ionizeAtPh(const QString &molfile, double pH);
     Q_INVOKABLE void calcProperties(const QString &molfile);
     Q_INVOKABLE void calcStereoDescriptors(const QString &molfile);
     Q_INVOKABLE void checkStructure(const QString &molfile);
     Q_INVOKABLE void substructureSearch(const QString &molfile, const QString &smarts);
+    Q_INVOKABLE void findCommonScaffold(const QStringList &molfiles);
+    Q_INVOKABLE void decomposeToRGroups(const QStringList &molfiles);
+    Q_INVOKABLE void rankBySimilarity(const QString &refMolfile, const QStringList &molfiles);
+    Q_INVOKABLE void alignBatchToScaffold(const QStringList &molfiles);
 
     // Biopolymer loading (all emit biopolymerLoaded on success, biopolymerLoadError on failure)
     Q_INVOKABLE void loadBioSequence(const QString &text, const QString &seqType);
@@ -52,6 +64,13 @@ public:
 
 Q_SIGNALS:
     void layoutFinished(const QString &result);
+    void reactionMappingFinished(const QString &result, const QString &error);
+    void commonScaffoldFinished(const QString &result, const QString &error);
+    void rgroupDecompositionFinished(const QString &result, const QString &error);
+    void similarityRankFinished(const QString &resultJson, const QString &error);
+    void batchAlignFinished(const QString &resultJson, const QString &error);
+    void rdfBatchParsed(const QString &recordsJson, const QString &error);
+    void indigoBatchParsed(const QString &recordsJson, const QString &error);
     void clean2dFinished(const QString &result);
     void aromatizeFinished(const QString &result);
     void dearomatizeFinished(const QString &result);
@@ -68,6 +87,7 @@ Q_SIGNALS:
     void renderFinished(bool success, const QString &error);
     void normalizeFinished(const QString &result);
     void standardizeFinished(const QString &result);
+    void ionizeFinished(const QString &result, const QString &error);
     void propertiesReady(double mw, double mono, const QString &mf,
                          int atoms, int bonds,
                          double tpsa, double logp, int hba, int hbd, int rotBonds,

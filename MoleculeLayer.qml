@@ -292,6 +292,35 @@ Item {
                     ctx.fillStyle = Theme.accent
                     ctx.fillText(b.cipLabel, midX + perpX * cipOffset, midY + perpY * cipOffset)
                 }
+
+                // Reacting-center mark, offset perpendicular from the bond midpoint on the opposite side
+                // from the CIP descriptor (same midpoint/perpendicular math, negated offset).
+                if (b.reactingCenterStatus && b.reactingCenterStatus !== 0) {
+                    const rcMidX = (p1.x + p2.x) / 2
+                    const rcMidY = (p1.y + p2.y) / 2
+                    const rcDx = p2.x - p1.x
+                    const rcDy = p2.y - p1.y
+                    const rcLen = Math.sqrt(rcDx * rcDx + rcDy * rcDy)
+                    const rcPerpX = rcLen > 0 ? -(rcDy / rcLen) : 0
+                    const rcPerpY = rcLen > 0 ? (rcDx / rcLen) : 0
+                    const rcFontSize = Math.max(9, 11 * root.scale)
+                    const rcOffset = -10 * root.scale
+                    let rcLabel = ""
+                    // Bitwise per the MDL reacting-center enum: 4=MADE_OR_BROKEN, 8=ORDER_CHANGED,
+                    // 12=MADE_OR_BROKEN_AND_CHANGED (4|8), 1=CENTER, 2=UNCHANGED. UNCHANGED (2) alone is
+                    // deliberately not shown - "confirmed unchanged" is not interesting to flag visually.
+                    if ((b.reactingCenterStatus & 4) && (b.reactingCenterStatus & 8)) rcLabel = "\u00B1\u0394"
+                    else if (b.reactingCenterStatus & 4) rcLabel = "\u00B1"
+                    else if (b.reactingCenterStatus & 8) rcLabel = "\u0394"
+                    else if (b.reactingCenterStatus === 1) rcLabel = "*"
+                    if (rcLabel) {
+                        ctx.font = "bold " + rcFontSize + "px " + Theme.fontFamilyCss
+                        ctx.textAlign = "center"
+                        ctx.textBaseline = "middle"
+                        ctx.fillStyle = Theme.badgeReactingCenter
+                        ctx.fillText(rcLabel, rcMidX + rcPerpX * rcOffset, rcMidY + rcPerpY * rcOffset)
+                    }
+                }
             }
 
             // 1b. Aromatic ring circles — one per ring with true aromatic bond order

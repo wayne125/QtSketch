@@ -37,6 +37,11 @@ Item {
     property bool isDirty: false
     property bool canUndo: false
     property bool canRedo: false
+    property int selectedImageId: -1
+    property alias mouseArea: mouse
+    onCurrentToolChanged: {
+        selectedImageId = -1
+    }
 
     property int _renderVersion: 0
     property int _overlayVersion: 0
@@ -60,6 +65,18 @@ Item {
             const t = sketch.primitives.texts[i]
             const p = chemToCanvas(t.x, t.y)
             if (Math.abs(p.x - cx) < 60 && Math.abs(p.y - cy) < 20) return t
+        }
+        return null
+    }
+
+    function hitTestImage(cx, cy) {
+        if (!sketch || !sketch.primitives || !sketch.primitives.images) return null
+        for (let i = 0; i < sketch.primitives.images.length; i++) {
+            const img = sketch.primitives.images[i]
+            const tl = chemToCanvas(img.x, img.y)
+            const pw = img.w * chemScale
+            const ph = img.h * chemScale
+            if (cx >= tl.x && cx <= tl.x + pw && cy >= tl.y && cy <= tl.y + ph) return img
         }
         return null
     }
@@ -400,7 +417,42 @@ Item {
     // src/v8_worker.js), or null if fewer than 2 distinct points are present.
     // Drives the PowerPoint-style resize/rotate handles drawn on the selection.
     function selectionBBoxCanvas() {
-        if (!sketch.selection || !sketch.primitives) return null
+        if (selectedImageId >= 0 && sketch && sketch.primitives && sketch.primitives.images) {
+            for (let i = 0; i < sketch.primitives.images.length; i++) {
+                const img = sketch.primitives.images[i]
+                if (img.id === selectedImageId) {
+                    const tp = chemToCanvas(img.x, img.y)
+                    let pixelW = img.w * chemScale
+                    let pixelH = img.h * chemScale
+                    let x1 = tp.x
+                    let y1 = tp.y
+                    let x2 = tp.x + pixelW
+                    let y2 = tp.y + pixelH
+                    if (mouse.resizingSelection) {
+                        const ax = mouse.resizeAnchorCanvasX
+                        const ay = mouse.resizeAnchorCanvasY
+                        x1 = ax + (x1 - ax) * mouse.currentResizeFactor
+                        y1 = ay + (y1 - ay) * mouse.currentResizeFactor
+                        x2 = ax + (x2 - ax) * mouse.currentResizeFactor
+                        y2 = ay + (y2 - ay) * mouse.currentResizeFactor
+                    } else if (mouse.movingImage) {
+                        const dx = mouse.mouseX - mouse.pressX
+                        const dy = mouse.mouseY - mouse.pressY
+                        x1 += dx
+                        y1 += dy
+                        x2 += dx
+                        y2 += dy
+                    }
+                    return {
+                        minX: Math.min(x1, x2),
+                        minY: Math.min(y1, y2),
+                        maxX: Math.max(x1, x2),
+                        maxY: Math.max(y1, y2)
+                    }
+                }
+            }
+        }
+        if (!sketch || !sketch.selection || !sketch.primitives) return null
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
         let count = 0
         function feed(cx, cy) {
@@ -689,6 +741,8 @@ Item {
         property real resizeAnchorChemX: 0
         property real resizeAnchorChemY: 0
         property real resizeOrigDist: 0
+        property bool movingImage: false
+        property real currentResizeFactor: 1.0
 
         onWheel: (wheel) => {
             const factor = wheel.angleDelta.y > 0 ? 1.15 : (1.0 / 1.15)
@@ -731,6 +785,7 @@ Item {
                         const handles = selectionHandles(handleBBox)
                         const rdx = m.x - handles.rotate.x, rdy = m.y - handles.rotate.y
                         if (rdx * rdx + rdy * rdy <= 100) {
+                            if (selectedImageId >= 0) return
                             const cxm = (handleBBox.minX + handleBBox.maxX) / 2
                             const cym = (handleBBox.minY + handleBBox.maxY) / 2
                             rotatingSelection = true
@@ -752,9 +807,14 @@ Item {
                                 resizeAnchorChemX = anchorChem.x
                                 resizeAnchorChemY = anchorChem.y
                                 resizeOrigDist = Math.sqrt((h.x - h.anchorX) * (h.x - h.anchorX) + (h.y - h.anchorY) * (h.y - h.anchorY))
+                                currentResizeFactor = 1.0
                                 return
                             }
                         }
+                    }
+
+                    if (hitAtom !== null || hitBond !== null || hitRxnArrow !== null || hitRxnPlus !== null || hitMultitailArrow !== null) {
+                        selectedImageId = -1
                     }
 
                     const shiftHeld = (m.modifiers & Qt.ShiftModifier) !== 0
@@ -842,15 +902,26 @@ Item {
                         isDragging = true
                         movingSelection = true
                     } else {
-                        sketch.selectItem(null, null)
-                        isDragging = true
-                        movingSelection = false
-                        setOverlayState({
-                            hoverAtomId: null,
-                            hoverBondId: null,
-                            dragRect: Qt.rect(m.x, m.y, 0, 0),
-                            bondPreview: null
-                        })
+                        // Nothing chemical hit. Check image hit.
+                        const hitImg = hitTestImage(m.x, m.y)
+                        if (hitImg) {
+                            selectedImageId = hitImg.id
+                            isDragging = true
+                            movingImage = true
+                            sketch.selectItem(null, null)
+                            refresh()
+                        } else {
+                            selectedImageId = -1
+                            sketch.selectItem(null, null)
+                            isDragging = true
+                            movingSelection = false
+                            setOverlayState({
+                                hoverAtomId: null,
+                                hoverBondId: null,
+                                dragRect: Qt.rect(m.x, m.y, 0, 0),
+                                bondPreview: null
+                            })
+                        }
                     }
                 } else if (currentTool === "ERASE") {
                     if (hitAtom !== null) {
@@ -1051,8 +1122,13 @@ Item {
                 const dist = Math.sqrt(rdx * rdx + rdy * rdy)
                 if (resizeOrigDist > 0) {
                     const factor = dist / resizeOrigDist
-                    sketch.scaleSelectionLive(factor, resizeAnchorChemX, resizeAnchorChemY)
-                    refresh()
+                    if (selectedImageId >= 0) {
+                        currentResizeFactor = factor
+                        _renderVersion++
+                    } else {
+                        sketch.scaleSelectionLive(factor, resizeAnchorChemX, resizeAnchorChemY)
+                        refresh()
+                    }
                 }
                 return
             }
@@ -1122,7 +1198,9 @@ Item {
                 }
 
                 if (currentTool === "SELECT" || currentTool === "SELECT_FRAGMENT") {
-                    if (movingSelection) {
+                    if (movingImage) {
+                        _renderVersion++
+                    } else if (movingSelection) {
                         const dx = m.x - pressX
                         const dy = m.y - pressY
                         const chemDx = dx / root.chemScale
@@ -1229,14 +1307,35 @@ Item {
             }
             if (rotatingSelection) {
                 rotatingSelection = false
-                if (rotateAppliedTotal !== 0) {
+                if (selectedImageId >= 0) {
+                    // Images are not rotatable, ignore
+                } else if (rotateAppliedTotal !== 0) {
                     sketch.commitRotate()
                 }
                 return
             }
             if (resizingSelection) {
                 resizingSelection = false
-                sketch.commitScale()
+                if (selectedImageId >= 0) {
+                    const factor = currentResizeFactor
+                    sketch.sendCommand("resizeImage", [selectedImageId, factor])
+                    refresh()
+                } else {
+                    sketch.commitScale()
+                }
+                return
+            }
+            if (movingImage) {
+                movingImage = false
+                isDragging = false
+                const dx = m.x - startPressX
+                const dy = m.y - startPressY
+                const chemDx = dx / root.chemScale
+                const chemDy = dy / root.chemScale
+                if (dx * dx + dy * dy > 4) {
+                    sketch.sendCommand("moveImage", [selectedImageId, chemDx, chemDy])
+                }
+                refresh()
                 return
             }
             if (isDragging && currentTool === "SELECT_LASSO") {

@@ -11,6 +11,341 @@ module that isn't wired in at all yet (not even in `CMakeLists.txt`).
 
 ## Part A — UI / product features
 
+### Done (2026-07-18, Find Common Scaffold / Decompose to R-Groups / Rank by Similarity)
+
+Closes the biggest genuinely-scoped item left in Part C ("R-Group deconvolution & scaffold
+detection (13)") plus a small-batch slice of "Fingerprints & similarity (7)". Real gap closed
+by re-checking existing code rather than inventing new UI: the SDF batch picker
+(`SdfRecordPicker.qml`, wired via `deserializeSdfBatch`/`_sdfBatchRecords` in
+`src/v8_worker.js`, done 2026-07-12) already loads and holds every record from a multi-record
+SDF — previously used only to let the user pick ONE record to load. That array is exactly the
+"pile of related molecules" all three of these features need.
+
+Three new buttons on `SdfRecordPicker.qml` ("Find Common Scaffold", "Decompose to R-Groups",
+"Rank by Similarity to Active Structure"), fed by a shared new worker command
+`getSdfBatchMolfiles()` and three sibling `IndigoService` methods
+(`findCommonScaffold`/`decomposeToRGroups`/`rankBySimilarity`), routed via one
+`window._pendingBatchAction` property + a shared `sdf_batch_molfiles` dispatch branch in
+`MainWindow.qml`.
+
+- **Find Common Scaffold** — `indigoExtractCommonScaffold(structures, "")` over an array of
+  independently-loaded molecules; result replaces the active canvas.
+- **Decompose to R-Groups** — `indigoDecomposeMolecules(scaffold, structures)` →
+  `indigoDecomposedMoleculeScaffold` (scaffold with R-site markers). v1 scope only — the full
+  per-input-structure Markush breakdown (`indigoIterateDecomposedMolecules`/
+  `indigoDecomposedMoleculeWithRGroups`) is deliberately deferred, not built.
+- **Rank by Similarity** — `indigoSimilarity(ref, mol, "tanimoto")` per candidate against the
+  active structure, both sides aromatized first, results shown sorted-descending in a plain
+  `MessageDialog` with real record names.
+
+**Real bug found and fixed**: `indigoExtractCommonScaffold` never assigns 2D coordinates on
+its own — every atom in the result landed at `(0,0,0)`, rendering as a single collapsed point
+on canvas. This was not caught by the delegated implementation's own test harness (which only
+checked the raw molfile text, not real coordinates) — caught during independent interactive
+re-verification. Fixed by adding an explicit `indigoLayout(scaffold)` call before serializing,
+in both `findCommonScaffold` and `decomposeToRGroups`.
+
+**Second real bug found and fixed**: the "Decompose to R-Groups" button's handler originally
+called `sendCommand("getSdfBatchMolfiles")` *before* setting `_pendingBatchAction = "decompose"`.
+Because this app's JS worker runs in-process (an embedded `QjsEngine`, confirmed earlier this
+session — not a separate process), the send→execute→respond round-trip can complete
+*synchronously* within that one `sendCommand` call, so the dispatch branch read the still-stale
+default `"scaffold"` value and silently ran the wrong action. Fixed by reordering: always set
+routing state before `sendCommand`, never after. This is now the standing rule for every new
+`_pendingBatchAction`-style dispatch this app adds.
+
+Verified via standalone C++ harnesses (real rejection paths: <2 structures, no common
+scaffold, Kekulized-input coordinate check) and real interactive tests: a hand-built 3-record
+SDF (toluene/chlorobenzene/bromobenzene, sharing a benzene ring) correctly produced a
+pure-benzene scaffold (`C6H6`), a correctly-marked R-site scaffold (`C6H5`+`R#`), and a
+similarity ranking (benzene 54.5% > chlorobenzene 33.3% > hexane 14.3%) matching chemical
+intuition. See `.claude/plans/common-scaffold-detection.md`,
+`.claude/plans/rgroup-decomposition.md`, `.claude/plans/rank-by-similarity.md`.
+
+### Done (2026-07-18, Reaction Auto-Mapping)
+
+Closes the `indigoAutomap`/`indigoClearAAM` half of "Reactions, query reactions — remaining
+(48)". Not a new capability built from scratch — this lights up a feature that was already
+half-wired: the Reactions menu already had a manual "Atom-Atom Mapping" click-to-map tool, and
+`LabelLayer.qml` already renders a live orange AAM badge on any atom with `aam > 0` — both
+pre-existing. The only missing piece was a way to fill `aam` in automatically instead of
+clicking every atom pair by hand.
+
+New "Auto-map Reaction" / "Clear Mapping" entries in the Reactions menu, backed by
+`IndigoService::autoMapReaction`/`clearReactionMapping` around `indigoAutomap(rx, "discard")`/
+`indigoClearAAM`, using `indigoRxnfile` to get RXN text back out — same "replace the active
+document" convention every other structure-producing action already uses. Whole-reaction only
+in v1 — Indigo's `"keep"`/`"alter"` partial-mapping modes are not implemented.
+
+Verified empirically before scoping (a real esterification, `CC(=O)O.CO>>CC(=O)OC.O`), then
+again after shipping via a real interactive test: auto-map correctly traced the carbonyl
+carbon (stays a carbon across the reaction, same mapping number both sides) and the leaving
+hydroxyl oxygen (becomes the water byproduct, same mapping number both sides) — real, chemically
+correct atom correspondence, not just "the call didn't error." Clear Mapping correctly zeroed
+the badges back out, with the structure's coordinates unchanged either way. See
+`.claude/plans/reaction-automap.md`.
+
+### Done (2026-07-18, Ionize at pH)
+
+Closes `indigoIonize` from "Reactions, query reactions — remaining (48)" (despite the name,
+it works on plain molecules too, not just reactions). Distinct from the pre-existing pKa
+*reporting* feature ("Copy pKa Values", read-only, clipboard-only) — this one actually mutates
+the structure's protonation state (adds/removes explicit charges) for a user-entered target pH.
+
+New "Ionize at pH…" entry in the Structure menu (a `TaskDialog` pre-filled with `7.4`,
+physiological pH, as a deliberate default), backed by `IndigoService::ionizeAtPh(molfile, pH)`
+around `indigoIonize(obj, pH, 1.0f)` (tolerance hardcoded, not user-configurable in v1). Works
+on both molecules and reactions via the same `isReactionFormat` ternary every other dual-mode
+method in `IndigoService.cpp` already uses.
+
+Verified against real acid-base chemistry: acetic acid (`CC(=O)O`, real pKa ≈ 4.76) stayed
+neutral (`C2H4O2`) at pH 2, and correctly deprotonated to the acetate anion (`C2H3O2`, visible
+`O⁻` on canvas) at both pH 7.4 and pH 12 — straddling its real pKa exactly as expected.
+**Test-methodology note, not an app bug**: an early false-alarm "crash" during verification
+traced back to the test driver, not the app — `pywinauto`'s `type_keys()` treats parentheses
+as special key-combo syntax, silently mangling a typed `"CC(=O)O"` SMILES string into a
+malformed one; switching to `set_edit_text()` (which does not interpret special syntax) fixed
+the test and confirmed the feature was correct all along. See `.claude/plans/ionize-at-ph.md`.
+
+### Done (2026-07-18, Export SDF Batch as Image Grid)
+
+A fourth, distinct action on the same `SdfRecordPicker.qml` batch infrastructure the other
+three batch features use — unlike those, this one **exports the batch as-is, unchanged, to a
+file, and leaves the active canvas alone**, rather than replacing it with an analysis result.
+Backed by `IndigoService::exportBatchGridToFile`, reusing `indigoRenderGridToFile` (already
+used by the existing single-reaction grid export) but on a plain array of independently-loaded
+molecules — verified empirically that the same call works correctly on this different input
+shape. Grid column count is `ceil(sqrt(count))`, not user-configurable in v1. Applies
+`indigoLayout()` per loaded molecule defensively before rendering, guarding against the same
+collapsed-point failure class found in `findCommonScaffold`.
+
+Verified via a real interactive test: opened a 3-record batch (toluene/chlorobenzene/
+bromobenzene), exported as PNG, confirmed the output file is a real, correct 2-column grid with
+each structure legible; confirmed the active canvas's own content was completely unchanged
+throughout, unlike the other three batch buttons. See `.claude/plans/export-batch-grid.md`.
+
+### Done (2026-07-18, Reacting Centers)
+
+Closes `indigoGetReactingCenter`/`indigoSetReactingCenter`/`indigoCorrectReactingCenters` from
+"Reactions, query reactions — remaining." A genuinely bigger lift than the last several
+single-function features: real, previously-unnoticed native plumbing already existed and
+already round-tripped faithfully through molfile save/load (`Bond.reactingCenterStatus` in
+`chem-core.js`, parsed from the V2000 bond block's 7th column) — but there was **zero rendering
+support anywhere in any `.qml` file**, confirmed via a repo-wide search. This needed real new
+bond-level rendering, not just backend wiring, mirroring `MoleculeLayer.qml`'s existing E/Z
+CIP-descriptor bond-midpoint text exactly (same perpendicular-offset math, opposite side of the
+bond so the two don't collide).
+
+New "Correct Reacting Centers" entry in the Reactions menu, automatic and AAM-driven
+(`indigoCorrectReactingCenters` derives results from existing atom-mapping data — no manual
+per-bond marking UI built this round). One new `Theme.qml` token (`badgeReactingCenter`, a
+distinct purple, not reused from the existing orange AAM badge). `UNCHANGED` status alone
+renders nothing — only `MADE_OR_BROKEN` (±), `ORDER_CHANGED` (Δ), their combination, or plain
+`CENTER` (*) are worth flagging visually.
+
+Verified via a real interactive test on the same esterification reaction used to verify
+Auto-map Reaction: after running Auto-map Reaction first, "Correct Reacting Centers" produced
+real, chemically-correct purple `±` badges exactly on the bonds that change (the acid's leaving
+C–OH bond, the product's new C–O ester bond) — visually distinct from, and non-interfering
+with, the existing orange AAM badges. See `.claude/plans/reacting-centers.md`.
+
+### Done (2026-07-18, RDF Batch Browsing)
+
+Closes the `.rdf` half of "SDF / RDF / SMILES / CML / CDX file iteration" — the doc's own
+"Done (2026-07-12, SDF batch record browsing)" entry explicitly flagged `.rdf` support as
+"unsupported — separate, larger feature," deferred until now. Unlike SDF (which shipped
+entirely via `chem-core.js`'s own native `SdfSerializer`, zero Indigo needed), RDF genuinely
+needed Indigo — confirmed via a direct search that `chem-core.js` has **no RDF parser at all**.
+
+New `IndigoService::parseRdfBatch` around `indigoIterateRDFile`, distinguishing molecule vs.
+reaction records per entry via `indigoCountReactants(item) >= 0` (verified against a real mixed
+RDF file containing both). **Real bug caught in the verification harness itself, not an Indigo
+bug**: `indigoMolfile()`/`indigoRxnfile()` return a pointer into an internal buffer invalidated
+by the *next* Indigo call — holding one across a subsequent call before writing it out produced
+a real scanner error; fixed by copying immediately (`QString::fromUtf8`), the same discipline
+every other `IndigoService.cpp` method already follows. The `deserializeSdfBatch` thumbnail-
+building loop was refactored into a shared `_buildBatchRecordsFromStructs` helper so both the
+SDF and RDF paths produce identical picker output — re-verified the pre-existing SDF flow
+still works identically after the refactor (the plan's own flagged highest-regression-risk item).
+
+**Reuses `SdfRecordPicker.qml` and all four existing batch-analysis buttons entirely
+unchanged** — once RDF records land in `_sdfBatchRecords` in the same shape SDF records use,
+everything downstream just works. Verified via a real interactive test with a mixed
+molecule+reaction `.rdf` file: the picker opened showing 3 correct thumbnails (one molecule, two
+reactions), and clicking a reaction record loaded the real 12-atom/8-bond structure onto the
+canvas. See `.claude/plans/rdf-batch-browsing.md`.
+
+### Done (2026-07-18, Align Batch to Common Scaffold)
+
+A composite feature chaining three capabilities — two already shipped this session
+(`indigoExtractCommonScaffold`, and `indigoSubstructureMatcher`/`indigoMatch`/`indigoMapAtom`,
+the same matcher API the pre-existing SMARTS search already used) plus one genuinely new
+function, `indigoAlignAtoms` — into a real, previously-impossible capability: re-orienting
+every structure in an open batch so they all share the exact same position/rotation for their
+common scaffold. Combined with Export Batch as Image Grid, this turns an unaligned contact
+sheet into a real SAR-comparison figure.
+
+`indigoAlignAtoms` is a rigid-body 2D transform needing the caller to already know the atom
+correspondence and target coordinates — not standalone. Verified the whole pipeline empirically
+before scoping: extracted a scaffold, captured its own laid-out coordinates as the alignment
+target, matched each molecule's scaffold atoms via the substructure matcher, and aligned —
+RMS ≈ `5.7e-8` (floating-point noise, a perfect fit) across all three test molecules.
+
+New fifth `SdfRecordPicker.qml` button, **updates the batch in place and deliberately keeps the
+picker open** afterward (unlike the other four, which close it) so the user can see the
+realignment before optionally exporting. A shared `realignSdfBatch` worker command reuses the
+same `_buildBatchRecordsFromStructs` helper the RDF round introduced. Molecules that don't
+match the common scaffold are left at their existing coordinates, not treated as an error.
+
+Verified via a real interactive test with three benzene rings deliberately rotated/flipped in
+the source SDF (substituents pointing up/right/down): after clicking Align, all three
+thumbnails converged to the identical orientation; chaining into Export Batch as Image Grid
+afterward confirmed the exported image shows all three substituents consistently oriented. See
+`.claude/plans/align-batch-to-scaffold.md`.
+
+### Done (2026-07-19, Image Move & Resize)
+
+Closes the explicit v1 boundary recorded in "Done (2026-07-12, image embedding)": "insert/
+delete only — no move/resize, no clipboard-paste." Real UI interaction work, not an Indigo
+wrapper — the verification method had to be a real interactive test in the running app, a
+disposable C++ harness cannot verify drag behaviour. De-risked by reading the code before
+assuming scope: `_makeImage`'s duck-typed object (`src/v8_worker.js`) already had both
+`addPositionOffset(offset)` (move) and `rescaleSize(scale)` (resize) methods fully implemented
+and simply never called — the real net-new work was entirely the *interaction* side (there was
+no way to select an image at all beforehand).
+
+New `selectedImageId` state on `ChemCanvas.qml` (deliberately kept separate from the general
+`_selection` model, which is atom/bond/rxn-object shaped). New `hitTestImage` mirrors the
+existing `hitTestText` pattern but with a real bbox check. Reuses the existing PowerPoint-style
+resize/rotate handle geometry (`canvas.selectionHandles(bbox)`, shipped 2026-07-11 for atom
+selections) — the rotate handle is hidden for a selected image (rotation out of scope this
+round). Two new worker commands, `moveImage`/`resizeImage`, wrap the pre-existing model methods
+in the standard `makeCmd`/undo-redo shape every other mutation already uses. Verified
+`Vec2.scaled()`'s real implementation (simple uniform coordinate multiplication) before trusting
+the resize-undo math (`1 / scaleFactor` is an exact inverse).
+
+Verified via a real interactive test, every step: insert an image → select it (handles appear,
+no rotate handle) → drag its body (moves, stays at the new position) → drag a corner handle
+(resizes, stays at the new size) → undo the resize (exact revert, not approximate) → undo the
+move (exact revert) → click away (handles disappear cleanly) → confirmed pre-existing
+atom-selection dragging and image insertion still behave unchanged. See
+`.claude/plans/image-resize-move.md`.
+
+### Done (2026-07-19, Batch File Formats: SMILES/CML/CDX read + Export Batch to File)
+
+Closes out all 22 remaining functions in "SDF / RDF / SMILES / CML / CDX file iteration" in one
+attempt, per explicit instruction (see `.claude/plans/indigo-batch-file-io.md`). Two halves:
+
+- **Read path**: `.smi`/`.smiles`, `.cml`, and `.cdx` files now open via a new
+  `IndigoService::parseIndigoBatchFile(fileUrl, format)` (mirrors `parseRdfBatch` exactly, using
+  `indigoIterateSmilesFile`/`indigoIterateCMLFile`/`indigoIterateCDXFile`), feeding the same
+  `SdfRecordPicker.qml`/`_sdfBatchRecords` pipeline via a new, separate signal
+  (`indigoBatchParsed`) and worker function (`deserializeIndigoBatch`) — deliberately not
+  reusing `parseRdfBatch`/`rdfBatchParsed`, to keep zero regression risk to the already-shipped
+  RDF feature.
+- **Write path**: new "Export Batch to File…" button (6th on `SdfRecordPicker.qml`) exports the
+  currently-open batch to a real `.sdf`/`.rdf`/`.smi`/`.cml` file via the unified
+  `indigoCreateFileSaver`/`indigoAppend`/`indigoClose` triplet — a genuinely new capability
+  (distinct from "Export Batch as Image Grid", which produces a picture, not a re-openable
+  structured file). CDX has no writer in Indigo (verified against the header) — export stays
+  read-only for that one format.
+- The remaining 16 functions were explicitly excluded with a documented reason each (buffer-based
+  iterators with no in-app use case since files are always opened from a real path; raw-data/tell
+  functions for manual byte-offset bookkeeping this app never needs; per-format
+  header/append/footer functions superseded by the single unified saver API).
+
+**Three real bugs found during independent verification, none caught by the delegated
+implementation's own harness (which only checked structural round-trip, not rendering)**:
+1. **Blank thumbnails for SMILES/CDX batches** — `parseIndigoBatchFile` never called
+   `indigoLayout()`, so coordinate-less input formats collapsed every atom onto `(0,0,0)` — the
+   same bug class as the `indigoExtractCommonScaffold` collapse fixed in the Scaffold/R-Groups
+   round above. Fixed with `indigoLayout(item)` before serializing each record.
+2. **Hard worker crash on reopening an exported file** — root-caused through several rounds of
+   isolation testing (fresh-app repro, minimal-sequence repro, byte-level file comparison) to two
+   stacked, previously-latent bugs: (a) `globalThis.console` in the QuickJS worker shim
+   (`src/v8_worker.js`) never defined `.warn`/`.error`, only `.log` — a pre-existing gap since the
+   QuickJS migration that turned chem-core.js's own benign internal parse warning into an
+   uncatchable `TypeError: not a function`, crashing the whole worker instead of degrading
+   gracefully; (b) `exportBatchToFile` wrote molfiles with a blank molecule-name header line,
+   which chem-core.js's `MolSerializer.deserialize()` rejects by default
+   (`badHeaderRecover: false`) — confirmed by manually naming a copy of the crashing file and
+   watching it parse and render correctly. Fixed both: `console.warn`/`console.error` now route to
+   `__native.log`/`__native.errorLog` (benefits every other batch function that already used
+   `console.warn` in a catch block — `deserializeRdfBatch`/`deserializeSdfBatch`/
+   `loadSdfBatchRecord`/`getSdfBatchMolfiles`/`realignSdfBatch` all had the same latent landmine),
+   and `exportBatchToFile` now names any unnamed record (`indigoSetName`) before writing.
+
+Verified via a real interactive test: opened a real multi-record `.smi` and `.cml` file (correct
+thumbnails after the layout fix), exported the open batch to `.sdf` and re-imported it (round
+trip confirmed byte-correct with real coordinates, both before and after the crash fix), exported
+to `.rdf` and reopened via the existing RDF path (real thumbnails, confirming zero regression to
+the RDF feature and that the RDF export target genuinely round-trips too). All 6
+`SdfRecordPicker.qml` buttons share the same `_pendingBatchAction` dispatch chain — the
+established "set routing state *before* `sendCommand`" rule was followed for the new button.
+
+### Done (2026-07-19, Insert Image → Imago chemical-structure recognition)
+
+Wires the existing Insert Image feature (`IMAGE` tool → click canvas → `imageFileDialog`, done
+2026-07-12) to a fresh, Apache-2.0, MinGW-native build of Imago
+(`github.com/epam/Imago`, EPAM's own 2D chemical-structure-image OCR engine) — since this app is
+a chemistry editor, users loading an image here almost always want an *editable structure*, not
+a static picture of one.
+
+**The build itself was the bulk of the work.** A first attempt used a vendored
+`imago-2.0.0-win64-shared` SDK download, since deleted — it turned out to be GPLv3-era,
+predating Imago's 2.1 relicense to Apache-2.0 (confirmed via `LICENSE-history` in a fresh clone:
+"Imago version 1 was released under GNU General Public License v3.0. Imago version 2.1 was
+re-licensed under Apache License, Version 2."). Relicensing source doesn't retroactively
+relicense an already-published binary, so that SDK was never used — instead, cloned
+`github.com/epam/Imago` fresh and built it from source with MinGW/Ninja (OpenCV + Indigo as git
+submodules, ~260 build targets). Real MinGW-incompatibility bugs found and fixed in the process
+(all genuine upstream portability gaps, not workarounds):
+- `core/src/comdef.h` used the MSVC-only `_int64` keyword under a bare `#ifdef _WIN32` guard,
+  which is also defined under MinGW/GCC — broke the `qword` typedef and cascaded into a wall of
+  downstream errors. Fixed by additionally checking `!defined(__GNUC__)`.
+- Three separate missing `#include <cstdint>` cases (GCC's libstdc++ is stricter than MSVC's
+  headers about requiring the explicit include for `std::uint32_t`/`std::uintptr_t`) — one in
+  Indigo's own `ket_commons.h`, two in OpenCV's bundled `ade` graph library.
+- OpenCV's Python-binding auto-detection got confused by multiple `python.exe` entries on
+  `PATH`, hitting a `find_package(... "OFF")` CMake bug — worked around by explicitly pinning
+  `PYTHON3_EXECUTABLE` and disabling Python bindings outright (not needed for the C API).
+- The `api/python` wheel-packaging target used Python's `distutils`, removed in 3.12+ — dropped
+  that subdirectory from the build (not needed either).
+
+The built `imago.dll` + a hand-written, self-contained consumer header (`imago/lib/`,
+`imago/include/imago_c.h` — the upstream `api/c/src/imago_c.h` requires Imago's own internal
+build macros to already be defined, so a minimal standalone header was written instead,
+declaring only the handful of functions actually called) are vendored into the repo, linked the
+same way `indigo.dll` already is.
+
+**Confidence heuristic, verified empirically before writing any code**: Imago does not reliably
+refuse to produce output for non-structure input — a real chemical-structure test image
+recognized cleanly with **0 warnings**; an unrelated UI screenshot still produced a full
+(garbage, 87-atom) molfile, but with **34 warnings**. The `imagoRecognize()` warnings-count
+output parameter is the real, usable confidence signal (gated at ≤5, a documented judgment call,
+not a verified-exact boundary — see `imageFileDialog.maxAcceptableWarnings` in
+`MainWindow.qml`). New `ImagoService::recognizeImage` (mirrors `IndigoService`'s exact
+session-alloc/background-thread/signal shape) uses `imagoGetMol()` (session-owned buffer, copied
+immediately via `QString::fromUtf8` — same ownership convention as `indigoMolfile()`), not
+`imagoSaveMolToBuffer` (heap-allocates, would need manual `delete[]`).
+
+New shared worker helper `_insertStructAt(sourceStruct, cx, cy)` extracted out of the existing
+`pasteSelection` (which becomes a thin wrapper over it) — reused by the new
+`insertRecognizedStructure` command instead of repurposing `_clipboard` as scratch space, which
+would have silently broken the user's real copy/paste.
+
+Verified via a real interactive test: a real structure image produced genuine, colored, selected,
+editable atoms/bonds at the clicked canvas position (not a picture) — confirmed by screenshot,
+not just log output. Confirmed ordinary Ctrl+C/Ctrl+V copy-paste still works completely unchanged
+after the `_insertStructAt` extraction (pasted a real selection, duplicate appeared correctly at
+the paste position). The non-structure-image fallback path reuses the exact pre-existing
+`fileIO.readImageAsDataUri`/`addImage` call unmodified (only relocated) — not independently
+re-verified via UI this round due to persistent UI-automation click flakiness unrelated to the
+app itself, but low risk since that code path didn't change. **Found and fixed in passing**: the
+image dialog's error path referenced `workerErrorDialog.text`, which doesn't exist — the real
+property (confirmed against five other call sites) is `.errorText`. See
+`.claude/plans/imago-structure-recognition.md`.
+
 ### Verification sweep (2026-07-17, later same day): remaining tools covered
 
 Closed out every item the previous sweep listed as not-yet-covered, via `pywinauto`:
@@ -1320,11 +1655,19 @@ now used by the insert/delete/render feature; `imageReferencePositionToCursor` r
 
 ---
 
-## Part C — Indigo C API: every unused function (466 of 517)
+## Part C — Indigo C API: every unused function (427 of 517)
 
-`IndigoService.cpp` calls 54 of Indigo's 517 declared functions (across `indigo.h`,
-`indigo-inchi.h`, `indigo-renderer.h`). Everything below is linked into the binary via
-`indigo.dll` already — no new dependency needed to use any of it.
+`IndigoService.cpp` calls 90 of Indigo's 517 declared functions (across `indigo.h`,
+`indigo-inchi.h`, `indigo-renderer.h`) — cross-checked exactly against the interactive
+`library-audit.html` artifact (90 implemented / 427 unutilised, verified by summing every
+category count and counting actual list entries). This count folds in both the 9 features
+shipped 2026-07-18/19 and several older functions this doc's own itemized lists had never been
+struck through for (`indigoCreateArray`/`indigoArrayAdd`/`indigoRenderGridToFile`/
+`indigoRenderToFile`/`indigoSetOption`/`indigoCountHeavyAtoms`/`indigoMostAbundantMass`/
+`indigoMassComposition`/`indigoMolarRefractivity`/`indigoPka`/`indigoPkaValues`/`indigoIsChiral`
+— all genuinely used by earlier-shipped features, just never reflected here until this pass).
+Everything below is linked into the binary via `indigo.dll` already — no new dependency needed
+to use any of it.
 
 ### Substructure matching (13, now 4 used — see "Done (2026-07-17, SMARTS / Substructure
 Search)" above)
@@ -1342,28 +1685,38 @@ Search)" above)
 - `indigoIterateTautomers` (tautomer-aware matching — the shipped v1 uses default/NORMAL mode
   only, per the plan's non-goals)
 
-### Fingerprints & similarity (7) — would back "find similar" search
+### Fingerprints & similarity (7, now 1 used — see "Done (2026-07-18, Find Common Scaffold /
+Decompose to R-Groups / Rank by Similarity)" above, and the pre-existing single-reference
+"Compare Similarity" dialog) — the remaining 6 would back a real fingerprint-indexed "find
+similar" search over a large collection (Bingo NoSQL is the better fit at that scale, see
+Part D — these are small-batch/single-comparison only)
 - `indigoFingerprint`
 - `indigoCountBits`
 - `indigoCommonBits`
 - `indigoOneBitsList`
 - `indigoLoadFingerprintFromBuffer`
 - `indigoLoadFingerprintFromDescriptors`
-- `indigoSimilarity`
+- ~~`indigoSimilarity`~~ **done** — used by both the pre-existing single-reference "Compare
+  Similarity" dialog and the batch "Rank by Similarity" feature (2026-07-18); both aromatize
+  both sides before comparing (verified: skipping this scored a molecule against itself as
+  0.0769 instead of 1.0000).
 
-### Renderer plugin — indigo-renderer.h (8, now 3 used — see "Done" above) — native PNG/SVG/PDF
-export; print-to-PDF still grabs a canvas screenshot instead (`AppController::exportPdf`)
+### Renderer plugin — indigo-renderer.h (8, now 4 used — see "Done" above) — native PNG/SVG/PDF
+export
 
 **`indigoRendererInit`/`Dispose` and `indigoRenderToFile` are now linked and used** (Part A's
-"Done (2026-07-12, native SVG export)" entry, for `*.svg` only so far) — the remaining
-functions below are still unused.
+"Done (2026-07-12, native SVG export)" entry, plus single-structure PDF export elsewhere) —
+`AppController::exportPdf` (the old canvas-screenshot approach) is now dead code, confirmed no
+live call sites remain in any `.qml` file. `indigoRenderGridToFile` is also now used — see
+"Done (2026-07-18, Export SDF Batch as Image Grid)" above, on a plain array of independently-
+loaded molecules, distinct from the reaction-grid export's reactant/product-component array —
+the remaining functions below are still unused.
 
 - `indigoRender(object, output)` — renders one molecule/reaction to a file
   (`indigoWriteFile`), an in-memory buffer (`indigoWriteBuffer`), or a raw Windows HDC
   (`indigoRenderWriteHDC`) for direct GDI drawing
-- `indigoRenderGrid(objects, refAtoms, nColumns, output)` / `indigoRenderGridToFile(...)` —
-  renders a whole array of structures as a grid (a template sheet, or a reaction's
-  reactants+products in one image)
+- `indigoRenderGrid(objects, refAtoms, nColumns, output)` — the buffer/object-output sibling of
+  `indigoRenderGridToFile`, still unused (only the file-writing variant is used)
 - `indigoRenderWriteHDC` — see above
 - `indigoRenderReset()` — resets rendering settings to defaults
 
@@ -1414,17 +1767,25 @@ Natural fit: sits right next to the SMILES support already wired in (`indigoSmil
 "Copy as InChI" / "Copy as InChIKey" action alongside "Copy as SMILES." InChIKey specifically
 is what you'd paste into an external database to look up a drawn structure.
 
-### SDF / RDF / SMILES / CML / CDX file iteration (23) — no batch multi-record file browsing
+### SDF / RDF / SMILES / CML / CDX file iteration (23, now 6 used — see "Done (2026-07-18, RDF
+Batch Browsing)" and "Done (2026-07-19, Batch File Formats: SMILES/CML/CDX read + Export Batch
+to File)" above; SDF batch browsing shipped separately via chem-core.js's own `SdfSerializer`,
+no Indigo needed; the remaining 16 are explicitly excluded — buffer-based iterators have no
+in-app use case since files are always opened from a real path, not a pasted buffer; raw-data/
+tell functions are for manual byte-offset bookkeeping this app never needs since
+`indigoIterate*File` already hands back a usable object per record; the per-format
+header/append/footer functions are superseded by the single unified
+`indigoCreateFileSaver`/`indigoAppend`/`indigoClose` triplet)
 - `indigoIterateSDF`
 - `indigoIterateRDF`
 - `indigoIterateSmiles`
 - `indigoIterateCML`
 - `indigoIterateCDX`
 - `indigoIterateSDFile`
-- `indigoIterateRDFile`
-- `indigoIterateSmilesFile`
-- `indigoIterateCMLFile`
-- `indigoIterateCDXFile`
+- ~~`indigoIterateRDFile`~~ **done 2026-07-18** — see the "Done" entry above.
+- ~~`indigoIterateSmilesFile`~~ **done 2026-07-19**
+- ~~`indigoIterateCMLFile`~~ **done 2026-07-19**
+- ~~`indigoIterateCDXFile`~~ **done 2026-07-19**
 - `indigoRawData`
 - `indigoTell`
 - `indigoTell64`
@@ -1436,26 +1797,29 @@ is what you'd paste into an external database to look up a drawn structure.
 - `indigoCmlAppend`
 - `indigoCmlFooter`
 - `indigoCreateSaver`
-- `indigoCreateFileSaver`
-- `indigoAppend`
+- ~~`indigoCreateFileSaver`~~ **done 2026-07-19** — Export Batch to File.
+- ~~`indigoAppend`~~ **done 2026-07-19** — Export Batch to File.
 
-### R-Group deconvolution & scaffold detection (13) — Markush/scaffold analysis, distinct
-from Sketch's own manual R-group authoring
+### R-Group deconvolution & scaffold detection (13, now 3 used — see "Done (2026-07-18, Find
+Common Scaffold / Decompose to R-Groups / Rank by Similarity)" above)
 
 A related pair: both about analyzing a *set* of molecules rather than one at a time.
 
 **Scaffold detection** — finds the shared core across multiple structures without
 specifying it up front:
-- `indigoExtractCommonScaffold(structures, options)` — the maximum common substructure
-  (by ring count) across a set
+- ~~`indigoExtractCommonScaffold(structures, options)`~~ **done 2026-07-18** — the maximum
+  common substructure (by ring count) across a set. Needs an explicit `indigoLayout()` call
+  afterward — it does not assign real 2D coordinates on its own (real bug found and fixed,
+  see the "Done" entry).
 - `indigoAllScaffolds(extracted)` — every possible scaffold candidate from that extraction,
   not just the single best one
 
 **R-Group deconvolution** — given a scaffold and a set of molecules that share it, splits
 each molecule into "core + substituents":
-- `indigoDecomposeMolecules(scaffold, structures)` → `indigoDecomposedMoleculeScaffold`
-  (the core, with R-site markers where substituents attach) and
-  `indigoIterateDecomposedMolecules` (per-molecule results)
+- ~~`indigoDecomposeMolecules(scaffold, structures)` → `indigoDecomposedMoleculeScaffold`~~
+  **done 2026-07-18** (the core, with R-site markers where substituents attach) — see the
+  "Done" entry above. `indigoIterateDecomposedMolecules` (per-molecule results) remains
+  unused, deliberately deferred to a v3 (see below).
 - `indigoDecomposedMoleculeHighlighted` — a molecule with its scaffold portion highlighted
 - `indigoDecomposedMoleculeWithRGroups` — a full query molecule with `R1=...`, `R2=...`
   substituents explicitly defined — a real Markush structure, in the same shape Sketch's
@@ -1482,8 +1846,10 @@ needing a new UI paradigm.
 - `indigoTransform`
 - `indigoTransformHELMtoSCSR`
 
-### Reactions, query reactions — remaining (48) — beyond load/save already used: reactant/
-product/catalyst iteration, auto atom-mapping, pKa prediction, reacting-center flags
+### Reactions, query reactions — remaining (48, now 5 used — see "Done (2026-07-18, Reaction
+Auto-Mapping)", "Done (2026-07-18, Ionize at pH)", "Done (2026-07-18, Reacting Centers)", and
+"Done (2026-07-18, RDF Batch Browsing)" above) — beyond load/save already used: reactant/
+product/catalyst iteration, pKa prediction
 - `indigoLoadReaction`
 - `indigoLoadReactionFromFile`
 - `indigoLoadReactionFromBuffer`
@@ -1508,7 +1874,8 @@ product/catalyst iteration, auto atom-mapping, pKa prediction, reacting-center f
 - `indigoAddReactant`
 - `indigoAddProduct`
 - `indigoAddCatalyst`
-- `indigoCountReactants`
+- ~~`indigoCountReactants`~~ **done 2026-07-18** — see "Done (2026-07-18, RDF Batch Browsing)"
+  above; used to distinguish molecule vs. reaction records per entry.
 - `indigoCountProducts`
 - `indigoCountCatalysts`
 - `indigoCountMolecules`
@@ -1521,27 +1888,34 @@ product/catalyst iteration, auto atom-mapping, pKa prediction, reacting-center f
 - `indigoSaveRxnfile`
 - `indigoSaveRxnfileToFile`
 - `indigoOptimize`
-- `indigoIonize`
+- ~~`indigoIonize`~~ **done 2026-07-18** — see the "Done" entry above. Distinct from the
+  pre-existing pKa-reporting feature: this mutates the structure's protonation state for a
+  target pH, works on molecules and reactions both.
 - `indigoBuildPkaModel`
 - `indigoGetAcidPkaValue`
 - `indigoGetBasicPkaValue`
-- `indigoAutomap`
+- ~~`indigoAutomap`~~ **done 2026-07-18** — see the "Done" entry above.
 - `indigoGetAtomMappingNumber`
 - `indigoSetAtomMappingNumber`
 - `indigoGetReactingCenter`
 - `indigoSetReactingCenter`
-- `indigoClearAAM`
-- `indigoCorrectReactingCenters`
+- ~~`indigoClearAAM`~~ **done 2026-07-18** — see the "Done" entry above.
+- ~~`indigoCorrectReactingCenters`~~ **done 2026-07-18** — see "Done (2026-07-18, Reacting
+  Centers)" above.
 
-### Calculation on molecules — remaining (23) — molar refractivity, extra pKa APIs, chirality/
-Fischer-projection checks, canonical hashing/symmetry classes, submolecule extraction
-- `indigoCountHeavyAtoms`
+### Calculation on molecules — remaining (23, now 11 used — several were already done in
+earlier rounds but this itemized list was never struck through for them until now; see "Done
+(2026-07-18, Align Batch to Common Scaffold)" for the newest one) — symmetry classes,
+Fischer-projection checks, submolecule extraction
+- ~~`indigoCountHeavyAtoms`~~ **done (2026-07-13)** — see "Done (2026-07-13, heavy atom count +
+  chirality)" above.
 - `indigoGrossFormula`
-- `indigoMostAbundantMass`
-- `indigoMassComposition`
-- `indigoMolarRefractivity`
-- `indigoPka`
-- `indigoPkaValues`
+- ~~`indigoMostAbundantMass`~~ / ~~`indigoMassComposition`~~ **done (2026-07-13)** — see "Done
+  (2026-07-13, Most Abundant Mass + Mass Composition + extra pKa values)" above.
+- ~~`indigoMolarRefractivity`~~ / ~~`indigoPka`~~ **done (2026-07-12)** — see "Done (2026-07-12,
+  molar refractivity + pKa)" above.
+- ~~`indigoPkaValues`~~ **done (2026-07-13)** — see "Done (2026-07-13, Most Abundant Mass + Mass
+  Composition + extra pKa values)" above.
 - `indigoLayeredCode` **deliberately excluded** — confirmed a pure wrapper around
   `MoleculeInChI::outputInChI`, duplicating the InChI support already implemented. See "Done
   (2026-07-13, Copy Canonical Hash)" above.
@@ -1549,7 +1923,8 @@ Fischer-projection checks, canonical hashing/symmetry classes, submolecule extra
 - `indigoSymmetryClasses`
 - `indigoHasCoord`
 - `indigoHasZCoord`
-- `indigoIsChiral`
+- ~~`indigoIsChiral`~~ **done (2026-07-13)** — see "Done (2026-07-13, heavy atom count +
+  chirality)" above.
 - ~~`indigoCheckChirality`~~ / ~~`indigoCheckStereo`~~ **done (2026-07-13)** — see "Done
   (2026-07-13, chirality/stereocenter checks in Validate structure)" above.
 - `indigoCheck3DStereo` **deliberately excluded** — trivially always-0 in this 2D-only editor
@@ -1560,7 +1935,8 @@ Fischer-projection checks, canonical hashing/symmetry classes, submolecule extra
 - `indigoGetSubmolecule`
 - `indigoRemoveAtoms`
 - `indigoRemoveBonds`
-- `indigoAlignAtoms`
+- ~~`indigoAlignAtoms`~~ **done 2026-07-18** — see "Done (2026-07-18, Align Batch to Common
+  Scaffold)" above.
 
 ### Molecules & reactions — shared ops, remaining (20, now 2 used, 1 confirmed dead — see "Done
 (2026-07-12, explicit hydrogens fold/unfold)" and "Done (2026-07-13, Layout Selected)" above) —
@@ -1686,10 +2062,12 @@ only uses the from-string form of
 - `indigoSaveMDLCT`
 - `indigoNameToStructure`
 
-### Accessing a molecule — atom/bond/SGroup internals (162) — Sketch always hands Indigo a
-whole molfile/RXN string rather than building structures through its object model; this
-entire category is naturally dormant given that division of labour
-- `indigoIterateAtoms`
+### Accessing a molecule — atom/bond/SGroup internals (162, now 2 used) — Sketch always hands
+Indigo a whole molfile/RXN string rather than building structures through its object model;
+this category stayed almost entirely dormant given that division of labour, with one narrow
+exception: Align Batch to Common Scaffold reads scaffold atom coordinates directly
+(~~`indigoIterateAtoms`~~/~~`indigoXYZ`~~, both **done 2026-07-18**) to use as the target
+positions for `indigoAlignAtoms`
 - `indigoIteratePseudoatoms`
 - `indigoIterateRSites`
 - `indigoIterateAlleneCenters`
@@ -1728,7 +2106,6 @@ entire category is naturally dormant given that division of labour
 - `indigoCountHydrogens`
 - `indigoCountImplicitHydrogens`
 - `indigoMacroProperties`
-- `indigoXYZ`
 - `indigoSetXYZ`
 - `indigoClearXYZ`
 - `indigoCountSuperatoms`
@@ -1852,9 +2229,10 @@ entire category is naturally dormant given that division of labour
 - `indigoSetBondOrder`
 - `indigoMerge`
 
-### Options, iterators, arrays, connected components, SSSR, basic I/O (40) — generic
+### Options, iterators, arrays, connected components, SSSR, basic I/O (40, now 4 used) — generic
 object-model plumbing, dormant for the same reason as the "Accessing a molecule" group
-- `indigoSetOption`
+- ~~`indigoSetOption`~~ **done** — sets the render format for Export Batch as Image Grid and
+  (earlier) single-structure SVG/PDF export.
 - `indigoSetOptionInt`
 - `indigoSetOptionFloat`
 - `indigoSetOptionColor`
@@ -1869,8 +2247,8 @@ object-model plumbing, dormant for the same reason as the "Accessing a molecule"
 - `indigoGetOptionType`
 - `indigoHasNext`
 - `indigoRemove`
-- `indigoCreateArray`
-- `indigoArrayAdd`
+- ~~`indigoCreateArray`~~ / ~~`indigoArrayAdd`~~ **done** — batching structures for scaffold
+  detection, R-group decomposition, similarity ranking, batch alignment, and grid export.
 - `indigoAt`
 - `indigoCount`
 - `indigoClear`
@@ -1891,7 +2269,8 @@ object-model plumbing, dormant for the same reason as the "Accessing a molecule"
 - `indigoLoadBuffer`
 - `indigoWriteFile`
 - `indigoWriteBuffer`
-- `indigoClose`
+- ~~`indigoClose`~~ **done 2026-07-19** — closes the file saver for Export Batch to File
+  (`indigoCreateFileSaver`/`indigoAppend`/`indigoClose`), see "Done" entry above.
 - `indigoExpandAbbreviations`
 - `indigoExpandGroupPseudoatoms`
 

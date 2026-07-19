@@ -233,6 +233,26 @@ ApplicationWindow {
             id: indigoSvc
         }
 
+        // Imago OCR Backend — chemical-structure image recognition for Insert Image
+        ImagoService {
+            id: imagoSvc
+            onImageRecognized: function(molfile, warningsCount, error) {
+                window.isProcessing = false
+                if (!error && molfile && warningsCount <= imageFileDialog.maxAcceptableWarnings && activeSketch) {
+                    activeSketch.sendCommand("insertRecognizedStructure", [molfile, imageFileDialog.chemX, imageFileDialog.chemY])
+                } else {
+                    // Recognition failed or low-confidence — fall back to a plain image embed.
+                    const dataUri = fileIO.readImageAsDataUri(imageFileDialog.pendingFileUrl)
+                    if (dataUri === "") {
+                        workerErrorDialog.errorText = "Failed to load image. Ensure it is a supported format (png, jpg, gif, bmp) and under 5 MB."
+                        workerErrorDialog.open()
+                    } else if (activeSketch) {
+                        activeSketch.addImage(dataUri, imageFileDialog.chemX, imageFileDialog.chemY, 1.5, 1.5)
+                    }
+                }
+            }
+        }
+
         // Global Shortcuts
         Shortcut { sequence: "S"; onActivated: if (activeCanvas) activeCanvas.currentTool = "SELECT" }
         Shortcut { sequence: "E"; onActivated: if (activeCanvas) activeCanvas.currentTool = "ERASE" }
@@ -245,6 +265,73 @@ ApplicationWindow {
             function onLayoutFinished(newMol) {
                 window.isProcessing = false
                 if (newMol && activeCanvas) activeCanvas.loadMolfile(newMol)
+            }
+            function onCommonScaffoldFinished(result, error) {
+                window.isProcessing = false
+                if (result && activeCanvas) {
+                    activeCanvas.loadMolfile(result)
+                } else {
+                    workerErrorDialog.errorText = "Find Common Scaffold: " + (error || "unknown error")
+                    workerErrorDialog.open()
+                }
+            }
+            function onRgroupDecompositionFinished(result, error) {
+                window.isProcessing = false
+                if (result && activeCanvas) {
+                    activeCanvas.loadMolfile(result)
+                } else {
+                    workerErrorDialog.errorText = "Decompose to R-Groups: " + (error || "unknown error")
+                    workerErrorDialog.open()
+                }
+            }
+            function onSimilarityRankFinished(resultJson, error) {
+                window.isProcessing = false
+                if (resultJson) {
+                    try {
+                        const arr = JSON.parse(resultJson)
+                        arr.sort((a, b) => b.score - a.score)
+                        const labels = window._pendingBatchLabels || []
+                        const lines = arr.map((r, i) => {
+                            const name = labels[r.index] || ("Record " + (r.index + 1))
+                            return (i + 1) + ". " + name + " — " + (r.score * 100).toFixed(1) + "%"
+                        })
+                        similarityRankResultDialog.text = lines.join("\n")
+                        similarityRankResultDialog.open()
+                    } catch (e) {
+                        workerErrorDialog.errorText = "Rank by Similarity: failed to parse results."
+                        workerErrorDialog.open()
+                    }
+                } else {
+                    workerErrorDialog.errorText = "Rank by Similarity: " + (error || "unknown error")
+                    workerErrorDialog.open()
+                }
+            }
+            function onBatchAlignFinished(resultJson, error) {
+                window.isProcessing = false
+                if (resultJson && activeSketch) {
+                    activeSketch.sendCommand("realignSdfBatch", [resultJson])
+                } else {
+                    workerErrorDialog.errorText = "Align Batch to Common Scaffold: " + (error || "unknown error")
+                    workerErrorDialog.open()
+                }
+            }
+            function onRdfBatchParsed(recordsJson, error) {
+                if (recordsJson && activeSketch) {
+                    activeSketch.sendCommand("deserializeRdfBatch", [recordsJson])
+                } else {
+                    window.isProcessing = false
+                    workerErrorDialog.errorText = "Open RDF: " + (error || "unknown error")
+                    workerErrorDialog.open()
+                }
+            }
+            function onIndigoBatchParsed(recordsJson, error) {
+                if (recordsJson && activeSketch) {
+                    activeSketch.sendCommand("deserializeIndigoBatch", [recordsJson])
+                } else {
+                    window.isProcessing = false
+                    workerErrorDialog.errorText = "Open batch file: " + (error || "unknown error")
+                    workerErrorDialog.open()
+                }
             }
             function onClean2dFinished(newMol) {
                 window.isProcessing = false
@@ -305,6 +392,24 @@ ApplicationWindow {
                 if (!success) {
                     const isPdf = window.pendingRenderUrl.toString().toLowerCase().endsWith(".pdf")
                     workerErrorDialog.errorText = (isPdf ? "PDF export failed: " : "SVG export failed: ") + error
+                    workerErrorDialog.open()
+                }
+            }
+            function onReactionMappingFinished(result, error) {
+                window.isProcessing = false
+                if (result && activeCanvas) {
+                    activeCanvas.loadMolfile(result)
+                } else {
+                    workerErrorDialog.errorText = "Atom Mapping: " + (error || "unknown error")
+                    workerErrorDialog.open()
+                }
+            }
+            function onIonizeFinished(result, error) {
+                window.isProcessing = false
+                if (result && activeCanvas) {
+                    activeCanvas.loadMolfile(result)
+                } else {
+                    workerErrorDialog.errorText = "Ionize at pH: " + (error || "unknown error")
                     workerErrorDialog.open()
                 }
             }
@@ -392,6 +497,14 @@ ApplicationWindow {
                     indigoSvc.renderToFile(data, window.pendingRenderUrl, "pdf")
                 } else if (reqId === "render_grid") {
                     indigoSvc.renderReactionGridToFile(data, window.pendingRenderUrl, "pdf")
+                } else if (reqId === "automap") {
+                    indigoSvc.autoMapReaction(data)
+                } else if (reqId === "ionize") {
+                    indigoSvc.ionizeAtPh(data, window.pendingIonizePh)
+                } else if (reqId === "clear_mapping") {
+                    indigoSvc.clearReactionMapping(data)
+                } else if (reqId === "correct_reacting_centers") {
+                    indigoSvc.correctReactingCenters(data)
                 } else if (reqId === "smiles") {
                     indigoSvc.smiles(data)
                 } else if (reqId === "canonical_smiles") {
@@ -460,6 +573,7 @@ ApplicationWindow {
                     if (data && data.length > 0 && activeSketch)
                         activeSketch.setOsClipboardText(data)
                 } else if (reqId === "sdf_batch_list") {
+                    window.isProcessing = false
                     const parsed = JSON.parse(data)
                     if (parsed.count <= 1) {
                         if (activeSketch) activeSketch.sendCommand("loadSdfBatchRecord", [0])
@@ -468,11 +582,46 @@ ApplicationWindow {
                         sdfRecordPicker.model = parsed.records
                         sdfRecordPicker.open()
                     }
+                } else if (reqId === "sdf_batch_realigned") {
+                    const parsed = JSON.parse(data)
+                    sdfRecordPicker.recordCount = parsed.count
+                    sdfRecordPicker.model = parsed.records
                 } else if (reqId === "sdf_batch_load") {
+                    window.isProcessing = false
                     if (activeCanvas) {
                         activeCanvas._needsCentering = true
                         activeCanvas.refresh()
                         setDocFile(DocumentManager.activeDocId, pendingSdfBatchUrl)
+                    }
+                } else if (reqId === "sdf_batch_molfiles") {
+                    const parsed = JSON.parse(data)
+                    if (parsed.molfiles && parsed.molfiles.length >= 2) {
+                        if (window._pendingBatchAction === "export_grid") {
+                            window._pendingBatchGridMolfiles = parsed.molfiles
+                            batchGridSaveDialog.open()
+                        } else if (window._pendingBatchAction === "export_file") {
+                            window._pendingBatchGridMolfiles = parsed.molfiles
+                            batchFileSaveDialog.open()
+                        } else if (window._pendingBatchAction === "align") {
+                            indigoSvc.alignBatchToScaffold(parsed.molfiles)
+                        } else if (window._pendingBatchAction === "decompose") {
+                            indigoSvc.decomposeToRGroups(parsed.molfiles)
+                        } else if (window._pendingBatchAction === "similarity") {
+                            window._pendingBatchLabels = parsed.labels || []
+                            if (!window.pendingSimilarityRefMolfile) {
+                                window.isProcessing = false
+                                workerErrorDialog.errorText = "Rank by Similarity: no active structure to compare against."
+                                workerErrorDialog.open()
+                            } else {
+                                indigoSvc.rankBySimilarity(window.pendingSimilarityRefMolfile, parsed.molfiles)
+                            }
+                        } else {
+                            indigoSvc.findCommonScaffold(parsed.molfiles)
+                        }
+                    } else {
+                        window.isProcessing = false
+                        workerErrorDialog.errorText = "Batch structure analysis: not enough valid structures in this batch."
+                        workerErrorDialog.open()
                     }
                 } else if (reqId === "smarts_search") {
                     indigoSvc.substructureSearch(data, window.pendingSmartsQuery)
@@ -551,6 +700,7 @@ ApplicationWindow {
                 MenuItemRow { text: "Remove Explicit H"; iconSource: "explicit-hydrogens.svg"; onTriggered: executeStructureOp("foldH") }
                 MenuItemRow { text: "Normalize"; iconSource: "clean.svg"; onTriggered: executeStructureOp("normalize") }
                 MenuItemRow { text: "Standardize"; iconSource: "analyse.svg"; onTriggered: executeStructureOp("standardize") }
+                MenuItemRow { text: "Ionize at pH…"; iconSource: "analyse.svg"; onTriggered: ionizeDialog.open() }
                 Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6 }
                 MenuItemRow { text: "Validate"; iconSource: "check.svg"; onTriggered: executeStructureOp("check") }
                 MenuItemRow { text: "Search Substructure (SMARTS)…"; iconSource: "search.svg"; onTriggered: executeStructureOp("smartsSearch") }
@@ -644,6 +794,43 @@ ApplicationWindow {
                                     reactionsMenuTrigger.close()
                                 }
                             }
+                        }
+                    }
+
+                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.outline }
+                    Text {
+                        text: "Atom mapping"
+                        color: Theme.textSecondary
+                        font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontDisplay }
+                    }
+                    MenuItemRow {
+                        Layout.fillWidth: true
+                        text: "Auto-map Reaction"
+                        iconSource: "reaction-map.svg"
+                        onTriggered: {
+                            window.isProcessing = true
+                            if (activeSketch) activeSketch.requestSerialize("automap")
+                            reactionsMenuTrigger.close()
+                        }
+                    }
+                    MenuItemRow {
+                        Layout.fillWidth: true
+                        text: "Clear Mapping"
+                        iconSource: "reaction-map.svg"
+                        onTriggered: {
+                            window.isProcessing = true
+                            if (activeSketch) activeSketch.requestSerialize("clear_mapping")
+                            reactionsMenuTrigger.close()
+                        }
+                    }
+                    MenuItemRow {
+                        Layout.fillWidth: true
+                        text: "Correct Reacting Centers"
+                        iconSource: "reaction-map.svg"
+                        onTriggered: {
+                            window.isProcessing = true
+                            if (activeSketch) activeSketch.requestSerialize("correct_reacting_centers")
+                            reactionsMenuTrigger.close()
                         }
                     }
                 }
@@ -1667,6 +1854,10 @@ ApplicationWindow {
     }
 
     property url pendingSdfBatchUrl: ""
+    property string _pendingBatchAction: "scaffold"
+    property var _pendingBatchLabels: []
+    property var _pendingBatchGridMolfiles: []
+    property string pendingSimilarityRefMolfile: ""
 
     FileIO {
         id: fileIO
@@ -1676,6 +1867,39 @@ ApplicationWindow {
         id: sdfRecordPicker
         onRecordChosen: function(index) {
             if (activeSketch) activeSketch.sendCommand("loadSdfBatchRecord", [index])
+        }
+        onFindScaffoldRequested: {
+            window.isProcessing = true
+            _pendingBatchAction = "scaffold"
+            if (activeSketch) activeSketch.sendCommand("getSdfBatchMolfiles")
+            sdfRecordPicker.close()
+        }
+        onDecomposeRequested: {
+            window.isProcessing = true
+            _pendingBatchAction = "decompose"
+            if (activeSketch) activeSketch.sendCommand("getSdfBatchMolfiles")
+            sdfRecordPicker.close()
+        }
+        onRankBySimilarityRequested: {
+            window.isProcessing = true
+            _pendingBatchAction = "similarity"
+            window.pendingSimilarityRefMolfile = activeCanvas ? activeCanvas.getMolfile() : ""
+            if (activeSketch) activeSketch.sendCommand("getSdfBatchMolfiles")
+            sdfRecordPicker.close()
+        }
+        onAlignToScaffoldRequested: {
+            window.isProcessing = true
+            _pendingBatchAction = "align"
+            if (activeSketch) activeSketch.sendCommand("getSdfBatchMolfiles")
+        }
+        onExportGridRequested: {
+            _pendingBatchAction = "export_grid"
+            if (activeSketch) activeSketch.sendCommand("getSdfBatchMolfiles")
+            sdfRecordPicker.close()
+        }
+        onExportBatchFileRequested: {
+            _pendingBatchAction = "export_file"
+            if (activeSketch) activeSketch.sendCommand("getSdfBatchMolfiles")
         }
     }
 
@@ -1692,13 +1916,15 @@ ApplicationWindow {
     }
     property string pendingSmartsQuery: ""
     property string pendingSimilarityRef: ""
+    property double pendingIonizePh: 7.4
 
     FileDialog {
         id: openDialog
         title: "Open Molecule"
         fileMode: FileDialog.OpenFile
         nameFilters: [
-            "Molfile (*.mol)", "SDF (*.sdf)", "Ketcher JSON (*.ket)",
+            "Molfile (*.mol)", "SDF (*.sdf)", "RDF (*.rdf)", "SMILES (*.smi *.smiles)",
+            "CML (*.cml)", "CDX (*.cdx)", "Ketcher JSON (*.ket)",
             "FASTA (*.fasta *.fa)", "HELM (*.helm)", "IDT Oligo (*.idt)",
             "All files (*)"
         ]
@@ -1721,6 +1947,28 @@ ApplicationWindow {
     }
 
     function loadFromFile(fileUrl) {
+        const fileStrEarly = fileUrl.toString().toLowerCase()
+        if (fileStrEarly.endsWith(".rdf")) {
+            pendingSdfBatchUrl = fileUrl
+            window.isProcessing = true
+            indigoSvc.parseRdfBatch(fileUrl)
+            return
+        } else if (fileStrEarly.endsWith(".smi") || fileStrEarly.endsWith(".smiles")) {
+            pendingSdfBatchUrl = fileUrl
+            window.isProcessing = true
+            indigoSvc.parseIndigoBatchFile(fileUrl, "smiles")
+            return
+        } else if (fileStrEarly.endsWith(".cml")) {
+            pendingSdfBatchUrl = fileUrl
+            window.isProcessing = true
+            indigoSvc.parseIndigoBatchFile(fileUrl, "cml")
+            return
+        } else if (fileStrEarly.endsWith(".cdx")) {
+            pendingSdfBatchUrl = fileUrl
+            window.isProcessing = true
+            indigoSvc.parseIndigoBatchFile(fileUrl, "cdx")
+            return
+        }
         const data = fileIO.read(fileUrl)
         if (data === "") return
         const fileStr = fileUrl.toString().toLowerCase()
@@ -1805,6 +2053,34 @@ ApplicationWindow {
         onAccepted: {
             window.pendingRenderUrl = selectedFile
             if (activeSketch) activeSketch.requestStructure("mol", "render_grid")
+        }
+    }
+
+    FileDialog {
+        id: batchGridSaveDialog
+        title: "Export Batch as Image Grid"
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["PDF document (*.pdf)", "PNG image (*.png)"]
+        onAccepted: {
+            window.pendingRenderUrl = selectedFile
+            const fileStr = selectedFile.toString().toLowerCase()
+            const format = fileStr.endsWith(".png") ? "png" : "pdf"
+            indigoSvc.exportBatchGridToFile(window._pendingBatchGridMolfiles, selectedFile, format)
+        }
+    }
+
+    FileDialog {
+        id: batchFileSaveDialog
+        title: "Export Batch to File"
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["SDF (*.sdf)", "RDF (*.rdf)", "SMILES (*.smi)", "CML (*.cml)"]
+        onAccepted: {
+            const fileStr = selectedFile.toString().toLowerCase()
+            let format = "sdf"
+            if (fileStr.endsWith(".rdf")) format = "rdf"
+            else if (fileStr.endsWith(".smi")) format = "smiles"
+            else if (fileStr.endsWith(".cml")) format = "cml"
+            indigoSvc.exportBatchToFile(window._pendingBatchGridMolfiles, selectedFile, format)
         }
     }
 
@@ -1979,19 +2255,23 @@ ApplicationWindow {
     FileDialog {
         id: imageFileDialog
         nameFilters: ["Images (*.png *.jpg *.jpeg *.gif *.bmp)"]
-        
+
         property real chemX: 0
         property real chemY: 0
-        
+        property url pendingFileUrl
+        // Tunable confidence threshold on Imago's reported recognition-warning count.
+        // Verified empirically: a real chemical-structure image reported 0 warnings, an
+        // unrelated screenshot reported 34 while still producing a (garbage) molfile — Imago
+        // never refuses outright, so this count is the real signal to gate on. Not pinned at
+        // exactly 0 since an imperfect scan may legitimately produce a few warnings and still
+        // recognize correctly; revisit this number against real user images.
+        property int maxAcceptableWarnings: 5
+
         onAccepted: {
             if (!activeSketch) return
-            const dataUri = fileIO.readImageAsDataUri(selectedFile)
-            if (dataUri === "") {
-                workerErrorDialog.text = "Failed to load image. Ensure it is a supported format (png, jpg, gif, bmp) and under 5 MB."
-                workerErrorDialog.open()
-            } else {
-                activeSketch.addImage(dataUri, chemX, chemY, 1.5, 1.5)
-            }
+            pendingFileUrl = selectedFile
+            window.isProcessing = true
+            imagoSvc.recognizeImage(selectedFile)
         }
     }
 
@@ -2108,6 +2388,30 @@ ApplicationWindow {
     }
 
     TaskDialog {
+        id: ionizeDialog
+        title: "Ionize at pH"
+        standardButtons: Dialog.Ok | Dialog.Cancel
+
+        TextField {
+            id: ionizePhInput
+            width: 380
+            placeholderText: "pH, e.g. 7.4"
+            validator: DoubleValidator { bottom: 0; top: 14; decimals: 2 }
+            Keys.onReturnPressed: ionizeDialog.accept()
+        }
+
+        onOpened: { ionizePhInput.text = "7.4"; ionizePhInput.forceActiveFocus() }
+        onAccepted: {
+            const pH = parseFloat(ionizePhInput.text)
+            if (!isNaN(pH) && activeSketch) {
+                window.isProcessing = true
+                window.pendingIonizePh = pH
+                activeSketch.requestSerialize("ionize")
+            }
+        }
+    }
+
+    TaskDialog {
         id: inchiLoadDialog
         title: "Load from InChI"
         standardButtons: Dialog.Ok | Dialog.Cancel
@@ -2165,6 +2469,12 @@ ApplicationWindow {
     MessageDialog {
         id: similarityResultDialog
         title: "Similarity Result"
+        text: ""
+    }
+
+    MessageDialog {
+        id: similarityRankResultDialog
+        title: "Similarity Ranking"
         text: ""
     }
 }
