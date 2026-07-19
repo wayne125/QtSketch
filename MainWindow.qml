@@ -158,6 +158,33 @@ ApplicationWindow {
         docTitles[docId] = decodeURIComponent(s.substring(s.lastIndexOf("/") + 1))
         titleRev++
     }
+    // Declared on window (root), not a nested Item, and called everywhere as
+    // window.executeStructureOp(...) — the Structure menu's MenuItemRow children get
+    // reparented into AppMenuBarItem's internal Popup (default property alias), and the
+    // Qt Quick Compiler (qmlsc AOT) cannot resolve a bare, unqualified function name
+    // declared on an un-id'd ancestor Item across that reparenting boundary (confirmed:
+    // every OTHER menu in this same reparenting setup already calls its handlers via an
+    // id-qualified path - window.saveActive(...)/window.printToPdf() in the File menu,
+    // activeCanvas.xxx() in Edit - and those all work; this was the one unqualified
+    // exception, and every Structure-menu item threw "ReferenceError: executeStructureOp
+    // is not defined" at runtime as a result).
+    function executeStructureOp(op) {
+        if (op === "smartsSearch") { smartsSearchPopup.open(); return }
+        if (op === "rgroups") { rgroupPanel.open(); return }
+        if (!activeSketch) return
+        if (op === "check") {
+            window.explicitCheckPending = true
+            activeSketch.requestSerialize("check")
+            return
+        }
+        if (op === "layoutSelected") {
+            activeSketch.sendCommand("layoutSelectedChain", [])
+            return
+        }
+        if (op !== "layout" && op !== "aromatize") window.isProcessing = true
+        activeSketch.requestSerialize(op)
+    }
+
     function saveActive(forceDialog) {
         if (!activeSketch) return
         const path = docFilePaths[DocumentManager.activeDocId]
@@ -642,23 +669,6 @@ ApplicationWindow {
             }
         }
 
-        function executeStructureOp(op) {
-            if (op === "smartsSearch") { smartsSearchPopup.open(); return }
-            if (op === "rgroups") { rgroupPanel.open(); return }
-            if (!activeSketch) return
-            if (op === "check") {
-                window.explicitCheckPending = true
-                activeSketch.requestSerialize("check")
-                return
-            }
-            if (op === "layoutSelected") {
-                activeSketch.sendCommand("layoutSelectedChain", [])
-                return
-            }
-            if (op !== "layout" && op !== "aromatize") window.isProcessing = true
-            activeSketch.requestSerialize(op)
-        }
-
         AppMenuBar {
             Layout.fillWidth: true
             AppMenuBarItem {
@@ -690,21 +700,21 @@ ApplicationWindow {
             }
             AppMenuBarItem {
                 text: "Structure"
-                MenuItemRow { text: "Layout"; iconSource: "layout.svg"; onTriggered: executeStructureOp("layout") }
-                MenuItemRow { text: "Layout Selected"; iconSource: "layout.svg"; enabled: Selection.hasAtoms(activeSketch, 1) && !window.isProcessing; onTriggered: executeStructureOp("layoutSelected") }
-                MenuItemRow { text: "Clean 2D"; iconSource: "layout.svg"; onTriggered: executeStructureOp("clean2d") }
+                MenuItemRow { text: "Layout"; iconSource: "layout.svg"; onTriggered: window.executeStructureOp("layout") }
+                MenuItemRow { text: "Layout Selected"; iconSource: "layout.svg"; enabled: Selection.hasAtoms(activeSketch, 1) && !window.isProcessing; onTriggered: window.executeStructureOp("layoutSelected") }
+                MenuItemRow { text: "Clean 2D"; iconSource: "layout.svg"; onTriggered: window.executeStructureOp("clean2d") }
                 Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6 }
-                MenuItemRow { text: "Aromatize"; iconSource: "arom.svg"; onTriggered: executeStructureOp("aromatize") }
-                MenuItemRow { text: "Dearomatize"; iconSource: "dearom.svg"; onTriggered: executeStructureOp("dearomatize") }
-                MenuItemRow { text: "Add Explicit H"; iconSource: "explicit-hydrogens.svg"; onTriggered: executeStructureOp("unfoldH") }
-                MenuItemRow { text: "Remove Explicit H"; iconSource: "explicit-hydrogens.svg"; onTriggered: executeStructureOp("foldH") }
-                MenuItemRow { text: "Normalize"; iconSource: "clean.svg"; onTriggered: executeStructureOp("normalize") }
-                MenuItemRow { text: "Standardize"; iconSource: "analyse.svg"; onTriggered: executeStructureOp("standardize") }
+                MenuItemRow { text: "Aromatize"; iconSource: "arom.svg"; onTriggered: window.executeStructureOp("aromatize") }
+                MenuItemRow { text: "Dearomatize"; iconSource: "dearom.svg"; onTriggered: window.executeStructureOp("dearomatize") }
+                MenuItemRow { text: "Add Explicit H"; iconSource: "explicit-hydrogens.svg"; onTriggered: window.executeStructureOp("unfoldH") }
+                MenuItemRow { text: "Remove Explicit H"; iconSource: "explicit-hydrogens.svg"; onTriggered: window.executeStructureOp("foldH") }
+                MenuItemRow { text: "Normalize"; iconSource: "clean.svg"; onTriggered: window.executeStructureOp("normalize") }
+                MenuItemRow { text: "Standardize"; iconSource: "analyse.svg"; onTriggered: window.executeStructureOp("standardize") }
                 MenuItemRow { text: "Ionize at pH…"; iconSource: "analyse.svg"; onTriggered: ionizeDialog.open() }
                 Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6 }
-                MenuItemRow { text: "Validate"; iconSource: "check.svg"; onTriggered: executeStructureOp("check") }
-                MenuItemRow { text: "Search Substructure (SMARTS)…"; iconSource: "search.svg"; onTriggered: executeStructureOp("smartsSearch") }
-                MenuItemRow { text: "R-Groups…"; iconSource: "rgroup-label.svg"; shortcutHint: "Ctrl+R"; onTriggered: executeStructureOp("rgroups") }
+                MenuItemRow { text: "Validate"; iconSource: "check.svg"; onTriggered: window.executeStructureOp("check") }
+                MenuItemRow { text: "Search Substructure (SMARTS)…"; iconSource: "search.svg"; onTriggered: window.executeStructureOp("smartsSearch") }
+                MenuItemRow { text: "R-Groups…"; iconSource: "rgroup-label.svg"; shortcutHint: "Ctrl+R"; onTriggered: window.executeStructureOp("rgroups") }
             }
             AppMenuBarItem {
                 id: reactionsMenuTrigger
@@ -1031,7 +1041,7 @@ ApplicationWindow {
                             return structOpDelegate.modelData.id === "rgroups" || !window.isProcessing
                         }
                         onClicked: {
-                            executeStructureOp(structOpDelegate.modelData.id)
+                            window.executeStructureOp(structOpDelegate.modelData.id)
                         }
                     }
                 }

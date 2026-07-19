@@ -4381,8 +4381,8 @@ function _dispatchCommand(cmd, args) {
         else if (cmd === 'normalizeStructure') normalizeStructure();
         else if (cmd === 'alignAtoms') alignAtoms(args[0]);
         else if (cmd === 'distributeAtoms') distributeAtoms(args[0]);
-        else if (cmd === 'setStereoDescriptors') setStereoDescriptors(args[0]);
-        else if (cmd === 'setCheckIssues') setCheckIssues(args[0]);
+        else if (cmd === 'setStereoDescriptors') { setStereoDescriptors(args[0]); return; }
+        else if (cmd === 'setCheckIssues') { setCheckIssues(args[0]); return; }
         else if (cmd === 'copySelection') copySelection();
         else if (cmd === 'cutSelection') cutSelection();
         else if (cmd === 'pasteSelection') pasteSelection(args[0], args[1]);
@@ -4429,10 +4429,10 @@ function _dispatchCommand(cmd, args) {
         else if (cmd === 'deleteMultitailArrow') deleteMultitailArrow(args[0]);
         else if (cmd === 'addMultitailArrowTail') addMultitailArrowTail(args[0]);
         else if (cmd === 'layoutSelectedChain') layoutSelectedChain();
-        else if (cmd === 'getMoleculeName') getMoleculeName();
+        else if (cmd === 'getMoleculeName') { getMoleculeName(); return; }
         else if (cmd === 'setMoleculeName') setMoleculeName(args[0]);
         else if (cmd === 'selectSubstructureMatches') selectSubstructureMatches(args[0]);
-        else if (cmd === 'getSdfProps') getSdfProps();
+        else if (cmd === 'getSdfProps') { getSdfProps(); return; }
         else if (cmd === 'getStructure') {
             const structStr = getStructure(args[0]);
             console.log(JSON.stringify({ type: "structureResponse", reqId: args[1], data: structStr }));
