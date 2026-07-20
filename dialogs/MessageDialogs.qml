@@ -45,10 +45,22 @@ Item {
     MessageDialog {
         id: workerErrorDialog
         property string errorText: ""
-        title: "Chemistry Engine Error"
+        // Defaults to true (the scary "engine may have stopped" framing) since
+        // that's correct for its real crash-signal caller (window's
+        // onErrorOccurred, a genuine worker exception) -- MainWindow.qml's
+        // ~14 other call sites for routine, recoverable feature failures
+        // (batch/similarity/scaffold/render errors etc.) explicitly set this
+        // to false right before opening. Deriving severity from errorText
+        // keywords instead was tried and rejected: the real crash-path
+        // messages ("Chemistry engine script not found...", worker JS
+        // exception text) don't reliably contain any particular keyword, so
+        // a keyword heuristic misclassified the actual severe case as mild.
+        property bool severe: true
+        title: severe ? "Chemistry Engine Error" : "Operation Failed"
         buttons: MessageDialog.Ok
-        text: "The chemistry engine encountered an error and may have stopped.\n\n" + errorText +
-              "\n\nPlease save your work and restart the application."
+        text: severe ?
+              ("The chemistry engine encountered a severe error and may have stopped.\n\n" + errorText + "\n\nPlease save your work to a new file and restart the application.") :
+              ("The operation could not be completed:\n\n" + errorText)
     }
 
     MessageDialog {

@@ -153,6 +153,19 @@ ApplicationWindow {
         const s = fileUrl.toString()
         docTitles[docId] = decodeURIComponent(s.substring(s.lastIndexOf("/") + 1))
         titleRev++
+        addRecentFile(fileUrl)
+    }
+
+    function addRecentFile(fileUrl) {
+        if (!fileUrl) return
+        var path = fileUrl.toString()
+        if (path === "") return
+        var files = uiSettings.recentFilesJoined ? uiSettings.recentFilesJoined.split("|") : []
+        var idx = files.indexOf(path)
+        if (idx !== -1) files.splice(idx, 1)
+        files.unshift(path)
+        if (files.length > 5) files = files.slice(0, 5)
+        uiSettings.recentFilesJoined = files.join("|")
     }
     // Declared on window (root), not a nested Item, and called everywhere as
     // window.executeStructureOp(...) — the Structure menu's MenuItemRow children get
@@ -190,6 +203,7 @@ ApplicationWindow {
             if (fileStr.endsWith(".sdf")) fmt = "sdf"
             else if (fileStr.endsWith(".ket")) fmt = "ket"
             pendingSaveUrl = path
+            addRecentFile(path)
             activeSketch.requestStructure(fmt, "save")
             if (activeCanvas) activeCanvas.setClean()
         } else {
@@ -216,6 +230,7 @@ ApplicationWindow {
     // the same alias treatment as the dialog ids above.
     property alias indigoSvc: indigoSvc
     property alias imagoSvc: imagoSvc
+    property alias uiSettings: uiSettings
 
     property var docTitles: ({})
     function titleFor(docId) {
@@ -230,6 +245,7 @@ ApplicationWindow {
         id: uiSettings
         category: "ui"
         property bool darkMode: false
+        property string recentFilesJoined: ""
     }
     Component.onCompleted: Theme.darkMode = uiSettings.darkMode
 
@@ -283,11 +299,13 @@ ApplicationWindow {
                 window.isProcessing = false
                 if (!error && molfile && warningsCount <= fileDialogsGroup.imageFileDialog.maxAcceptableWarnings && activeSketch) {
                     activeSketch.sendCommand("insertRecognizedStructure", [molfile, fileDialogsGroup.imageFileDialog.chemX, fileDialogsGroup.imageFileDialog.chemY])
+                    imageConfirmBanner.showBanner(warningsCount)
                 } else {
                     // Recognition failed or low-confidence — fall back to a plain image embed.
                     const dataUri = fileIO.readImageAsDataUri(fileDialogsGroup.imageFileDialog.pendingFileUrl)
                     if (dataUri === "") {
                         messageDialogsGroup.workerErrorDialog.errorText = "Failed to load image. Ensure it is a supported format (png, jpg, gif, bmp) and under 5 MB."
+                        messageDialogsGroup.workerErrorDialog.severe = false
                         messageDialogsGroup.workerErrorDialog.open()
                     } else if (activeSketch) {
                         activeSketch.addImage(dataUri, fileDialogsGroup.imageFileDialog.chemX, fileDialogsGroup.imageFileDialog.chemY, 1.5, 1.5)
@@ -315,6 +333,7 @@ ApplicationWindow {
                     activeCanvas.loadMolfile(result)
                 } else {
                     messageDialogsGroup.workerErrorDialog.errorText = "Find Common Scaffold: " + (error || "unknown error")
+                    messageDialogsGroup.workerErrorDialog.severe = false
                     messageDialogsGroup.workerErrorDialog.open()
                 }
             }
@@ -324,6 +343,7 @@ ApplicationWindow {
                     activeCanvas.loadMolfile(result)
                 } else {
                     messageDialogsGroup.workerErrorDialog.errorText = "Decompose to R-Groups: " + (error || "unknown error")
+                    messageDialogsGroup.workerErrorDialog.severe = false
                     messageDialogsGroup.workerErrorDialog.open()
                 }
             }
@@ -342,10 +362,12 @@ ApplicationWindow {
                         messageDialogsGroup.similarityRankResultDialog.open()
                     } catch (e) {
                         messageDialogsGroup.workerErrorDialog.errorText = "Rank by Similarity: failed to parse results."
+                        messageDialogsGroup.workerErrorDialog.severe = false
                         messageDialogsGroup.workerErrorDialog.open()
                     }
                 } else {
                     messageDialogsGroup.workerErrorDialog.errorText = "Rank by Similarity: " + (error || "unknown error")
+                    messageDialogsGroup.workerErrorDialog.severe = false
                     messageDialogsGroup.workerErrorDialog.open()
                 }
             }
@@ -355,6 +377,7 @@ ApplicationWindow {
                     activeSketch.sendCommand("realignSdfBatch", [resultJson])
                 } else {
                     messageDialogsGroup.workerErrorDialog.errorText = "Align Batch to Common Scaffold: " + (error || "unknown error")
+                    messageDialogsGroup.workerErrorDialog.severe = false
                     messageDialogsGroup.workerErrorDialog.open()
                 }
             }
@@ -364,6 +387,7 @@ ApplicationWindow {
                 } else {
                     window.isProcessing = false
                     messageDialogsGroup.workerErrorDialog.errorText = "Open RDF: " + (error || "unknown error")
+                    messageDialogsGroup.workerErrorDialog.severe = false
                     messageDialogsGroup.workerErrorDialog.open()
                 }
             }
@@ -373,6 +397,7 @@ ApplicationWindow {
                 } else {
                     window.isProcessing = false
                     messageDialogsGroup.workerErrorDialog.errorText = "Open batch file: " + (error || "unknown error")
+                    messageDialogsGroup.workerErrorDialog.severe = false
                     messageDialogsGroup.workerErrorDialog.open()
                 }
             }
@@ -435,6 +460,7 @@ ApplicationWindow {
                 if (!success) {
                     const isPdf = window.pendingRenderUrl.toString().toLowerCase().endsWith(".pdf")
                     messageDialogsGroup.workerErrorDialog.errorText = (isPdf ? "PDF export failed: " : "SVG export failed: ") + error
+                    messageDialogsGroup.workerErrorDialog.severe = false
                     messageDialogsGroup.workerErrorDialog.open()
                 }
             }
@@ -444,6 +470,7 @@ ApplicationWindow {
                     activeCanvas.loadMolfile(result)
                 } else {
                     messageDialogsGroup.workerErrorDialog.errorText = "Atom Mapping: " + (error || "unknown error")
+                    messageDialogsGroup.workerErrorDialog.severe = false
                     messageDialogsGroup.workerErrorDialog.open()
                 }
             }
@@ -453,6 +480,7 @@ ApplicationWindow {
                     activeCanvas.loadMolfile(result)
                 } else {
                     messageDialogsGroup.workerErrorDialog.errorText = "Ionize at pH: " + (error || "unknown error")
+                    messageDialogsGroup.workerErrorDialog.severe = false
                     messageDialogsGroup.workerErrorDialog.open()
                 }
             }
@@ -622,6 +650,7 @@ ApplicationWindow {
                             if (!window.pendingSimilarityRefMolfile) {
                                 window.isProcessing = false;
                                 messageDialogsGroup.workerErrorDialog.errorText = "Rank by Similarity: no active structure to compare against.";
+                                messageDialogsGroup.workerErrorDialog.severe = false;
                                 messageDialogsGroup.workerErrorDialog.open();
                             } else {
                                 indigoSvc.rankBySimilarity(window.pendingSimilarityRefMolfile, parsed.molfiles);
@@ -632,6 +661,7 @@ ApplicationWindow {
                     } else {
                         window.isProcessing = false;
                         messageDialogsGroup.workerErrorDialog.errorText = "Batch structure analysis: not enough valid structures in this batch.";
+                        messageDialogsGroup.workerErrorDialog.severe = false;
                         messageDialogsGroup.workerErrorDialog.open();
                     }
                 },
@@ -657,6 +687,10 @@ ApplicationWindow {
             function onErrorOccurred(error) {
                 window.isProcessing = false
                 messageDialogsGroup.workerErrorDialog.errorText = error
+                // Explicit even though severe defaults to true -- guards against
+                // a previous recoverable-error call site's severe = false
+                // lingering on this shared dialog instance.
+                messageDialogsGroup.workerErrorDialog.severe = true
                 messageDialogsGroup.workerErrorDialog.open()
             }
         }
@@ -1109,10 +1143,20 @@ ApplicationWindow {
                         }
                     }
 
-                    ScrollView {
-                        id: scrollView
+                    // Plain Item as the RowLayout-managed cell (Layout.fillWidth/
+                    // fillHeight live here), so scrollView and the empty-canvas
+                    // overlay below can both anchors.fill: parent as ordinary
+                    // siblings without QML's "anchors on a layout-managed item is
+                    // undefined behavior" warning (confirmed hit when scrollView
+                    // itself carried both the Layout.* properties and was the
+                    // anchor target for a RowLayout-level sibling).
+                    Item {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
+
+                    ScrollView {
+                        id: scrollView
+                        anchors.fill: parent
                         clip: true
                         ScrollBar.horizontal.policy: ScrollBar.AlwaysOn
                         ScrollBar.vertical.policy: ScrollBar.AlwaysOn
@@ -1209,9 +1253,35 @@ ApplicationWindow {
                                         }
                                     }
                                 }
+
                             }
                         }
                     }
+
+                    // A true sibling of scrollView (not a child of docRect, and not
+                    // placed inside scrollView's own content either, to avoid
+                    // relying on how ScrollView handles extra non-Flickable
+                    // children), both anchors.fill: parent within the wrapper Item
+                    // above. docRect is the full, zoomable/scrollable page (794x1123
+                    // at 100% for A4) -- centering on IT places the hint at the
+                    // page's true center, which sits below the visible viewport at
+                    // default scroll/zoom (confirmed empirically: a debug marker
+                    // centered on docRect rendered well below the on-screen page
+                    // area). Filling the wrapper instead overlays it exactly on the
+                    // visible viewport, independent of zoom/scroll, and being
+                    // declared after scrollView here means it paints on top at the
+                    // same default z.
+                    Item {
+                        anchors.fill: parent
+                        StatusPlaceholder {
+                            anchors.centerIn: parent
+                            visible: window.activeCanvas && propPanel.molAtoms === 0
+                            mode: "empty"
+                            message: "Empty Canvas"
+                            detail: "Select a tool on the left to start drawing,\nor drop a molecule file here"
+                        }
+                    }
+                    } // end wrapper Item
                 }
             }
 
@@ -1652,4 +1722,62 @@ ApplicationWindow {
         win: window
     }
 
+    Popup {
+        id: imageConfirmBanner
+        x: (window.width - width) / 2
+        y: window.height - height - 30
+        width: 400
+        height: 50
+        modal: false
+        focus: false
+        closePolicy: Popup.NoAutoClose
+
+        background: Rectangle {
+            color: Theme.surface
+            radius: 4
+            border.color: Theme.outline
+            border.width: 1
+        }
+
+        function showBanner(warnings) {
+            bannerText.text = "Recognized structure inserted (" + warnings + " warning" + (warnings === 1 ? "" : "s") + ")."
+            bannerTimer.restart()
+            open()
+        }
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.margins: 8
+            spacing: 8
+            Text {
+                id: bannerText
+                color: Theme.textPrimary
+                font.pixelSize: Theme.fontSizeBody
+                Layout.fillWidth: true
+            }
+            Button {
+                text: "Keep"
+                onClicked: { imageConfirmBanner.close(); bannerTimer.stop() }
+            }
+            Button {
+                text: "Undo & use image instead"
+                onClicked: {
+                    imageConfirmBanner.close()
+                    bannerTimer.stop()
+                    if (window.activeCanvas) window.activeCanvas.undo()
+                    const dataUri = fileIO.readImageAsDataUri(window.fileDialogsGroup.imageFileDialog.pendingFileUrl)
+                    if (dataUri !== "" && window.activeSketch) {
+                        window.activeSketch.addImage(dataUri, window.fileDialogsGroup.imageFileDialog.chemX, window.fileDialogsGroup.imageFileDialog.chemY, 1.5, 1.5)
+                    }
+                }
+            }
+        }
+
+        Timer {
+            id: bannerTimer
+            interval: 6000
+            repeat: false
+            onTriggered: imageConfirmBanner.close()
+        }
+    }
 }

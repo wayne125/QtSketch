@@ -18,6 +18,7 @@ Item {
     property alias similarityDialog: similarityDialog
     property alias ionizeDialog: ionizeDialog
     property alias inchiLoadDialog: inchiLoadDialog
+    property alias shortcutsDialog: shortcutsDialog
 
     TaskDialog {
         id: renameDialog
@@ -244,6 +245,82 @@ Item {
             if (txt) {
                 win.isProcessing = true
                 win.indigoSvc.layout(txt)
+            }
+        }
+    }
+
+    TaskDialog {
+        id: shortcutsDialog
+        title: "Keyboard Shortcuts"
+        standardButtons: Dialog.Ok
+        width: 420
+        // Explicit height, not left to Dialog's own implicit sizing: an inner
+        // item's explicit `height:` override does not retroactively change
+        // its own implicitHeight, so Dialog's outer frame (sized from content
+        // implicitHeight) came out too short for the ScrollView's real
+        // (explicit) height, and content rendered past the frame's bottom
+        // edge, outside the modal panel entirely -- confirmed via a live
+        // screenshot before adding this. Same bug class already hit and
+        // fixed once in components/StatusPlaceholder.qml.
+        height: 420
+
+        // Sourced verbatim from MainWindow.qml's real Shortcut{} blocks and
+        // AppMenus.qml's MenuItemRow shortcutHint values -- not invented.
+        ScrollView {
+            width: 380
+            height: Math.min(340, shortcutsGrid.implicitHeight + 8)
+            clip: true
+
+            Grid {
+                id: shortcutsGrid
+                columns: 2
+                columnSpacing: 16
+                rowSpacing: 4
+
+                // Flat, alternating key/action list -- same pattern PropertyPanel.qml
+                // uses for its SDF Data Fields grid (one Repeater with an isKey flag
+                // per entry), since a two-column Grid lays out its children in flat
+                // document order, not by pairing two separate Repeaters' outputs.
+                Repeater {
+                    model: {
+                        const shortcuts = [
+                            ["S", "Selection tool"],
+                            ["E", "Erase tool"],
+                            ["B", "Single bond tool"],
+                            ["R", "Benzene ring tool"],
+                            ["Ctrl+N", "New Document"],
+                            ["Ctrl+O", "Open…"],
+                            ["Ctrl+S", "Save"],
+                            ["Ctrl+Shift+S", "Save As…"],
+                            ["Ctrl+I", "Load from SMILES…"],
+                            ["Ctrl+B", "Biopolymer…"],
+                            ["Ctrl+R", "R-Groups…"],
+                            ["Ctrl+W", "Close current tab"],
+                            ["Ctrl+Z", "Undo"],
+                            ["Ctrl+Shift+Z / Ctrl+Y", "Redo"],
+                            ["Ctrl+X", "Cut"],
+                            ["Ctrl+C", "Copy"],
+                            ["Ctrl+V", "Paste"],
+                            ["Ctrl+Shift+C", "Copy as Image"],
+                            ["Ctrl+0", "Fit to Screen"]
+                        ]
+                        const arr = []
+                        for (let i = 0; i < shortcuts.length; i++) {
+                            arr.push({ isKey: true, val: shortcuts[i][0] })
+                            arr.push({ isKey: false, val: shortcuts[i][1] })
+                        }
+                        return arr
+                    }
+                    delegate: Text {
+                        required property var modelData
+                        text: modelData.val
+                        color: modelData.isKey ? Theme.textSecondary : Theme.textPrimary
+                        font {
+                            pixelSize: Theme.fontSizeBody
+                            family: modelData.isKey ? Theme.fontMono : Theme.fontDisplay
+                        }
+                    }
+                }
             }
         }
     }

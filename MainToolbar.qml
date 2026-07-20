@@ -24,11 +24,22 @@ Rectangle {
         width: 1
     }
 
-    RowLayout {
-        anchors {
-            fill: parent
-            leftMargin: 16
-        }
+    Flickable {
+        anchors.fill: parent
+        contentWidth: Math.max(parent.width, mainToolbarRow.implicitWidth)
+        contentHeight: parent.height
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+
+        RowLayout {
+            id: mainToolbarRow
+            anchors {
+                top: parent.top
+                bottom: parent.bottom
+                left: parent.left
+                leftMargin: 16
+                rightMargin: 16
+            }
         spacing: 4
 
         // FILE GROUP
@@ -209,4 +220,5 @@ Rectangle {
             currentIndex: 0
         }
     } // end RowLayout
+    } // end Flickable
 }

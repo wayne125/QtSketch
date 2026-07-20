@@ -223,6 +223,29 @@ Item {
                     ctx.stroke();
                     ctx.setLineDash([]);
                 }
+            } else if (canvas.currentTool && canvas.currentTool.indexOf("TEMPLATE_") === 0 && !canvas.mouseArea.isDragging && !canvas.mouseArea.movingImage && !canvas.mouseArea.rotatingSelection && !canvas.mouseArea.resizingSelection && !canvas.sketch.overlayState.hoverAtomId && !canvas.sketch.overlayState.hoverBondId) {
+                if (canvas.mouseArea.containsMouse) {
+                    const cx = canvas.mouseArea.mouseX;
+                    const cy = canvas.mouseArea.mouseY;
+                    ctx.beginPath();
+                    const r = Theme.clampDim(30, root.scale);
+                    for (let i = 0; i < 6; i++) {
+                        const angle = i * Math.PI / 3 + Math.PI / 6;
+                        const px = cx + r * Math.cos(angle);
+                        const py = cy + r * Math.sin(angle);
+                        if (i === 0) ctx.moveTo(px, py);
+                        else ctx.lineTo(px, py);
+                    }
+                    ctx.closePath();
+                    
+                    ctx.strokeStyle = Theme.accent;
+                    ctx.lineWidth = Theme.clampStrokeWidth(Theme.bondWidth, root.scale);
+                    ctx.setLineDash([4, 4]);
+                    ctx.globalAlpha = 0.4;
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                    ctx.globalAlpha = 1.0;
+                }
             }
 
             if (canvas.sketch.overlayState.previewBonds) {
@@ -382,5 +405,19 @@ Item {
     Connections {
         target: canvas
         function onCurrentToolChanged() { overlayCanvas.requestPaint() }
+    }
+
+    Connections {
+        target: canvas ? canvas.mouseArea : null
+        function onMouseXChanged() {
+            if (canvas && canvas.currentTool && canvas.currentTool.indexOf("TEMPLATE_") === 0) {
+                overlayCanvas.requestPaint()
+            }
+        }
+        function onMouseYChanged() {
+            if (canvas && canvas.currentTool && canvas.currentTool.indexOf("TEMPLATE_") === 0) {
+                overlayCanvas.requestPaint()
+            }
+        }
     }
 }

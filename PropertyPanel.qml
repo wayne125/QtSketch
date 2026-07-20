@@ -229,6 +229,39 @@ Rectangle {
             visible: root.molAtoms > 0
         }
 
+        // Multi-select summary
+        ColumnLayout {
+            Layout.fillWidth: true
+            visible: {
+                if (!root.canvas || !root.canvas.sketch) return false;
+                let atomCount = root.canvas.sketch.selection.atom_ids ? root.canvas.sketch.selection.atom_ids.length : 0;
+                let bondCount = root.canvas.sketch.selection.bond_ids ? root.canvas.sketch.selection.bond_ids.length : 0;
+                return (atomCount + bondCount) > 1;
+            }
+            spacing: Theme.spacingMedium
+
+            Text {
+                textFormat: Text.PlainText
+                text: "Selection Summary"
+                color: Theme.textSecondary
+                font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontDisplay }
+            }
+            Text {
+                textFormat: Text.PlainText
+                text: {
+                    if (!root.canvas || !root.canvas.sketch) return "";
+                    let atomCount = root.canvas.sketch.selection.atom_ids ? root.canvas.sketch.selection.atom_ids.length : 0;
+                    let bondCount = root.canvas.sketch.selection.bond_ids ? root.canvas.sketch.selection.bond_ids.length : 0;
+                    let parts = [];
+                    if (atomCount > 0) parts.push(atomCount + (atomCount === 1 ? " atom" : " atoms"));
+                    if (bondCount > 0) parts.push(bondCount + (bondCount === 1 ? " bond" : " bonds"));
+                    return parts.join(", ") + " selected";
+                }
+                color: Theme.textPrimary
+                font { pixelSize: Theme.fontSizeBody; family: Theme.fontDisplay }
+            }
+        }
+
         // Sgroup (contracted abbreviation) info
         ColumnLayout {
             Layout.fillWidth: true

@@ -22,6 +22,18 @@ AppMenuBar {
         MenuItemRow { text: "Open…"; iconSource: "open.svg"; onTriggered: root.win.openDialog.open() }
         MenuItemRow { text: "Save"; iconSource: "save.svg"; shortcutHint: "Ctrl+S"; onTriggered: root.win.saveActive(false) }
         MenuItemRow { text: "Save As…"; iconSource: "save.svg"; onTriggered: root.win.saveActive(true) }
+
+        // Recent Files
+        Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6; visible: root.win.uiSettings.recentFilesJoined !== "" }
+        Repeater {
+            model: root.win.uiSettings.recentFilesJoined ? root.win.uiSettings.recentFilesJoined.split("|") : []
+            MenuItemRow {
+                text: modelData.substring(modelData.lastIndexOf("/") + 1) || modelData
+                iconSource: "open.svg"
+                onTriggered: root.win.loadFromFile(Qt.url(modelData))
+            }
+        }
+
         Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6 }
         MenuItemRow { text: "Load from SMILES…"; iconSource: "smiles_in.svg"; onTriggered: root.win.smilesDialog.open() }
         MenuItemRow { text: "Load from InChI…"; iconSource: "smiles_in.svg"; onTriggered: root.win.inchiLoadDialog.open() }
@@ -289,5 +301,9 @@ AppMenuBar {
         MenuItemRow { text: "Zoom In"; iconSource: "zoom-in.svg"; onTriggered: root.win.zoomLevel = Math.min(3.0, root.win.zoomLevel + 0.1) }
         MenuItemRow { text: "Zoom Out"; iconSource: "zoom-out.svg"; onTriggered: root.win.zoomLevel = Math.max(0.1, root.win.zoomLevel - 0.1) }
         MenuItemRow { text: "Reset (100%)"; onTriggered: root.win.zoomLevel = 1.0 }
+    }
+    AppMenuBarItem {
+        text: "Help"
+        MenuItemRow { text: "Keyboard Shortcuts"; onTriggered: root.win.taskDialogsGroup.shortcutsDialog.open() }
     }
 }
