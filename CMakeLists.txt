@@ -35,6 +35,9 @@ qt_add_qml_module(sketch
         MainWindow.qml
         AppMenus.qml
         MainToolbar.qml
+        dialogs/FileDialogs.qml
+        dialogs/TaskDialogs.qml
+        dialogs/MessageDialogs.qml
         ChemCanvas.qml
         MoleculeLayer.qml
         SelectionLayer.qml

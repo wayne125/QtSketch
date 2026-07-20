@@ -7,6 +7,9 @@ import "js/Selection.js" as Selection
 
 ApplicationWindow {
     id: window
+    property alias fileDialogsGroup: fileDialogsGroup
+    property alias taskDialogsGroup: taskDialogsGroup
+    property alias messageDialogsGroup: messageDialogsGroup
 
     flags: Qt.Window | Qt.FramelessWindowHint
 
@@ -189,7 +192,7 @@ ApplicationWindow {
             activeSketch.requestStructure(fmt, "save")
             if (activeCanvas) activeCanvas.setClean()
         } else {
-            saveDialog.open()
+            fileDialogsGroup.saveDialog.open()
         }
     }
 
@@ -200,13 +203,18 @@ ApplicationWindow {
     // dialogs via e.g. `win.openDialog.open()`, so each one needed here MUST
     // be re-exposed as an alias, or that reference silently fails at runtime
     // (same failure class as the earlier executeStructureOp scoping bug).
-    property alias openDialog: openDialog
-    property alias gridSaveDialog: gridSaveDialog
+    property alias openDialog: fileDialogsGroup.openDialog
+    property alias gridSaveDialog: fileDialogsGroup.gridSaveDialog
     property alias biopolymerDialog: biopolymerDialog
-    property alias smilesDialog: smilesDialog
-    property alias similarityDialog: similarityDialog
-    property alias ionizeDialog: ionizeDialog
-    property alias inchiLoadDialog: inchiLoadDialog
+    property alias smilesDialog: taskDialogsGroup.smilesDialog
+    property alias similarityDialog: taskDialogsGroup.similarityDialog
+    property alias ionizeDialog: taskDialogsGroup.ionizeDialog
+    property alias inchiLoadDialog: taskDialogsGroup.inchiLoadDialog
+    // Same reasoning: dialogs/FileDialogs.qml's batch export handlers reach
+    // these two backend services via win.indigoSvc/win.imagoSvc — both need
+    // the same alias treatment as the dialog ids above.
+    property alias indigoSvc: indigoSvc
+    property alias imagoSvc: imagoSvc
 
     property var docTitles: ({})
     function titleFor(docId) {
@@ -242,7 +250,7 @@ ApplicationWindow {
         }
         if (anyDirty) {
             close_event.accepted = false
-            unsavedChangesDialog.open()
+            messageDialogsGroup.unsavedChangesDialog.open()
         }
     }
 
@@ -272,16 +280,16 @@ ApplicationWindow {
             id: imagoSvc
             onImageRecognized: function(molfile, warningsCount, error) {
                 window.isProcessing = false
-                if (!error && molfile && warningsCount <= imageFileDialog.maxAcceptableWarnings && activeSketch) {
-                    activeSketch.sendCommand("insertRecognizedStructure", [molfile, imageFileDialog.chemX, imageFileDialog.chemY])
+                if (!error && molfile && warningsCount <= fileDialogsGroup.imageFileDialog.maxAcceptableWarnings && activeSketch) {
+                    activeSketch.sendCommand("insertRecognizedStructure", [molfile, fileDialogsGroup.imageFileDialog.chemX, fileDialogsGroup.imageFileDialog.chemY])
                 } else {
                     // Recognition failed or low-confidence — fall back to a plain image embed.
-                    const dataUri = fileIO.readImageAsDataUri(imageFileDialog.pendingFileUrl)
+                    const dataUri = fileIO.readImageAsDataUri(fileDialogsGroup.imageFileDialog.pendingFileUrl)
                     if (dataUri === "") {
-                        workerErrorDialog.errorText = "Failed to load image. Ensure it is a supported format (png, jpg, gif, bmp) and under 5 MB."
-                        workerErrorDialog.open()
+                        messageDialogsGroup.workerErrorDialog.errorText = "Failed to load image. Ensure it is a supported format (png, jpg, gif, bmp) and under 5 MB."
+                        messageDialogsGroup.workerErrorDialog.open()
                     } else if (activeSketch) {
-                        activeSketch.addImage(dataUri, imageFileDialog.chemX, imageFileDialog.chemY, 1.5, 1.5)
+                        activeSketch.addImage(dataUri, fileDialogsGroup.imageFileDialog.chemX, fileDialogsGroup.imageFileDialog.chemY, 1.5, 1.5)
                     }
                 }
             }
@@ -305,8 +313,8 @@ ApplicationWindow {
                 if (result && activeCanvas) {
                     activeCanvas.loadMolfile(result)
                 } else {
-                    workerErrorDialog.errorText = "Find Common Scaffold: " + (error || "unknown error")
-                    workerErrorDialog.open()
+                    messageDialogsGroup.workerErrorDialog.errorText = "Find Common Scaffold: " + (error || "unknown error")
+                    messageDialogsGroup.workerErrorDialog.open()
                 }
             }
             function onRgroupDecompositionFinished(result, error) {
@@ -314,8 +322,8 @@ ApplicationWindow {
                 if (result && activeCanvas) {
                     activeCanvas.loadMolfile(result)
                 } else {
-                    workerErrorDialog.errorText = "Decompose to R-Groups: " + (error || "unknown error")
-                    workerErrorDialog.open()
+                    messageDialogsGroup.workerErrorDialog.errorText = "Decompose to R-Groups: " + (error || "unknown error")
+                    messageDialogsGroup.workerErrorDialog.open()
                 }
             }
             function onSimilarityRankFinished(resultJson, error) {
@@ -329,15 +337,15 @@ ApplicationWindow {
                             const name = labels[r.index] || ("Record " + (r.index + 1))
                             return (i + 1) + ". " + name + " — " + (r.score * 100).toFixed(1) + "%"
                         })
-                        similarityRankResultDialog.text = lines.join("\n")
-                        similarityRankResultDialog.open()
+                        messageDialogsGroup.similarityRankResultDialog.text = lines.join("\n")
+                        messageDialogsGroup.similarityRankResultDialog.open()
                     } catch (e) {
-                        workerErrorDialog.errorText = "Rank by Similarity: failed to parse results."
-                        workerErrorDialog.open()
+                        messageDialogsGroup.workerErrorDialog.errorText = "Rank by Similarity: failed to parse results."
+                        messageDialogsGroup.workerErrorDialog.open()
                     }
                 } else {
-                    workerErrorDialog.errorText = "Rank by Similarity: " + (error || "unknown error")
-                    workerErrorDialog.open()
+                    messageDialogsGroup.workerErrorDialog.errorText = "Rank by Similarity: " + (error || "unknown error")
+                    messageDialogsGroup.workerErrorDialog.open()
                 }
             }
             function onBatchAlignFinished(resultJson, error) {
@@ -345,8 +353,8 @@ ApplicationWindow {
                 if (resultJson && activeSketch) {
                     activeSketch.sendCommand("realignSdfBatch", [resultJson])
                 } else {
-                    workerErrorDialog.errorText = "Align Batch to Common Scaffold: " + (error || "unknown error")
-                    workerErrorDialog.open()
+                    messageDialogsGroup.workerErrorDialog.errorText = "Align Batch to Common Scaffold: " + (error || "unknown error")
+                    messageDialogsGroup.workerErrorDialog.open()
                 }
             }
             function onRdfBatchParsed(recordsJson, error) {
@@ -354,8 +362,8 @@ ApplicationWindow {
                     activeSketch.sendCommand("deserializeRdfBatch", [recordsJson])
                 } else {
                     window.isProcessing = false
-                    workerErrorDialog.errorText = "Open RDF: " + (error || "unknown error")
-                    workerErrorDialog.open()
+                    messageDialogsGroup.workerErrorDialog.errorText = "Open RDF: " + (error || "unknown error")
+                    messageDialogsGroup.workerErrorDialog.open()
                 }
             }
             function onIndigoBatchParsed(recordsJson, error) {
@@ -363,8 +371,8 @@ ApplicationWindow {
                     activeSketch.sendCommand("deserializeIndigoBatch", [recordsJson])
                 } else {
                     window.isProcessing = false
-                    workerErrorDialog.errorText = "Open batch file: " + (error || "unknown error")
-                    workerErrorDialog.open()
+                    messageDialogsGroup.workerErrorDialog.errorText = "Open batch file: " + (error || "unknown error")
+                    messageDialogsGroup.workerErrorDialog.open()
                 }
             }
             function onClean2dFinished(newMol) {
@@ -412,8 +420,8 @@ ApplicationWindow {
             }
             function onSimilarityFinished(result) {
                 if (result) {
-                    similarityResultDialog.text = "Tanimoto similarity: " + result
-                    similarityResultDialog.open()
+                    messageDialogsGroup.similarityResultDialog.text = "Tanimoto similarity: " + result
+                    messageDialogsGroup.similarityResultDialog.open()
                 }
             }
             function onMassCompositionFinished(result) {
@@ -425,8 +433,8 @@ ApplicationWindow {
             function onRenderFinished(success, error) {
                 if (!success) {
                     const isPdf = window.pendingRenderUrl.toString().toLowerCase().endsWith(".pdf")
-                    workerErrorDialog.errorText = (isPdf ? "PDF export failed: " : "SVG export failed: ") + error
-                    workerErrorDialog.open()
+                    messageDialogsGroup.workerErrorDialog.errorText = (isPdf ? "PDF export failed: " : "SVG export failed: ") + error
+                    messageDialogsGroup.workerErrorDialog.open()
                 }
             }
             function onReactionMappingFinished(result, error) {
@@ -434,8 +442,8 @@ ApplicationWindow {
                 if (result && activeCanvas) {
                     activeCanvas.loadMolfile(result)
                 } else {
-                    workerErrorDialog.errorText = "Atom Mapping: " + (error || "unknown error")
-                    workerErrorDialog.open()
+                    messageDialogsGroup.workerErrorDialog.errorText = "Atom Mapping: " + (error || "unknown error")
+                    messageDialogsGroup.workerErrorDialog.open()
                 }
             }
             function onIonizeFinished(result, error) {
@@ -443,8 +451,8 @@ ApplicationWindow {
                 if (result && activeCanvas) {
                     activeCanvas.loadMolfile(result)
                 } else {
-                    workerErrorDialog.errorText = "Ionize at pH: " + (error || "unknown error")
-                    workerErrorDialog.open()
+                    messageDialogsGroup.workerErrorDialog.errorText = "Ionize at pH: " + (error || "unknown error")
+                    messageDialogsGroup.workerErrorDialog.open()
                 }
             }
             function onPropertiesReady(mw, mono, mf, atoms, bonds, tpsa, logp, hba, hbd, rotBonds, molarRefractivity, pka, heavyAtoms, isChiral, mostAbundantMass, fragmentCount, ringCount) {
@@ -489,8 +497,8 @@ ApplicationWindow {
                 // explicit-only: opened solely when the user clicks the Validate button.
                 if (window.explicitCheckPending) {
                     window.explicitCheckPending = false
-                    checkResultDialog.reportText = report
-                    checkResultDialog.open()
+                    taskDialogsGroup.checkResultDialog.reportText = report
+                    taskDialogsGroup.checkResultDialog.open()
                 }
             }
 
@@ -600,10 +608,10 @@ ApplicationWindow {
                     if (parsed.molfiles && parsed.molfiles.length >= 2) {
                         if (window._pendingBatchAction === "export_grid") {
                             window._pendingBatchGridMolfiles = parsed.molfiles;
-                            batchGridSaveDialog.open();
+                            fileDialogsGroup.batchGridSaveDialog.open();
                         } else if (window._pendingBatchAction === "export_file") {
                             window._pendingBatchGridMolfiles = parsed.molfiles;
-                            batchFileSaveDialog.open();
+                            fileDialogsGroup.batchFileSaveDialog.open();
                         } else if (window._pendingBatchAction === "align") {
                             indigoSvc.alignBatchToScaffold(parsed.molfiles);
                         } else if (window._pendingBatchAction === "decompose") {
@@ -612,8 +620,8 @@ ApplicationWindow {
                             window._pendingBatchLabels = parsed.labels || [];
                             if (!window.pendingSimilarityRefMolfile) {
                                 window.isProcessing = false;
-                                workerErrorDialog.errorText = "Rank by Similarity: no active structure to compare against.";
-                                workerErrorDialog.open();
+                                messageDialogsGroup.workerErrorDialog.errorText = "Rank by Similarity: no active structure to compare against.";
+                                messageDialogsGroup.workerErrorDialog.open();
                             } else {
                                 indigoSvc.rankBySimilarity(window.pendingSimilarityRefMolfile, parsed.molfiles);
                             }
@@ -622,8 +630,8 @@ ApplicationWindow {
                         }
                     } else {
                         window.isProcessing = false;
-                        workerErrorDialog.errorText = "Batch structure analysis: not enough valid structures in this batch.";
-                        workerErrorDialog.open();
+                        messageDialogsGroup.workerErrorDialog.errorText = "Batch structure analysis: not enough valid structures in this batch.";
+                        messageDialogsGroup.workerErrorDialog.open();
                     }
                 },
                 smarts_search: (data) => {
@@ -647,8 +655,8 @@ ApplicationWindow {
             }
             function onErrorOccurred(error) {
                 window.isProcessing = false
-                workerErrorDialog.errorText = error
-                workerErrorDialog.open()
+                messageDialogsGroup.workerErrorDialog.errorText = error
+                messageDialogsGroup.workerErrorDialog.open()
             }
         }
 
@@ -693,8 +701,8 @@ ApplicationWindow {
                         text: (window.titleRev, (window.dirtyDocs[modelData] ? "● " : "") + window.titleFor(modelData))
 
                         onDoubleClicked: {
-                            renameDialog.docId = modelData
-                            renameDialog.open()
+                            taskDialogsGroup.renameDialog.docId = modelData
+                            taskDialogsGroup.renameDialog.open()
                         }
 
                         Text {
@@ -711,14 +719,14 @@ ApplicationWindow {
                                 onClicked: {
                                     if (DocumentManager.docIds.length <= 1) return
                                     if (window.dirtyDocs[tabBtn.modelData]) {
-                                        // Switch to the tab being closed first: saveDialog/the
+                                        // Switch to the tab being closed first: fileDialogsGroup.saveDialog/the
                                         // structureReady Connections below only ever operate on
                                         // activeSketch/activeCanvas, so saving a *different*,
                                         // still-background tab here would silently save the
                                         // wrong document's content instead.
                                         DocumentManager.activeDocId = tabBtn.modelData
                                         window._pendingCloseDocId = tabBtn.modelData
-                                        unsavedChangesDialog.open()
+                                        messageDialogsGroup.unsavedChangesDialog.open()
                                     } else {
                                         DocumentManager.closeDocument(tabBtn.modelData)
                                     }
@@ -1164,16 +1172,16 @@ ApplicationWindow {
                                         }
 
                                         onTextEditRequested: (textId, content, chemX, chemY) => {
-                                            textDialog.textId = textId
-                                            textDialog.chemX = chemX
-                                            textDialog.chemY = chemY
-                                            textDialog.inputText = content
-                                            textDialog.open()
+                                            taskDialogsGroup.textDialog.textId = textId
+                                            taskDialogsGroup.textDialog.chemX = chemX
+                                            taskDialogsGroup.textDialog.chemY = chemY
+                                            taskDialogsGroup.textDialog.inputText = content
+                                            taskDialogsGroup.textDialog.open()
                                         }
                                         onImageInsertRequested: (cx, cy) => {
-                                            imageFileDialog.chemX = cx
-                                            imageFileDialog.chemY = cy
-                                            imageFileDialog.open()
+                                            fileDialogsGroup.imageFileDialog.chemX = cx
+                                            fileDialogsGroup.imageFileDialog.chemY = cy
+                                            fileDialogsGroup.imageFileDialog.open()
                                         }
                                     }
                                 }
@@ -1447,19 +1455,6 @@ ApplicationWindow {
     property string pendingSimilarityRef: ""
     property double pendingIonizePh: 7.4
 
-    FileDialog {
-        id: openDialog
-        title: "Open Molecule"
-        fileMode: FileDialog.OpenFile
-        nameFilters: [
-            "Molfile (*.mol)", "SDF (*.sdf)", "RDF (*.rdf)", "SMILES (*.smi *.smiles)",
-            "CML (*.cml)", "CDX (*.cdx)", "Ketcher JSON (*.ket)",
-            "FASTA (*.fasta *.fa)", "HELM (*.helm)", "IDT Oligo (*.idt)",
-            "All files (*)"
-        ]
-        onAccepted: loadFromFile(selectedFile)
-    }
-
     function pageSizeMm(name) {
         switch (name) {
             case "A4": return { w: 210, h: 297 }
@@ -1472,7 +1467,7 @@ ApplicationWindow {
 
     function printToPdf() {
         if (!activeCanvas) return
-        pdfSaveDialog.open()
+        fileDialogsGroup.pdfSaveDialog.open()
     }
 
     function loadFromFile(fileUrl) {
@@ -1537,108 +1532,6 @@ ApplicationWindow {
         }
     }
 
-    FileDialog {
-        id: saveDialog
-        title: "Save Molecule"
-        fileMode: FileDialog.SaveFile
-        nameFilters: ["Molfile (*.mol)", "SDF (*.sdf)", "Ketcher JSON (*.ket)", "PNG image (*.png)", "SVG image (*.svg)", "All files (*)"]
-        onAccepted: {
-            const fileStr = selectedFile.toString().toLowerCase()
-            if (fileStr.endsWith(".png")) {
-                activeCanvas.exportPNG(selectedFile)
-                return
-            }
-            if (fileStr.endsWith(".svg")) {
-                window.pendingRenderUrl = selectedFile
-                if (activeSketch) activeSketch.requestStructure("mol", "render_svg")
-                return
-            }
-            let fmt = "mol"
-            if (fileStr.endsWith(".sdf")) fmt = "sdf"
-            else if (fileStr.endsWith(".ket")) fmt = "ket"
-            window.pendingSaveUrl = selectedFile
-            window.setDocFile(DocumentManager.activeDocId, selectedFile)
-            if (activeSketch) activeSketch.requestStructure(fmt, "save")
-            if (activeCanvas) activeCanvas.setClean()
-        }
-    }
-
-    FileDialog {
-        id: pdfSaveDialog
-        title: "Export as PDF"
-        fileMode: FileDialog.SaveFile
-        nameFilters: ["PDF document (*.pdf)"]
-        onAccepted: {
-            window.pendingRenderUrl = selectedFile
-            if (activeSketch) activeSketch.requestStructure("mol", "render_pdf")
-        }
-    }
-
-    FileDialog {
-        id: gridSaveDialog
-        title: "Export Reaction Scheme"
-        fileMode: FileDialog.SaveFile
-        nameFilters: ["PDF document (*.pdf)"]
-        onAccepted: {
-            window.pendingRenderUrl = selectedFile
-            if (activeSketch) activeSketch.requestStructure("mol", "render_grid")
-        }
-    }
-
-    FileDialog {
-        id: batchGridSaveDialog
-        title: "Export Batch as Image Grid"
-        fileMode: FileDialog.SaveFile
-        nameFilters: ["PDF document (*.pdf)", "PNG image (*.png)"]
-        onAccepted: {
-            window.pendingRenderUrl = selectedFile
-            const fileStr = selectedFile.toString().toLowerCase()
-            const format = fileStr.endsWith(".png") ? "png" : "pdf"
-            indigoSvc.exportBatchGridToFile(window._pendingBatchGridMolfiles, selectedFile, format)
-        }
-    }
-
-    FileDialog {
-        id: batchFileSaveDialog
-        title: "Export Batch to File"
-        fileMode: FileDialog.SaveFile
-        nameFilters: ["SDF (*.sdf)", "RDF (*.rdf)", "SMILES (*.smi)", "CML (*.cml)"]
-        onAccepted: {
-            const fileStr = selectedFile.toString().toLowerCase()
-            let format = "sdf"
-            if (fileStr.endsWith(".rdf")) format = "rdf"
-            else if (fileStr.endsWith(".smi")) format = "smiles"
-            else if (fileStr.endsWith(".cml")) format = "cml"
-            indigoSvc.exportBatchToFile(window._pendingBatchGridMolfiles, selectedFile, format)
-        }
-    }
-
-    MessageDialog {
-        id: unsavedChangesDialog
-        title: "Unsaved Changes"
-        buttons: MessageDialog.Save | MessageDialog.Discard | MessageDialog.Cancel
-        text: window._pendingCloseDocId >= 0 ? "This document has unsaved changes. Save before closing?" : "You have unsaved changes. Do you want to save them before exiting?"
-
-        onButtonClicked: function(button) {
-            if (button === MessageDialog.Save) {
-                saveDialog.open()
-            } else if (button === MessageDialog.Discard) {
-                if (window._pendingCloseDocId >= 0) {
-                    var docId = window._pendingCloseDocId
-                    window._pendingCloseDocId = -1
-                    DocumentManager.closeDocument(docId)
-                } else {
-                    window._forceQuit = true
-                    Qt.quit()
-                }
-            }
-            // Cancel: reset pending state
-            if (button === MessageDialog.Cancel) {
-                window._pendingCloseDocId = -1
-            }
-        }
-    }
-
     PeriodicTablePopup {
         id: periodicTablePopup
         onElementSelected: (label) => {
@@ -1648,7 +1541,7 @@ ApplicationWindow {
 
     Shortcut {
         sequence: "Ctrl+I"
-        onActivated: smilesDialog.open()
+        onActivated: taskDialogsGroup.smilesDialog.open()
     }
 
     Shortcut {
@@ -1678,7 +1571,7 @@ ApplicationWindow {
 
     Shortcut {
         sequence: "Ctrl+O"
-        onActivated: openDialog.open()
+        onActivated: fileDialogsGroup.openDialog.open()
     }
 
     Shortcut {
@@ -1692,7 +1585,7 @@ ApplicationWindow {
             if (DocumentManager.docIds.length > 1) {
                 if (window.dirtyDocs[DocumentManager.activeDocId]) {
                     window._pendingCloseDocId = DocumentManager.activeDocId
-                    unsavedChangesDialog.open()
+                    messageDialogsGroup.unsavedChangesDialog.open()
                 } else {
                     DocumentManager.closeDocument(DocumentManager.activeDocId)
                 }
@@ -1704,104 +1597,6 @@ ApplicationWindow {
         id: rgroupPanel
         sketch: window.activeSketch
         canvas: window.activeCanvas
-    }
-
-    TaskDialog {
-        id: renameDialog
-        title: "Rename Tab"
-        width: 300
-        standardButtons: Dialog.Ok | Dialog.Cancel
-
-        property int docId: -1
-
-        TextField {
-            id: renameInput
-            width: parent.width
-            Keys.onReturnPressed: renameDialog.accept()
-        }
-        onOpened: {
-            renameInput.text = window.titleFor(renameDialog.docId)
-            renameInput.selectAll()
-            renameInput.forceActiveFocus()
-        }
-        onAccepted: {
-            const name = renameInput.text.trim()
-            if (name.length > 0 && docId >= 0) {
-                window.docTitles[docId] = name
-                window.titleRev++
-            }
-        }
-    }
-
-    TaskDialog {
-        id: textDialog
-        title: textId >= 0 ? "Edit Text" : "Add Text"
-        width: 360
-        standardButtons: Dialog.Ok | Dialog.Cancel
-
-        property int textId: -1
-        property real chemX: 0
-        property real chemY: 0
-        property string inputText: ""
-
-        ColumnLayout {
-            width: parent.width
-            spacing: 8
-
-            TextArea {
-                id: textDialogInput
-                Layout.fillWidth: true
-                Layout.preferredHeight: 80
-                wrapMode: TextArea.Wrap
-                placeholderText: "Annotation text…"
-            }
-            Button {
-                text: "Delete Text"
-                visible: textDialog.textId >= 0
-                onClicked: {
-                    if (activeSketch) activeSketch.deleteText(textDialog.textId)
-                    textDialog.close()
-                }
-            }
-        }
-
-        onOpened: {
-            textDialogInput.text = inputText
-            textDialogInput.forceActiveFocus()
-        }
-        onAccepted: {
-            if (!activeSketch) return
-            const content = textDialogInput.text.trim()
-            if (textId >= 0) {
-                if (content.length > 0) activeSketch.updateText(textId, content)
-                else activeSketch.deleteText(textId)
-            } else if (content.length > 0) {
-                activeSketch.addText(content, chemX, chemY)
-            }
-        }
-    }
-
-    FileDialog {
-        id: imageFileDialog
-        nameFilters: ["Images (*.png *.jpg *.jpeg *.gif *.bmp)"]
-
-        property real chemX: 0
-        property real chemY: 0
-        property url pendingFileUrl
-        // Tunable confidence threshold on Imago's reported recognition-warning count.
-        // Verified empirically: a real chemical-structure image reported 0 warnings, an
-        // unrelated screenshot reported 34 while still producing a (garbage) molfile — Imago
-        // never refuses outright, so this count is the real signal to gate on. Not pinned at
-        // exactly 0 since an imperfect scan may legitimately produce a few warnings and still
-        // recognize correctly; revisit this number against real user images.
-        property int maxAcceptableWarnings: 5
-
-        onAccepted: {
-            if (!activeSketch) return
-            pendingFileUrl = selectedFile
-            window.isProcessing = true
-            imagoSvc.recognizeImage(selectedFile)
-        }
     }
 
     BiopolymerDialog {
@@ -1832,178 +1627,17 @@ ApplicationWindow {
         }
     }
 
-    TaskDialog {
-        id: checkResultDialog
-        title: "Structure Validation"
-        standardButtons: Dialog.Ok
-        width: 480
-
-        property string reportText: ""
-
-        ScrollView {
-            width: 450
-            height: Math.min(300, checkResultContent.implicitHeight + 20)
-            clip: true
-
-            Text {
-                id: checkResultContent
-                width: 440
-                text: {
-                    const r = checkResultDialog.reportText
-                    if (!r || r === "{}") return "No issues found."
-                    try {
-                        const obj = JSON.parse(r)
-                        const keys = Object.keys(obj)
-                        if (keys.length === 0) return "No issues found."
-                        return keys.map(function(k) {
-                            const v = obj[k]
-                            if (Array.isArray(v))
-                                return v.map(function(e) { return (e.text || e) }).join("\n")
-                            return String(v)
-                        }).join("\n\n")
-                    } catch (_) {
-                        return r
-                    }
-                }
-                color: Theme.textPrimary
-                font { pixelSize: Theme.fontSizeBody; family: Theme.fontDisplay }
-                wrapMode: Text.WordWrap
-            }
-        }
+    FileDialogs {
+        id: fileDialogsGroup
+        win: window
+    }
+    TaskDialogs {
+        id: taskDialogsGroup
+        win: window
+    }
+    MessageDialogs {
+        id: messageDialogsGroup
+        win: window
     }
 
-    TaskDialog {
-        id: smilesDialog
-        title: "Load from SMILES"
-        standardButtons: Dialog.Ok | Dialog.Cancel
-
-        TextField {
-            id: smilesInput
-            width: 380
-            placeholderText: "e.g. c1ccccc1 or CC(=O)Oc1ccccc1C(=O)O"
-            Keys.onReturnPressed: smilesDialog.accept()
-        }
-
-        onOpened: { smilesInput.text = ""; smilesInput.forceActiveFocus() }
-        onAccepted: {
-            const smi = smilesInput.text.trim()
-            if (smi) {
-                window.isProcessing = true
-                indigoSvc.layout(smi)
-            }
-        }
-    }
-
-    TaskDialog {
-        id: similarityDialog
-        title: "Compare Similarity"
-        standardButtons: Dialog.Ok | Dialog.Cancel
-
-        TextField {
-            id: similarityRefInput
-            width: 380
-            placeholderText: "Reference SMILES, e.g. c1ccccc1"
-            Keys.onReturnPressed: similarityDialog.accept()
-        }
-
-        onOpened: { similarityRefInput.text = ""; similarityRefInput.forceActiveFocus() }
-        onAccepted: {
-            const ref = similarityRefInput.text.trim()
-            if (ref && activeSketch) {
-                window.pendingSimilarityRef = ref
-                activeSketch.requestSerialize("similarity")
-            }
-        }
-    }
-
-    TaskDialog {
-        id: ionizeDialog
-        title: "Ionize at pH"
-        standardButtons: Dialog.Ok | Dialog.Cancel
-
-        TextField {
-            id: ionizePhInput
-            width: 380
-            placeholderText: "pH, e.g. 7.4"
-            validator: DoubleValidator { bottom: 0; top: 14; decimals: 2 }
-            Keys.onReturnPressed: ionizeDialog.accept()
-        }
-
-        onOpened: { ionizePhInput.text = "7.4"; ionizePhInput.forceActiveFocus() }
-        onAccepted: {
-            const pH = parseFloat(ionizePhInput.text)
-            if (!isNaN(pH) && activeSketch) {
-                window.isProcessing = true
-                window.pendingIonizePh = pH
-                activeSketch.requestSerialize("ionize")
-            }
-        }
-    }
-
-    TaskDialog {
-        id: inchiLoadDialog
-        title: "Load from InChI"
-        standardButtons: Dialog.Ok | Dialog.Cancel
-
-        ColumnLayout {
-            spacing: 4
-
-            TextField {
-                id: inchiLoadInput
-                Layout.preferredWidth: 460
-                placeholderText: "InChI=1S/C6H6/c1-2-4-6-5-3-1/h1-6H"
-                Keys.onReturnPressed: inchiLoadDialog.accept()
-            }
-
-            // InChIKey (the 27-char hash, e.g. UHOVQNZJYSORNB-UHFFFAOYSA-N) is a
-            // one-way hash of an InChI -- there is no algorithm that reverses it
-            // back into a structure, unlike the full InChI string. This is exactly
-            // the mix-up this dialog exists to prevent, so it's flagged live
-            // rather than only after a confusing load failure.
-            Text {
-                visible: /^[A-Z]{14}-[A-Z]{10}-[A-Z]$/.test(inchiLoadInput.text.trim())
-                text: "That looks like an InChIKey, not a full InChI — InChIKey is a one-way hash and can't be loaded back into a structure. Paste the full \"InChI=1S/...\" string instead."
-                color: "#c0392b"
-                wrapMode: Text.WordWrap
-                Layout.preferredWidth: 460
-                font.pixelSize: Theme.fontSizeCaption
-            }
-        }
-
-        onOpened: { inchiLoadInput.text = ""; inchiLoadInput.forceActiveFocus() }
-        onAccepted: {
-            // Indigo's generic loader auto-detects and parses InChI directly
-            // (confirmed: no separate indigo-inchi-plugin call needed for this
-            // direction, unlike generating an InChI/InChIKey from a structure,
-            // which does need the plugin) -- same layout() call "Load from
-            // SMILES" already uses. InChI carries no 2D coordinates, so the
-            // layout step here isn't optional the way it might seem.
-            const txt = inchiLoadInput.text.trim()
-            if (txt) {
-                window.isProcessing = true
-                indigoSvc.layout(txt)
-            }
-        }
-    }
-
-    MessageDialog {
-        id: workerErrorDialog
-        property string errorText: ""
-        title: "Chemistry Engine Error"
-        buttons: MessageDialog.Ok
-        text: "The chemistry engine encountered an error and may have stopped.\n\n" + errorText +
-              "\n\nPlease save your work and restart the application."
-    }
-
-    MessageDialog {
-        id: similarityResultDialog
-        title: "Similarity Result"
-        text: ""
-    }
-
-    MessageDialog {
-        id: similarityRankResultDialog
-        title: "Similarity Ranking"
-        text: ""
-    }
 }
