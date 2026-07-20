@@ -4335,142 +4335,160 @@ function addMultitailArrowTail(id) {
 
 init();
 
-function _dispatchCommand(cmd, args) {
-    try {
-        let result = null;
-
-        if (cmd === 'init') init();
-        else if (cmd === 'loadMol') loadMolfile(args[0]);
-        else if (cmd === 'addAtom') result = addAtom(args[0], args[1], args[2], args[3]);
-        else if (cmd === 'addBondAndAtom') addBondAndAtom(args[0], args[1], args[2], args[3], args[4], args[5]);
-        else if (cmd === 'addBondBetweenCoords') addBondBetweenCoords(args[0], args[1], args[2], args[3], args[4], args[5]);
-        else if (cmd === 'addBond') addBond(args[0], args[1], args[2], args[3]);
-        else if (cmd === 'addRing') addRing(args[0], args[1]);
-        else if (cmd === 'deleteAtomById') deleteAtomById(args[0]);
-        else if (cmd === 'deleteBondById') deleteBondById(args[0]);
-        else if (cmd === 'deleteSelection') deleteSelection();
-        else if (cmd === 'undo') undo();
-        else if (cmd === 'redo') redo();
-        else if (cmd === 'changeAtomLabel') changeAtomLabel(args[0], args[1]);
-        else if (cmd === 'setAtomMapping') setAtomMapping(args[0], args[1]);
-        else if (cmd === 'changeBondType') changeBondType(args[0], args[1], args[2]);
-        else if (cmd === 'changeAtomCharge') changeAtomCharge(args[0], args[1]);
-        else if (cmd === 'setAttachmentPoint') setAttachmentPoint(args[0], args[1]);
-        else if (cmd === 'changeAtomIsotope') changeAtomIsotope(args[0], args[1]);
-        else if (cmd === 'changeAtomRadical') changeAtomRadical(args[0], args[1]);
-        else if (cmd === 'changeAtomValence') changeAtomValence(args[0], args[1]);
-        else if (cmd === 'getAtomProperties') {
+// Each entry: fn(args) performs the command. broadcast:true (default) means the
+// dispatcher builds and emits the standard state snapshot after fn runs, using
+// fn's return value as `result` only when captureResult is set (only addAtom
+// uses its return value today). custom:true means fn emits its own
+// structureResponse (or nothing) and the dispatcher must not also broadcast.
+const COMMANDS = {
+    init:            { fn: () => init() },
+    loadMol:         { fn: (args) => loadMolfile(args[0]) },
+    addAtom:         { fn: (args) => addAtom(args[0], args[1], args[2], args[3]), captureResult: true },
+    addBondAndAtom:  { fn: (args) => addBondAndAtom(args[0], args[1], args[2], args[3], args[4], args[5]) },
+    addBondBetweenCoords: { fn: (args) => addBondBetweenCoords(args[0], args[1], args[2], args[3], args[4], args[5]) },
+    addBond:         { fn: (args) => addBond(args[0], args[1], args[2], args[3]) },
+    addRing:         { fn: (args) => addRing(args[0], args[1]) },
+    deleteAtomById:  { fn: (args) => deleteAtomById(args[0]) },
+    deleteBondById:  { fn: (args) => deleteBondById(args[0]) },
+    deleteSelection: { fn: () => deleteSelection() },
+    undo:            { fn: () => undo() },
+    redo:            { fn: () => redo() },
+    changeAtomLabel: { fn: (args) => changeAtomLabel(args[0], args[1]) },
+    setAtomMapping:  { fn: (args) => setAtomMapping(args[0], args[1]) },
+    changeBondType:  { fn: (args) => changeBondType(args[0], args[1], args[2]) },
+    changeAtomCharge:{ fn: (args) => changeAtomCharge(args[0], args[1]) },
+    setAttachmentPoint: { fn: (args) => setAttachmentPoint(args[0], args[1]) },
+    changeAtomIsotope: { fn: (args) => changeAtomIsotope(args[0], args[1]) },
+    changeAtomRadical: { fn: (args) => changeAtomRadical(args[0], args[1]) },
+    changeAtomValence: { fn: (args) => changeAtomValence(args[0], args[1]) },
+    getAtomProperties: {
+        custom: true,
+        fn: (args) => {
             const props = getAtomProperties(args[0]);
             console.log(JSON.stringify({ type: "structureResponse", reqId: "atom_props", data: JSON.stringify(props || {}) }));
-            return;
         }
-        else if (cmd === 'selectByRect') selectByRect(args[0], args[1], args[2], args[3]);
-        else if (cmd === 'addSelectionByRect') addSelectionByRect(args[0], args[1], args[2], args[3]);
-        else if (cmd === 'selectByLasso') selectByLasso(args[0]);
-        else if (cmd === 'selectItem') selectItem(args[0], args[1], args[2], args[3], args[4]);
-        else if (cmd === 'addItemToSelection') addItemToSelection(args[0], args[1]);
-        else if (cmd === 'removeItemFromSelection') removeItemFromSelection(args[0], args[1]);
-        else if (cmd === 'selectFragment') selectFragment(args[0], args[1]);
-        else if (cmd === 'moveSelection') moveSelection(args[0], args[1]);
-        else if (cmd === 'commitMove') commitMove();
-        else if (cmd === 'rotateSelectionLive') rotateSelectionLive(args[0]);
-        else if (cmd === 'commitRotate') commitRotate();
-        else if (cmd === 'scaleSelectionLive') scaleSelectionLive(args[0], args[1], args[2]);
-        else if (cmd === 'commitScale') commitScale();
-        else if (cmd === 'centerStructure') centerStructure();
-        else if (cmd === 'normalizeStructure') normalizeStructure();
-        else if (cmd === 'alignAtoms') alignAtoms(args[0]);
-        else if (cmd === 'distributeAtoms') distributeAtoms(args[0]);
-        else if (cmd === 'setStereoDescriptors') { setStereoDescriptors(args[0]); return; }
-        else if (cmd === 'setCheckIssues') { setCheckIssues(args[0]); return; }
-        else if (cmd === 'copySelection') copySelection();
-        else if (cmd === 'cutSelection') cutSelection();
-        else if (cmd === 'pasteSelection') pasteSelection(args[0], args[1]);
-        else if (cmd === 'insertRecognizedStructure') insertRecognizedStructure(args[0], args[1], args[2]);
-        else if (cmd === 'getClipboardAsKet') { getClipboardAsKet(); return; }
-        else if (cmd === 'importKetAtPosition') importKetAtPosition(args[0], args[1], args[2]);
-        else if (cmd === 'selectAll') selectAll();
-        else if (cmd === 'clearCanvas') clearCanvas();
-        else if (cmd === 'loadBenzene') loadBenzene();
-        else if (cmd === 'deserializeMol') deserializeMol(args[0]);
-        else if (cmd === 'deserializeSdf') deserializeSdf(args[0]);
-        else if (cmd === 'deserializeRdfBatch') deserializeRdfBatch(args[0]);
-        else if (cmd === 'deserializeIndigoBatch') deserializeIndigoBatch(args[0]);
-        else if (cmd === 'deserializeSdfBatch') deserializeSdfBatch(args[0]);
-        else if (cmd === 'loadSdfBatchRecord') loadSdfBatchRecord(args[0]);
-        else if (cmd === 'getSdfBatchMolfiles') getSdfBatchMolfiles();
-        else if (cmd === 'realignSdfBatch') realignSdfBatch(args[0]);
-        else if (cmd === 'deserializeKet') deserializeKet(args[0]);
-        else if (cmd === 'addRxnArrow') addRxnArrow(args[0], args[1], args[2]);
-        else if (cmd === 'addCurvedArrow') addCurvedArrow(args[0], args[1], args[2], args[3], args[4], args[5]);
-        else if (cmd === 'setRxnArrowMode') setRxnArrowMode(args[0], args[1]);
-        else if (cmd === 'setRxnArrowConditions') setRxnArrowConditions(args[0], args[1], args[2]);
-        else if (cmd === 'setStereoFlags') setStereoFlags(args[0], args[1]);
-        else if (cmd === 'addRGroup') addRGroup(args[0]);
-        else if (cmd === 'deleteRGroup') deleteRGroup(args[0]);
-        else if (cmd === 'setRGroupLogic') setRGroupLogic(args[0], args[1], args[2], args[3]);
-        else if (cmd === 'addRGroupMember') addRGroupMember(args[0]);
-        else if (cmd === 'removeRGroupMember') removeRGroupMember(args[0], args[1]);
-        else if (cmd === 'transformSelection') transformSelection(args[0]);
-        else if (cmd === 'addChain') addChain(args[0], args[1], args[2], args[3]);
-        else if (cmd === 'addText') addText(args[0], args[1], args[2]);
-        else if (cmd === 'updateText') updateText(args[0], args[1]);
-        else if (cmd === 'deleteText') deleteText(args[0]);
-        else if (cmd === 'addImage') addImage(args[0], args[1], args[2], args[3], args[4]);
-        else if (cmd === 'deleteImage') deleteImage(args[0]);
-        else if (cmd === 'moveImage') moveImage(args[0], args[1], args[2]);
-        else if (cmd === 'resizeImage') resizeImage(args[0], args[1]);
-        else if (cmd === 'setAtomQueryList') setAtomQueryList(args[0], args[1], args[2]);
-        else if (cmd === 'clearAtomQueryList') clearAtomQueryList(args[0], args[1]);
-        else if (cmd === 'addRxnPlus') addRxnPlus(args[0], args[1]);
-        else if (cmd === 'deleteRxnArrow') deleteRxnArrow(args[0]);
-        else if (cmd === 'deleteRxnPlus') deleteRxnPlus(args[0]);
-        else if (cmd === 'addMultitailArrow') addMultitailArrow(args[0], args[1]);
-        else if (cmd === 'deleteMultitailArrow') deleteMultitailArrow(args[0]);
-        else if (cmd === 'addMultitailArrowTail') addMultitailArrowTail(args[0]);
-        else if (cmd === 'layoutSelectedChain') layoutSelectedChain();
-        else if (cmd === 'getMoleculeName') { getMoleculeName(); return; }
-        else if (cmd === 'setMoleculeName') setMoleculeName(args[0]);
-        else if (cmd === 'selectSubstructureMatches') selectSubstructureMatches(args[0]);
-        else if (cmd === 'getSdfProps') { getSdfProps(); return; }
-        else if (cmd === 'getStructure') {
+    },
+    selectByRect:    { fn: (args) => selectByRect(args[0], args[1], args[2], args[3]) },
+    addSelectionByRect: { fn: (args) => addSelectionByRect(args[0], args[1], args[2], args[3]) },
+    selectByLasso:   { fn: (args) => selectByLasso(args[0]) },
+    selectItem:      { fn: (args) => selectItem(args[0], args[1], args[2], args[3], args[4]) },
+    addItemToSelection: { fn: (args) => addItemToSelection(args[0], args[1]) },
+    removeItemFromSelection: { fn: (args) => removeItemFromSelection(args[0], args[1]) },
+    selectFragment:  { fn: (args) => selectFragment(args[0], args[1]) },
+    moveSelection:   { fn: (args) => moveSelection(args[0], args[1]) },
+    commitMove:      { fn: () => commitMove() },
+    rotateSelectionLive: { fn: (args) => rotateSelectionLive(args[0]) },
+    commitRotate:    { fn: () => commitRotate() },
+    scaleSelectionLive: { fn: (args) => scaleSelectionLive(args[0], args[1], args[2]) },
+    commitScale:     { fn: () => commitScale() },
+    centerStructure: { fn: () => centerStructure() },
+    normalizeStructure: { fn: () => normalizeStructure() },
+    alignAtoms:      { fn: (args) => alignAtoms(args[0]) },
+    distributeAtoms: { fn: (args) => distributeAtoms(args[0]) },
+    setStereoDescriptors: { custom: true, fn: (args) => setStereoDescriptors(args[0]) },
+    setCheckIssues:  { custom: true, fn: (args) => setCheckIssues(args[0]) },
+    copySelection:   { fn: () => copySelection() },
+    cutSelection:    { fn: () => cutSelection() },
+    pasteSelection:  { fn: (args) => pasteSelection(args[0], args[1]) },
+    insertRecognizedStructure: { fn: (args) => insertRecognizedStructure(args[0], args[1], args[2]) },
+    getClipboardAsKet: { custom: true, fn: () => getClipboardAsKet() },
+    importKetAtPosition: { fn: (args) => importKetAtPosition(args[0], args[1], args[2]) },
+    selectAll:       { fn: () => selectAll() },
+    clearCanvas:     { fn: () => clearCanvas() },
+    loadBenzene:     { fn: () => loadBenzene() },
+    deserializeMol:  { fn: (args) => deserializeMol(args[0]) },
+    deserializeSdf:  { fn: (args) => deserializeSdf(args[0]) },
+    deserializeRdfBatch: { fn: (args) => deserializeRdfBatch(args[0]) },
+    deserializeIndigoBatch: { fn: (args) => deserializeIndigoBatch(args[0]) },
+    deserializeSdfBatch: { fn: (args) => deserializeSdfBatch(args[0]) },
+    loadSdfBatchRecord: { fn: (args) => loadSdfBatchRecord(args[0]) },
+    getSdfBatchMolfiles: { fn: () => getSdfBatchMolfiles() },
+    realignSdfBatch: { fn: (args) => realignSdfBatch(args[0]) },
+    deserializeKet:  { fn: (args) => deserializeKet(args[0]) },
+    addRxnArrow:     { fn: (args) => addRxnArrow(args[0], args[1], args[2]) },
+    addCurvedArrow:  { fn: (args) => addCurvedArrow(args[0], args[1], args[2], args[3], args[4], args[5]) },
+    setRxnArrowMode: { fn: (args) => setRxnArrowMode(args[0], args[1]) },
+    setRxnArrowConditions: { fn: (args) => setRxnArrowConditions(args[0], args[1], args[2]) },
+    setStereoFlags:  { fn: (args) => setStereoFlags(args[0], args[1]) },
+    addRGroup:       { fn: (args) => addRGroup(args[0]) },
+    deleteRGroup:    { fn: (args) => deleteRGroup(args[0]) },
+    setRGroupLogic:  { fn: (args) => setRGroupLogic(args[0], args[1], args[2], args[3]) },
+    addRGroupMember: { fn: (args) => addRGroupMember(args[0]) },
+    removeRGroupMember: { fn: (args) => removeRGroupMember(args[0], args[1]) },
+    transformSelection: { fn: (args) => transformSelection(args[0]) },
+    addChain:        { fn: (args) => addChain(args[0], args[1], args[2], args[3]) },
+    addText:         { fn: (args) => addText(args[0], args[1], args[2]) },
+    updateText:      { fn: (args) => updateText(args[0], args[1]) },
+    deleteText:      { fn: (args) => deleteText(args[0]) },
+    addImage:        { fn: (args) => addImage(args[0], args[1], args[2], args[3], args[4]) },
+    deleteImage:     { fn: (args) => deleteImage(args[0]) },
+    moveImage:       { fn: (args) => moveImage(args[0], args[1], args[2]) },
+    resizeImage:     { fn: (args) => resizeImage(args[0], args[1]) },
+    setAtomQueryList: { fn: (args) => setAtomQueryList(args[0], args[1], args[2]) },
+    clearAtomQueryList: { fn: (args) => clearAtomQueryList(args[0], args[1]) },
+    addRxnPlus:      { fn: (args) => addRxnPlus(args[0], args[1]) },
+    deleteRxnArrow:  { fn: (args) => deleteRxnArrow(args[0]) },
+    deleteRxnPlus:   { fn: (args) => deleteRxnPlus(args[0]) },
+    addMultitailArrow: { fn: (args) => addMultitailArrow(args[0], args[1]) },
+    deleteMultitailArrow: { fn: (args) => deleteMultitailArrow(args[0]) },
+    addMultitailArrowTail: { fn: (args) => addMultitailArrowTail(args[0]) },
+    layoutSelectedChain: { fn: () => layoutSelectedChain() },
+    getMoleculeName: { custom: true, fn: () => getMoleculeName() },
+    setMoleculeName: { fn: (args) => setMoleculeName(args[0]) },
+    selectSubstructureMatches: { fn: (args) => selectSubstructureMatches(args[0]) },
+    getSdfProps:     { custom: true, fn: () => getSdfProps() },
+    getStructure: {
+        custom: true,
+        fn: (args) => {
             const structStr = getStructure(args[0]);
             console.log(JSON.stringify({ type: "structureResponse", reqId: args[1], data: structStr }));
-            return;
         }
-        else if (cmd === 'setShowExplicitH') { _showExplicitH = args[0]; }
-        else if (cmd === 'insertFunctionalGroup') insertFunctionalGroup(args[0], args[1], args[2], args[3]);
-        else if (cmd === 'insertLibraryTemplateFused') insertLibraryTemplateFused(args[0], args[1], args[2], args[3]);
-        else if (cmd === 'toggleSgroupExpanded') toggleSgroupExpanded(args[0]);
-        else if (cmd === 'getGenericsList') {
+    },
+    setShowExplicitH: { fn: (args) => { _showExplicitH = args[0]; } },
+    insertFunctionalGroup: { fn: (args) => insertFunctionalGroup(args[0], args[1], args[2], args[3]) },
+    insertLibraryTemplateFused: { fn: (args) => insertLibraryTemplateFused(args[0], args[1], args[2], args[3]) },
+    toggleSgroupExpanded: { fn: (args) => toggleSgroupExpanded(args[0]) },
+    getGenericsList: {
+        custom: true,
+        fn: () => {
             var gList = CoreLib.ChemCore.genericsList.map(function(label) { return { label: label } })
             console.log(JSON.stringify({ type: "structureResponse", reqId: "generics", data: JSON.stringify(gList) }))
-            return
         }
-        else if (cmd === 'getGenericsDetails') {
+    },
+    getGenericsDetails: {
+        custom: true,
+        fn: () => {
             console.log(JSON.stringify({ type: "structureResponse", reqId: "generics_details", data: JSON.stringify(CoreLib.ChemCore.Generics) }))
-            return
         }
-        else if (cmd === 'getSaltsAndSolventsList') {
+    },
+    getSaltsAndSolventsList: {
+        custom: true,
+        fn: () => {
             var sList = Object.keys(_saltsStructs).map(function(name) { return { label: name } })
             console.log(JSON.stringify({ type: "structureResponse", reqId: "salts", data: JSON.stringify(sList) }))
-            return
         }
-        else if (cmd === 'getFunctionalGroupsList') {
+    },
+    getFunctionalGroupsList: {
+        custom: true,
+        fn: () => {
             var fgList = Object.keys(_fgStructs).sort().map(function(name) {
                 return { label: name, group: (_fgMeta[name] && _fgMeta[name].group) || 'Functional Groups' }
             })
             console.log(JSON.stringify({ type: "structureResponse", reqId: "fg_list", data: JSON.stringify(fgList) }))
-            return
         }
-        else if (cmd === 'getTemplateLibraryList') {
+    },
+    getTemplateLibraryList: {
+        custom: true,
+        fn: () => {
             var libList = Object.keys(_libraryStructs).map(function(name) {
                 return { label: name, group: (_libraryMeta[name] && _libraryMeta[name].group) || 'Templates' }
             })
             console.log(JSON.stringify({ type: "structureResponse", reqId: "library_list", data: JSON.stringify(libList) }))
-            return
         }
-        else if (cmd === 'getTemplateThumbnail') {
+    },
+    getTemplateThumbnail: {
+        custom: true,
+        fn: (args) => {
             var name = args[0]
             var thumbReqId = args[1] || ("thumb_" + name)
             var tplStruct = _fgStructs[name] || _saltsStructs[name] || _libraryStructs[name]
@@ -4529,12 +4547,26 @@ function _dispatchCommand(cmd, args) {
                 }
             }
             console.log(JSON.stringify({ type: "structureResponse", reqId: thumbReqId, data: JSON.stringify({ atoms: atoms, bonds: bonds }) }))
-            return
         }
-        
+    }
+};
+
+function _dispatchCommand(cmd, args) {
+    try {
+        const entry = COMMANDS[cmd];
+        if (!entry) {
+            console.log(JSON.stringify({ status: "error", message: "unknown command: " + cmd }));
+            return;
+        }
+
+        let result = null;
+        const ret = entry.fn(args);
+        if (entry.captureResult) result = ret;
+        if (entry.custom) return;
+
         const state = buildRenderPrimitives(_showExplicitH);
         const selection = currentSelection();
-        
+
         console.log(JSON.stringify({
             status: "ok",
             state: state,
