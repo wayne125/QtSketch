@@ -68,6 +68,7 @@ qt_add_qml_module(sketch
 
         chem-core.js
         js/Selection.js
+        js/ToolLabels.js
         js/ThumbnailPainter.js
     RESOURCES
         fonts/materialdesignicons-webfont.ttf

@@ -32,7 +32,17 @@ Rectangle {
     property int    molHBD:      0
     property int    molRotBonds: 0
 
-    function _fmtNum(v, decimals) { return v.toFixed(decimals) }
+    // Indigo's C API returns exactly -1 (never a fractional value near it) as a
+    // sentinel when a scalar property calculation fails internally, batched
+    // together with the other 9 scalar fields from the same calcProperties call
+    // -- confirmed empirically: a failed calc returns -1 for MW/TPSA/LogP/pKa/etc
+    // simultaneously, never just one of them. MW itself can never legitimately be
+    // negative, so it's an unambiguous signal for "this whole batch failed" even
+    // though LogP and pKa individually CAN be negative for real molecules.
+    readonly property bool calcFailed: root.molMW < 0
+
+    function _fmtNum(v, decimals, suffix) { return root.calcFailed ? "—" : (v.toFixed(decimals) + (suffix || "")) }
+    function _fmtInt(v) { return root.calcFailed ? "—" : v.toString() }
     function _formulaHtml(f) { return f.replace(/([0-9]+)/g, "<sub>$1</sub>") }
 
     color: Theme.surface
@@ -106,9 +116,9 @@ Rectangle {
                 Layout.fillWidth: true
 
                 Text { textFormat: Text.PlainText; text: "MW";        color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
-                Text { textFormat: Text.PlainText; text: root._fmtNum(root.molMW, 3) + " g/mol"; color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
+                Text { textFormat: Text.PlainText; text: root._fmtNum(root.molMW, 3, " g/mol"); color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
                 Text { textFormat: Text.PlainText; text: "Exact";     color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
-                Text { textFormat: Text.PlainText; text: root._fmtNum(root.molMono, 4) + " Da";   color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
+                Text { textFormat: Text.PlainText; text: root._fmtNum(root.molMono, 4, " Da");   color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
                 Text { textFormat: Text.PlainText; text: "Atoms";     color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
                 Text { textFormat: Text.PlainText; text: root.molAtoms.toString();                 color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
                 Text { textFormat: Text.PlainText; text: "Bonds";     color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
@@ -131,19 +141,19 @@ Rectangle {
                 Layout.fillWidth: true
 
                 Text { textFormat: Text.PlainText; text: "TPSA";   color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
-                Text { textFormat: Text.PlainText; text: root._fmtNum(root.molTPSA, 2) + " Å²";  color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
+                Text { textFormat: Text.PlainText; text: root._fmtNum(root.molTPSA, 2, " Å²");  color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
 
                 Text { textFormat: Text.PlainText; text: "LogP";   color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
                 Text { textFormat: Text.PlainText; text: root._fmtNum(root.molLogP, 2);            color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
 
                 Text { textFormat: Text.PlainText; text: "HBA";    color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
-                Text { textFormat: Text.PlainText; text: root.molHBA.toString();                   color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
+                Text { textFormat: Text.PlainText; text: root._fmtInt(root.molHBA);                color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
 
                 Text { textFormat: Text.PlainText; text: "HBD";    color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
-                Text { textFormat: Text.PlainText; text: root.molHBD.toString();                   color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
+                Text { textFormat: Text.PlainText; text: root._fmtInt(root.molHBD);                color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
 
                 Text { textFormat: Text.PlainText; text: "RotB";   color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
-                Text { textFormat: Text.PlainText; text: root.molRotBonds.toString();              color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
+                Text { textFormat: Text.PlainText; text: root._fmtInt(root.molRotBonds);           color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
 
                 Text { textFormat: Text.PlainText; text: "MolRef";  color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
                 Text { textFormat: Text.PlainText; text: root._fmtNum(root.molMolarRefractivity, 2);  color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
@@ -158,7 +168,7 @@ Rectangle {
                 Text { textFormat: Text.PlainText; text: root.molIsChiral ? "Yes" : "No"; color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
 
                 Text { textFormat: Text.PlainText; text: "Abundant Mass"; color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
-                Text { textFormat: Text.PlainText; text: root._fmtNum(root.molMostAbundantMass, 3) + " g/mol"; color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
+                Text { textFormat: Text.PlainText; text: root._fmtNum(root.molMostAbundantMass, 3, " g/mol"); color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
 
                 Text { textFormat: Text.PlainText; text: "Fragments"; color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay } }
                 Text { textFormat: Text.PlainText; text: root.molFragmentCount.toString(); color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }

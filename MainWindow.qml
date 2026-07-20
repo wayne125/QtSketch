@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import QtQuick.Dialogs
 import QtCore
 import "js/Selection.js" as Selection
+import "js/ToolLabels.js" as ToolLabels
 
 ApplicationWindow {
     id: window
@@ -786,7 +787,18 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 24
                     Layout.leftMargin: 24 // Align with the left ruler width
-                    
+
+                    // Ruler units label, drawn in the empty corner this leftMargin
+                    // leaves above leftRuler -- topRuler doesn't clip its children,
+                    // so a negative x here still renders inside that gap.
+                    Text {
+                        text: "cm"
+                        x: -20
+                        y: 6
+                        color: Theme.rulerColor
+                        font { pixelSize: Theme.fontSizeCaption; family: Theme.fontMono }
+                    }
+
                     property real scrollX: scrollView.contentItem.contentX
                     property real zoom: window.zoomLevel
                     property real docX: docRect.x
@@ -1293,7 +1305,7 @@ ApplicationWindow {
                 spacing: 12
 
                 Text {
-                    text: activeCanvas ? "Tool: " + activeCanvas.currentTool : "No document"
+                    text: activeCanvas ? "Tool: " + ToolLabels.label(activeCanvas.currentTool) : "No document"
                     color: Theme.textSecondary
                     font { pixelSize: Theme.fontSizeBody; family: Theme.fontMono }
                 }

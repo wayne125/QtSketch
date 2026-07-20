@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 Item {
     id: root
     anchors.fill: parent
@@ -9,6 +10,30 @@ Item {
     property real bondLength: 40
     property Item canvas
     property int renderVersion: 0
+
+    // Populated by labelCanvas.onPaint each repaint -- one entry per drawn
+    // check-warning badge, since the badge itself is raster-painted rather
+    // than a discrete hoverable Item. checkHoverArea below hit-tests against
+    // this list to show the underlying issue text as a tooltip.
+    property var checkWarningHotspots: []
+
+    // a.checkWarning carries Indigo's raw check-type code (see IndigoService.cpp's
+    // atomChecks set) -- readable text for the ones we know; anything else falls
+    // back to the code itself with underscores turned to spaces rather than
+    // showing nothing.
+    readonly property var _checkTypeLabels: ({
+        valence: "Valence error",
+        radical: "Unusual radical state",
+        pseudoatom: "Pseudoatom",
+        stereo: "Ambiguous stereochemistry",
+        ambiguous_h: "Ambiguous hydrogen count",
+        "3d_coord": "Non-planar (3D) coordinates",
+        overlap_atom: "Overlapping atoms",
+        overlap_bond: "Overlapping bonds"
+    })
+    function checkTypeLabel(code) {
+        return root._checkTypeLabels[code] || code.replace(/_/g, " ")
+    }
 
     // ctx.measureText is re-run for every label component on every repaint; cache by
     // (font, text) since results don't change unless the font string does (scale/style).
@@ -47,6 +72,9 @@ Item {
         onPaint: {
             const ctx = getContext("2d")
             ctx.clearRect(0, 0, width, height)
+
+            const newHotspots = []
+            root.checkWarningHotspots = newHotspots
 
             if (!canvas) return
             if (!canvas.sketch.primitives || !canvas.sketch.primitives.atoms) return
@@ -326,16 +354,21 @@ Item {
                 // Check warning badge — small red circle with "!" to the upper-left of pill
                 if (checkWarning) {
                     const warnR = Math.max(5, 7 * root.scale)
+                    const warnCx = p.x - pillW / 2 - warnR
                     const warnY = p.y - pillH / 2 - warnR - 1 * root.scale
                     ctx.fillStyle = Theme.error
                     ctx.beginPath()
-                    ctx.arc(p.x - pillW / 2 - warnR, warnY, warnR, 0, Math.PI * 2)
+                    ctx.arc(warnCx, warnY, warnR, 0, Math.PI * 2)
                     ctx.fill()
                     ctx.fillStyle = Theme.badgeText
                     ctx.font = "bold " + Math.max(8, 10 * root.scale) + "px " + Theme.fontFamilyCss
                     ctx.textAlign = "center"
                     ctx.textBaseline = "middle"
-                    ctx.fillText("!", p.x - pillW / 2 - warnR, warnY)
+                    ctx.fillText("!", warnCx, warnY)
+                    // Recorded for the hover overlay below -- the badge is raster-
+                    // painted, not a discrete Item, so hit-testing for the tooltip
+                    // needs its own copy of these coordinates.
+                    newHotspots.push({ x: warnCx, y: warnY, r: warnR + 2 * root.scale, text: root.checkTypeLabel(checkWarning) })
                 }
             }
 
@@ -413,5 +446,38 @@ Item {
                     console.warn("Failed to load embedded image:", modelData.bitmap ? modelData.bitmap.substring(0, 40) : "")
             }
         }
+    }
+
+    // Hover-only overlay for check-warning badges: acceptedButtons is NoButton
+    // so clicks/drags to atoms and bonds underneath are never intercepted --
+    // hover tracking works independently of that in MouseArea.
+    MouseArea {
+        anchors.fill: parent
+        hoverEnabled: true
+        acceptedButtons: Qt.NoButton
+        onPositionChanged: (mouse) => {
+            const spots = root.checkWarningHotspots
+            let hit = null
+            for (let i = 0; i < spots.length; i++) {
+                const s = spots[i]
+                const dx = mouse.x - s.x, dy = mouse.y - s.y
+                if (dx * dx + dy * dy <= s.r * s.r) { hit = s; break }
+            }
+            if (hit) {
+                checkWarningTip.text = hit.text
+                checkWarningTip.x = mouse.x + 8
+                checkWarningTip.y = mouse.y + 8
+                checkWarningTip.visible = true
+            } else {
+                checkWarningTip.visible = false
+            }
+        }
+        onExited: checkWarningTip.visible = false
+    }
+
+    ToolTip {
+        id: checkWarningTip
+        visible: false
+        timeout: -1
     }
 }
