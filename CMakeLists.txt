@@ -34,6 +34,7 @@ qt_add_qml_module(sketch
     QML_FILES
         MainWindow.qml
         AppMenus.qml
+        MainToolbar.qml
         ChemCanvas.qml
         MoleculeLayer.qml
         SelectionLayer.qml
