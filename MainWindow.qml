@@ -201,6 +201,21 @@ ApplicationWindow {
         }
     }
 
+    // Dialog ids below are declared deep in this file's own scope, which is
+    // NOT automatically visible outside it (QML id-scoping is document-local —
+    // it does not turn an id into a property of the containing root object).
+    // AppMenus.qml holds a `win` reference to this window and reaches these
+    // dialogs via e.g. `win.openDialog.open()`, so each one needed here MUST
+    // be re-exposed as an alias, or that reference silently fails at runtime
+    // (same failure class as the earlier executeStructureOp scoping bug).
+    property alias openDialog: openDialog
+    property alias gridSaveDialog: gridSaveDialog
+    property alias biopolymerDialog: biopolymerDialog
+    property alias smilesDialog: smilesDialog
+    property alias similarityDialog: similarityDialog
+    property alias ionizeDialog: ionizeDialog
+    property alias inchiLoadDialog: inchiLoadDialog
+
     property var docTitles: ({})
     function titleFor(docId) {
         if (docTitles[docId] === undefined) {
@@ -669,282 +684,9 @@ ApplicationWindow {
             }
         }
 
-        AppMenuBar {
+        AppMenus {
+            win: window
             Layout.fillWidth: true
-            AppMenuBarItem {
-                text: "File"
-                MenuItemRow { text: "New Document"; onTriggered: DocumentManager.addDocument() }
-                MenuItemRow { text: "Open…"; iconSource: "open.svg"; onTriggered: openDialog.open() }
-                MenuItemRow { text: "Save"; iconSource: "save.svg"; shortcutHint: "Ctrl+S"; onTriggered: window.saveActive(false) }
-                MenuItemRow { text: "Save As…"; iconSource: "save.svg"; onTriggered: window.saveActive(true) }
-                Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6 }
-                MenuItemRow { text: "Load from SMILES…"; iconSource: "smiles_in.svg"; onTriggered: smilesDialog.open() }
-                MenuItemRow { text: "Load from InChI…"; iconSource: "smiles_in.svg"; onTriggered: inchiLoadDialog.open() }
-                MenuItemRow { text: "Biopolymer…"; iconSource: "biopolymer.svg"; onTriggered: biopolymerDialog.open() }
-                Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6 }
-                MenuItemRow { text: "Export as PDF…"; iconSource: "file-thumbnail.svg"; onTriggered: window.printToPdf() }
-                MenuItemRow { text: "Export Reaction Scheme (Grid)…"; iconSource: "file-thumbnail.svg"; onTriggered: gridSaveDialog.open() }
-                Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6 }
-                MenuItemRow { text: "Clear Canvas"; iconSource: "clear.svg"; onTriggered: activeCanvas.clearCanvas() }
-            }
-            AppMenuBarItem {
-                text: "Edit"
-                MenuItemRow { text: "Undo"; iconSource: "undo.svg"; shortcutHint: "Ctrl+Z"; enabled: !!(activeCanvas && activeCanvas.canUndo); onTriggered: activeCanvas.undo() }
-                MenuItemRow { text: "Redo"; iconSource: "redo.svg"; shortcutHint: "Ctrl+Y"; enabled: !!(activeCanvas && activeCanvas.canRedo); onTriggered: activeCanvas.redo() }
-                Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6 }
-                MenuItemRow { text: "Cut"; iconSource: "cut.svg"; shortcutHint: "Ctrl+X"; onTriggered: activeCanvas.cutSelection() }
-                MenuItemRow { text: "Copy"; iconSource: "copy.svg"; shortcutHint: "Ctrl+C"; onTriggered: activeCanvas.copySelection() }
-                MenuItemRow { text: "Paste"; iconSource: "paste.svg"; shortcutHint: "Ctrl+V"; onTriggered: activeCanvas.pasteSelection() }
-                Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6 }
-                MenuItemRow { text: "Copy as Image"; iconSource: "copy_image.svg"; shortcutHint: "Ctrl+Shift+C"; onTriggered: activeCanvas.copyAsImage() }
-            }
-            AppMenuBarItem {
-                text: "Structure"
-                MenuItemRow { text: "Layout"; iconSource: "layout.svg"; onTriggered: window.executeStructureOp("layout") }
-                MenuItemRow { text: "Layout Selected"; iconSource: "layout.svg"; enabled: Selection.hasAtoms(activeSketch, 1) && !window.isProcessing; onTriggered: window.executeStructureOp("layoutSelected") }
-                MenuItemRow { text: "Clean 2D"; iconSource: "layout.svg"; onTriggered: window.executeStructureOp("clean2d") }
-                Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6 }
-                MenuItemRow { text: "Aromatize"; iconSource: "arom.svg"; onTriggered: window.executeStructureOp("aromatize") }
-                MenuItemRow { text: "Dearomatize"; iconSource: "dearom.svg"; onTriggered: window.executeStructureOp("dearomatize") }
-                MenuItemRow { text: "Add Explicit H"; iconSource: "explicit-hydrogens.svg"; onTriggered: window.executeStructureOp("unfoldH") }
-                MenuItemRow { text: "Remove Explicit H"; iconSource: "explicit-hydrogens.svg"; onTriggered: window.executeStructureOp("foldH") }
-                MenuItemRow { text: "Normalize"; iconSource: "clean.svg"; onTriggered: window.executeStructureOp("normalize") }
-                MenuItemRow { text: "Standardize"; iconSource: "analyse.svg"; onTriggered: window.executeStructureOp("standardize") }
-                MenuItemRow { text: "Ionize at pH…"; iconSource: "analyse.svg"; onTriggered: ionizeDialog.open() }
-                Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6 }
-                MenuItemRow { text: "Validate"; iconSource: "check.svg"; onTriggered: window.executeStructureOp("check") }
-                MenuItemRow { text: "Search Substructure (SMARTS)…"; iconSource: "search.svg"; onTriggered: window.executeStructureOp("smartsSearch") }
-                MenuItemRow { text: "R-Groups…"; iconSource: "rgroup-label.svg"; shortcutHint: "Ctrl+R"; onTriggered: window.executeStructureOp("rgroups") }
-            }
-            AppMenuBarItem {
-                id: reactionsMenuTrigger
-                text: "Reactions"
-                ColumnLayout {
-                    width: 210
-                    spacing: 6
-
-                    GridLayout {
-                        columns: 4
-                        columnSpacing: Theme.spacingSmall
-                        Layout.alignment: Qt.AlignHCenter
-                        Repeater {
-                            model: [
-                                { id: "RXN_ARROW", icon: "reaction-arrow-open-angle.svg", tip: "Reaction Arrow" },
-                                { id: "MULTITAIL_ARROW", icon: "reaction-arrow-multitail.svg", tip: "Multi-tail Arrow" },
-                                { id: "RXN_PLUS", icon: "reaction-plus.svg", tip: "Reaction Plus" },
-                                { id: "AAM", icon: "reaction-map.svg", tip: "Atom-Atom Mapping" }
-                            ]
-                            delegate: IconCell {
-                                id: rxnToolCell
-                                required property var modelData
-                                cellWidth: 44
-                                cellHeight: Theme.toolCellSize
-                                iconSource: "icons/" + rxnToolCell.modelData.icon
-                                tip: rxnToolCell.modelData.tip
-                                selected: !!(activeCanvas && activeCanvas.currentTool === rxnToolCell.modelData.id)
-                                onClicked: {
-                                    if (!activeCanvas) return
-                                    activeCanvas.currentTool = activeCanvas.currentTool === rxnToolCell.modelData.id ? "SELECT" : rxnToolCell.modelData.id
-                                    reactionsMenuTrigger.close()
-                                }
-                            }
-                        }
-                    }
-
-                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.outline }
-
-                    Text {
-                        text: "Arrow style"
-                        color: Theme.textSecondary
-                        font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontDisplay }
-                    }
-                    Repeater {
-                        model: [
-                            { mode: "filled-triangle", label: "Filled Triangle", icon: "reaction-arrow-filled-triangle.svg" },
-                            { mode: "open-angle", label: "Open Angle", icon: "reaction-arrow-open-angle.svg" },
-                            { mode: "retrosynthetic", label: "Retrosynthetic", icon: "reaction-arrow-retrosynthetic-arrow.svg" },
-                            { mode: "equilibrium-FF", label: "Equilibrium (↔)", icon: "reaction-arrow-equilibrium-filled-triangle.svg" },
-                            { mode: "equilibrium-FH", label: "Equilibrium (⇌)", icon: "reaction-arrow-equilibrium-filled-half-bow.svg" },
-                            { mode: "curved-mechanism", label: "Curved Mechanism", icon: "reaction-arrow-elliptical-arc-arrow-filled-triangle.svg" }
-                        ]
-                        delegate: Rectangle {
-                            id: amRow
-                            required property var modelData
-                            Layout.fillWidth: true
-                            implicitHeight: 24
-                            radius: 3
-                            color: !!(activeCanvas && activeCanvas.currentArrowMode === amRow.modelData.mode) ? Theme.selected : (amRowMouse.containsMouse ? Theme.hover : "transparent")
-                            Behavior on color { ColorAnimation { duration: 150 } }
-                            Image {
-                                id: amRowIcon
-                                anchors { left: parent ? parent.left : undefined; leftMargin: 6; verticalCenter: parent ? parent.verticalCenter : undefined }
-                                source: "icons/" + amRow.modelData.icon
-                                width: 18
-                                height: 18
-                                sourceSize: Qt.size(18, 18)
-                                onStatusChanged: {
-                                    if (status === Image.Error) {
-                                        console.warn("Failed to load icon:", amRow.modelData.icon)
-                                    }
-                                }
-                            }
-                            Text {
-                                anchors { left: amRowIcon.right; leftMargin: 6; verticalCenter: parent ? parent.verticalCenter : undefined }
-                                text: amRow.modelData.label
-                                color: !!(activeCanvas && activeCanvas.currentArrowMode === amRow.modelData.mode) ? Theme.accent : Theme.textPrimary
-                                font { pixelSize: Theme.fontSizeLabel; family: Theme.fontDisplay }
-                            }
-                            MouseArea {
-                                id: amRowMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (activeCanvas) activeCanvas.currentArrowMode = amRow.modelData.mode
-                                    reactionsMenuTrigger.close()
-                                }
-                            }
-                        }
-                    }
-
-                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.outline }
-                    Text {
-                        text: "Atom mapping"
-                        color: Theme.textSecondary
-                        font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontDisplay }
-                    }
-                    MenuItemRow {
-                        Layout.fillWidth: true
-                        text: "Auto-map Reaction"
-                        iconSource: "reaction-map.svg"
-                        onTriggered: {
-                            window.isProcessing = true
-                            if (activeSketch) activeSketch.requestSerialize("automap")
-                            reactionsMenuTrigger.close()
-                        }
-                    }
-                    MenuItemRow {
-                        Layout.fillWidth: true
-                        text: "Clear Mapping"
-                        iconSource: "reaction-map.svg"
-                        onTriggered: {
-                            window.isProcessing = true
-                            if (activeSketch) activeSketch.requestSerialize("clear_mapping")
-                            reactionsMenuTrigger.close()
-                        }
-                    }
-                    MenuItemRow {
-                        Layout.fillWidth: true
-                        text: "Correct Reacting Centers"
-                        iconSource: "reaction-map.svg"
-                        onTriggered: {
-                            window.isProcessing = true
-                            if (activeSketch) activeSketch.requestSerialize("correct_reacting_centers")
-                            reactionsMenuTrigger.close()
-                        }
-                    }
-                }
-            }
-            AppMenuBarItem {
-                id: queryMenuTrigger
-                text: "Query"
-                ColumnLayout {
-                    width: 210
-                    spacing: 6
-
-                    Text {
-                        text: "Query atoms"
-                        color: Theme.textSecondary
-                        font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontDisplay }
-                    }
-                    GridLayout {
-                        columns: 4
-                        columnSpacing: Theme.spacingSmall
-                        rowSpacing: Theme.spacingSmall
-                        Layout.alignment: Qt.AlignHCenter
-                        Repeater {
-                            model: [
-                                { id: "ATOM_A",  icon: "A",  tip: "Any atom" },
-                                { id: "ATOM_AH", icon: "AH", tip: "Any atom including H" },
-                                { id: "ATOM_Q",  icon: "Q",  tip: "Any heteroatom" },
-                                { id: "ATOM_QH", icon: "QH", tip: "Heteroatom or H" },
-                                { id: "ATOM_M",  icon: "M",  tip: "Any metal" },
-                                { id: "ATOM_MH", icon: "MH", tip: "Metal or H" },
-                                { id: "ATOM_X",  icon: "X",  tip: "Any halogen" },
-                                { id: "ATOM_XH", icon: "XH", tip: "Halogen or H" }
-                            ]
-                            delegate: IconCell {
-                                id: qaCell
-                                required property var modelData
-                                cellWidth: 42
-                                cellHeight: 32
-                                glyph: qaCell.modelData.icon
-                                tip: qaCell.modelData.tip
-                                selected: !!(activeCanvas && activeCanvas.currentTool === qaCell.modelData.id)
-                                onClicked: {
-                                    if (!activeCanvas) return
-                                    activeCanvas.currentTool = activeCanvas.currentTool === qaCell.modelData.id ? "SELECT" : qaCell.modelData.id
-                                    queryMenuTrigger.close()
-                                }
-                            }
-                        }
-                    }
-
-                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.outline }
-
-                    Text {
-                        text: "R-group labels"
-                        color: Theme.textSecondary
-                        font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontDisplay }
-                    }
-                    GridLayout {
-                        columns: 4
-                        columnSpacing: Theme.spacingSmall
-                        rowSpacing: Theme.spacingSmall
-                        Layout.alignment: Qt.AlignHCenter
-                        Repeater {
-                            model: ["R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8"]
-                            delegate: IconCell {
-                                id: rgCell
-                                required property string modelData
-                                cellWidth: 42
-                                cellHeight: 28
-                                glyph: rgCell.modelData
-                                hasGlyphColorOverride: true
-                                glyphColor: Theme.rgroupColor
-                                accentColor: Theme.rgroupColor
-                                borderAlwaysVisible: true
-                                onClicked: {
-                                    if (activeCanvas) activeCanvas.currentTool = "ATOM_" + rgCell.modelData
-                                    queryMenuTrigger.close()
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            AppMenuBarItem {
-                text: "Copy"
-                MenuItemRow { text: "Copy SMILES"; onTriggered: if (activeSketch) activeSketch.requestSerialize("smiles") }
-                MenuItemRow { text: "Copy Canonical SMILES"; onTriggered: if (activeSketch) activeSketch.requestSerialize("canonical_smiles") }
-                Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6 }
-                MenuItemRow { text: "Copy InChI"; onTriggered: if (activeSketch) activeSketch.requestSerialize("inchi") }
-                MenuItemRow { text: "Copy InChIKey"; onTriggered: if (activeSketch) activeSketch.requestSerialize("inchikey") }
-                Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6 }
-                MenuItemRow { text: "Copy Hash"; onTriggered: if (activeSketch) activeSketch.requestSerialize("hash") }
-                MenuItemRow { text: "Copy Mass Composition"; onTriggered: if (activeSketch) activeSketch.requestSerialize("mass_composition") }
-                MenuItemRow { text: "Copy pKa Values"; onTriggered: if (activeSketch) activeSketch.requestSerialize("pka_values") }
-                Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6 }
-                MenuItemRow { text: "Compare Similarity…"; onTriggered: similarityDialog.open() }
-            }
-            AppMenuBarItem {
-                text: "View"
-                MenuItemRow { text: "Fit to Screen"; iconSource: "fit.svg"; shortcutHint: "Ctrl+0"; onTriggered: activeCanvas.fitToMolecule() }
-                Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6 }
-                MenuItemRow { text: "Zoom In"; iconSource: "zoom-in.svg"; onTriggered: window.zoomLevel = Math.min(3.0, window.zoomLevel + 0.1) }
-                MenuItemRow { text: "Zoom Out"; iconSource: "zoom-out.svg"; onTriggered: window.zoomLevel = Math.max(0.1, window.zoomLevel - 0.1) }
-                MenuItemRow { text: "Reset (100%)"; onTriggered: window.zoomLevel = 1.0 }
-            }
         }
 
         // Top Toolbar
