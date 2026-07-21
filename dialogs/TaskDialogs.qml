@@ -9,6 +9,10 @@ import ".."
 
 Item {
     id: root
+    // See dialogs/FileDialogs.qml's identical comment -- without this, root
+    // stayed at its default 0x0 size at (0,0), pinning every TaskDialog inside
+    // to the window's top-left corner instead of its real center.
+    anchors.fill: parent
     required property var win
 
     property alias renameDialog: renameDialog
