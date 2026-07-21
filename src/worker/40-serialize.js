@@ -600,7 +600,7 @@ function selectSubstructureMatches(matchesJson) {
     _struct.bonds.forEach(function(b, id) {
         if (atomIdSet[b.begin] && atomIdSet[b.end]) bondIds.push(id)
     })
-    _selection = { atom_ids: atomIds, bond_ids: bondIds, rxnArrow_ids: [], rxnPlus_ids: [], bbox: null }
+    _selection = { atom_ids: atomIds, bond_ids: bondIds, rxnArrow_ids: [], rxnPlus_ids: [], multitailArrow_ids: [], bbox: null }
 }
 
 function getSdfProps() {
