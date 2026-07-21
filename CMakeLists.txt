@@ -33,6 +33,11 @@ qt_add_qml_module(sketch
     VERSION 1.0
     QML_FILES
         MainWindow.qml
+        AppMenus.qml
+        MainToolbar.qml
+        dialogs/FileDialogs.qml
+        dialogs/TaskDialogs.qml
+        dialogs/MessageDialogs.qml
         ChemCanvas.qml
         MoleculeLayer.qml
         SelectionLayer.qml
@@ -63,6 +68,7 @@ qt_add_qml_module(sketch
 
         chem-core.js
         js/Selection.js
+        js/ToolLabels.js
         js/ThumbnailPainter.js
     RESOURCES
         fonts/materialdesignicons-webfont.ttf

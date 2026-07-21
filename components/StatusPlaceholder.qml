@@ -15,6 +15,14 @@ Item {
 
     implicitWidth: col.implicitWidth
     implicitHeight: col.implicitHeight
+    // A plain Item's implicitWidth/Height only becomes its actual width/height
+    // automatically inside a Layout (which is how PropertyPanel.qml already
+    // used this component, inside a ColumnLayout) -- a non-Layout usage
+    // anchored directly (e.g. `StatusPlaceholder { anchors.centerIn: parent }`)
+    // stays 0x0 without this explicit binding, which made this component
+    // render with zero size and no visible content despite `visible: true`.
+    width: implicitWidth
+    height: implicitHeight
 
     Accessible.role: Accessible.Indicator
     Accessible.name: root.message + (root.detail ? (" " + root.detail) : "")
