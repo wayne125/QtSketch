@@ -366,12 +366,20 @@ function addRing(coords, aromatic) {
 
 function clearCanvas() {
     var oldStruct = _struct
+    // Defensive `|| []` on every field: every _selection writer is supposed to
+    // always populate all 5 fields, but this unconditional .slice() is what
+    // actually surfaced it the one time a writer didn't (a stale
+    // selectByRect/selectByLasso/selectAll/selectSubstructureMatches result
+    // missing multitailArrow_ids threw "cannot read property 'slice' of
+    // undefined" here) -- kept defensive even after fixing every writer, so a
+    // future writer bug degrades to "selection not preserved across undo"
+    // instead of crashing the whole command.
     var oldSelection = {
-        atom_ids: _selection.atom_ids.slice(),
-        bond_ids: _selection.bond_ids.slice(),
-        rxnArrow_ids: _selection.rxnArrow_ids.slice(),
-        rxnPlus_ids: _selection.rxnPlus_ids.slice(),
-        multitailArrow_ids: _selection.multitailArrow_ids.slice(),
+        atom_ids: (_selection.atom_ids || []).slice(),
+        bond_ids: (_selection.bond_ids || []).slice(),
+        rxnArrow_ids: (_selection.rxnArrow_ids || []).slice(),
+        rxnPlus_ids: (_selection.rxnPlus_ids || []).slice(),
+        multitailArrow_ids: (_selection.multitailArrow_ids || []).slice(),
         bbox: _selection.bbox
     }
     var cmd = makeCmd(

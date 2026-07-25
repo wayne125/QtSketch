@@ -15,6 +15,7 @@ AnchoredPicker {
     signal recordChosen(int index)
     signal findScaffoldRequested()
     signal decomposeRequested()
+    signal decomposePerMoleculeRequested()
     signal rankBySimilarityRequested()
     signal alignToScaffoldRequested()
     signal exportGridRequested()
@@ -45,6 +46,13 @@ AnchoredPicker {
             text: "Decompose to R-Groups"
             visible: root.recordCount > 1
             onClicked: root.decomposeRequested()
+        }
+
+        Button {
+            Layout.fillWidth: true
+            text: "Decompose to R-Groups (Per-Molecule)"
+            visible: root.recordCount > 1
+            onClicked: root.decomposePerMoleculeRequested()
         }
 
         Button {

@@ -49,6 +49,7 @@ qt_add_qml_module(sketch
         StyleSheets.qml
         PeriodicTablePopup.qml
         BiopolymerDialog.qml
+        BiopolymerSequenceView.qml
         AtomPropertiesDialog.qml
         RGroupPanel.qml
         SdfRecordPicker.qml
@@ -179,5 +180,13 @@ add_custom_command(TARGET sketch POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${INDIGO_RUNTIME_FILES}
         $<TARGET_FILE_DIR:sketch>
+)
+
+add_custom_command(TARGET sketch POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        ${CMAKE_CURRENT_SOURCE_DIR}/indigo/data/molecules/basic
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/monomer_library.ket
+        ${CMAKE_CURRENT_SOURCE_DIR}/indigo/data/molecules/basic/monomer_library.ket
 )
 

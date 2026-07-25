@@ -50,6 +50,7 @@ const COMMANDS = {
     pasteSelection:  { fn: (args) => pasteSelection(args[0], args[1]) },
     insertRecognizedStructure: { fn: (args) => insertRecognizedStructure(args[0], args[1], args[2]) },
     getClipboardAsKet: { custom: true, fn: () => getClipboardAsKet() },
+    getClipboardPreview: { custom: true, fn: () => getClipboardPreview() },
     importKetAtPosition: { fn: (args) => importKetAtPosition(args[0], args[1], args[2]) },
     selectAll:       { fn: () => selectAll() },
     clearCanvas:     { fn: () => clearCanvas() },
@@ -95,6 +96,27 @@ const COMMANDS = {
     setMoleculeName: { fn: (args) => setMoleculeName(args[0]) },
     selectSubstructureMatches: { fn: (args) => selectSubstructureMatches(args[0]) },
     getSdfProps:     { custom: true, fn: () => getSdfProps() },
+    bioBuildSequenceView: {
+        custom: true,
+        fn: (args) => {
+            bioBuildSequenceView(args[0], args[1]);
+            bioGetSequenceViewSnapshot("biopolymer_seq_view");
+        }
+    },
+    bioAddMonomer: {
+        custom: true,
+        fn: (args) => {
+            bioAddMonomer(args[0], args[1]);
+            bioGetSequenceViewSnapshot("biopolymer_seq_view");
+        }
+    },
+    bioDeleteMonomer: {
+        custom: true,
+        fn: (args) => {
+            bioDeleteMonomer(args[0]);
+            bioGetSequenceViewSnapshot("biopolymer_seq_view");
+        }
+    },
     getStructure: {
         custom: true,
         fn: (args) => {
