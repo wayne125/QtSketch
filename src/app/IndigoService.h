@@ -45,6 +45,7 @@ public:
     Q_INVOKABLE void substructureSearch(const QString &molfile, const QString &smarts);
     Q_INVOKABLE void findCommonScaffold(const QStringList &molfiles);
     Q_INVOKABLE void decomposeToRGroups(const QStringList &molfiles);
+    Q_INVOKABLE void decomposeToRGroupsPerMolecule(const QStringList &molfiles, const QStringList &labels);
     Q_INVOKABLE void rankBySimilarity(const QString &refMolfile, const QStringList &molfiles);
     Q_INVOKABLE void alignBatchToScaffold(const QStringList &molfiles);
 
@@ -67,6 +68,7 @@ Q_SIGNALS:
     void reactionMappingFinished(const QString &result, const QString &error);
     void commonScaffoldFinished(const QString &result, const QString &error);
     void rgroupDecompositionFinished(const QString &result, const QString &error);
+    void rgroupPerMoleculeDecompositionFinished(const QString &resultsJson, const QString &error);
     void similarityRankFinished(const QString &resultJson, const QString &error);
     void batchAlignFinished(const QString &resultJson, const QString &error);
     void rdfBatchParsed(const QString &recordsJson, const QString &error);

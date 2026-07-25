@@ -9,6 +9,10 @@ import ".."
 
 Item {
     id: root
+    // See dialogs/FileDialogs.qml's identical comment -- without this, root
+    // stayed at its default 0x0 size at (0,0), pinning every TaskDialog inside
+    // to the window's top-left corner instead of its real center.
+    anchors.fill: parent
     required property var win
 
     property alias renameDialog: renameDialog
@@ -19,6 +23,7 @@ Item {
     property alias ionizeDialog: ionizeDialog
     property alias inchiLoadDialog: inchiLoadDialog
     property alias shortcutsDialog: shortcutsDialog
+    property alias rgroupPerMoleculeResultsDialog: rgroupPerMoleculeResultsDialog
 
     TaskDialog {
         id: renameDialog
@@ -319,6 +324,70 @@ Item {
                             pixelSize: Theme.fontSizeBody
                             family: modelData.isKey ? Theme.fontMono : Theme.fontDisplay
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    TaskDialog {
+        id: rgroupPerMoleculeResultsDialog
+        title: "R-Group Results (Per-Molecule)"
+        standardButtons: Dialog.Close
+        width: 380
+        height: 380
+
+        ListView {
+            id: rgroupResultsList
+            width: parent.width
+            height: Math.min(300, contentHeight)
+            clip: true
+            model: win._rgroupPerMoleculeResults || []
+            spacing: 4
+            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+            delegate: Rectangle {
+                required property var modelData
+                required property int index
+                width: ListView.view.width
+                height: 40
+                color: mouseArea.containsMouse ? Theme.hover : Theme.surface
+                border.color: Theme.outline
+                border.width: 1
+                radius: 4
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    spacing: 8
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: modelData.label || ("Record " + ((modelData.index !== undefined) ? (modelData.index + 1) : (index + 1)))
+                        color: Theme.textPrimary
+                        font { pixelSize: Theme.fontSizeBody; family: Theme.fontDisplay }
+                        elide: Text.ElideRight
+                    }
+
+                    Button {
+                        text: "Load"
+                        onClicked: {
+                            if (win.activeCanvas && modelData.molfile) {
+                                win.activeCanvas.loadMolfile(modelData.molfile)
+                            }
+                            rgroupPerMoleculeResultsDialog.close()
+                        }
+                    }
+                }
+
+                MouseArea {
+                    id: mouseArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: {
+                        if (win.activeCanvas && modelData.molfile) {
+                            win.activeCanvas.loadMolfile(modelData.molfile)
+                        }
+                        rgroupPerMoleculeResultsDialog.close()
                     }
                 }
             }

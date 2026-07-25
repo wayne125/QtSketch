@@ -39,8 +39,15 @@ Item {
     property bool canRedo: false
     property int selectedImageId: -1
     property alias mouseArea: mouse
+    property var clipboardPreview: null
     onCurrentToolChanged: {
         selectedImageId = -1
+    }
+
+    function _pastePosition() {
+        return mouseArea.containsMouse
+            ? canvasToChem(mouseArea.mouseX, mouseArea.mouseY)
+            : canvasToChem(root.width / 2, root.height / 2)
     }
 
     property int _renderVersion: 0
@@ -132,28 +139,30 @@ Item {
                 } else {
                     sketch.copySelection()
                     sketch.requestClipboardKet()  // async → clipboard_ket handler writes to OS clipboard
+                    sketch.sendCommand("getClipboardPreview", [])
                 }
                 event.accepted = true
             }
             if (event.key === Qt.Key_X) {
                 sketch.cutSelection()
                 sketch.requestClipboardKet()
+                sketch.sendCommand("getClipboardPreview", [])
                 refresh()
                 event.accepted = true
             }
             if (event.key === Qt.Key_V) {
-                const center = canvasToChem(root.width / 2, root.height / 2)
+                const pos = _pastePosition()
                 const osText = sketch.getOsClipboardText()
                 if (osText && osText.length > 0) {
                     // Prefer OS clipboard: try KET, then MOL/SDF
                     if (osText.indexOf('"root"') >= 0 || osText.indexOf('"atoms"') >= 0) {
-                        sketch.importKetAtPosition(osText, center.x, center.y)
+                        sketch.importKetAtPosition(osText, pos.x, pos.y)
                     } else {
                         // Not KET — fall back to internal clipboard
-                        sketch.pasteSelection(center.x, center.y)
+                        sketch.pasteSelection(pos.x, pos.y)
                     }
                 } else {
-                    sketch.pasteSelection(center.x, center.y)
+                    sketch.pasteSelection(pos.x, pos.y)
                 }
                 refresh()
                 event.accepted = true
@@ -176,6 +185,33 @@ Item {
             currentTool = "SELECT"
             sketch.setOverlayState({ hoverAtomId: null, hoverBondId: null, dragRect: null, bondPreview: null })
             event.accepted = true
+        }
+        // Hover-atom element shortcuts: type an element letter while hovering an atom
+        // to swap it in place (ChemDraw/Marvin convention). Takes priority over the
+        // single-key tool shortcuts below -- a bare letter over a specific atom means
+        // "change this atom", not "switch tool" (resolves the S/Sulfur, B/Bromine clashes).
+        if (sketch.overlayState.hoverAtomId !== null &&
+                (event.modifiers === Qt.NoModifier || event.modifiers === Qt.ShiftModifier)) {
+            let newLabel = null
+            if (event.modifiers === Qt.NoModifier) {
+                if (event.key === Qt.Key_C) newLabel = "C"
+                else if (event.key === Qt.Key_N) newLabel = "N"
+                else if (event.key === Qt.Key_O) newLabel = "O"
+                else if (event.key === Qt.Key_S) newLabel = "S"
+                else if (event.key === Qt.Key_F) newLabel = "F"
+                else if (event.key === Qt.Key_I) newLabel = "I"
+                else if (event.key === Qt.Key_P) newLabel = "P"
+                else if (event.key === Qt.Key_B) newLabel = "B"
+            } else {
+                if (event.key === Qt.Key_C) newLabel = "Cl"
+                else if (event.key === Qt.Key_B) newLabel = "Br"
+            }
+            if (newLabel !== null) {
+                sketch.changeAtomLabel(resolveHitAtom(sketch.overlayState.hoverAtomId), newLabel)
+                refresh()
+                event.accepted = true
+                return
+            }
         }
         // Single-key tool shortcuts (no modifier)
         if (event.modifiers === Qt.NoModifier) {
@@ -344,16 +380,18 @@ Item {
 
     function copySelection() {
         sketch.copySelection()
+        sketch.sendCommand("getClipboardPreview", [])
     }
 
     function cutSelection() {
         sketch.cutSelection()
+        sketch.sendCommand("getClipboardPreview", [])
         refresh()
     }
 
     function pasteSelection() {
-        const center = canvasToChem(root.width / 2, root.height / 2)
-        sketch.pasteSelection(center.x, center.y)
+        const pos = _pastePosition()
+        sketch.pasteSelection(pos.x, pos.y)
         refresh()
     }
 
@@ -766,6 +804,8 @@ Item {
                 const hitBond = (hitAtom === null) ? selectionLayer.hitTestBond(m.x, m.y) : null
                 contextMenu._hitAtom = hitAtom
                 contextMenu._hitBond = hitBond
+                contextMenu._clickX = m.x
+                contextMenu._clickY = m.y
                 contextMenu.popup(m.x, m.y)
                 return
             }
@@ -904,6 +944,21 @@ Item {
                     } else {
                         // Nothing chemical hit. Check image hit.
                         const hitImg = hitTestImage(m.x, m.y)
+                        if (clipboardPreview && currentTool === "SELECT" && !hitImg) {
+                            // Ghost preview is showing (copy/cut is armed) -- left click
+                            // commits the paste exactly where the ghost was drawn, instead
+                            // of starting a rubber-band selection. One-shot: clear the
+                            // preview right after so the SELECT tool reverts to normal
+                            // rubber-band selection on the next click (otherwise every
+                            // future empty-canvas click would paste again forever, since
+                            // clipboardPreview intentionally stays armed for Ctrl+V/right-
+                            // click-Paste repeatability -- see ChemCanvas.qml clipboardPreview).
+                            const pastePos = canvasToChem(m.x, m.y)
+                            sketch.pasteSelection(pastePos.x, pastePos.y)
+                            clipboardPreview = null
+                            refresh()
+                            return
+                        }
                         if (hitImg) {
                             selectedImageId = hitImg.id
                             isDragging = true
@@ -1552,6 +1607,8 @@ Item {
         id: contextMenu
         property var _hitAtom: null
         property var _hitBond: null
+        property real _clickX: 0
+        property real _clickY: 0
 
         MenuItem {
             text: "Properties…"
@@ -1631,12 +1688,12 @@ Item {
             text: "Paste"
             visible: contextMenu._hitAtom === null && contextMenu._hitBond === null
             onTriggered: {
-                const center = canvasToChem(root.width / 2, root.height / 2)
+                const pos = canvasToChem(contextMenu._clickX, contextMenu._clickY)
                 const osText = sketch.getOsClipboardText()
                 if (osText && osText.length > 0 && (osText.indexOf('"root"') >= 0 || osText.indexOf('"atoms"') >= 0)) {
-                    sketch.importKetAtPosition(osText, center.x, center.y)
+                    sketch.importKetAtPosition(osText, pos.x, pos.y)
                 } else {
-                    sketch.pasteSelection(center.x, center.y)
+                    sketch.pasteSelection(pos.x, pos.y)
                 }
                 refresh()
             }

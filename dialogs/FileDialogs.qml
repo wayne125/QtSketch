@@ -9,6 +9,14 @@ import ".."
 
 Item {
     id: root
+    // Declared as a direct child of the root ApplicationWindow (real size), but
+    // a plain Item never auto-fills its parent -- without this, root stayed at
+    // its default 0x0 size at (0,0), so every FileDialog inside (anchors.centerIn:
+    // parent, from components/TaskDialog.qml's shared base) centered on that
+    // single point instead of the real window, rendering pinned to the
+    // top-left corner with most of the dialog off-screen. Same bug class as
+    // components/StatusPlaceholder.qml's earlier sizing fix.
+    anchors.fill: parent
     required property var win
 
     property alias openDialog: openDialog

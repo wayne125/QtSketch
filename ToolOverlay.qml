@@ -246,6 +246,47 @@ Item {
                     ctx.setLineDash([]);
                     ctx.globalAlpha = 1.0;
                 }
+            } else if (canvas.clipboardPreview && canvas.currentTool === "SELECT" && canvas.mouseArea.containsMouse && !canvas.mouseArea.isDragging && !canvas.mouseArea.movingImage && !canvas.mouseArea.rotatingSelection && !canvas.mouseArea.resizingSelection) {
+                const mouseChem = canvas.canvasToChem(canvas.mouseArea.mouseX, canvas.mouseArea.mouseY);
+                const clampedX = Math.max(-30, Math.min(30, mouseChem.x));
+                const clampedY = Math.max(-21, Math.min(21, mouseChem.y));
+                const dx = clampedX - canvas.clipboardPreview.cx;
+                const dy = clampedY - canvas.clipboardPreview.cy;
+
+                const preview = canvas.clipboardPreview;
+                ctx.save();
+                ctx.globalAlpha = 0.45;
+                ctx.strokeStyle = Theme.accent;
+                ctx.lineWidth = Theme.clampStrokeWidth(Theme.bondWidth, root.scale);
+                ctx.setLineDash([4, 4]);
+
+                if (preview.bonds) {
+                    for (let i = 0; i < preview.bonds.length; i++) {
+                        const b = preview.bonds[i];
+                        const p1 = canvas.chemToCanvas(b.x1 + dx, b.y1 + dy);
+                        const p2 = canvas.chemToCanvas(b.x2 + dx, b.y2 + dy);
+                        ctx.beginPath();
+                        ctx.moveTo(p1.x, p1.y);
+                        ctx.lineTo(p2.x, p2.y);
+                        ctx.stroke();
+                    }
+                }
+                ctx.setLineDash([]);
+
+                if (preview.atoms) {
+                    ctx.fillStyle = Theme.accent;
+                    const r = Theme.clampDim(3, root.scale);
+                    for (let i = 0; i < preview.atoms.length; i++) {
+                        const a = preview.atoms[i];
+                        if (a.label && a.label !== "C") {
+                            const p = canvas.chemToCanvas(a.x + dx, a.y + dy);
+                            ctx.beginPath();
+                            ctx.arc(p.x, p.y, r, 0, 2 * Math.PI);
+                            ctx.fill();
+                        }
+                    }
+                }
+                ctx.restore();
             }
 
             if (canvas.sketch.overlayState.previewBonds) {
@@ -405,17 +446,18 @@ Item {
     Connections {
         target: canvas
         function onCurrentToolChanged() { overlayCanvas.requestPaint() }
+        function onClipboardPreviewChanged() { overlayCanvas.requestPaint() }
     }
 
     Connections {
         target: canvas ? canvas.mouseArea : null
         function onMouseXChanged() {
-            if (canvas && canvas.currentTool && canvas.currentTool.indexOf("TEMPLATE_") === 0) {
+            if (canvas && ((canvas.currentTool && canvas.currentTool.indexOf("TEMPLATE_") === 0) || (canvas.clipboardPreview && canvas.currentTool === "SELECT"))) {
                 overlayCanvas.requestPaint()
             }
         }
         function onMouseYChanged() {
-            if (canvas && canvas.currentTool && canvas.currentTool.indexOf("TEMPLATE_") === 0) {
+            if (canvas && ((canvas.currentTool && canvas.currentTool.indexOf("TEMPLATE_") === 0) || (canvas.clipboardPreview && canvas.currentTool === "SELECT"))) {
                 overlayCanvas.requestPaint()
             }
         }

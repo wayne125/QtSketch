@@ -72,7 +72,7 @@ function _resolveAtomMoveIds(aids) {
 }
 
 function moveSelection(dx, dy) {
-    if (_selection.atom_ids.length === 0 && _selection.rxnArrow_ids.length === 0 && _selection.rxnPlus_ids.length === 0 && _selection.multitailArrow_ids.length === 0) return
+    if (_selection.atom_ids.length === 0 && _selection.rxnArrow_ids.length === 0 && _selection.rxnPlus_ids.length === 0 && (!_selection.multitailArrow_ids || _selection.multitailArrow_ids.length === 0)) return
     if (_dragDelta.x === 0 && _dragDelta.y === 0) {
         _dragSelection = _resolveAtomMoveIds(_selection.atom_ids)
         _dragArrowSelection = _selection.rxnArrow_ids ? _selection.rxnArrow_ids.slice() : []

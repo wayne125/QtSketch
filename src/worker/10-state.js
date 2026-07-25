@@ -500,7 +500,9 @@ function selectAll() {
     if (_struct.rxnArrows) _struct.rxnArrows.forEach(function(ar, id) { raid.push(id) })
     var rpid = []
     if (_struct.rxnPluses) _struct.rxnPluses.forEach(function(pl, id) { rpid.push(id) })
-    _selection = { atom_ids: aids, bond_ids: bids, rxnArrow_ids: raid, rxnPlus_ids: rpid, bbox: null }
+    var mtaid = []
+    if (_struct.multitailArrows) _struct.multitailArrows.forEach(function(mta, id) { mtaid.push(id) })
+    _selection = { atom_ids: aids, bond_ids: bids, rxnArrow_ids: raid, rxnPlus_ids: rpid, multitailArrow_ids: mtaid, bbox: null }
 }
 
 function selectByRect(x1, y1, x2, y2) {
@@ -584,7 +586,12 @@ function selectByRect(x1, y1, x2, y2) {
             }
         })
     }
-    _selection = { atom_ids: aids, bond_ids: bids, rxnArrow_ids: raid, rxnPlus_ids: rpid, bbox: null }
+    // Multitail arrows are never included in rectangle-marquee selection (no
+    // rect-intersection hit-test exists for their spine+tails geometry) -- an
+    // empty array here, not an omitted field, so that _selection always has
+    // the same 5-field shape every reader (e.g. clearCanvas's snapshot/undo
+    // logic below) can rely on without a null-guard.
+    _selection = { atom_ids: aids, bond_ids: bids, rxnArrow_ids: raid, rxnPlus_ids: rpid, multitailArrow_ids: [], bbox: null }
 }
 
 function _pointInPolygon(px, py, poly) {
@@ -608,7 +615,7 @@ function _pointInPolygon(px, py, poly) {
 // fallback is exactly the "touched" behavior ChemDraw's lasso does not use.
 function selectByLasso(pointsFlat) {
     if (!pointsFlat || pointsFlat.length < 6) {
-        _selection = { atom_ids: [], bond_ids: [], rxnArrow_ids: [], rxnPlus_ids: [], bbox: null }
+        _selection = { atom_ids: [], bond_ids: [], rxnArrow_ids: [], rxnPlus_ids: [], multitailArrow_ids: [], bbox: null }
         return
     }
     var poly = []
@@ -664,7 +671,9 @@ function selectByLasso(pointsFlat) {
             if (_pointInPolygon(px, py, poly)) rpid.push(id)
         })
     }
-    _selection = { atom_ids: aids, bond_ids: bids, rxnArrow_ids: raid, rxnPlus_ids: rpid, bbox: null }
+    // Multitail arrows are never included in lasso selection either (same
+    // reasoning as selectByRect above) -- empty array, not an omitted field.
+    _selection = { atom_ids: aids, bond_ids: bids, rxnArrow_ids: raid, rxnPlus_ids: rpid, multitailArrow_ids: [], bbox: null }
 }
 
 function addSelectionByRect(x1, y1, x2, y2) {

@@ -61,6 +61,7 @@ const _workerFiles = [
     "40-serialize.js",
     "50-reactions.js",
     "60-analysis.js",
+    "70-biopolymer.js",
     "90-dispatch.js"
 ];
 
