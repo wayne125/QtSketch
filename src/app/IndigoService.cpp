@@ -47,6 +47,23 @@ static const QByteArray& monomerLibraryContent() {
     return content;
 }
 
+// Strips cosmetic "M  SDS" (Sgroup display/expanded-state) lines before re-parsing a molfile
+// for analysis. These lines are display-only (contracted vs. expanded Sgroup brackets) and
+// never affect atoms/bonds/properties -- but a batched multi-index "M  SDS EXP" line (more than
+// one Sgroup per line) breaks Indigo's strict fixed-column V2000 reader if the count field spills
+// past its 3-character width (happens once 10+ Sgroups share a line), which the app's own
+// re-serialization of an expanded biopolymer document can produce. Safe to drop outright for
+// this read-only analysis pass since only the original document (unaffected) is ever displayed
+// or saved -- this sanitized copy is used solely for indigoLoadMoleculeFromString here.
+static QString sanitizeMolfileForAnalysis(const QString &molfile) {
+    static const QRegularExpression sdsLine(
+        QStringLiteral("^M  SDS.*$\\n?"),
+        QRegularExpression::MultilineOption);
+    QString out = molfile;
+    out.remove(sdsLine);
+    return out;
+}
+
 // The worker's MOL serializer switches to $RXN (reaction) format whenever the
 // structure has a reaction arrow — indigoLoadMoleculeFromString() cannot parse
 // that (it expects a single-molecule counts line, not "$RXN"'s multi-$MOL
@@ -56,6 +73,52 @@ static const QByteArray& monomerLibraryContent() {
 // gracefully here rather than attempted — same treatment as an empty molfile.
 static bool isReactionFormat(const QString &data) {
     return data.trimmed().startsWith(QLatin1String("$RXN"));
+}
+
+// The vendored indigo.dll silently crashes the whole process (not a catchable C++ exception --
+// confirmed empirically: an unrecognized character like a digit produces a clean "Invalid
+// symbols" error, but a real IUPAC ambiguity code like 'X' or 'B' crashes with zero exception/
+// stderr output) when a sequence/FASTA load contains an IUPAC ambiguity code. Root cause is
+// inside the prebuilt binary (built from a fork that doesn't match the vendored v1.45.0
+// reference source available for reading), so it can't be fixed there -- reject unsafe input
+// before it ever reaches Indigo instead.
+static bool validateBioSequenceAlphabet(const QString &text, const QString &seqType, bool isFasta, QString &badChars) {
+    static const QSet<QChar> peptideSafe = {
+        'A','C','D','E','F','G','H','I','K','L','M','N','P','Q','R','S','T','V','W','Y'
+    };
+    static const QSet<QChar> rnaSafe = { 'A','C','G','U' };
+    static const QSet<QChar> dnaSafe = { 'A','C','G','T' };
+
+    const QSet<QChar>* safe = &peptideSafe;
+    if (seqType == QLatin1String("RNA")) safe = &rnaSafe;
+    else if (seqType == QLatin1String("DNA")) safe = &dnaSafe;
+
+    QString body = text;
+    if (isFasta) {
+        // Strip FASTA header lines (start with '>') before validating -- their free-text
+        // content (e.g. ">seq1") is not sequence data and must not be checked against the
+        // residue alphabet. Same convention as src/worker/70-biopolymer.js's own FASTA handling.
+        QStringList kept;
+        for (const QString &line : text.split(QLatin1Char('\n'))) {
+            if (line.trimmed().startsWith(QLatin1Char('>'))) continue;
+            kept << line;
+        }
+        body = kept.join(QLatin1Char('\n'));
+    }
+
+    QSet<QChar> bad;
+    for (QChar rawCh : body) {
+        QChar ch = rawCh.toUpper();
+        if (!ch.isLetter()) continue; // non-letters (digits, '-', etc.) already produce a clean,
+                                       // catchable Indigo error -- confirmed safe, don't touch them
+        if (!safe->contains(ch)) bad.insert(ch);
+    }
+    if (bad.isEmpty()) return true;
+
+    QStringList list;
+    for (QChar c : bad) list << QString(c);
+    badChars = list.join(QLatin1Char(','));
+    return false;
 }
 
 // QPointer's guard is documented as safe only when checked from the pointed-to
@@ -503,7 +566,7 @@ void IndigoService::massComposition(const QString &molfile) {
         unsigned long long sid = indigoAllocSessionId();
         indigoSetSessionId(sid);
         try {
-            int mol = indigoLoadMoleculeFromString(molfile.toUtf8().constData());
+            int mol = indigoLoadMoleculeFromString(sanitizeMolfileForAnalysis(molfile).toUtf8().constData());
             if (mol >= 0) {
                 const char* mc = indigoMassComposition(mol);
                 if (mc) result = QString::fromUtf8(mc);
@@ -525,7 +588,7 @@ void IndigoService::pkaValues(const QString &molfile) {
         unsigned long long sid = indigoAllocSessionId();
         indigoSetSessionId(sid);
         try {
-            int mol = indigoLoadMoleculeFromString(molfile.toUtf8().constData());
+            int mol = indigoLoadMoleculeFromString(sanitizeMolfileForAnalysis(molfile).toUtf8().constData());
             if (mol >= 0) {
                 const char* pv = indigoPkaValues(mol);
                 if (pv) result = QString::fromUtf8(pv);
@@ -1016,7 +1079,7 @@ void IndigoService::calcProperties(const QString &molfile) {
         unsigned long long sid = indigoAllocSessionId();
         indigoSetSessionId(sid);
         try {
-            int mol = indigoLoadMoleculeFromString(molfile.toUtf8().constData());
+            int mol = indigoLoadMoleculeFromString(sanitizeMolfileForAnalysis(molfile).toUtf8().constData());
             if (mol >= 0) {
                 mw       = indigoMolecularWeight(mol);
                 mono     = indigoMonoisotopicMass(mol);
@@ -1061,7 +1124,7 @@ void IndigoService::calcStereoDescriptors(const QString &molfile) {
         unsigned long long sid = indigoAllocSessionId();
         indigoSetSessionId(sid);
         try {
-            int mol = indigoLoadMoleculeFromString(molfile.toUtf8().constData());
+            int mol = indigoLoadMoleculeFromString(sanitizeMolfileForAnalysis(molfile).toUtf8().constData());
             if (mol >= 0) {
                 indigoAddCIPStereoDescriptors(mol);
                 QJsonObject atomMap;
@@ -1362,6 +1425,11 @@ void IndigoService::substructureSearch(const QString &molfile, const QString &sm
 // Each function: parse notation → expand monomers to atoms → 2D layout → molfile
 void IndigoService::loadBioSequence(const QString &text, const QString &seqType) {
     if (text.isEmpty()) return;
+    QString badChars;
+    if (!validateBioSequenceAlphabet(text, seqType, /*isFasta=*/false, badChars)) {
+        emit biopolymerLoadError(QString("SEQUENCE loader: Invalid symbols in the sequence: %1").arg(badChars));
+        return;
+    }
     QPointer<IndigoService> self = this;
     (void)QtConcurrent::run([self, text, seqType]() {
         QString result; QString err;
@@ -1388,6 +1456,11 @@ void IndigoService::loadBioSequence(const QString &text, const QString &seqType)
 
 void IndigoService::loadBioFasta(const QString &text, const QString &seqType) {
     if (text.isEmpty()) return;
+    QString badChars;
+    if (!validateBioSequenceAlphabet(text, seqType, /*isFasta=*/true, badChars)) {
+        emit biopolymerLoadError(QString("FASTA loader: Invalid symbols in the sequence: %1").arg(badChars));
+        return;
+    }
     QPointer<IndigoService> self = this;
     (void)QtConcurrent::run([self, text, seqType]() {
         QString result; QString err;
@@ -1718,6 +1791,89 @@ void IndigoService::decomposeToRGroups(const QStringList &molfiles) {
     });
 }
 
+void IndigoService::decomposeToRGroupsPerMolecule(const QStringList &molfiles, const QStringList &labels) {
+    if (molfiles.size() < 2) {
+        emit rgroupPerMoleculeDecompositionFinished("", "Need at least 2 structures to decompose.");
+        return;
+    }
+    QPointer<IndigoService> self = this;
+    (void)QtConcurrent::run([self, molfiles, labels]() {
+        QString resultsJson, error;
+        unsigned long long sid = indigoAllocSessionId();
+        indigoSetSessionId(sid);
+        try {
+            int arr = indigoCreateArray();
+            QList<int> loadedMols;
+            for (const QString &mf : molfiles) {
+                int mol = indigoLoadMoleculeFromString(mf.toUtf8().constData());
+                if (mol >= 0) {
+                    if (indigoAromatize(mol) < 0) qWarning() << "Indigo: decomposeToRGroupsPerMolecule aromatize failed:" << indigoGetLastError();
+                    indigoArrayAdd(arr, mol);
+                    loadedMols.append(mol);
+                }
+            }
+            if (loadedMols.size() >= 2) {
+                int scaffold = indigoExtractCommonScaffold(arr, "");
+                if (scaffold > 0) {
+                    int decomp = indigoDecomposeMolecules(scaffold, arr);
+                    if (decomp >= 0) {
+                        indigoSetOption("molfile-saving-mode", "3000");
+                        int iter = indigoIterateDecomposedMolecules(decomp);
+                        if (iter >= 0) {
+                            QJsonArray resultsArray;
+                            int idx = 0;
+                            while (indigoHasNext(iter)) {
+                                int item = indigoNext(iter);
+                                if (item >= 0) {
+                                    int withR = indigoDecomposedMoleculeWithRGroups(item);
+                                    if (withR > 0) {
+                                        indigoLayout(withR);
+                                        const char* mf = indigoMolfile(withR);
+                                        if (mf) {
+                                            QJsonObject obj;
+                                            obj["index"] = idx;
+                                            obj["label"] = (idx < labels.size() && !labels[idx].isEmpty()) ? labels[idx] : QString("Record %1").arg(idx + 1);
+                                            obj["molfile"] = QString::fromUtf8(mf);
+                                            resultsArray.append(obj);
+                                        } else {
+                                            qWarning() << "Indigo: decomposeToRGroupsPerMolecule molfile null for item" << idx << ":" << indigoGetLastError();
+                                        }
+                                        indigoFree(withR);
+                                    } else {
+                                        qWarning() << "Indigo: decomposeToRGroupsPerMolecule withRGroups failed for item" << idx << ":" << indigoGetLastError();
+                                    }
+                                    indigoFree(item);
+                                }
+                                idx++;
+                            }
+                            indigoFree(iter);
+                            resultsJson = QString::fromUtf8(QJsonDocument(resultsArray).toJson(QJsonDocument::Compact));
+                        } else {
+                            error = QString("Failed to iterate decomposed molecules: %1").arg(indigoGetLastError());
+                        }
+                        indigoFree(decomp);
+                    } else {
+                        error = QString("Decomposition failed: %1").arg(indigoGetLastError());
+                    }
+                    indigoFree(scaffold);
+                } else {
+                    error = "No common scaffold found - cannot decompose without one.";
+                }
+            } else {
+                error = "Fewer than 2 structures could be parsed.";
+            }
+            for (int m : loadedMols) indigoFree(m);
+            indigoFree(arr);
+        } catch (const std::exception &e) {
+            error = QString::fromUtf8(e.what());
+        } catch (...) {
+            error = "Unknown exception during R-group decomposition.";
+        }
+        indigoReleaseSessionId(sid);
+        emitOnGuiThread(self, [resultsJson, error](IndigoService *s) { emit s->rgroupPerMoleculeDecompositionFinished(resultsJson, error); });
+    });
+}
+
 void IndigoService::rankBySimilarity(const QString &refMolfile, const QStringList &molfiles) {
     if (refMolfile.isEmpty() || molfiles.isEmpty()) {
         emit similarityRankFinished("", "Need an active structure and at least one candidate to rank.");
@@ -1801,6 +1957,10 @@ void IndigoService::alignBatchToScaffold(const QStringList &molfiles) {
                     int sa;
                     while ((sa = indigoNext(satoms)) > 0) {
                         float* xyz = indigoXYZ(sa);
+                        if (!xyz) continue; // indigoXYZ returns null if the scaffold atom has no
+                                             // coordinates (e.g. the layout above failed) -- every
+                                             // other Indigo call in this function already checks
+                                             // its return before use, this one didn't.
                         scaffXYZ << xyz[0] << xyz[1] << xyz[2];
                         scaffAtoms << sa;
                     }

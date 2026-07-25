@@ -11,6 +11,9 @@ TaskDialog {
 
     // Emitted by Load button — caller calls the relevant IndigoService method
     signal loadRequested(string format, string seqType, string text)
+    // Emitted by "Preview as Sequence View" — caller builds the native monomer-box view
+    // (plain Sequence/FASTA text only, not exploded to atoms)
+    signal previewSequenceViewRequested(string seqType, string text)
     // Emitted by Export buttons — caller calls requestSerialize with the right reqId
     signal exportRequested(string format)
 
@@ -151,9 +154,23 @@ TaskDialog {
                 onClicked: {
                     const fmt     = root.formats[formatCombo.currentIndex]
                     const seqType = root.seqTypes[seqTypeCombo.currentIndex].toUpperCase()
-                    root.loadRequested(fmt, seqType, bioText.text.trim())
+                    // Set "Loading…" BEFORE emitting: some validation failures (e.g. an
+                    // unsafe sequence alphabet) are reported synchronously via
+                    // biopolymerLoadError before loadRequested() even returns, so
+                    // showLoadError() must run first and this line must not clobber it.
                     statusLabel.text  = "Loading…"
                     statusLabel.color = Theme.textSecondary
+                    root.loadRequested(fmt, seqType, bioText.text.trim())
+                }
+            }
+
+            Button {
+                text: "Preview as Sequence View"
+                visible: root.typeRelevant
+                enabled: bioText.text.trim().length > 0 && !bioText.readOnly
+                onClicked: {
+                    const seqType = root.seqTypes[seqTypeCombo.currentIndex].toUpperCase()
+                    root.previewSequenceViewRequested(seqType, bioText.text.trim())
                 }
             }
 

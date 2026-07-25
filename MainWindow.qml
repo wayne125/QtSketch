@@ -139,6 +139,7 @@ ApplicationWindow {
             // Properties/stereo/check badges only refresh for the active document —
             // kick the debounce so a newly focused tab isn't stale until its next edit.
             propUpdateTimer.restart()
+            activeCanvas.sketch.sendCommand("getClipboardPreview", [])
         }
     }
 
@@ -225,6 +226,7 @@ ApplicationWindow {
     property alias similarityDialog: taskDialogsGroup.similarityDialog
     property alias ionizeDialog: taskDialogsGroup.ionizeDialog
     property alias inchiLoadDialog: taskDialogsGroup.inchiLoadDialog
+    property alias rgroupPerMoleculeResultsDialog: taskDialogsGroup.rgroupPerMoleculeResultsDialog
     // Same reasoning: dialogs/FileDialogs.qml's batch export handlers reach
     // these two backend services via win.indigoSvc/win.imagoSvc — both need
     // the same alias treatment as the dialog ids above.
@@ -343,6 +345,17 @@ ApplicationWindow {
                     activeCanvas.loadMolfile(result)
                 } else {
                     messageDialogsGroup.workerErrorDialog.errorText = "Decompose to R-Groups: " + (error || "unknown error")
+                    messageDialogsGroup.workerErrorDialog.severe = false
+                    messageDialogsGroup.workerErrorDialog.open()
+                }
+            }
+            function onRgroupPerMoleculeDecompositionFinished(resultsJson, error) {
+                window.isProcessing = false
+                if (resultsJson) {
+                    window._rgroupPerMoleculeResults = JSON.parse(resultsJson)
+                    taskDialogsGroup.rgroupPerMoleculeResultsDialog.open()
+                } else {
+                    messageDialogsGroup.workerErrorDialog.errorText = "Decompose to R-Groups (per-molecule): " + (error || "unknown error")
                     messageDialogsGroup.workerErrorDialog.severe = false
                     messageDialogsGroup.workerErrorDialog.open()
                 }
@@ -645,6 +658,8 @@ ApplicationWindow {
                             indigoSvc.alignBatchToScaffold(parsed.molfiles);
                         } else if (window._pendingBatchAction === "decompose") {
                             indigoSvc.decomposeToRGroups(parsed.molfiles);
+                        } else if (window._pendingBatchAction === "decompose_permolecule") {
+                            indigoSvc.decomposeToRGroupsPerMolecule(parsed.molfiles, parsed.labels);
                         } else if (window._pendingBatchAction === "similarity") {
                             window._pendingBatchLabels = parsed.labels || [];
                             if (!window.pendingSimilarityRefMolfile) {
@@ -673,6 +688,12 @@ ApplicationWindow {
                 },
                 sdf_props: (data) => {
                     propPanel.sdfProps = JSON.parse(data);
+                },
+                clipboard_preview: (data) => {
+                    if (activeCanvas) activeCanvas.clipboardPreview = data === "null" ? null : JSON.parse(data);
+                },
+                biopolymer_seq_view: (data) => {
+                    biopolymerSeqView.openSnapshot(data);
                 }
             })
 
@@ -1477,6 +1498,7 @@ ApplicationWindow {
     property var _pendingBatchLabels: []
     property var _pendingBatchGridMolfiles: []
     property string pendingSimilarityRefMolfile: ""
+    property var _rgroupPerMoleculeResults: []
 
     FileIO {
         id: fileIO
@@ -1496,6 +1518,12 @@ ApplicationWindow {
         onDecomposeRequested: {
             window.isProcessing = true
             _pendingBatchAction = "decompose"
+            if (activeSketch) activeSketch.sendCommand("getSdfBatchMolfiles")
+            sdfRecordPicker.close()
+        }
+        onDecomposePerMoleculeRequested: {
+            window.isProcessing = true
+            _pendingBatchAction = "decompose_permolecule"
             if (activeSketch) activeSketch.sendCommand("getSdfBatchMolfiles")
             sdfRecordPicker.close()
         }
@@ -1681,8 +1709,17 @@ ApplicationWindow {
         canvas: window.activeCanvas
     }
 
+    BiopolymerSequenceView {
+        id: biopolymerSeqView
+        sketch: window.activeSketch
+    }
+
     BiopolymerDialog {
         id: biopolymerDialog
+
+        onPreviewSequenceViewRequested: function(seqType, text) {
+            if (activeSketch) activeSketch.sendCommand("bioBuildSequenceView", [text, seqType])
+        }
 
         onLoadRequested: function(format, seqType, text) {
             window.isProcessing = true

@@ -53,6 +53,29 @@ function getClipboardAsKet() {
     console.log(JSON.stringify({ type: "structureResponse", reqId: "clipboard_ket", data: ketStr }))
 }
 
+function getClipboardPreview() {
+    if (!_clipboard) {
+        console.log(JSON.stringify({ type: "structureResponse", reqId: "clipboard_preview", data: "null" }))
+        return
+    }
+    var atoms = [], minX=null, minY=null, maxX=null, maxY=null
+    _clipboard.atoms.forEach(function(a) {
+        atoms.push({ x: a.pp.x, y: a.pp.y, label: a.label || "" })
+        if (minX===null||a.pp.x<minX) minX=a.pp.x
+        if (maxX===null||a.pp.x>maxX) maxX=a.pp.x
+        if (minY===null||a.pp.y<minY) minY=a.pp.y
+        if (maxY===null||a.pp.y>maxY) maxY=a.pp.y
+    })
+    var bonds = []
+    _clipboard.bonds.forEach(function(b) {
+        var a1 = _clipboard.atoms.get(b.begin), a2 = _clipboard.atoms.get(b.end)
+        if (a1 && a2) bonds.push({ x1: a1.pp.x, y1: a1.pp.y, x2: a2.pp.x, y2: a2.pp.y })
+    })
+    var cx = minX !== null ? (minX + maxX) / 2 : 0
+    var cy = minY !== null ? (minY + maxY) / 2 : 0
+    console.log(JSON.stringify({ type: "structureResponse", reqId: "clipboard_preview", data: JSON.stringify({ atoms: atoms, bonds: bonds, cx: cx, cy: cy }) }))
+}
+
 function importKetAtPosition(ketStr, cx, cy) {
     try {
         var ketObj = JSON.parse(ketStr)
