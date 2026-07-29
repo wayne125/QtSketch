@@ -41,6 +41,16 @@ std::map<int, QString> computePeripheralNumbering(
     const std::set<int> &substituentBearingNodes = {},
     bool preferIndicatedHydrogenLocant = false);
 
+std::map<int, QString> computePeripheralNumbering3Ring(
+    const Graph &g,
+    const std::set<int> &ring1,
+    const std::set<int> &ring2,
+    const std::set<int> &ring3,
+    const std::set<int> &bridgeheads,
+    const std::set<int> &substituentBearingNodes = {},
+    bool preferIndicatedHydrogenLocant = false);
+
+
 std::map<int, QString> computePeripheralNumberingForMol(int mol);
 
 namespace {
@@ -204,11 +214,14 @@ bool tryGeneralHeterocycle(const Graph &g, const std::vector<int> &ringHeteroNod
     return true;
 }
 
-enum class RingType { BENZENE, FURAN, THIOPHENE, PYRROLE, PYRIDINE, CYCLOALKANE, CYCLOALKENE, IMIDAZOLE, PYRIMIDINE, PYRAZOLE, OXAZOLE, ISOXAZOLE, THIAZOLE, ISOTHIAZOLE, PYRIDAZINE, PYRAZINE, PIPERIDINE, PYRROLIDINE, TETRAHYDROFURAN, TETRAHYDROTHIOPHENE, GENERAL_HETEROCYCLE };
+enum class RingType { BENZENE, FURAN, THIOPHENE, SELENOPHENE, TELLUROPHENE, PYRROLE, PYRIDINE, PHOSPHININE, CYCLOALKANE, CYCLOALKENE, IMIDAZOLE, PYRIMIDINE, PYRAZOLE, OXAZOLE, ISOXAZOLE, THIAZOLE, ISOTHIAZOLE, SELENAZOLE, ISOSELENAZOLE, PYRIDAZINE, PYRAZINE, PIPERIDINE, PYRROLIDINE, TETRAHYDROFURAN, TETRAHYDROTHIOPHENE, GENERAL_HETEROCYCLE };
 
 QString getFusionPrefixShared(RingType t) {
     if (t == RingType::FURAN) return "furo";
     if (t == RingType::THIOPHENE) return "thieno";
+    if (t == RingType::SELENOPHENE) return "selenolo";
+    if (t == RingType::TELLUROPHENE) return "tellurolo";
+    if (t == RingType::PHOSPHININE) return "phosphinino";
     if (t == RingType::PYRIDINE) return "pyrido";
     if (t == RingType::PYRIMIDINE) return "pyrimido";
     if (t == RingType::PYRIDAZINE) return "pyridazino";
@@ -217,6 +230,8 @@ QString getFusionPrefixShared(RingType t) {
     if (t == RingType::ISOXAZOLE) return "isoxazolo";
     if (t == RingType::THIAZOLE) return "thiazolo";
     if (t == RingType::ISOTHIAZOLE) return "isothiazolo";
+    if (t == RingType::SELENAZOLE) return "selenazolo";
+    if (t == RingType::ISOSELENAZOLE) return "isoselenazolo";
     if (t == RingType::PYRROLE) return "pyrrolo";
     if (t == RingType::IMIDAZOLE) return "imidazo";
     if (t == RingType::PYRAZOLE) return "pyrazolo";
@@ -226,6 +241,9 @@ QString getFusionPrefixShared(RingType t) {
 QString getBaseNameShared(RingType t) {
     if (t == RingType::FURAN) return "furan";
     if (t == RingType::THIOPHENE) return "thiophene";
+    if (t == RingType::SELENOPHENE) return "selenophene";
+    if (t == RingType::TELLUROPHENE) return "tellurophene";
+    if (t == RingType::PHOSPHININE) return "phosphinine";
     if (t == RingType::PYRIDINE) return "pyridine";
     if (t == RingType::PYRIMIDINE) return "pyrimidine";
     if (t == RingType::PYRIDAZINE) return "pyridazine";
@@ -234,6 +252,8 @@ QString getBaseNameShared(RingType t) {
     if (t == RingType::ISOXAZOLE) return "isoxazole";
     if (t == RingType::THIAZOLE) return "thiazole";
     if (t == RingType::ISOTHIAZOLE) return "isothiazole";
+    if (t == RingType::SELENAZOLE) return "selenazole";
+    if (t == RingType::ISOSELENAZOLE) return "isoselenazole";
     if (t == RingType::PYRROLE) return "pyrrole";
     if (t == RingType::IMIDAZOLE) return "imidazole";
     if (t == RingType::PYRAZOLE) return "pyrazole";
@@ -268,8 +288,10 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
                 outType = RingType::TETRAHYDROTHIOPHENE; outNameRoot = "tetrahydrothiophene"; return true;
             }
         }
-        outErrorMsg = "Saturated or partially unsaturated heterocycles are not yet supported; only the fully aromatic (maximally unsaturated) forms are supported in this phase.";
-        return false;
+        if (!heteroAromatic) {
+            outErrorMsg = "Saturated or partially unsaturated heterocycles are not yet supported; only the fully aromatic (maximally unsaturated) forms are supported in this phase.";
+            return false;
+        }
     }
 
     if (ringHeteroNodes.size() == 1) {
@@ -279,10 +301,16 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
             outType = RingType::FURAN; outNameRoot = "furan"; return true;
         } else if (ringSize == 5 && hZ == 16) {
             outType = RingType::THIOPHENE; outNameRoot = "thiophene"; return true;
+        } else if (ringSize == 5 && hZ == 34) {
+            outType = RingType::SELENOPHENE; outNameRoot = "selenophene"; return true;
+        } else if (ringSize == 5 && hZ == 52) {
+            outType = RingType::TELLUROPHENE; outNameRoot = "tellurophene"; return true;
         } else if (ringSize == 5 && hZ == 7) {
             outType = RingType::PYRROLE; outNameRoot = "pyrrole"; return true;
         } else if (ringSize == 6 && hZ == 7) {
             outType = RingType::PYRIDINE; outNameRoot = "pyridine"; return true;
+        } else if (ringSize == 6 && hZ == 15) {
+            outType = RingType::PHOSPHININE; outNameRoot = "phosphinine"; return true;
         } else {
             if (tryGeneralHeterocycle(g, ringHeteroNodes, ringSize, outNameRoot)) {
                 outType = RingType::GENERAL_HETEROCYCLE; return true;
@@ -348,6 +376,19 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
                 outType = RingType::ISOTHIAZOLE; outNameRoot = "isothiazole"; return true;
             } else if (ringSize == 5 && dist == 2) {
                 outType = RingType::THIAZOLE; outNameRoot = "thiazole"; return true;
+            } else {
+                if (tryGeneralHeterocycle(g, ringHeteroNodes, ringSize, outNameRoot)) {
+                    outType = RingType::GENERAL_HETEROCYCLE; return true;
+                } else {
+                    outErrorMsg = "Heterocycles other than furan, thiophene, pyrrole, pyridine, pyrazole, oxazole, isoxazole, thiazole, isothiazole, imidazole, pyridazine, pyrimidine, and pyrazine are not supported in Phase 2.";
+                    return false;
+                }
+            }
+        } else if ((z1 == 34 && z2 == 7) || (z1 == 7 && z2 == 34)) {
+            if (ringSize == 5 && dist == 1) {
+                outType = RingType::ISOSELENAZOLE; outNameRoot = "isoselenazole"; return true;
+            } else if (ringSize == 5 && dist == 2) {
+                outType = RingType::SELENAZOLE; outNameRoot = "selenazole"; return true;
             } else {
                 if (tryGeneralHeterocycle(g, ringHeteroNodes, ringSize, outNameRoot)) {
                     outType = RingType::GENERAL_HETEROCYCLE; return true;
@@ -1548,47 +1589,7 @@ IupacResult IupacNamer::generateName(int mol) {
     indigoAromatize(mol);
 
     int ringCount = indigoCountSSSR(mol);
-    if (ringCount > 3) {
-        bool allDisjoint = true;
-        int sssrIter = indigoIterateSSSR(mol);
-        if (sssrIter >= 0) {
-            std::vector<std::set<int>> sssrRings;
-            int subMol = 0;
-            while ((subMol = indigoNext(sssrIter)) != 0) {
-                std::set<int> ringAtoms;
-                int atomIter = indigoIterateAtoms(subMol);
-                if (atomIter >= 0) {
-                    int aHandle = 0;
-                    while ((aHandle = indigoNext(atomIter)) != 0) {
-                        ringAtoms.insert(indigoIndex(aHandle));
-                        indigoFree(aHandle);
-                    }
-                    indigoFree(atomIter);
-                }
-                sssrRings.push_back(ringAtoms);
-                indigoFree(subMol);
-            }
-            indigoFree(sssrIter);
 
-            for (size_t i = 0; i < sssrRings.size() && allDisjoint; ++i) {
-                for (size_t j = i + 1; j < sssrRings.size(); ++j) {
-                    for (int a : sssrRings[i]) {
-                        if (sssrRings[j].count(a)) {
-                            allDisjoint = false;
-                            break;
-                        }
-                    }
-                    if (!allDisjoint) break;
-                }
-            }
-        } else {
-            allDisjoint = false;
-        }
-
-        if (!allDisjoint) {
-            return {false, "", "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."};
-        }
-    }
     if (indigoCountComponents(mol) > 1) {
         return {false, "", "Multi-component structures are not supported in Phase 1."};
     }
@@ -1737,7 +1738,7 @@ IupacResult IupacNamer::generateName(int mol) {
                 }
                 indigoFree(neiIter);
             }
-        } else if (z == 6 || z == 7 || z == 8 || z == 16 || z == 15 || z == 5 || z == 9 || z == 17 || z == 35 || z == 53) {
+        } else if (z == 6 || z == 7 || z == 8 || z == 16 || z == 15 || z == 5 || z == 9 || z == 17 || z == 35 || z == 53 || z == 34 || z == 52) {
             heavyAtomIndices.push_back(idx);
         } else {
             indigoFree(atomHandle);
@@ -1935,6 +1936,12 @@ IupacResult IupacNamer::generateName(int mol) {
                 }
             }
         } else if (node.atomicNumber == 15) {
+            bool inAromaticRing = false;
+            for (int order : node.bondOrders) {
+                if (order == 4) inAromaticRing = true;
+            }
+            if (inAromaticRing) continue;
+
             int sglC = 0;
             std::vector<int> cNeighbors;
             for (size_t j = 0; j < node.neighbors.size(); ++j) {
@@ -3768,6 +3775,8 @@ IupacResult IupacNamer::generateName(int mol) {
                                             QString resultName = "";
 
                                             if (hType == RingType::FURAN || hType == RingType::THIOPHENE ||
+                                                hType == RingType::SELENOPHENE || hType == RingType::TELLUROPHENE ||
+                                                hType == RingType::PHOSPHININE ||
                                                 hType == RingType::PYRROLE || hType == RingType::PYRIDINE) {
                                                 if (ringHeteroNodes.size() == 1) {
                                                     int hNode = ringHeteroNodes[0];
@@ -3783,11 +3792,17 @@ IupacResult IupacNamer::generateName(int mol) {
                                                         if (minDist == 1) {
                                                             if (hType == RingType::FURAN) resultName = "benzofuran";
                                                             else if (hType == RingType::THIOPHENE) resultName = "benzothiophene";
+                                                            else if (hType == RingType::SELENOPHENE) resultName = "benzoselenophene";
+                                                            else if (hType == RingType::TELLUROPHENE) resultName = "benzotellurophene";
+                                                            else if (hType == RingType::PHOSPHININE) resultName = "benzophosphinine";
                                                             else if (hType == RingType::PYRROLE) resultName = "indole";
                                                             else if (hType == RingType::PYRIDINE) resultName = "quinoline";
                                                         } else if (minDist == 2) {
                                                             if (hType == RingType::FURAN) resultName = "isobenzofuran";
                                                             else if (hType == RingType::THIOPHENE) resultName = "isobenzothiophene";
+                                                            else if (hType == RingType::SELENOPHENE) resultName = "isobenzoselenophene";
+                                                            else if (hType == RingType::TELLUROPHENE) resultName = "isobenzotellurophene";
+                                                            else if (hType == RingType::PHOSPHININE) resultName = "isobenzophosphinine";
                                                             else if (hType == RingType::PYRROLE) resultName = "isoindole";
                                                             else if (hType == RingType::PYRIDINE) resultName = "isoquinoline";
                                                         }
@@ -4372,8 +4387,10 @@ IupacResult IupacNamer::generateName(int mol) {
                                                t == RingType::PYRIDAZINE || t == RingType::PYRAZINE ||
                                                t == RingType::OXAZOLE || t == RingType::ISOXAZOLE ||
                                                t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE ||
+                                               t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE ||
                                                t == RingType::PYRROLE || t == RingType::IMIDAZOLE ||
-                                               t == RingType::PYRAZOLE;
+                                               t == RingType::PYRAZOLE || t == RingType::SELENOPHENE ||
+                                               t == RingType::TELLUROPHENE || t == RingType::PHOSPHININE;
                                     };
 
                                     auto isNHType = [](RingType t) {
@@ -4397,10 +4414,13 @@ IupacResult IupacNamer::generateName(int mol) {
                                                 } else if (g.nodes[n].atomicNumber != 6) {
                                                     if (g.nodes[n].atomicNumber == 7 && g.nodes[n].totalH >= 1) {
                                                         if (nhNode != -1) { validH = false; break; }
-                                                        if (g.nodes[n].totalH != 1) { validH = false; break; }
+                                                        if (g.nodes[n].totalH > 1) { validH = false; break; }
                                                         nhNode = n;
                                                     } else {
-                                                        if (g.nodes[n].totalH != 0) { validH = false; break; }
+                                                        if (g.nodes[n].totalH > 0) {
+                                                            validH = false;
+                                                            break;
+                                                        }
                                                     }
                                                 } else {
                                                     if (g.nodes[n].totalH != 1) { validH = false; break; }
@@ -4422,6 +4442,7 @@ IupacResult IupacNamer::generateName(int mol) {
                                             }
                                         }
 
+
                                         if (validH) {
                                             // Numbering-candidate generator for a monocyclic component, anchored to
                                             // its own heteroatom positions per its Hantzsch-Widman/retained-name
@@ -4431,7 +4452,7 @@ IupacResult IupacNamer::generateName(int mol) {
                                             // (fusion carbon) locants as the final base-vs-attached tie-break.
                                             auto getCandidates = [&](RingType t, const std::vector<int> &hNodes, int rSize, const std::vector<int> &rCycle) {
                                                 std::vector<std::vector<int>> cands;
-                                                if (t == RingType::FURAN || t == RingType::THIOPHENE || t == RingType::PYRIDINE || t == RingType::PYRROLE) {
+                                                if (t == RingType::FURAN || t == RingType::THIOPHENE || t == RingType::SELENOPHENE || t == RingType::TELLUROPHENE || t == RingType::PHOSPHININE || t == RingType::PYRIDINE || t == RingType::PYRROLE) {
                                                     if (hNodes.size() == 1) {
                                                         int hNode = hNodes[0];
                                                         int hIdx = -1;
@@ -4501,11 +4522,11 @@ IupacResult IupacNamer::generateName(int mol) {
                                                             if (bwd[reqOtherIdx] == hN) cands.push_back(bwd);
                                                         }
                                                     }
-                                                } else if (t == RingType::OXAZOLE || t == RingType::ISOXAZOLE || t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE) {
+                                                } else if (t == RingType::OXAZOLE || t == RingType::ISOXAZOLE || t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE) {
                                                     if (hNodes.size() == 2) {
                                                         int hOS = -1, hN = -1;
                                                         int z0 = g.nodes[hNodes[0]].atomicNumber;
-                                                        if (z0 == 8 || z0 == 16) {
+                                                        if (z0 == 8 || z0 == 16 || z0 == 34) {
                                                             hOS = hNodes[0];
                                                             hN = hNodes[1];
                                                         } else {
@@ -4562,10 +4583,14 @@ IupacResult IupacNamer::generateName(int mol) {
                                                     t == RingType::PYRIDAZINE || t == RingType::PYRAZINE ||
                                                     t == RingType::OXAZOLE || t == RingType::ISOXAZOLE ||
                                                     t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE ||
+                                                    t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE ||
                                                     t == RingType::PYRROLE || t == RingType::IMIDAZOLE ||
                                                     t == RingType::PYRAZOLE) return 1; // N-containing
                                                 if (t == RingType::FURAN) return 2; // O-containing
                                                 if (t == RingType::THIOPHENE) return 3; // S-containing
+                                                if (t == RingType::SELENOPHENE) return 4; // Se-containing
+                                                if (t == RingType::TELLUROPHENE) return 5; // Te-containing
+                                                if (t == RingType::PHOSPHININE) return 6; // P-containing
                                                 return 99;
                                             };
 
@@ -4573,7 +4598,8 @@ IupacResult IupacNamer::generateName(int mol) {
                                                 if (t == RingType::PYRIMIDINE || t == RingType::PYRIDAZINE ||
                                                     t == RingType::PYRAZINE || t == RingType::OXAZOLE ||
                                                     t == RingType::ISOXAZOLE || t == RingType::THIAZOLE ||
-                                                    t == RingType::ISOTHIAZOLE || t == RingType::IMIDAZOLE ||
+                                                    t == RingType::ISOTHIAZOLE || t == RingType::SELENAZOLE ||
+                                                    t == RingType::ISOSELENAZOLE || t == RingType::IMIDAZOLE ||
                                                     t == RingType::PYRAZOLE) return 2;
                                                 return 1;
                                             };
@@ -4623,7 +4649,10 @@ IupacResult IupacNamer::generateName(int mol) {
                                                                         case 53: return 4; // I
                                                                         case 8: return 5;  // O
                                                                         case 16: return 6; // S
+                                                                        case 34: return 7; // Se
+                                                                        case 52: return 8; // Te
                                                                         case 7: return 9;  // N
+                                                                        case 15: return 10; // P
                                                                         default: return 99;
                                                                     }
                                                                 };
@@ -4658,16 +4687,21 @@ IupacResult IupacNamer::generateName(int mol) {
                                                                             case RingType::PYRROLE:
                                                                             case RingType::FURAN:
                                                                             case RingType::THIOPHENE:
+                                                                            case RingType::SELENOPHENE:
+                                                                            case RingType::TELLUROPHENE:
+                                                                            case RingType::PHOSPHININE:
                                                                                 return {1};
                                                                             case RingType::PYRIDAZINE:
                                                                             case RingType::ISOXAZOLE:
                                                                             case RingType::ISOTHIAZOLE:
                                                                             case RingType::PYRAZOLE:
+                                                                            case RingType::ISOSELENAZOLE:
                                                                                 return {1, 2};
                                                                             case RingType::PYRIMIDINE:
                                                                             case RingType::OXAZOLE:
                                                                             case RingType::THIAZOLE:
                                                                             case RingType::IMIDAZOLE:
+                                                                            case RingType::SELENAZOLE:
                                                                                 return {1, 3};
                                                                             case RingType::PYRAZINE:
                                                                                 return {1, 4};
@@ -4776,10 +4810,10 @@ IupacResult IupacNamer::generateName(int mol) {
                                                         }
                                                     }
 
-                                                    if (minLetterIdx < 999 && !validBaseInfos.empty()) {
-                                                        std::pair<int, int> bestAttPair = {999, 999};
+                                                        if (minLetterIdx < 999 && !validBaseInfos.empty()) {
+                                                            std::pair<int, int> bestAttPair = {999, 999};
 
-                                                        for (const auto &bInfo : validBaseInfos) {
+                                                            for (const auto &bInfo : validBaseInfos) {
                                                             for (const auto &aCand : attCands) {
                                                                 int posStart = -1, posEnd = -1;
                                                                 for (int i = 0; i < attSize; ++i) {
@@ -5010,8 +5044,10 @@ IupacResult IupacNamer::generateName(int mol) {
                                            t == RingType::PYRIDAZINE || t == RingType::PYRAZINE ||
                                            t == RingType::OXAZOLE || t == RingType::ISOXAZOLE ||
                                            t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE ||
+                                           t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE ||
                                            t == RingType::PYRROLE || t == RingType::IMIDAZOLE ||
-                                           t == RingType::PYRAZOLE;
+                                           t == RingType::PYRAZOLE || t == RingType::SELENOPHENE ||
+                                           t == RingType::TELLUROPHENE || t == RingType::PHOSPHININE;
                                 };
 
                                 auto isNHType = [](RingType t) {
@@ -5021,13 +5057,9 @@ IupacResult IupacNamer::generateName(int mol) {
                                 if (classOk[0] && classOk[1] && classOk[2] && 
                                     isAllowedType(types[0]) && isAllowedType(types[1]) && isAllowedType(types[2])) {
                                     
-                                    if (isNHType(types[0]) || isNHType(types[1]) || isNHType(types[2])) {
-                                        return {false, "", "Indicated hydrogen logic is out of scope for 3-ring systems in this phase."};
-                                    }
-
                                     auto getCandidates = [&](RingType t, const std::vector<int> &hNodes, int rSize, const std::vector<int> &rCycle) {
                                         std::vector<std::vector<int>> cands;
-                                        if (t == RingType::FURAN || t == RingType::THIOPHENE || t == RingType::PYRIDINE || t == RingType::PYRROLE) {
+                                        if (t == RingType::FURAN || t == RingType::THIOPHENE || t == RingType::SELENOPHENE || t == RingType::TELLUROPHENE || t == RingType::PHOSPHININE || t == RingType::PYRIDINE || t == RingType::PYRROLE) {
                                             if (hNodes.size() == 1) {
                                                 int hNode = hNodes[0];
                                                 int hIdx = -1;
@@ -5097,7 +5129,7 @@ IupacResult IupacNamer::generateName(int mol) {
                                                     if (bwd[reqOtherIdx] == hN) cands.push_back(bwd);
                                                 }
                                             }
-                                        } else if (t == RingType::OXAZOLE || t == RingType::ISOXAZOLE || t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE) {
+                                        } else if (t == RingType::OXAZOLE || t == RingType::ISOXAZOLE || t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE) {
                                             if (hNodes.size() == 2) {
                                                 int hOS = -1, hN = -1;
                                                 int z0 = g.nodes[hNodes[0]].atomicNumber;
@@ -5157,14 +5189,17 @@ IupacResult IupacNamer::generateName(int mol) {
                                         if (t1 == t2) return idx1; // tie goes to first
 
                                         auto getRankHetero = [](RingType t) {
-                                            if (t == RingType::PYRIDINE || t == RingType::PYRIMIDINE || t == RingType::PYRIDAZINE || t == RingType::PYRAZINE || t == RingType::OXAZOLE || t == RingType::ISOXAZOLE || t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::PYRROLE || t == RingType::IMIDAZOLE || t == RingType::PYRAZOLE) return 1;
+                                            if (t == RingType::PYRIDINE || t == RingType::PYRIMIDINE || t == RingType::PYRIDAZINE || t == RingType::PYRAZINE || t == RingType::OXAZOLE || t == RingType::ISOXAZOLE || t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE || t == RingType::PYRROLE || t == RingType::IMIDAZOLE || t == RingType::PYRAZOLE) return 1;
                                             if (t == RingType::FURAN) return 2;
                                             if (t == RingType::THIOPHENE) return 3;
+                                            if (t == RingType::SELENOPHENE) return 4;
+                                            if (t == RingType::TELLUROPHENE) return 5;
+                                            if (t == RingType::PHOSPHININE) return 6;
                                             return 99;
                                         };
 
                                         auto getNumHetero = [](RingType t) {
-                                            if (t == RingType::PYRIMIDINE || t == RingType::PYRIDAZINE || t == RingType::PYRAZINE || t == RingType::OXAZOLE || t == RingType::ISOXAZOLE || t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::IMIDAZOLE || t == RingType::PYRAZOLE) return 2;
+                                            if (t == RingType::PYRIMIDINE || t == RingType::PYRIDAZINE || t == RingType::PYRAZINE || t == RingType::OXAZOLE || t == RingType::ISOXAZOLE || t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE || t == RingType::IMIDAZOLE || t == RingType::PYRAZOLE) return 2;
                                             return 1;
                                         };
 
@@ -5189,7 +5224,7 @@ IupacResult IupacNamer::generateName(int mol) {
                                         if (v2 > v1) return idx2;
 
                                         auto altRank = [](int z) {
-                                            switch (z) { case 9: return 1; case 17: return 2; case 35: return 3; case 53: return 4; case 8: return 5; case 16: return 6; case 7: return 9; default: return 99; }
+                                            switch (z) { case 9: return 1; case 17: return 2; case 35: return 3; case 53: return 4; case 8: return 5; case 16: return 6; case 34: return 7; case 52: return 8; case 7: return 9; case 15: return 10; default: return 99; }
                                         };
                                         auto getTopAltRank = [&](const std::vector<int> &hNodes) {
                                             int best = 99;
@@ -5202,9 +5237,9 @@ IupacResult IupacNamer::generateName(int mol) {
 
                                         auto getOwnLocants = [](RingType t) -> std::vector<int> {
                                             switch (t) {
-                                                case RingType::PYRIDINE: case RingType::PYRROLE: case RingType::FURAN: case RingType::THIOPHENE: return {1};
-                                                case RingType::PYRIDAZINE: case RingType::ISOXAZOLE: case RingType::ISOTHIAZOLE: case RingType::PYRAZOLE: return {1, 2};
-                                                case RingType::PYRIMIDINE: case RingType::OXAZOLE: case RingType::THIAZOLE: case RingType::IMIDAZOLE: return {1, 3};
+                                                case RingType::PYRIDINE: case RingType::PYRROLE: case RingType::FURAN: case RingType::THIOPHENE: case RingType::SELENOPHENE: case RingType::TELLUROPHENE: case RingType::PHOSPHININE: return {1};
+                                                case RingType::PYRIDAZINE: case RingType::ISOXAZOLE: case RingType::ISOTHIAZOLE: case RingType::PYRAZOLE: case RingType::ISOSELENAZOLE: return {1, 2};
+                                                case RingType::PYRIMIDINE: case RingType::OXAZOLE: case RingType::THIAZOLE: case RingType::IMIDAZOLE: case RingType::SELENAZOLE: return {1, 3};
                                                 case RingType::PYRAZINE: return {1, 4};
                                                 default: return {};
                                             }
@@ -5228,7 +5263,148 @@ IupacResult IupacNamer::generateName(int mol) {
                                     int baseChoice = compareSeniority(w1, end2Idx);
 
                                     if (baseChoice != centerRingIdx) {
-                                        return {false, "", "Second-order attached components not yet supported."};
+                                        int baseIdx = baseChoice;
+                                        int midIdx = centerRingIdx;
+                                        int farIdx = (baseChoice == end1Idx) ? end2Idx : end1Idx;
+                                        
+                                        RingType baseType = types[baseIdx];
+                                        RingType midType = types[midIdx];
+                                        RingType farType = types[farIdx];
+                                        
+                                        int bhMidBaseA = sharedNodesPairs[midIdx][baseIdx][0];
+                                        int bhMidBaseB = sharedNodesPairs[midIdx][baseIdx][1];
+                                        
+                                        int bhFarMidA = sharedNodesPairs[farIdx][midIdx][0];
+                                        int bhFarMidB = sharedNodesPairs[farIdx][midIdx][1];
+                                        
+                                        std::vector<std::vector<int>> baseCands = getCandidates(baseType, rHetero[baseIdx], nodes[baseIdx].size(), cycles[baseIdx]);
+                                        std::vector<std::vector<int>> midCands = getCandidates(midType, rHetero[midIdx], nodes[midIdx].size(), cycles[midIdx]);
+                                        std::vector<std::vector<int>> farCands = getCandidates(farType, rHetero[farIdx], nodes[farIdx].size(), cycles[farIdx]);
+                                        
+                                        if (!baseCands.empty() && !midCands.empty() && !farCands.empty()) {
+                                            auto getLetterAndNodes = [&](const std::vector<int>& bCand, int bhA, int bhB) -> std::tuple<int, int, int> {
+                                                int posA = -1, posB = -1;
+                                                for (int i = 0; i < (int)bCand.size(); ++i) {
+                                                    if (bCand[i] == bhA) posA = i;
+                                                    if (bCand[i] == bhB) posB = i;
+                                                }
+                                                if (posA != -1 && posB != -1) {
+                                                    int locA = posA + 1;
+                                                    int locB = posB + 1;
+                                                    int minL = std::min(locA, locB);
+                                                    int maxL = std::max(locA, locB);
+                                                    int baseSize = bCand.size();
+                                                    if (maxL == minL + 1) {
+                                                        return {minL - 1, (locA == minL) ? bhA : bhB, (locA == minL) ? bhB : bhA};
+                                                    } else if (minL == 1 && maxL == baseSize) {
+                                                        return {baseSize - 1, (locA == baseSize) ? bhA : bhB, (locA == 1) ? bhA : bhB};
+                                                    }
+                                                }
+                                                return {-1, -1, -1};
+                                            };
+                                            
+                                            struct Solution2 {
+                                                int baseLetter;
+                                                std::pair<int, int> midBasePair;
+                                                std::pair<int, int> midFarPair;
+                                                std::pair<int, int> farPair;
+                                            };
+                                            
+                                            std::vector<Solution2> validSolutions;
+                                            
+                                            for (const auto& bCand : baseCands) {
+                                                auto tBase = getLetterAndNodes(bCand, bhMidBaseA, bhMidBaseB);
+                                                int baseLetter = std::get<0>(tBase);
+                                                int nsBase = std::get<1>(tBase);
+                                                int neBase = std::get<2>(tBase);
+                                                if (baseLetter != -1) {
+                                                    for (const auto& mCand : midCands) {
+                                                        int pStart = -1, pEnd = -1;
+                                                        for (size_t i = 0; i < mCand.size(); ++i) {
+                                                            if (mCand[i] == nsBase) pStart = i;
+                                                            if (mCand[i] == neBase) pEnd = i;
+                                                        }
+                                                        if (pStart != -1 && pEnd != -1) {
+                                                            std::pair<int, int> midBasePair = {pStart + 1, pEnd + 1};
+                                                            
+                                                            int fStart = -1, fEnd = -1;
+                                                            for (size_t i = 0; i < mCand.size(); ++i) {
+                                                                if (mCand[i] == bhFarMidA) fStart = i;
+                                                                if (mCand[i] == bhFarMidB) fEnd = i;
+                                                            }
+                                                            if (fStart != -1 && fEnd != -1) {
+                                                                for (const auto& fCand : farCands) {
+                                                                    int fs = -1, fe = -1;
+                                                                    for (size_t i = 0; i < fCand.size(); ++i) {
+                                                                        if (fCand[i] == mCand[fStart]) fs = i;
+                                                                        if (fCand[i] == mCand[fEnd]) fe = i;
+                                                                    }
+                                                                    if (fs != -1 && fe != -1) {
+                                                                        validSolutions.push_back({baseLetter, midBasePair, {fStart + 1, fEnd + 1}, {fs + 1, fe + 1}});
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            
+                                            if (!validSolutions.empty()) {
+                                                Solution2 bestSol = validSolutions[0];
+                                                for (size_t i = 1; i < validSolutions.size(); ++i) {
+                                                    const auto& sol = validSolutions[i];
+                                                    if (sol.baseLetter < bestSol.baseLetter) { bestSol = sol; continue; }
+                                                    if (sol.baseLetter > bestSol.baseLetter) continue;
+                                                    
+                                                    if (sol.midBasePair < bestSol.midBasePair) { bestSol = sol; continue; }
+                                                    if (sol.midBasePair > bestSol.midBasePair) continue;
+                                                    
+                                                    if (sol.farPair < bestSol.farPair) { bestSol = sol; continue; }
+                                                    if (sol.farPair > bestSol.farPair) continue;
+                                                }
+                                                
+                                                QString farPref = getFusionPrefixShared(farType);
+                                                QString midPref = getFusionPrefixShared(midType);
+                                                QString baseName = getBaseNameShared(baseType);
+                                                
+                                                QString resultName = QString("%1[%2',%3':%4,%5]%6[%7,%8-%9]%10")
+                                                    .arg(farPref)
+                                                    .arg(bestSol.farPair.first).arg(bestSol.farPair.second)
+                                                    .arg(bestSol.midFarPair.first).arg(bestSol.midFarPair.second)
+                                                    .arg(midPref)
+                                                    .arg(bestSol.midBasePair.first).arg(bestSol.midBasePair.second)
+                                                    .arg((char)('a' + bestSol.baseLetter))
+                                                    .arg(baseName);
+                                                    
+                                                if (isNHType(types[0]) || isNHType(types[1]) || isNHType(types[2])) {
+                                                    int nhNode = -1;
+                                                    for (int i = 0; i < 3; ++i) {
+                                                        for (int n : nodes[i]) {
+                                                            if (g.nodes[n].atomicNumber == 7 && g.nodes[n].totalH >= 1) {
+                                                                nhNode = n;
+                                                                break;
+                                                            }
+                                                        }
+                                                        if (nhNode != -1) break;
+                                                    }
+                                                    if (nhNode != -1) {
+                                                        std::set<int> bheads = {bhMidBaseA, bhMidBaseB, bhFarMidA, bhFarMidB};
+                                                        std::map<int, QString> periphMap = computePeripheralNumbering3Ring(g, nodes[0], nodes[1], nodes[2], bheads, {}, true);
+                                                        if (periphMap.count(nhNode)) {
+                                                            QString locStr = periphMap[nhNode];
+                                                            bool ok = false;
+                                                            locStr.toInt(&ok);
+                                                            if (ok) {
+                                                                resultName = locStr + "H-" + resultName;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                    
+                                                return {true, resultName, ""};
+                                            }
+                                        }
+                                        return {false, "", "Failed to generate candidates for second-order attached component."};
                                     }
 
                                     // Middle ring is base.
@@ -5343,6 +5519,33 @@ IupacResult IupacNamer::generateName(int mol) {
                                             } else {
                                                 resultName = block2 + block1 + getBaseNameShared(baseType);
                                             }
+                                            
+                                            if (isNHType(types[0]) || isNHType(types[1]) || isNHType(types[2])) {
+                                                int nhNode = -1;
+                                                for (int i = 0; i < 3; ++i) {
+                                                    for (int n : nodes[i]) {
+                                                        if (g.nodes[n].atomicNumber == 7 && g.nodes[n].totalH >= 1) {
+                                                            nhNode = n;
+                                                            break;
+                                                        }
+                                                    }
+                                                    if (nhNode != -1) break;
+                                                }
+                                                if (nhNode != -1) {
+                                                    std::set<int> bheads = {bh1_A, bh1_B, bh2_A, bh2_B};
+                                                    std::map<int, QString> periphMap = computePeripheralNumbering3Ring(g, nodes[0], nodes[1], nodes[2], bheads, {}, true);
+                                                    if (!periphMap.count(nhNode)) {
+                                                        return {false, "", "Failed to compute peripheral locant for indicated hydrogen."};
+                                                    }
+                                                    QString locStr = periphMap[nhNode];
+                                                    bool ok = false;
+                                                    locStr.toInt(&ok);
+                                                    if (!ok) {
+                                                        return {false, "", "Indicated hydrogen locant is letter-suffixed."};
+                                                    }
+                                                    resultName = locStr + "H-" + resultName;
+                                                }
+                                            }
                                             return {true, resultName, ""};
                                         }
                                     }
@@ -5356,6 +5559,468 @@ IupacResult IupacNamer::generateName(int mol) {
                 return {false, "", "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."};
             }
         }
+    }
+
+    
+
+// --- Phase 48: Four-Heterocycle Fusion Chain Nomenclature ---
+    if (ringCount > 4) {
+        return {false, "", "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."};
+    }
+    if (ringCount == 4) {
+        int sssrIter = indigoIterateSSSR(mol);
+        bool allDisjoint = true;
+        std::vector<std::set<int>> sssrRings;
+        if (sssrIter >= 0) {
+            int subMol = 0;
+            while ((subMol = indigoNext(sssrIter)) != 0) {
+                std::set<int> rAtoms;
+                int ringAtomIter = indigoIterateAtoms(subMol);
+                if (ringAtomIter >= 0) {
+                    int ringAtomHandle = 0;
+                    while ((ringAtomHandle = indigoNext(ringAtomIter)) != 0) {
+                        rAtoms.insert(indigoIndex(ringAtomHandle));
+                        indigoFree(ringAtomHandle);
+                    }
+                    indigoFree(ringAtomIter);
+                }
+                sssrRings.push_back(rAtoms);
+                indigoFree(subMol);
+            }
+            indigoFree(sssrIter);
+            for (size_t i = 0; i < sssrRings.size() && allDisjoint; ++i) {
+                for (size_t j = i + 1; j < sssrRings.size(); ++j) {
+                    for (int a : sssrRings[i]) {
+                        if (sssrRings[j].count(a)) {
+                            allDisjoint = false;
+                            break;
+                        }
+                    }
+                    if (!allDisjoint) break;
+                }
+            }
+        } else {
+            allDisjoint = false;
+        }
+
+        if (!allDisjoint && sssrRings.size() == 4) {
+            int shared[4][4] = {0};
+            std::vector<int> sharedNodesPairs[4][4];
+            for (int i = 0; i < 4; ++i) {
+                for (int j = i + 1; j < 4; ++j) {
+                    for (int a : sssrRings[i]) {
+                        if (sssrRings[j].count(a)) {
+                            if (indigoToGraphIdx.count(a)) {
+                                sharedNodesPairs[i][j].push_back(indigoToGraphIdx[a]);
+                                sharedNodesPairs[j][i].push_back(indigoToGraphIdx[a]);
+                            }
+                        }
+                    }
+                    shared[i][j] = shared[j][i] = sharedNodesPairs[i][j].size();
+                }
+            }
+
+            int degree[4] = {0};
+            bool validFusion = true;
+            for (int i = 0; i < 4; ++i) {
+                for (int j = 0; j < 4; ++j) {
+                    if (shared[i][j] == 2) degree[i]++;
+                    else if (shared[i][j] != 0) validFusion = false;
+                }
+            }
+
+            int ends = 0, centers = 0;
+            for (int i = 0; i < 4; ++i) {
+                if (degree[i] == 1) ends++;
+                else if (degree[i] == 2) centers++;
+            }
+
+            if (validFusion && ends == 2 && centers == 2) {
+                // Walk the chain from one end to build the ordered ring sequence.
+                int startEnd = -1;
+                for (int i = 0; i < 4; ++i) if (degree[i] == 1) { startEnd = i; break; }
+                std::vector<int> chain;
+                std::set<int> visited;
+                int curr = startEnd;
+                for (int step = 0; step < 4 && curr != -1; ++step) {
+                    chain.push_back(curr);
+                    visited.insert(curr);
+                    int nextRing = -1;
+                    for (int j = 0; j < 4; ++j) {
+                        if (j != curr && shared[curr][j] == 2 && !visited.count(j)) { nextRing = j; break; }
+                    }
+                    curr = nextRing;
+                }
+
+                if (chain.size() == 4) {
+                    std::set<int> nodes4[4];
+                    for (int i = 0; i < 4; ++i) {
+                        for (int a : sssrRings[i]) if (indigoToGraphIdx.count(a)) nodes4[i].insert(indigoToGraphIdx[a]);
+                    }
+
+                    auto buildCycle4 = [&](const std::set<int> &rNodes) -> std::vector<int> {
+                        int rSize = static_cast<int>(rNodes.size());
+                        std::vector<int> cycle;
+                        int startNode = *rNodes.begin();
+                        cycle.push_back(startNode);
+                        int current = startNode;
+                        int previous = -1;
+                        for (int step = 1; step < rSize; ++step) {
+                            int nextNode = -1;
+                            for (int nei : g.nodes[current].neighbors) {
+                                if (rNodes.count(nei) && nei != previous) {
+                                    if (step == rSize - 1) {
+                                        bool connectedToStart = false;
+                                        for (int startNei : g.nodes[nei].neighbors) {
+                                            if (startNei == startNode) { connectedToStart = true; break; }
+                                        }
+                                        if (!connectedToStart) continue;
+                                    }
+                                    nextNode = nei;
+                                    break;
+                                }
+                            }
+                            if (nextNode == -1) break;
+                            previous = current;
+                            current = nextNode;
+                            cycle.push_back(current);
+                        }
+                        if (static_cast<int>(cycle.size()) != rSize) return {};
+                        return cycle;
+                    };
+
+                    std::vector<int> cycles4[4];
+                    std::vector<int> rHetero4[4];
+                    RingType types4[4];
+                    bool classOk4[4] = {false};
+                    bool allClassified = true;
+                    for (int i = 0; i < 4; ++i) {
+                        cycles4[i] = buildCycle4(nodes4[i]);
+                        for (int n : nodes4[i]) if (g.nodes[n].atomicNumber != 6) rHetero4[i].push_back(n);
+                        if (cycles4[i].size() == nodes4[i].size()) {
+                            QString d1, d2;
+                            classOk4[i] = classifyMonocyclicHeteroRing(g, rHetero4[i], static_cast<int>(nodes4[i].size()), cycles4[i], types4[i], d1, d2);
+                        }
+                        if (!classOk4[i]) allClassified = false;
+                    }
+
+                    auto isAllowedType4 = [](RingType t) {
+                        return t == RingType::FURAN || t == RingType::THIOPHENE ||
+                               t == RingType::PYRIDINE || t == RingType::PYRIMIDINE ||
+                               t == RingType::PYRIDAZINE || t == RingType::PYRAZINE ||
+                               t == RingType::OXAZOLE || t == RingType::ISOXAZOLE ||
+                               t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE ||
+                               t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE ||
+                               t == RingType::PYRROLE || t == RingType::IMIDAZOLE ||
+                               t == RingType::PYRAZOLE || t == RingType::SELENOPHENE ||
+                               t == RingType::TELLUROPHENE || t == RingType::PHOSPHININE;
+                    };
+                    auto isNHType4 = [](RingType t) {
+                        return t == RingType::PYRROLE || t == RingType::IMIDAZOLE || t == RingType::PYRAZOLE;
+                    };
+
+                    bool allAllowed = allClassified;
+                    for (int i = 0; i < 4 && allAllowed; ++i) if (!isAllowedType4(types4[i])) allAllowed = false;
+                    bool anyNH = false;
+                    for (int i = 0; i < 4; ++i) if (isNHType4(types4[i])) anyNH = true;
+
+                    if (allAllowed && !anyNH) {
+                        auto getCandidates4 = [&](RingType t, const std::vector<int> &hNodes, int rSize, const std::vector<int> &rCycle) {
+                            std::vector<std::vector<int>> cands;
+                            if (t == RingType::FURAN || t == RingType::THIOPHENE || t == RingType::SELENOPHENE || t == RingType::TELLUROPHENE || t == RingType::PHOSPHININE || t == RingType::PYRIDINE || t == RingType::PYRROLE) {
+                                if (hNodes.size() == 1) {
+                                    int hNode = hNodes[0];
+                                    int hIdx = -1;
+                                    for (int i = 0; i < rSize; ++i) if (rCycle[i] == hNode) { hIdx = i; break; }
+                                    if (hIdx != -1) {
+                                        std::vector<int> fwd(rSize), bwd(rSize);
+                                        for (int i = 0; i < rSize; ++i) {
+                                            fwd[i] = rCycle[(hIdx + i) % rSize];
+                                            bwd[i] = rCycle[(hIdx - i + rSize) % rSize];
+                                        }
+                                        cands.push_back(fwd);
+                                        cands.push_back(bwd);
+                                    }
+                                }
+                            } else if (t == RingType::PYRIMIDINE || t == RingType::PYRIDAZINE || t == RingType::PYRAZINE) {
+                                if (hNodes.size() == 2) {
+                                    int n1 = hNodes[0], n2 = hNodes[1];
+                                    int idx1 = -1, idx2 = -1;
+                                    for (int i = 0; i < rSize; ++i) { if (rCycle[i] == n1) idx1 = i; if (rCycle[i] == n2) idx2 = i; }
+                                    if (idx1 != -1 && idx2 != -1) {
+                                        int reqOtherIdx = (t == RingType::PYRIDAZINE) ? 1 : ((t == RingType::PYRIMIDINE) ? 2 : 3);
+                                        std::vector<int> fwd1(rSize), bwd1(rSize);
+                                        for (int i = 0; i < rSize; ++i) { fwd1[i] = rCycle[(idx1 + i) % rSize]; bwd1[i] = rCycle[(idx1 - i + rSize) % rSize]; }
+                                        if (fwd1[reqOtherIdx] == n2) cands.push_back(fwd1);
+                                        if (bwd1[reqOtherIdx] == n2) cands.push_back(bwd1);
+                                        std::vector<int> fwd2(rSize), bwd2(rSize);
+                                        for (int i = 0; i < rSize; ++i) { fwd2[i] = rCycle[(idx2 + i) % rSize]; bwd2[i] = rCycle[(idx2 - i + rSize) % rSize]; }
+                                        if (fwd2[reqOtherIdx] == n1) cands.push_back(fwd2);
+                                        if (bwd2[reqOtherIdx] == n1) cands.push_back(bwd2);
+                                    }
+                                }
+                            } else if (t == RingType::OXAZOLE || t == RingType::ISOXAZOLE || t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE) {
+                                if (hNodes.size() == 2) {
+                                    int hOS = -1, hN = -1;
+                                    int z0 = g.nodes[hNodes[0]].atomicNumber;
+                                    if (z0 == 8 || z0 == 16 || z0 == 34) { hOS = hNodes[0]; hN = hNodes[1]; }
+                                    else { hOS = hNodes[1]; hN = hNodes[0]; }
+                                    int hIdx = -1;
+                                    for (int i = 0; i < rSize; ++i) if (rCycle[i] == hOS) { hIdx = i; break; }
+                                    if (hIdx != -1) {
+                                        std::vector<int> fwd(rSize), bwd(rSize);
+                                        for (int i = 0; i < rSize; ++i) { fwd[i] = rCycle[(hIdx + i) % rSize]; bwd[i] = rCycle[(hIdx - i + rSize) % rSize]; }
+                                        int reqNIdx = (t == RingType::ISOXAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::ISOSELENAZOLE) ? 1 : 2;
+                                        if (fwd[reqNIdx] == hN) cands.push_back(fwd);
+                                        if (bwd[reqNIdx] == hN) cands.push_back(bwd);
+                                    }
+                                }
+                            }
+                            return cands;
+                        };
+
+                        auto getFusionLocants4 = [&](RingType t, const std::vector<int> &hNodes, int rSize, const std::vector<int> &rCycle, int bhA, int bhB) -> std::pair<int, int> {
+                            std::vector<std::vector<int>> cands = getCandidates4(t, hNodes, rSize, rCycle);
+                            std::pair<int, int> best = {999, 999};
+                            for (const auto &cand : cands) {
+                                int posA = -1, posB = -1;
+                                for (int i = 0; i < rSize; ++i) { if (cand[i] == bhA) posA = i; if (cand[i] == bhB) posB = i; }
+                                if (posA != -1 && posB != -1) {
+                                    int locA = posA + 1, locB = posB + 1;
+                                    std::pair<int,int> pv = {std::min(locA,locB), std::max(locA,locB)};
+                                    if (pv < best) best = pv;
+                                }
+                            }
+                            return best;
+                        };
+
+                        auto compareSeniority4 = [&](int idx1, int idx2) -> int {
+                            RingType t1 = types4[idx1], t2 = types4[idx2];
+                            int size1 = static_cast<int>(nodes4[idx1].size()), size2 = static_cast<int>(nodes4[idx2].size());
+                            const auto &rH1 = rHetero4[idx1];
+                            const auto &rH2 = rHetero4[idx2];
+                            if (t1 == t2) return idx1;
+
+                            auto getRankHetero = [](RingType t) {
+                                if (t == RingType::PYRIDINE || t == RingType::PYRIMIDINE || t == RingType::PYRIDAZINE || t == RingType::PYRAZINE || t == RingType::OXAZOLE || t == RingType::ISOXAZOLE || t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE || t == RingType::PYRROLE || t == RingType::IMIDAZOLE || t == RingType::PYRAZOLE) return 1;
+                                if (t == RingType::FURAN) return 2;
+                                if (t == RingType::THIOPHENE) return 3;
+                                if (t == RingType::SELENOPHENE) return 4;
+                                if (t == RingType::TELLUROPHENE) return 5;
+                                if (t == RingType::PHOSPHININE) return 6;
+                                return 99;
+                            };
+                            auto getNumHetero = [](RingType t) {
+                                if (t == RingType::PYRIMIDINE || t == RingType::PYRIDAZINE || t == RingType::PYRAZINE || t == RingType::OXAZOLE || t == RingType::ISOXAZOLE || t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE || t == RingType::IMIDAZOLE || t == RingType::PYRAZOLE) return 2;
+                                return 1;
+                            };
+
+                            int rH1Rank = getRankHetero(t1), rH2Rank = getRankHetero(t2);
+                            if (rH1Rank < rH2Rank) return idx1;
+                            if (rH2Rank < rH1Rank) return idx2;
+                            if (size1 > size2) return idx1;
+                            if (size2 > size1) return idx2;
+                            int nHet1 = getNumHetero(t1), nHet2 = getNumHetero(t2);
+                            if (nHet1 > nHet2) return idx1;
+                            if (nHet2 > nHet1) return idx2;
+
+                            auto getVariety = [&](const std::vector<int> &hNodes) {
+                                std::set<int> elems;
+                                for (int n : hNodes) elems.insert(g.nodes[n].atomicNumber);
+                                return static_cast<int>(elems.size());
+                            };
+                            int v1 = getVariety(rH1), v2 = getVariety(rH2);
+                            if (v1 > v2) return idx1;
+                            if (v2 > v1) return idx2;
+
+                            auto altRank = [](int z) {
+                                switch (z) { case 9: return 1; case 17: return 2; case 35: return 3; case 53: return 4; case 8: return 5; case 16: return 6; case 34: return 7; case 52: return 8; case 7: return 9; case 15: return 10; default: return 99; }
+                            };
+                            auto getTopAltRank = [&](const std::vector<int> &hNodes) {
+                                int best = 99;
+                                for (int n : hNodes) best = std::min(best, altRank(g.nodes[n].atomicNumber));
+                                return best;
+                            };
+                            int alt1 = getTopAltRank(rH1), alt2 = getTopAltRank(rH2);
+                            if (alt1 < alt2) return idx1;
+                            if (alt2 < alt1) return idx2;
+
+                            auto getOwnLocants = [](RingType t) -> std::vector<int> {
+                                switch (t) {
+                                    case RingType::PYRIDINE: case RingType::PYRROLE: case RingType::FURAN: case RingType::THIOPHENE: case RingType::SELENOPHENE: case RingType::TELLUROPHENE: case RingType::PHOSPHININE: return {1};
+                                    case RingType::PYRIDAZINE: case RingType::ISOXAZOLE: case RingType::ISOTHIAZOLE: case RingType::PYRAZOLE: case RingType::ISOSELENAZOLE: return {1, 2};
+                                    case RingType::PYRIMIDINE: case RingType::OXAZOLE: case RingType::THIAZOLE: case RingType::IMIDAZOLE: case RingType::SELENAZOLE: return {1, 3};
+                                    case RingType::PYRAZINE: return {1, 4};
+                                    default: return {};
+                                }
+                            };
+                            std::vector<int> ownLoc1 = getOwnLocants(t1), ownLoc2 = getOwnLocants(t2);
+                            if (ownLoc1 < ownLoc2) return idx1;
+                            if (ownLoc2 < ownLoc1) return idx2;
+
+                            if (sharedNodesPairs[idx1][idx2].size() == 2) {
+                                int bhA = sharedNodesPairs[idx1][idx2][0];
+                                int bhB = sharedNodesPairs[idx1][idx2][1];
+                                std::pair<int,int> fl1 = getFusionLocants4(t1, rH1, size1, cycles4[idx1], bhA, bhB);
+                                std::pair<int,int> fl2 = getFusionLocants4(t2, rH2, size2, cycles4[idx2], bhA, bhB);
+                                if (fl1 < fl2) return idx1;
+                                if (fl2 < fl1) return idx2;
+                            }
+                            return idx1;
+                        };
+
+                        // Cascading tournament down the chain: a linear 4-ring chain can
+                        // only be named without a third-order attached component if the
+                        // winner is one of the two INTERIOR rings (position 1 or 2) - an
+                        // end-ring winner (position 0 or 3) would need the far ring cited
+                        // three levels deep, which is out of scope (FR-2.3/P-25.3.4.1.1
+                        // only defines first- and second-order attached components).
+                        int w1 = compareSeniority4(chain[0], chain[1]);
+                        int w2 = compareSeniority4(w1, chain[2]);
+                        int winner = compareSeniority4(w2, chain[3]);
+
+                        int winnerPos = -1;
+                        for (int p = 0; p < 4; ++p) if (chain[p] == winner) winnerPos = p;
+
+                        if (winnerPos == 0 || winnerPos == 3) {
+                            return {false, "", "End ring as base in a 4-ring fusion chain requires third-order attached components, which are not supported."};
+                        }
+
+                        if (winnerPos == 1 || winnerPos == 2) {
+                            int baseIdx = winner;
+                            int nearIdx = (winnerPos == 1) ? chain[0] : chain[3];
+                            int midIdx  = (winnerPos == 1) ? chain[2] : chain[1];
+                            int farIdx  = (winnerPos == 1) ? chain[3] : chain[0];
+
+                            RingType baseType = types4[baseIdx];
+                            RingType nearType = types4[nearIdx];
+                            RingType midType = types4[midIdx];
+                            RingType farType = types4[farIdx];
+
+                            int baseSize = static_cast<int>(nodes4[baseIdx].size());
+                            const std::vector<int> &baseCycle = cycles4[baseIdx];
+                            const std::vector<int> &baseHetero = rHetero4[baseIdx];
+
+                            int bhNearA = sharedNodesPairs[baseIdx][nearIdx][0];
+                            int bhNearB = sharedNodesPairs[baseIdx][nearIdx][1];
+                            int bhMidA = sharedNodesPairs[baseIdx][midIdx][0];
+                            int bhMidB = sharedNodesPairs[baseIdx][midIdx][1];
+                            int bhFarMidA = sharedNodesPairs[midIdx][farIdx][0];
+                            int bhFarMidB = sharedNodesPairs[midIdx][farIdx][1];
+
+                            std::vector<std::vector<int>> baseCands = getCandidates4(baseType, baseHetero, baseSize, baseCycle);
+                            std::vector<std::vector<int>> nearCands = getCandidates4(nearType, rHetero4[nearIdx], static_cast<int>(nodes4[nearIdx].size()), cycles4[nearIdx]);
+                            std::vector<std::vector<int>> midCands = getCandidates4(midType, rHetero4[midIdx], static_cast<int>(nodes4[midIdx].size()), cycles4[midIdx]);
+                            std::vector<std::vector<int>> farCands = getCandidates4(farType, rHetero4[farIdx], static_cast<int>(nodes4[farIdx].size()), cycles4[farIdx]);
+
+                            if (!baseCands.empty() && !nearCands.empty() && !midCands.empty() && !farCands.empty()) {
+                                auto getLetterAndNodes = [&](const std::vector<int>& bCand, int bhA, int bhB) -> std::tuple<int,int,int> {
+                                    int posA = -1, posB = -1;
+                                    for (int i = 0; i < baseSize; ++i) { if (bCand[i]==bhA) posA=i; if (bCand[i]==bhB) posB=i; }
+                                    if (posA != -1 && posB != -1) {
+                                        int locA = posA+1, locB = posB+1;
+                                        int minL = std::min(locA,locB), maxL = std::max(locA,locB);
+                                        if (maxL == minL+1) return {minL-1, (locA==minL)?bhA:bhB, (locA==minL)?bhB:bhA};
+                                        else if (minL==1 && maxL==baseSize) return {baseSize-1, (locA==baseSize)?bhA:bhB, (locA==1)?bhA:bhB};
+                                    }
+                                    return {-1,-1,-1};
+                                };
+
+                                struct Solution4 {
+                                    int letterNear, letterMid;
+                                    std::pair<int,int> nearPair, midBasePair, midFarPair, farPair;
+                                };
+                                std::vector<Solution4> validSolutions;
+
+                                for (const auto &bCand : baseCands) {
+                                    auto [letterNear, nsN, neN] = getLetterAndNodes(bCand, bhNearA, bhNearB);
+                                    auto [letterMid, nsM, neM] = getLetterAndNodes(bCand, bhMidA, bhMidB);
+                                    if (letterNear == -1 || letterMid == -1) continue;
+
+                                    std::pair<int,int> bestNearPair = {999,999};
+                                    for (const auto &aCand : nearCands) {
+                                        int pS=-1,pE=-1;
+                                        for (size_t i=0;i<aCand.size();++i) { if (aCand[i]==nsN) pS=i; if (aCand[i]==neN) pE=i; }
+                                        if (pS!=-1 && pE!=-1) {
+                                            std::pair<int,int> p = {pS+1,pE+1};
+                                            if (p < bestNearPair) bestNearPair = p;
+                                        }
+                                    }
+                                    if (bestNearPair.first >= 999) continue;
+
+                                    for (const auto &mCand : midCands) {
+                                        int pStart=-1,pEnd=-1;
+                                        for (size_t i=0;i<mCand.size();++i) { if (mCand[i]==nsM) pStart=i; if (mCand[i]==neM) pEnd=i; }
+                                        if (pStart==-1 || pEnd==-1) continue;
+                                        std::pair<int,int> midBasePair = {pStart+1, pEnd+1};
+
+                                        int fStart=-1, fEnd=-1;
+                                        for (size_t i=0;i<mCand.size();++i) { if (mCand[i]==bhFarMidA) fStart=i; if (mCand[i]==bhFarMidB) fEnd=i; }
+                                        if (fStart==-1 || fEnd==-1) continue;
+
+                                        for (const auto &fCand : farCands) {
+                                            int fs=-1, fe=-1;
+                                            for (size_t i=0;i<fCand.size();++i) { if (fCand[i]==mCand[fStart]) fs=i; if (fCand[i]==mCand[fEnd]) fe=i; }
+                                            if (fs==-1 || fe==-1) continue;
+                                            validSolutions.push_back({letterNear, letterMid, bestNearPair, midBasePair, {fStart+1, fEnd+1}, {fs+1, fe+1}});
+                                        }
+                                    }
+                                }
+
+                                if (!validSolutions.empty()) {
+                                    QString nearPref = getFusionPrefixShared(nearType);
+                                    QString midPref = getFusionPrefixShared(midType);
+                                    QString farPref = getFusionPrefixShared(farType);
+                                    QString baseName = getBaseNameShared(baseType);
+
+                                    // The alphabetically-first attached component (by its own
+                                    // fusion-prefix name) is entitled to the lower base letter;
+                                    // a plain sorted-set comparison can't tell "near=b,mid=e"
+                                    // apart from "near=e,mid=b" since both give the same set.
+                                    bool nearFirst = (nearPref < midPref);
+                                    auto sortKey = [&](const Solution4 &s) {
+                                        int firstLetter = nearFirst ? s.letterNear : s.letterMid;
+                                        int secondLetter = nearFirst ? s.letterMid : s.letterNear;
+                                        return std::make_tuple(firstLetter, secondLetter, s.nearPair, s.midBasePair, s.midFarPair, s.farPair);
+                                    };
+                                    Solution4 bestSol = validSolutions[0];
+                                    for (size_t i = 1; i < validSolutions.size(); ++i) {
+                                        const auto &sol = validSolutions[i];
+                                        if (sortKey(sol) < sortKey(bestSol)) bestSol = sol;
+                                    }
+
+                                    QString nearBlock = QString("%1[%2,%3-%4]").arg(nearPref).arg(bestSol.nearPair.first).arg(bestSol.nearPair.second).arg((char)('a' + bestSol.letterNear));
+                                    QString midBlock = QString("%1[%2,%3-%4]").arg(midPref).arg(bestSol.midBasePair.first).arg(bestSol.midBasePair.second).arg((char)('a' + bestSol.letterMid));
+
+                                    // Normalize the correspondence to ascending order on the
+                                    // outer (unprimed, mid-relative) side, swapping both linked
+                                    // pairs together so the primed<->unprimed correspondence
+                                    // between the same physical atoms is preserved.
+                                    std::pair<int,int> farPairOut = bestSol.farPair;
+                                    std::pair<int,int> midFarPairOut = bestSol.midFarPair;
+                                    if (midFarPairOut.first > midFarPairOut.second) {
+                                        std::swap(farPairOut.first, farPairOut.second);
+                                        std::swap(midFarPairOut.first, midFarPairOut.second);
+                                    }
+                                    QString farBlock = QString("%1[%2',%3':%4,%5]").arg(farPref).arg(farPairOut.first).arg(farPairOut.second).arg(midFarPairOut.first).arg(midFarPairOut.second);
+
+                                    QString resultName;
+                                    if (nearPref < midPref) {
+                                        resultName = nearBlock + farBlock + midBlock + baseName;
+                                    } else {
+                                        resultName = farBlock + midBlock + nearBlock + baseName;
+                                    }
+
+                                    return {true, resultName, ""};
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return {false, "", "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."};
     }
 
     // --- Phase 3: Ortho-fused Bicyclic Aromatic Path (ringCount == 2: Naphthalene) ---
@@ -6724,7 +7389,10 @@ IupacResult IupacNamer::generateName(int mol) {
             rType == RingType::IMIDAZOLE || rType == RingType::PYRIMIDINE ||
             rType == RingType::PYRAZOLE || rType == RingType::OXAZOLE || rType == RingType::ISOXAZOLE ||
             rType == RingType::THIAZOLE || rType == RingType::ISOTHIAZOLE || rType == RingType::PYRIDAZINE ||
-            rType == RingType::PYRAZINE || rType == RingType::GENERAL_HETEROCYCLE) {
+            rType == RingType::PYRAZINE || rType == RingType::GENERAL_HETEROCYCLE ||
+            rType == RingType::SELENOPHENE || rType == RingType::TELLUROPHENE ||
+            rType == RingType::PHOSPHININE || rType == RingType::SELENAZOLE ||
+            rType == RingType::ISOSELENAZOLE) {
             fullName = prefixPart + rootStr;
         } else {
             fullName = prefixPart + rootStr + "e";
@@ -6806,6 +7474,170 @@ IupacResult IupacNamer::generateName(int mol) {
 
     fullName = stereoRes.prefix + fullName;
     return {true, fullName, ""};
+}
+
+std::map<int, QString> computePeripheralNumbering3Ring(
+    const Graph &g,
+    const std::set<int> &ring1,
+    const std::set<int> &ring2,
+    const std::set<int> &ring3,
+    const std::set<int> &bridgeheads,
+    const std::set<int> &substituentBearingNodes,
+    bool preferIndicatedHydrogenLocant)
+{
+    std::map<int, QString> emptyMap;
+
+    std::set<int> allNodes = ring1;
+    allNodes.insert(ring2.begin(), ring2.end());
+    allNodes.insert(ring3.begin(), ring3.end());
+
+    std::map<std::pair<int, int>, int> edgeRingCount;
+    auto addRingEdges = [&](const std::set<int> &r) {
+        for (int u : r) {
+            for (int v : g.nodes[u].neighbors) {
+                if (r.count(v) && u < v) {
+                    edgeRingCount[{u, v}]++;
+                }
+            }
+        }
+    };
+    addRingEdges(ring1);
+    addRingEdges(ring2);
+    addRingEdges(ring3);
+
+    std::map<int, std::vector<int>> periphGraph;
+    for (const auto &kv : edgeRingCount) {
+        if (kv.second == 1) {
+            int u = kv.first.first;
+            int v = kv.first.second;
+            periphGraph[u].push_back(v);
+            periphGraph[v].push_back(u);
+        }
+    }
+
+    if (periphGraph.empty()) return emptyMap;
+    int startNode = periphGraph.begin()->first;
+    std::vector<int> cycle;
+    int curr = startNode;
+    int prev = -1;
+    while (true) {
+        cycle.push_back(curr);
+        if (periphGraph[curr].size() != 2) return emptyMap;
+        int next = (periphGraph[curr][0] == prev) ? periphGraph[curr][1] : periphGraph[curr][0];
+        prev = curr;
+        curr = next;
+        if (curr == startNode) break;
+    }
+
+    struct Candidate {
+        std::map<int, QString> locantMap;
+        std::vector<int> heteroatomLocants;
+        std::vector<std::pair<int, int>> heteroatomSeniorityAtLocants;
+        std::vector<int> substituentLocants;
+        int candidateIndex;
+    };
+
+    std::vector<Candidate> candidates;
+    int candIdx = 0;
+    int N = cycle.size();
+
+    for (int dir = -1; dir <= 1; dir += 2) {
+        for (int i = 0; i < N; ++i) {
+            int firstNode = cycle[i];
+            int lastNode = cycle[(i - dir + N) % N];
+            
+            if (!bridgeheads.count(firstNode) && bridgeheads.count(lastNode)) {
+                Candidate cand;
+                cand.candidateIndex = candIdx++;
+                
+                int loc = 1;
+                int lastNonBhLoc = 0;
+                int numBhSince = 0;
+                
+                for (int step = 0; step < N; ++step) {
+                    int currIdx = (i + step * dir + N * N) % N;
+                    int u = cycle[currIdx];
+                    
+                    if (!bridgeheads.count(u)) {
+                        numBhSince = 0;
+                        cand.locantMap[u] = QString::number(loc);
+                        lastNonBhLoc = loc;
+                        loc++;
+                    } else {
+                        numBhSince++;
+                        char suffix = 'a' + numBhSince - 1;
+                        cand.locantMap[u] = QString::number(lastNonBhLoc) + suffix;
+                    }
+                }
+                
+                for (int node : allNodes) {
+                    int z = g.nodes[node].atomicNumber;
+                    if (z != 6) {
+                        QString locStr = cand.locantMap[node];
+                        int numLoc = 0;
+                        std::string s = locStr.toStdString();
+                        for (char c : s) {
+                            if (std::isdigit(static_cast<unsigned char>(c))) {
+                                numLoc = numLoc * 10 + (c - '0');
+                            } else {
+                                break;
+                            }
+                        }
+                        int rank = 99;
+                        if (z == 8) rank = 0;
+                        else if (z == 16) rank = 1;
+                        else if (z == 7) {
+                            if (preferIndicatedHydrogenLocant && g.nodes[node].totalH >= 1) rank = 2;
+                            else if (preferIndicatedHydrogenLocant) rank = 3;
+                            else rank = 2;
+                        }
+                        else rank = z + 10;
+        
+                        cand.heteroatomLocants.push_back(numLoc);
+                        cand.heteroatomSeniorityAtLocants.push_back({numLoc, rank});
+                    }
+                }
+        
+                for (int node : substituentBearingNodes) {
+                    auto it = cand.locantMap.find(node);
+                    if (it != cand.locantMap.end()) {
+                        QString locStr = it->second;
+                        int numLoc = 0;
+                        std::string s = locStr.toStdString();
+                        for (char c : s) {
+                            if (std::isdigit(static_cast<unsigned char>(c))) {
+                                numLoc = numLoc * 10 + (c - '0');
+                            } else {
+                                break;
+                            }
+                        }
+                        cand.substituentLocants.push_back(numLoc);
+                    }
+                }
+        
+                std::sort(cand.heteroatomLocants.begin(), cand.heteroatomLocants.end());
+                std::sort(cand.heteroatomSeniorityAtLocants.begin(), cand.heteroatomSeniorityAtLocants.end());
+                std::sort(cand.substituentLocants.begin(), cand.substituentLocants.end());
+        
+                candidates.push_back(cand);
+            }
+        }
+    }
+
+    if (candidates.empty()) return emptyMap;
+
+    auto bestIt = std::min_element(candidates.begin(), candidates.end(),
+        [](const Candidate &a, const Candidate &b) {
+            if (a.heteroatomLocants != b.heteroatomLocants)
+                return a.heteroatomLocants < b.heteroatomLocants;
+            if (a.heteroatomSeniorityAtLocants != b.heteroatomSeniorityAtLocants)
+                return a.heteroatomSeniorityAtLocants < b.heteroatomSeniorityAtLocants;
+            if (a.substituentLocants != b.substituentLocants)
+                return a.substituentLocants < b.substituentLocants;
+            return a.candidateIndex < b.candidateIndex;
+        });
+
+    return bestIt->locantMap;
 }
 
 std::map<int, QString> computePeripheralNumbering(
