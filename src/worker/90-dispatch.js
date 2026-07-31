@@ -1,6 +1,6 @@
 const COMMANDS = {
     init:            { fn: () => init() },
-    loadMol:         { fn: (args) => loadMolfile(args[0]) },
+    loadMol:         { fn: (args) => loadMolfile(args[0], !!args[1]) },
     addAtom:         { fn: (args) => addAtom(args[0], args[1], args[2], args[3]), captureResult: true },
     addBondAndAtom:  { fn: (args) => addBondAndAtom(args[0], args[1], args[2], args[3], args[4], args[5]) },
     addBondBetweenCoords: { fn: (args) => addBondBetweenCoords(args[0], args[1], args[2], args[3], args[4], args[5]) },
@@ -33,6 +33,8 @@ const COMMANDS = {
     addItemToSelection: { fn: (args) => addItemToSelection(args[0], args[1]) },
     removeItemFromSelection: { fn: (args) => removeItemFromSelection(args[0], args[1]) },
     selectFragment:  { fn: (args) => selectFragment(args[0], args[1]) },
+    selectRing:      { fn: (args) => selectRing(args[0], args[1]) },
+    selectChain:     { fn: (args) => selectChain(args[0], args[1]) },
     moveSelection:   { fn: (args) => moveSelection(args[0], args[1]) },
     commitMove:      { fn: () => commitMove() },
     rotateSelectionLive: { fn: (args) => rotateSelectionLive(args[0]) },
@@ -76,9 +78,10 @@ const COMMANDS = {
     removeRGroupMember: { fn: (args) => removeRGroupMember(args[0], args[1]) },
     transformSelection: { fn: (args) => transformSelection(args[0]) },
     addChain:        { fn: (args) => addChain(args[0], args[1], args[2], args[3]) },
-    addText:         { fn: (args) => addText(args[0], args[1], args[2]) },
-    updateText:      { fn: (args) => updateText(args[0], args[1]) },
+    addText:         { fn: (args) => addText(args[0], args[1], args[2], args[3], args[4]) },
+    updateText:      { fn: (args) => updateText(args[0], args[1], args[2], args[3]) },
     deleteText:      { fn: (args) => deleteText(args[0]) },
+    addBracketSelection: { fn: () => addBracketSelection() },
     addImage:        { fn: (args) => addImage(args[0], args[1], args[2], args[3], args[4]) },
     deleteImage:     { fn: (args) => deleteImage(args[0]) },
     moveImage:       { fn: (args) => moveImage(args[0], args[1], args[2]) },
@@ -124,8 +127,25 @@ const COMMANDS = {
             console.log(JSON.stringify({ type: "structureResponse", reqId: args[1], data: structStr }));
         }
     },
+    getSelectionStructure: {
+        custom: true,
+        fn: (args) => {
+            const res = copySelection();
+            if (res) {
+                // _clipboard contains the copied structure
+                // We can't use _serializeTemplate since it's not defined, but we can temporarily swap _struct and call getStructure
+                const oldStruct = _struct;
+                _struct = _clipboard;
+                const structStr = getStructure("ket");
+                _struct = oldStruct;
+                console.log(JSON.stringify({ type: "structureResponse", reqId: args[1], data: structStr }));
+            } else {
+                console.log(JSON.stringify({ type: "structureResponse", reqId: args[1], data: "" }));
+            }
+        }
+    },
     setShowExplicitH: { fn: (args) => { _showExplicitH = args[0]; } },
-    insertFunctionalGroup: { fn: (args) => insertFunctionalGroup(args[0], args[1], args[2], args[3]) },
+    insertFunctionalGroup: { fn: (args) => insertFunctionalGroup(args[0], args[1], args[2], args[3], args[4]) },
     insertLibraryTemplateFused: { fn: (args) => insertLibraryTemplateFused(args[0], args[1], args[2], args[3]) },
     toggleSgroupExpanded: { fn: (args) => toggleSgroupExpanded(args[0]) },
     getGenericsList: {

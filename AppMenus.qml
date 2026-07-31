@@ -301,6 +301,15 @@ AppMenuBar {
         MenuItemRow { text: "Zoom In"; iconSource: "zoom-in.svg"; onTriggered: root.win.zoomLevel = Math.min(3.0, root.win.zoomLevel + 0.1) }
         MenuItemRow { text: "Zoom Out"; iconSource: "zoom-out.svg"; onTriggered: root.win.zoomLevel = Math.max(0.1, root.win.zoomLevel - 0.1) }
         MenuItemRow { text: "Reset (100%)"; onTriggered: root.win.zoomLevel = 1.0 }
+        Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6 }
+        MenuItemRow { 
+            text: (root.win.uiSettings.cpkColorsEnabled ? "☑ " : "☐ ") + "CPK Atom Colors"
+            onTriggered: {
+                root.win.uiSettings.cpkColorsEnabled = !root.win.uiSettings.cpkColorsEnabled
+                Theme.cpkColorsEnabled = root.win.uiSettings.cpkColorsEnabled
+                if (root.win.activeCanvas) root.win.activeCanvas.requestPaint()
+            }
+        }
     }
     AppMenuBarItem {
         text: "Help"

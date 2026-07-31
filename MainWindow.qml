@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Templates as T
 import QtQuick.Layouts
 import QtQuick.Dialogs
 import QtCore
@@ -14,26 +15,64 @@ ApplicationWindow {
 
     flags: Qt.Window | Qt.FramelessWindowHint
 
+    // Fluent's SmokeFillColorDefault: the scrim behind a modal content dialog.
+    Overlay.modal: Rectangle { color: Theme.smokeFill }
+
+    // Caption buttons to the Windows spec: 46x32 each, flush against one
+    // another and the window's right edge, 10px Segoe Fluent Icons glyph. The
+    // previous version used stock Buttons, which carry a 100x40 background in
+    // every style — that width, not any spacing, is what pushed them apart.
+    component CaptionButton: T.Button {
+        id: capBtn
+        property string glyph: ""
+        property bool danger: false
+
+        implicitWidth: Theme.captionButtonWidth
+        implicitHeight: Theme.captionBarHeight
+        focusPolicy: Qt.NoFocus
+
+        background: Rectangle {
+            color: capBtn.danger
+                   ? (capBtn.down ? Qt.darker(Theme.closeButtonHover, 1.2)
+                                  : (capBtn.hovered ? Theme.closeButtonHover : "transparent"))
+                   : (capBtn.down ? Theme.pressed
+                                  : (capBtn.hovered ? Theme.hover : "transparent"))
+        }
+        contentItem: Text {
+            text: capBtn.glyph
+            // Segoe Fluent Icons renders caption glyphs at 10px per the Windows
+            // spec; they are drawn to look correct at that size, not scaled down.
+            font { family: Theme.fontIcons; pixelSize: 10 }
+            color: (capBtn.danger && (capBtn.hovered || capBtn.down)) ? "#FFFFFF" : Theme.textPrimary
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
+    }
+
     header: Rectangle {
-        height: 32
+        height: Theme.captionBarHeight
         color: Theme.surface
         RowLayout {
             anchors.fill: parent
+            spacing: 0
             Text {
                 text: window.title
                 color: Theme.textPrimary
-                font { pixelSize: Theme.fontSizeBody; family: Theme.fontDisplay }
+                font { pixelSize: Theme.fontSizeCaption; family: Theme.fontFamily }
                 Layout.leftMargin: 16
                 Layout.fillWidth: true
+                elide: Text.ElideRight
+                verticalAlignment: Text.AlignVCenter
             }
-            Button { 
-                text: "−"
-                flat: true
-                onClicked: window.showMinimized() 
+            CaptionButton {
+                glyph: ""                       // ChromeMinimize
+                Accessible.name: "Minimize"
+                onClicked: window.showMinimized()
             }
-            Button {
-                text: window.visibility === Window.Maximized ? "❐" : "□"
-                flat: true
+            CaptionButton {
+                // ChromeRestore when maximized, ChromeMaximize otherwise
+                glyph: window.visibility === Window.Maximized ? "" : ""
+                Accessible.name: window.visibility === Window.Maximized ? "Restore down" : "Maximize"
                 onClicked: {
                     if (window.visibility === Window.Maximized)
                         window.showNormal()
@@ -41,19 +80,11 @@ ApplicationWindow {
                         window.showMaximized()
                 }
             }
-            Button { 
-                text: "✕"
-                flat: true
-                background: Rectangle {
-                    color: parent.down ? "#B22222" : (parent.hovered ? "#E81123" : "transparent")
-                }
-                contentItem: Text {
-                    text: parent.text
-                    color: parent.hovered ? "white" : Theme.textPrimary
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-                onClicked: window.close() 
+            CaptionButton {
+                glyph: ""                       // ChromeClose
+                danger: true
+                Accessible.name: "Close"
+                onClicked: window.close()
             }
         }
         TapHandler {
@@ -191,6 +222,10 @@ ApplicationWindow {
             activeSketch.sendCommand("layoutSelectedChain", [])
             return
         }
+        if (op === "bracketSelection") {
+            activeSketch.sendCommand("addBracketSelection", [])
+            return
+        }
         if (op !== "layout" && op !== "aromatize") window.isProcessing = true
         activeSketch.requestSerialize(op)
     }
@@ -207,6 +242,9 @@ ApplicationWindow {
             addRecentFile(path)
             activeSketch.requestStructure(fmt, "save")
             if (activeCanvas) activeCanvas.setClean()
+            // Clean up recovery file on explicit save
+            const appData = StandardPaths.writableLocation(StandardPaths.AppDataLocation)
+            fileIO.remove(appData + "/recovery/autosave_" + DocumentManager.activeDocId + ".ket")
         } else {
             fileDialogsGroup.saveDialog.open()
         }
@@ -243,13 +281,111 @@ ApplicationWindow {
         return docTitles[docId]
     }
 
+    property var _recoveredFiles: []
+
+    function restoreRecoveryFiles() {
+        const appData = StandardPaths.writableLocation(StandardPaths.AppDataLocation)
+        for (let i = 0; i < window._recoveredFiles.length; i++) {
+            let path = appData + "/recovery/" + window._recoveredFiles[i]
+            window.loadFromFile(Qt.url("file:///" + path.replace(/\\/g, "/")))
+        }
+    }
+
+    function discardRecoveryFiles() {
+        const appData = StandardPaths.writableLocation(StandardPaths.AppDataLocation)
+        for (let i = 0; i < window._recoveredFiles.length; i++) {
+            fileIO.remove(appData + "/recovery/" + window._recoveredFiles[i])
+        }
+        window._recoveredFiles = []
+    }
+
+    property var _userTemplates: []
+
+    function loadUserTemplates() {
+        const appData = StandardPaths.writableLocation(StandardPaths.AppDataLocation)
+        const path = appData + "/user_templates.json"
+        if (fileIO.exists(path)) {
+            const data = fileIO.read(path)
+            try {
+                window._userTemplates = JSON.parse(data)
+            } catch (e) {
+                window._userTemplates = []
+            }
+        }
+    }
+    
+    function saveUserTemplates() {
+        const appData = StandardPaths.writableLocation(StandardPaths.AppDataLocation)
+        fileIO.mkpath(appData)
+        fileIO.write(appData + "/user_templates.json", JSON.stringify(window._userTemplates))
+    }
+
     Settings {
         id: uiSettings
         category: "ui"
-        property bool darkMode: false
+        property bool compactDensity: false
+        property bool cpkColorsEnabled: true
         property string recentFilesJoined: ""
+        property bool fgFullStructure: true
     }
-    Component.onCompleted: Theme.darkMode = uiSettings.darkMode
+    Component.onCompleted: {
+        Theme.compactDensity = uiSettings.compactDensity
+        Theme.cpkColorsEnabled = uiSettings.cpkColorsEnabled
+        AppController.fgFullStructure = uiSettings.fgFullStructure
+        
+        loadUserTemplates()
+        
+        const appData = StandardPaths.writableLocation(StandardPaths.AppDataLocation)
+        fileIO.mkpath(appData + "/recovery")
+        var recovered = fileIO.listFiles(appData + "/recovery", "autosave_*.ket")
+        if (recovered && recovered.length > 0) {
+            window._recoveredFiles = recovered
+            // Deferred, not opened inline: MessageDialog is a real top-level
+            // platform window that centers itself on its parent's geometry. At
+            // Component.onCompleted the window has not been shown or sized yet,
+            // so it centered on (0,0) and opened at (-208,-137)-(210,110) --
+            // title bar and Yes button off-screen, only "No" reachable, while
+            // still holding modal keyboard focus (verified via the live window
+            // rect). Waiting for the window to actually be sized fixes it.
+            recoveryPromptTimer.start()
+        }
+    }
+
+    Timer {
+        id: recoveryPromptTimer
+        interval: 250
+        repeat: false
+        onTriggered: messageDialogsGroup.recoveryDialog.open()
+    }
+
+    // Scrolls the workspace so the page's center is centered in the visible
+    // viewport. ChemCanvas.fitToMolecule() centers a molecule within the whole
+    // A4 page (794x1123 at 100%), but the page is taller than the viewport, so
+    // at the default scroll position a perfectly page-centered structure still
+    // renders near the bottom edge -- which is what "SMILES import drops the
+    // structure off the page" actually was. Deferred by a frame because the
+    // content geometry is not final in the same tick a load completes.
+    function centerViewOnPage() {
+        Qt.callLater(function() {
+            const flick = scrollView.contentItem
+            if (!flick) return
+            // Scroll extent comes from workspaceContent, not flick.contentHeight:
+            // ScrollView sizes itself from its content item's implicit geometry and
+            // leaves the Flickable's own contentWidth/contentHeight at -1, which
+            // silently clamped every target scroll position to 0.
+            const maxY = Math.max(0, workspaceContent.height - flick.height)
+            const maxX = Math.max(0, workspaceContent.width  - flick.width)
+            const targetY = docRect.y + (docRect.height * window.zoomLevel) / 2 - flick.height / 2
+            const targetX = docRect.x + (docRect.width  * window.zoomLevel) / 2 - flick.width  / 2
+            flick.contentY = Math.max(0, Math.min(targetY, maxY))
+            flick.contentX = Math.max(0, Math.min(targetX, maxX))
+        })
+    }
+
+    Connections {
+        target: AppController
+        function onFgFullStructureChanged() { uiSettings.fgFullStructure = AppController.fgFullStructure }
+    }
 
     visible: true
     width: 1400
@@ -270,6 +406,13 @@ ApplicationWindow {
         if (anyDirty) {
             close_event.accepted = false
             messageDialogsGroup.unsavedChangesDialog.open()
+        } else {
+            // Clean exit
+            const appData = StandardPaths.writableLocation(StandardPaths.AppDataLocation)
+            var recovered = fileIO.listFiles(appData + "/recovery", "autosave_*.ket")
+            for (var j = 0; j < recovered.length; j++) {
+                fileIO.remove(appData + "/recovery/" + recovered[j])
+            }
         }
     }
 
@@ -322,12 +465,23 @@ ApplicationWindow {
         Shortcut { sequence: "B"; onActivated: if (activeCanvas) activeCanvas.currentTool = "BOND_1" }
         Shortcut { sequence: "R"; onActivated: if (activeCanvas) activeCanvas.currentTool = "TEMPLATE_BENZENE" }
         Shortcut { sequence: "Ctrl+R"; onActivated: rgroupPanel.open() }
+        Shortcut { sequence: "Ctrl+K"; onActivated: commandPalette.open() }
+
+        CommandPalette {
+            id: commandPalette
+            window: window
+        }
 
         Connections {
             target: indigoSvc
             function onLayoutFinished(newMol) {
                 window.isProcessing = false
-                if (newMol && activeCanvas) activeCanvas.loadMolfile(newMol)
+                // true: layout() output (SMILES/InChI load, Clean/Layout op) has no
+                // meaningful page placement -- recenter it on the page.
+                if (newMol && activeCanvas) {
+                    activeCanvas.loadMolfile(newMol, true)
+                    window.centerViewOnPage()
+                }
             }
             function onCommonScaffoldFinished(result, error) {
                 window.isProcessing = false
@@ -543,6 +697,11 @@ ApplicationWindow {
                     taskDialogsGroup.checkResultDialog.open()
                 }
             }
+            function onIupacNameReady(name, error) {
+                propPanel.iupacLoading = false
+                propPanel.iupacName = name
+                propPanel.iupacError = error
+            }
 
             // Biopolymer load
             function onBiopolymerLoaded(molfile) {
@@ -568,6 +727,24 @@ ApplicationWindow {
             interval: 600
             repeat: false
             onTriggered: if (activeSketch) activeSketch.requestSerialize("calc_props")
+        }
+
+        Timer {
+            id: autosaveTimer
+            interval: 60000
+            repeat: true
+            running: true
+            onTriggered: {
+                for (let i = 0; i < DocumentManager.docIds.length; i++) {
+                    let docId = DocumentManager.docIds[i]
+                    if (window.dirtyDocs[docId]) {
+                        const sketch = DocumentManager.documentFor(docId)
+                        if (sketch) {
+                            sketch.requestStructure("ket", "autosave")
+                        }
+                    }
+                }
+            }
         }
 
         Connections {
@@ -598,6 +775,7 @@ ApplicationWindow {
                 normalize: (data) => { window.isProcessing = true; indigoSvc.normalize(data); },
                 standardize: (data) => { window.isProcessing = true; indigoSvc.standardize(data); },
                 check: (data) => indigoSvc.checkStructure(data),
+                iupac_name: (data) => indigoSvc.generateIupacName(data),
                 calc_props: (data) => {
                     indigoSvc.calcProperties(data);
                     indigoSvc.calcStereoDescriptors(data);
@@ -642,6 +820,7 @@ ApplicationWindow {
                     if (activeCanvas) {
                         activeCanvas._needsCentering = true;
                         activeCanvas.refresh();
+                        window.centerViewOnPage();
                         setDocFile(DocumentManager.activeDocId, pendingSdfBatchUrl);
                     }
                 },
@@ -702,11 +881,17 @@ ApplicationWindow {
                 if (handler) handler(data);
             }
             function onStateUpdated(state, selection, dirty, undoState, redoState, result) {
-                if (result !== "stereoUpdated" && result !== "checkUpdated")
+                if (result !== "stereoUpdated" && result !== "checkUpdated") {
                     propUpdateTimer.restart()
+                    // A generated name is only valid for the exact structure it was
+                    // generated from; any real structural edit (or undo/redo) invalidates it.
+                    propPanel.iupacName = ""
+                    propPanel.iupacError = ""
+                }
             }
             function onErrorOccurred(error) {
                 window.isProcessing = false
+                propPanel.iupacLoading = false
                 messageDialogsGroup.workerErrorDialog.errorText = error
                 // Explicit even though severe defaults to true -- guards against
                 // a previous recoverable-error call site's severe = false
@@ -756,17 +941,26 @@ ApplicationWindow {
                         // titleRev forces re-evaluation after open / save-as / rename
                         text: (window.titleRev, (window.dirtyDocs[modelData] ? "● " : "") + window.titleFor(modelData))
 
+                        // Content-sized and left-aligned, the Fluent tab behaviour.
+                        // TabBar stretches its buttons to fill the bar by default,
+                        // so a lone document tab spanned the whole window with its
+                        // label centred in the middle of empty space. The +32 is
+                        // room for the close affordance overlaid on the right.
+                        width: Math.min(240, Math.max(120, implicitWidth + 32))
+
                         onDoubleClicked: {
                             taskDialogsGroup.renameDialog.docId = modelData
                             taskDialogsGroup.renameDialog.open()
                         }
 
                         Text {
-                            text: "✕"
+                            // Segoe Fluent Icons Dismiss (U+E8BB) -- same glyph the
+                            // window's own Close caption button uses.
+                            text: String.fromCharCode(0xE8BB)
                             anchors.right: parent ? parent.right : undefined
                             anchors.verticalCenter: parent ? parent.verticalCenter : undefined
                             anchors.rightMargin: 8
-                            font.pixelSize: Theme.fontSizeCaption
+                            font { family: Theme.fontIcons; pixelSize: 10 }
                             color: tabMouseArea.containsMouse ? Theme.error : Theme.textSecondary
                             MouseArea {
                                 id: tabMouseArea
@@ -808,6 +1002,7 @@ ApplicationWindow {
                 Layout.preferredWidth: Theme.toolPanelWidth
                 Layout.fillHeight: true
                 sketch: window.activeSketch
+                win: window
                 currentTool: activeCanvas ? activeCanvas.currentTool : "SELECT"
                 onToolSelected: (toolId) => {
                     if (!activeCanvas) return
@@ -1183,6 +1378,7 @@ ApplicationWindow {
                         ScrollBar.vertical.policy: ScrollBar.AlwaysOn
 
                         Item {
+                            id: workspaceContent
                             width: Math.max(scrollView.availableWidth, (docRect.width * window.zoomLevel) + 100)
                             height: Math.max(scrollView.availableHeight, (docRect.height * window.zoomLevel) + 100)
 
@@ -1248,17 +1444,31 @@ ApplicationWindow {
                                             if (canvasInstance.sketch) canvasInstance.sketch.requestAtomProperties(atomId)
                                         }
 
-                                        onTextEditRequested: (textId, content, chemX, chemY) => {
+                                        onTextEditRequested: (textId, content, chemX, chemY, isBold, isItalic) => {
                                             taskDialogsGroup.textDialog.textId = textId
                                             taskDialogsGroup.textDialog.chemX = chemX
                                             taskDialogsGroup.textDialog.chemY = chemY
                                             taskDialogsGroup.textDialog.inputText = content
+                                            taskDialogsGroup.textDialog.isBold = isBold
+                                            taskDialogsGroup.textDialog.isItalic = isItalic
                                             taskDialogsGroup.textDialog.open()
                                         }
                                         onImageInsertRequested: (cx, cy) => {
                                             fileDialogsGroup.imageFileDialog.chemX = cx
                                             fileDialogsGroup.imageFileDialog.chemY = cy
                                             fileDialogsGroup.imageFileDialog.open()
+                                        }
+
+                                        Connections {
+                                            target: canvasInstance.sketch
+                                            function onStructureReady(reqId, data) {
+                                                if (reqId === "autosave") {
+                                                    const appData = StandardPaths.writableLocation(StandardPaths.AppDataLocation)
+                                                    fileIO.write(appData + "/recovery/autosave_" + canvasInstance.modelData + ".ket", data)
+                                                } else if (reqId === "autosave_template") {
+                                                    window._finishTemplateSave(data)
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -1377,7 +1587,10 @@ ApplicationWindow {
         // Status bar with Zoom Control
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 30
+            // Tall enough to actually contain a standard-height control plus its
+            // padding; at the previous fixed 30px the 32px controls inside were
+            // squeezed, which is what made the zoom handle read as oversized.
+            Layout.preferredHeight: Theme.controlHeight + 8
             color: Theme.background
             
             Rectangle {
@@ -1416,9 +1629,71 @@ ApplicationWindow {
                 }
                 Text {
                     visible: !!(activeSketch && activeSketch.selection && activeSketch.selection.atom_ids)
-                    text: "Selected: " + Selection.totalCount(activeSketch)
+                    // Split atoms/bonds instead of one summed count -- the summed
+                    // form ("Selected: 29") contradicted the Selection Summary
+                    // panel ("14 atoms, 15 bonds selected") for the same state.
+                    text: {
+                        const sel = activeSketch ? activeSketch.selection : null
+                        if (!sel) return ""
+                        const na = sel.atom_ids ? sel.atom_ids.length : 0
+                        const nb = sel.bond_ids ? sel.bond_ids.length : 0
+                        const rest = Selection.totalCount(activeSketch) - na - nb
+                        let parts = "Selected: " + na + "a " + nb + "b"
+                        if (rest > 0) parts += " +" + rest
+                        return parts
+                    }
                     color: Theme.textSecondary
                     font { pixelSize: Theme.fontSizeBody; family: Theme.fontMono }
+                }
+
+                Rectangle {
+                    property int issueCount: {
+                        if (!activeSketch || !activeSketch.primitives) return 0;
+                        let count = 0;
+                        if (activeSketch.primitives.atoms) {
+                            for (let i = 0; i < activeSketch.primitives.atoms.length; i++) {
+                                if (activeSketch.primitives.atoms[i].checkWarning) count++;
+                            }
+                        }
+                        if (activeSketch.primitives.bonds) {
+                            for (let j = 0; j < activeSketch.primitives.bonds.length; j++) {
+                                if (activeSketch.primitives.bonds[j].checkWarning) count++;
+                            }
+                        }
+                        return count;
+                    }
+                    visible: issueCount > 0
+                    width: issueRow.implicitWidth + 12
+                    height: 20
+                    radius: 10
+                    color: Theme.error
+                    
+                    RowLayout {
+                        id: issueRow
+                        anchors.centerIn: parent
+                        spacing: 4
+                        Text {
+                            // Segoe Fluent Icons: Warning (U+E7BA). Built from a
+                            // char code rather than pasted inline — private-use
+                            // codepoints do not survive every editing path.
+                            text: String.fromCharCode(0xE7BA)
+                            color: Theme.badgeText
+                            font { family: Theme.fontIcons; pixelSize: 12 }
+                        }
+                        Text {
+                            text: parent.parent.issueCount + (parent.parent.issueCount === 1 ? " issue" : " issues")
+                            color: Theme.badgeText
+                            font { pixelSize: Theme.fontSizeCaption; family: Theme.fontFamily }
+                        }
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            // Property panel is always visible, but if it has a collapsible section later, we would expand it here.
+                            // Currently, no explicit action needed as it's persistently visible.
+                        }
+                    }
                 }
             }
 
@@ -1437,13 +1712,21 @@ ApplicationWindow {
                 }
 
                 ToolButton {
-                    text: Theme.darkMode ? "☀" : "🌙"
-                    font.pixelSize: Theme.fontSizeHeadline
+                    // ViewAll (large cells) when compact is active, GridView
+                    // (dense cells) when comfortable is — the icon shows the
+                    // layout the click switches TO, matching the tooltip.
+                    // Replaces the ◧/◨ geometric characters, which were text
+                    // standing in for icons and took the body font's metrics.
+                    text: Theme.compactDensity ? "" : ""
+                    font { family: Theme.fontIcons; pixelSize: Theme.iconSize }
+                    implicitWidth: Theme.controlHeight
+                    implicitHeight: Theme.controlHeight
+                    Accessible.name: Theme.compactDensity ? "Switch to comfortable density" : "Switch to compact density"
                     onClicked: {
-                        Theme.darkMode = !Theme.darkMode
-                        uiSettings.darkMode = Theme.darkMode
+                        Theme.compactDensity = !Theme.compactDensity
+                        uiSettings.compactDensity = Theme.compactDensity
                     }
-                    ToolTip.text: Theme.darkMode ? "Switch to light theme" : "Switch to dark theme"
+                    ToolTip.text: Theme.compactDensity ? "Switch to comfortable density" : "Switch to compact density"
                     ToolTip.visible: hovered
                     ToolTip.delay: 500
                 }
@@ -1465,9 +1748,15 @@ ApplicationWindow {
                 }
 
                 ToolButton {
-                    icon.source: "icons/zoom-out.svg"
-                    icon.width: 16
-                    icon.height: 16
+                    // Segoe Fluent Icons ZoomOut (U+E71F). The SVG version drew
+                    // nothing under the Fluent style even though it reserved its
+                    // space, so the glyph font is used here as it is for the
+                    // density toggle beside it.
+                    text: String.fromCharCode(0xE71F)
+                    font { family: Theme.fontIcons; pixelSize: Theme.iconSize }
+                    implicitWidth: Theme.controlHeight
+                    implicitHeight: Theme.controlHeight
+                    Accessible.name: "Zoom out"
                     onClicked: window.zoomLevel = Math.max(0.1, window.zoomLevel - 0.1)
                 }
 
@@ -1475,7 +1764,8 @@ ApplicationWindow {
                     id: zoomSlider
                     from: 0.1
                     to: 3.0
-                    Layout.preferredWidth: 150
+                    Layout.preferredWidth: 120
+                    Layout.preferredHeight: Theme.controlHeight
                     onMoved: window.zoomLevel = value
                     Binding on value {
                         value: window.zoomLevel
@@ -1484,9 +1774,12 @@ ApplicationWindow {
                 }
 
                 ToolButton {
-                    icon.source: "icons/zoom-in.svg"
-                    icon.width: 16
-                    icon.height: 16
+                    // Segoe Fluent Icons ZoomIn (U+E8A3)
+                    text: String.fromCharCode(0xE8A3)
+                    font { family: Theme.fontIcons; pixelSize: Theme.iconSize }
+                    implicitWidth: Theme.controlHeight
+                    implicitHeight: Theme.controlHeight
+                    Accessible.name: "Zoom in"
                     onClicked: window.zoomLevel = Math.min(3.0, window.zoomLevel + 0.1)
                 }
             }
@@ -1626,6 +1919,7 @@ ApplicationWindow {
                 activeSketch.sendCommand("deserializeSdfBatch", [data])
             } else if (activeCanvas) {
                 activeCanvas.loadStructure(fmt, data)
+                window.centerViewOnPage()
                 setDocFile(DocumentManager.activeDocId, fileUrl)
             }
         }
@@ -1754,9 +2048,60 @@ ApplicationWindow {
         id: taskDialogsGroup
         win: window
     }
+
     MessageDialogs {
         id: messageDialogsGroup
         win: window
+    }
+
+    // TaskDialog rather than a raw Dialog: TaskDialog already supplies
+    // modal:true + anchors.centerIn:parent (components/TaskDialog.qml), which
+    // this dialog was re-deriving by hand via explicit x/y bindings on
+    // window.width/height -- every other dialog in the app goes through the
+    // shared base, and this was the one exception.
+    TaskDialog {
+        id: userTemplateDialog
+        title: "Save Template"
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        width: Theme.dialogWidthSmall
+
+        ColumnLayout {
+            width: parent.width
+            Label { text: "Template Name:" }
+            TextField {
+                id: templateNameInput
+                Layout.fillWidth: true
+                focus: true
+                onAccepted: userTemplateDialog.accept()
+            }
+        }
+        
+        onAccepted: {
+            if (window.activeSketch) {
+                window._pendingTemplateName = templateNameInput.text
+                window.activeSketch.requestSelectionStructure("autosave_template")
+            }
+        }
+        onOpened: templateNameInput.text = ""
+    }
+
+    function saveSelectionAsTemplate() {
+        if (!activeSketch) return
+        userTemplateDialog.open()
+    }
+
+    property string _pendingTemplateName: ""
+
+    function _finishTemplateSave(data) {
+        if (!data || data === "") return
+        var name = _pendingTemplateName
+        if (!name) name = "Unnamed"
+        window._userTemplates.push({ name: name, data: data })
+        window.saveUserTemplates()
+        // force property update
+        var tmp = window._userTemplates
+        window._userTemplates = []
+        window._userTemplates = tmp
     }
 
     Popup {

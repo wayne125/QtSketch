@@ -4,7 +4,7 @@ project(sketchQmlDesktop LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Qml Quick Concurrent)
+find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Concurrent)
 qt_standard_project_setup(REQUIRES 6.6)
 qt_policy(SET QTP0004 OLD)
 
@@ -24,7 +24,12 @@ endforeach()
 set_source_files_properties(Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 set_source_files_properties(StyleSheets.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
-qt_add_executable(sketch src/app/main.cpp src/app/IndigoService.h src/app/IndigoService.cpp src/app/ImagoService.h src/app/ImagoService.cpp src/v8_process.h src/v8_process.cpp src/qjs_engine.h src/qjs_engine.cpp src/app/FileIO.h src/app/PlacementEngines.h src/app/PlacementEngines.cpp src/app/PlacementPreviewManager.h src/app/PlacementPreviewManager.cpp src/app/AppController.h src/app/AppController.cpp src/app/DocumentManager.h src/app/DocumentManager.cpp)
+qt_add_executable(sketch src/app/main.cpp src/app/IndigoService.h src/app/IndigoService.cpp src/app/IupacNamer.h src/app/IupacNamer.cpp src/app/ImagoService.h src/app/ImagoService.cpp src/v8_process.h src/v8_process.cpp src/qjs_engine.h src/qjs_engine.cpp src/app/FileIO.h src/app/PlacementEngines.h src/app/PlacementEngines.cpp src/app/PlacementPreviewManager.h src/app/PlacementPreviewManager.cpp src/app/AppController.h src/app/AppController.cpp src/app/DocumentManager.h src/app/DocumentManager.cpp)
+# FusedRingOrientation/FusedRingDirectionDetector are NOT linked into this target:
+# IupacNamer.cpp has zero calls into them (confirmed 2026-07-29). They're real,
+# tested geometric-orientation modules meant for a future numbering-integration
+# phase, not dead weight to ship in the app binary today. They're still built
+# and exercised by their own standalone test executables below.
 
 # set_target_properties( PROPERTIES WIN32_EXECUTABLE TRUE)
 
@@ -32,6 +37,7 @@ qt_add_qml_module(sketch
     URI Sketch.App
     VERSION 1.0
     QML_FILES
+        CommandPalette.qml
         MainWindow.qml
         AppMenus.qml
         MainToolbar.qml
@@ -138,7 +144,7 @@ qt_add_qml_module(sketch
         icons/search.svg
 )
 
-target_link_libraries(sketch PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent qjs
+target_link_libraries(sketch PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Concurrent qjs
 )
 
 
@@ -189,4 +195,42 @@ add_custom_command(TARGET sketch POST_BUILD
         ${CMAKE_CURRENT_SOURCE_DIR}/assets/monomer_library.ket
         ${CMAKE_CURRENT_SOURCE_DIR}/indigo/data/molecules/basic/monomer_library.ket
 )
+
+qt_add_executable(iupac_namer_test tests/iupac_namer_test.cpp src/app/IupacNamer.h src/app/IupacNamer.cpp)
+target_include_directories(iupac_namer_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/app
+    ${CMAKE_CURRENT_SOURCE_DIR}/indigo/api/c/indigo
+)
+if (MSVC)
+    target_link_libraries(iupac_namer_test PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.lib)
+else()
+    target_link_libraries(iupac_namer_test PRIVATE ${INDIGO_LIB_DIR}/indigo.dll)
+endif()
+
+enable_testing()
+add_test(NAME iupac_namer_test COMMAND iupac_namer_test)
+
+qt_add_executable(fused_ring_orientation_test tests/fused_ring_orientation_test.cpp src/app/FusedRingOrientation.h src/app/FusedRingOrientation.cpp)
+target_include_directories(fused_ring_orientation_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/app
+)
+if (MSVC)
+    target_link_libraries(fused_ring_orientation_test PRIVATE Qt6::Core)
+endif()
+add_test(NAME fused_ring_orientation_test COMMAND fused_ring_orientation_test)
+
+qt_add_executable(fused_ring_direction_detector_test tests/fused_ring_direction_detector_test.cpp src/app/FusedRingDirectionDetector.h src/app/FusedRingDirectionDetector.cpp src/app/FusedRingOrientation.h src/app/FusedRingOrientation.cpp)
+target_include_directories(fused_ring_direction_detector_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/app
+    ${CMAKE_CURRENT_SOURCE_DIR}/indigo/api/c/indigo
+)
+if (MSVC)
+    target_link_libraries(fused_ring_direction_detector_test PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.lib)
+else()
+    target_link_libraries(fused_ring_direction_detector_test PRIVATE ${INDIGO_LIB_DIR}/indigo.dll)
+endif()
+add_test(NAME fused_ring_direction_detector_test COMMAND fused_ring_direction_detector_test)
 

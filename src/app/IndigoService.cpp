@@ -1,4 +1,5 @@
 #include "IndigoService.h"
+#include "IupacNamer.h"
 #include <cmath>
 #include <QDebug>
 #include <QGuiApplication>
@@ -1344,6 +1345,45 @@ void IndigoService::checkStructure(const QString &molfile) {
         emitOnGuiThread(self, [report, structured](IndigoService *s) {
             emit s->checkFinished(report.isEmpty() ? "{}" : report);
             emit s->checkIssuesReady(structured.isEmpty() ? "{\"issues\":[]}" : structured);
+        });
+    });
+}
+
+void IndigoService::generateIupacName(const QString &molfile) {
+    if (molfile.isEmpty()) {
+        emit iupacNameReady("", "No structure provided.");
+        return;
+    }
+    if (isReactionFormat(molfile)) {
+        emit iupacNameReady("", "IUPAC name generation is not supported for reactions.");
+        return;
+    }
+    QPointer<IndigoService> self = this;
+    (void)QtConcurrent::run([self, molfile]() {
+        QString name, error;
+        unsigned long long sid = indigoAllocSessionId();
+        indigoSetSessionId(sid);
+        try {
+            int mol = indigoLoadMoleculeFromString(sanitizeMolfileForAnalysis(molfile).toUtf8().constData());
+            if (mol >= 0) {
+                IupacResult res = IupacNamer::generateName(mol);
+                if (res.success) {
+                    name = res.name;
+                } else {
+                    error = res.error;
+                }
+                indigoFree(mol);
+            } else {
+                error = QString("Failed to load structure: %1").arg(QString::fromUtf8(indigoGetLastError()));
+            }
+        } catch (const std::exception &e) {
+            error = QString::fromUtf8(e.what());
+        } catch (...) {
+            error = "Unknown exception during IUPAC name generation.";
+        }
+        indigoReleaseSessionId(sid);
+        emitOnGuiThread(self, [name, error](IndigoService *s) {
+            emit s->iupacNameReady(name, error);
         });
     });
 }

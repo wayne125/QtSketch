@@ -61,7 +61,7 @@ bool AppController::handleDragEnd() {
                 QString toolId = m_previewManager->toolId();
                 if (toolId.startsWith("FG_") || toolId.startsWith("SS_") || toolId.startsWith("LIB_")) {
                     QString fgName = toolId.startsWith("LIB_") ? toolId.mid(4) : toolId.mid(3);
-                    m_v8->insertFunctionalGroup(fgName, x, y, m_previewManager->startAtomId());
+                    m_v8->insertFunctionalGroup(fgName, x, y, m_previewManager->startAtomId(), toolId.startsWith("FG_") ? m_fgFullStructure : false);
                 } else {
                     m_v8->addBondAndAtom(m_previewManager->startAtomId(), label, x, y, 1, 0); 
                 }

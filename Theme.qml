@@ -3,36 +3,56 @@ import QtQuick
 
 QtObject {
     // Toggled from the status bar; persisted via MainWindow's ui Settings.
-    property bool darkMode: false
+    property bool compactDensity: false
+    property bool cpkColorsEnabled: true
 
-    // ── "Publication Ink" palette ──────────────────────────────────────────
-    // Grounded in the chemistry publication world: journal paper whites,
-    // Prussian blue ink, warm gray chrome. Not Office blue.
-    readonly property color surface: darkMode ? "#1E1E2E" : "#FFFFFF"
-    readonly property color background: darkMode ? "#14141E" : "#F2F1ED"
-    readonly property color accent: darkMode ? "#5DADE2" : "#1B4F72"
-    readonly property color accentLight: darkMode ? "#1B3A52" : "#D6EAF8"
-    readonly property color outline: darkMode ? "#33333D" : "#D5D3CC"
-    readonly property color textPrimary: darkMode ? "#D4D4D8" : "#1C1C28"
-    readonly property color textSecondary: darkMode ? "#9E9EAE" : "#6E6E7E"
-    readonly property color rgroupColor: darkMode ? "#BB8FCE" : "#6C3483"
-    readonly property color hover: darkMode ? "#1E1E2A" : "#EAE8E0"
-    readonly property color selected: darkMode ? "#1B3A52" : "#D6EAF8"
-    readonly property color rulerColor: darkMode ? "#6E6E7E" : "#9E9E8E"
-    readonly property color workspaceBackground: darkMode ? "#0A0A12" : "#E8E6DE"
-    readonly property color error: "#C0392B"
+    // ── Fluent (Windows 11) light palette ──────────────────────────────────
+    // Names on the right are the WinUI 3 resource keys these mirror, so any
+    // value here can be checked against the Fluent design token it comes from.
+    readonly property color surface: "#FFFFFF"            // LayerFillColorDefault
+    readonly property color background: "#F3F3F3"         // SolidBackgroundFillColorBase
+    readonly property color accent: "#0067C0"             // AccentFillColorDefault
+    readonly property color accentLight: "#EFF6FC"        // AccentFillColorSelectedBackground
+    readonly property color outline: "#E5E5E5"            // CardStrokeColorDefault
+    readonly property color textPrimary: "#1B1B1B"        // TextFillColorPrimary
+    readonly property color textSecondary: "#5D5D5D"      // TextFillColorSecondary
+    readonly property color textTertiary: "#767676"       // TextFillColorTertiary
+    readonly property color rgroupColor: "#8764B8"        // Fluent purple
+    readonly property color hover: "#F5F5F5"              // ControlFillColorSecondary
+    readonly property color pressed: "#EDEDED"            // ControlFillColorTertiary
+    readonly property color selected: "#EFF6FC"           // SubtleFillColorSelected
+    // Ruler numerals are 12px text on `background`; TextFillColorSecondary
+    // clears 4.5:1 there, the old warm gray (#9E9E8E) measured 2.40:1.
+    readonly property color rulerColor: "#5D5D5D"
+    readonly property color workspaceBackground: "#EAEAEA" // canvas surround, one step under base
+    readonly property color error: "#C42B1C"              // SystemFillColorCritical
+    readonly property color success: "#0F7B0F"            // SystemFillColorSuccess
+    readonly property color caution: "#9D5D00"            // SystemFillColorCaution
+    readonly property color closeButtonHover: "#C42B1C"   // Fluent caption close
+    readonly property color smokeFill: "#4D000000"        // SmokeFillColorDefault (30% black)
     readonly property color badgeAam: "#B7540A"
-    readonly property color badgeReactingCenter: "#8E44AD"
+    readonly property color badgeReactingCenter: "#8764B8"
     readonly property color badgeText: "#FFFFFF"
 
-    // ── Typography — "Journal Caption" ─────────────────────────────────────
-    // The aesthetic risk: a serif display face in a technical tool, justified
-    // because chemistry publishes in serif journals (Nature, JACS, Angewandte).
-    // Georgia evokes journal figure captions; Segoe UI is the clean body face;
-    // Consolas gives tabular alignment for property values and SMILES.
-    readonly property string fontFamily: "Segoe UI"
-    readonly property string fontDisplay: "Georgia"
+    // ── Typography — Windows 11 type ramp ──────────────────────────────────
+    // Segoe UI Variable is the Windows 11 UI face; Text and Display are its
+    // optical sizes (Text is hinted for small sizes, Display for headings).
+    // Both fall back to Segoe UI on Windows 10, which is metrically close.
+    // Cascadia Mono is the Fluent monospace face, used for property values,
+    // SMILES strings and the status readout where digits must align.
+    // One family name per property, never a comma list: QML's font.family takes
+    // a single family and treats "A, B" as a literal name that matches nothing,
+    // silently falling back. Qt's own font matching handles absent families.
+    readonly property string fontFamily: "Segoe UI Variable Text"
+    readonly property string fontDisplay: "Segoe UI Variable Display"
+    // Consolas rather than Fluent's Cascadia Mono: it ships on every Windows
+    // back to Vista, and the monospace face carries no Fluent identity the way
+    // Segoe UI Variable does — reliability is worth more here.
     readonly property string fontMono: "Consolas"
+    // Segoe Fluent Icons is the Windows 11 system icon font. All codepoints
+    // used here are shared with Segoe MDL2 Assets (Windows 10), so the glyphs
+    // survive on older Windows even though the family name differs.
+    readonly property string fontIcons: "Segoe Fluent Icons"
 
     // Canvas2D's ctx.font takes a CSS font shorthand string, which requires quoting
     // multi-word family names ("Segoe UI") or the parser silently mangles them into
@@ -43,12 +63,15 @@ QtObject {
     readonly property string fontDisplayCss: "'" + fontDisplay + "'"
     readonly property string fontMonoCss: "'" + fontMono + "'"
 
-    // Type scale
-    readonly property real fontSizeCaption: 10
-    readonly property real fontSizeLabel: 11
-    readonly property real fontSizeBody: 12
-    readonly property real fontSizeHeadline: 14
-    readonly property real fontSizeDisplay: 18
+    // Windows 11 type ramp. Fluent's Caption is 12px and Body is 14px; the old
+    // scale ran 10/11/12, below the 12px floor for readable body text, which is
+    // what made the ruler numerals and property labels feel cramped. Compact
+    // density drops one step but never below Caption's 12px.
+    readonly property real fontSizeCaption: 12   // Fluent Caption   12/16
+    readonly property real fontSizeLabel: compactDensity ? 12 : 13
+    readonly property real fontSizeBody: compactDensity ? 13 : 14   // Fluent Body 14/20
+    readonly property real fontSizeHeadline: 16  // Fluent Body Large 18/24, tightened
+    readonly property real fontSizeDisplay: 20   // Fluent Subtitle  20/28
 
     // Selection and Overlays
     readonly property color selectionOverlay: "#330078D4"
@@ -56,22 +79,39 @@ QtObject {
     readonly property color dragRect: "#4FC3F7"
     readonly property color dragFill: "#0F4FC3F7"
     
-    // Layout
-    readonly property real toolbarHeight: 36
-    readonly property real menuBarHeight: 28
+    // ── Layout — Fluent 4px grid ───────────────────────────────────────────
+    // Fluent's standard control height is 32px; its compact variant is 24px.
+    // Density maps onto those two rather than inventing intermediate sizes.
+    readonly property real controlHeight: compactDensity ? 24 : 32
+    readonly property real iconSize: 16          // Fluent standard icon size
+    readonly property real captionButtonWidth: 46   // Windows caption button
+    readonly property real captionBarHeight: 32
+    readonly property real toolbarHeight: compactDensity ? 32 : 40
+    readonly property real menuBarHeight: 32
     // Tool button density (left panel, bottom atom bar, toolbar dropdowns)
-    readonly property real toolCellSize: 30
-    readonly property real toolIconSize: 20
-    readonly property real toolGridGap: 2
+    readonly property real toolCellSize: compactDensity ? 24 : 32
+    readonly property real toolIconSize: 16
+    readonly property real toolGridGap: 4
     // Wide enough for three toolCellSize columns + gaps + scrollbar
-    readonly property real toolPanelWidth: 112
-    readonly property real propertyPanelWidth: 240
+    readonly property real toolPanelWidth: compactDensity ? 96 : 120
+    readonly property real propertyPanelWidth: compactDensity ? 208 : 248
+
+    // Fluent corner radii: 4px on controls, 8px on cards/dialogs/flyouts.
+    readonly property real radiusControl: 4
+    readonly property real radiusSurface: 8
+
+    // 4px spacing grid
     readonly property real marginSmall: 4
-    readonly property real marginMedium: 8
-    readonly property real marginLarge: 16
+    readonly property real marginMedium: compactDensity ? 8 : 12
+    readonly property real marginLarge: compactDensity ? 12 : 16
     readonly property real spacingSmall: 4
     readonly property real spacingMedium: 8
     readonly property real spacingLarge: 12
+
+    // Dialog width scale — replaces the ad-hoc 300/360/380/420/480 spread.
+    readonly property real dialogWidthSmall: 320   // single field + buttons
+    readonly property real dialogWidthMedium: 420  // multi-field form
+    readonly property real dialogWidthLarge: 520   // results, lists, tables
 
     // ── Interaction states ──────────────────────────────────────────────────
     // Standard triad for icon-button opacity across enabled/hover/rest states.
@@ -148,7 +188,8 @@ QtObject {
     readonly property var elementColorMap: { "H": "#000000", "C": "#000000", "N": "#3050F8", "O": "#FF0D0D", "F": "#90E050", "P": "#FF8000", "S": "#C39A00", "Cl": "#1FF01F", "Br": "#A62929", "I": "#940094" }
 
     function getElementColor(label) {
-        return elementColorMap[label] || "#000000";
+        if (!cpkColorsEnabled) return textPrimary;
+        return elementColorMap[label] || textPrimary;
     }
 
     readonly property var elementsList: [

@@ -46,11 +46,12 @@ public:
     Q_INVOKABLE void loadBenzene();
     Q_INVOKABLE void deserializeMol(const QString& data);
     Q_INVOKABLE void requestStructure(const QString& fmt, const QString& reqId);
+    Q_INVOKABLE void requestSelectionStructure(const QString& reqId);
     Q_INVOKABLE void requestSerialize(const QString& reqId);
     Q_INVOKABLE QString getStructure(const QString& fmt);
     Q_INVOKABLE QString serializeMol();
-    Q_INVOKABLE void loadStructure(const QString& format, const QString& data);
-    Q_INVOKABLE void insertFunctionalGroup(const QString& fgName, double cx, double cy, int targetAtomId = -1);
+    Q_INVOKABLE void loadStructure(const QString& format, const QString& data, bool centerOnPage = false);
+    Q_INVOKABLE void insertFunctionalGroup(const QString& fgName, double cx, double cy, int targetAtomId = -1, bool fullStructure = true);
     Q_INVOKABLE void insertLibraryTemplateFused(const QString& fgName, double cx, double cy, int targetBondId);
     Q_INVOKABLE void requestSaltsAndSolventsList();
     Q_INVOKABLE void requestFunctionalGroupsList();
@@ -101,8 +102,8 @@ public:
     Q_INVOKABLE void distributeAtoms(const QString& direction);
     Q_INVOKABLE void transformSelection(const QString& mode);
     Q_INVOKABLE void addChain(double x1, double y1, double x2, double y2);
-    Q_INVOKABLE void addText(const QString& content, double x, double y);
-    Q_INVOKABLE void updateText(int id, const QString& content);
+    Q_INVOKABLE void addText(const QString& content, double x, double y, bool bold = false, bool italic = false);
+    Q_INVOKABLE void updateText(int id, const QString& content, bool bold = false, bool italic = false);
     Q_INVOKABLE void deleteText(int id);
     Q_INVOKABLE void addImage(const QString& base64DataUri, double cx, double cy, double halfW, double halfH);
     Q_INVOKABLE void deleteImage(int id);

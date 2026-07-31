@@ -68,7 +68,6 @@ Item {
                 if (a.stereoLabel && a.stereoLabel !== "") return true
                 if (a.cipLabel && a.cipLabel !== "") return true
                 if (a.aam && a.aam > 0) return true
-                if (a.checkWarning && a.checkWarning !== "") return true
                 if (canvas.showExplicitH) return true
                 if (a.isotope && a.isotope > 0) return true
                 if (a.radical && a.radical > 0) return true

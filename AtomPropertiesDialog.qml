@@ -5,7 +5,7 @@ import QtQuick.Layouts
 TaskDialog {
     id: root
     title: "Atom Properties"
-    width: 340
+    width: Theme.dialogWidthSmall
     standardButtons: Dialog.Ok | Dialog.Cancel
 
     property int atomId: -1

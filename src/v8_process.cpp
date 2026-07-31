@@ -81,6 +81,9 @@ void V8Process::deserializeMol(const QString& data) { sendCommand("deserializeMo
 void V8Process::requestStructure(const QString& fmt, const QString& reqId) {
     sendCommand("getStructure", {fmt, reqId});
 }
+void V8Process::requestSelectionStructure(const QString& reqId) {
+    sendCommand("getSelectionStructure", {reqId});
+}
 void V8Process::requestSerialize(const QString& reqId) {
     requestStructure("mol", reqId);
 }
@@ -109,20 +112,17 @@ QString V8Process::getStructure(const QString& fmt) {
 QString V8Process::serializeMol() {
     return getStructure("mol");
 }
-void V8Process::loadStructure(const QString& format, const QString& data) {
+void V8Process::loadStructure(const QString& format, const QString& data, bool centerOnPage) {
     if (format == "mol") {
-        sendCommand("loadMol", {data});
+        sendCommand("loadMol", {data, centerOnPage});
     } else if (format == "sdf") {
         sendCommand("deserializeSdf", {data});
     } else if (format == "ket") {
         sendCommand("deserializeKet", {data});
     }
 }
-void V8Process::insertFunctionalGroup(const QString& fgName, double cx, double cy, int targetAtomId) {
-    if (targetAtomId >= 0)
-        sendCommand("insertFunctionalGroup", {fgName, cx, cy, targetAtomId});
-    else
-        sendCommand("insertFunctionalGroup", {fgName, cx, cy});
+void V8Process::insertFunctionalGroup(const QString& fgName, double cx, double cy, int targetAtomId, bool fullStructure) {
+    sendCommand("insertFunctionalGroup", {fgName, cx, cy, targetAtomId, fullStructure});
 }
 void V8Process::insertLibraryTemplateFused(const QString& fgName, double cx, double cy, int targetBondId) {
     sendCommand("insertLibraryTemplateFused", {fgName, cx, cy, targetBondId});
@@ -139,8 +139,8 @@ void V8Process::setRxnArrowConditions(int id, const QString& above, const QStrin
 void V8Process::setStereoFlags(const QString& type, int groupId) { sendCommand("setStereoFlags", {type, groupId}); }
 void V8Process::transformSelection(const QString& mode) { sendCommand("transformSelection", {mode}); }
 void V8Process::addChain(double x1, double y1, double x2, double y2) { sendCommand("addChain", {x1, y1, x2, y2}); }
-void V8Process::addText(const QString& content, double x, double y) { sendCommand("addText", {content, x, y}); }
-void V8Process::updateText(int id, const QString& content) { sendCommand("updateText", {id, content}); }
+void V8Process::addText(const QString& content, double x, double y, bool bold, bool italic) { sendCommand("addText", {content, x, y, bold, italic}); }
+void V8Process::updateText(int id, const QString& content, bool bold, bool italic) { sendCommand("updateText", {id, content, bold, italic}); }
 void V8Process::deleteText(int id) { sendCommand("deleteText", {id}); }
 void V8Process::addImage(const QString& base64DataUri, double cx, double cy, double halfW, double halfH) { sendCommand("addImage", {base64DataUri, cx, cy, halfW, halfH}); }
 void V8Process::deleteImage(int id) { sendCommand("deleteImage", {id}); }

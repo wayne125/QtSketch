@@ -404,7 +404,7 @@ function clearCanvas() {
 
 // ---- Functional Groups -----------------------------------------------------
 
-function insertFunctionalGroup(fgName, cx, cy, targetAtomId) {
+function insertFunctionalGroup(fgName, cx, cy, targetAtomId, fullStructure = true) {
     var _clampedAnchor = _clampToPage(cx, cy); cx = _clampedAnchor.x; cy = _clampedAnchor.y
     var fgStruct = _fgStructs[fgName] || _saltsStructs[fgName] || _libraryStructs[fgName]
 
@@ -494,7 +494,7 @@ function insertFunctionalGroup(fgName, cx, cy, targetAtomId) {
                         var newSg = Object.assign(Object.create(Object.getPrototypeOf(sg)), sg)
                         if (!newSg.data) newSg.data = {}
                         newSg.data.name = (newSg.data && newSg.data.name) ? newSg.data.name : fgName
-                        newSg.data.expanded = false
+                        newSg.data.expanded = !!fullStructure
                         newSg.atoms = (sg.atoms || [])
                             .map(function(aid) { return atomMap.get(aid) })
                             .filter(function(x) { return x !== undefined })

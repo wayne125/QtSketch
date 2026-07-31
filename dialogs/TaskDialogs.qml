@@ -28,7 +28,7 @@ Item {
     TaskDialog {
         id: renameDialog
         title: "Rename Tab"
-        width: 300
+        width: Theme.dialogWidthSmall
         standardButtons: Dialog.Ok | Dialog.Cancel
 
         property int docId: -1
@@ -55,17 +55,39 @@ Item {
     TaskDialog {
         id: textDialog
         title: textId >= 0 ? "Edit Text" : "Add Text"
-        width: 360
+        width: Theme.dialogWidthSmall
         standardButtons: Dialog.Ok | Dialog.Cancel
 
         property int textId: -1
         property real chemX: 0
         property real chemY: 0
         property string inputText: ""
+        property bool isBold: false
+        property bool isItalic: false
 
         ColumnLayout {
             width: parent.width
             spacing: 8
+
+            RowLayout {
+                spacing: 8
+                Button {
+                    text: "B"
+                    font.bold: true
+                    checkable: true
+                    checked: textDialog.isBold
+                    onClicked: textDialog.isBold = checked
+                    implicitWidth: 32
+                }
+                Button {
+                    text: "I"
+                    font.italic: true
+                    checkable: true
+                    checked: textDialog.isItalic
+                    onClicked: textDialog.isItalic = checked
+                    implicitWidth: 32
+                }
+            }
 
             TextArea {
                 id: textDialogInput
@@ -92,10 +114,10 @@ Item {
             if (!win.activeSketch) return
             const content = textDialogInput.text.trim()
             if (textId >= 0) {
-                if (content.length > 0) win.activeSketch.updateText(textId, content)
+                if (content.length > 0) win.activeSketch.updateText(textId, content, isBold, isItalic)
                 else win.activeSketch.deleteText(textId)
             } else if (content.length > 0) {
-                win.activeSketch.addText(content, chemX, chemY)
+                win.activeSketch.addText(content, chemX, chemY, isBold, isItalic)
             }
         }
     }
@@ -104,18 +126,18 @@ Item {
         id: checkResultDialog
         title: "Structure Validation"
         standardButtons: Dialog.Ok
-        width: 480
+        width: Theme.dialogWidthLarge
 
         property string reportText: ""
 
         ScrollView {
-            width: 450
+            width: Theme.dialogWidthLarge - 30
             height: Math.min(300, checkResultContent.implicitHeight + 20)
             clip: true
 
             Text {
                 id: checkResultContent
-                width: 440
+                width: Theme.dialogWidthLarge - 40
                 text: {
                     const r = checkResultDialog.reportText
                     if (!r || r === "{}") return "No issues found."
@@ -144,10 +166,11 @@ Item {
         id: smilesDialog
         title: "Load from SMILES"
         standardButtons: Dialog.Ok | Dialog.Cancel
+        width: Theme.dialogWidthSmall
 
         TextField {
             id: smilesInput
-            width: 380
+            width: parent.width
             placeholderText: "e.g. c1ccccc1 or CC(=O)Oc1ccccc1C(=O)O"
             Keys.onReturnPressed: smilesDialog.accept()
         }
@@ -166,10 +189,11 @@ Item {
         id: similarityDialog
         title: "Compare Similarity"
         standardButtons: Dialog.Ok | Dialog.Cancel
+        width: Theme.dialogWidthSmall
 
         TextField {
             id: similarityRefInput
-            width: 380
+            width: parent.width
             placeholderText: "Reference SMILES, e.g. c1ccccc1"
             Keys.onReturnPressed: similarityDialog.accept()
         }
@@ -188,10 +212,11 @@ Item {
         id: ionizeDialog
         title: "Ionize at pH"
         standardButtons: Dialog.Ok | Dialog.Cancel
+        width: Theme.dialogWidthSmall
 
         TextField {
             id: ionizePhInput
-            width: 380
+            width: parent.width
             placeholderText: "pH, e.g. 7.4"
             validator: DoubleValidator { bottom: 0; top: 14; decimals: 2 }
             Keys.onReturnPressed: ionizeDialog.accept()
@@ -212,13 +237,15 @@ Item {
         id: inchiLoadDialog
         title: "Load from InChI"
         standardButtons: Dialog.Ok | Dialog.Cancel
+        width: Theme.dialogWidthMedium
 
         ColumnLayout {
+            width: parent.width
             spacing: 4
 
             TextField {
+                Layout.fillWidth: true
                 id: inchiLoadInput
-                Layout.preferredWidth: 460
                 placeholderText: "InChI=1S/C6H6/c1-2-4-6-5-3-1/h1-6H"
                 Keys.onReturnPressed: inchiLoadDialog.accept()
             }
@@ -231,9 +258,9 @@ Item {
             Text {
                 visible: /^[A-Z]{14}-[A-Z]{10}-[A-Z]$/.test(inchiLoadInput.text.trim())
                 text: "That looks like an InChIKey, not a full InChI — InChIKey is a one-way hash and can't be loaded back into a structure. Paste the full \"InChI=1S/...\" string instead."
-                color: "#c0392b"
+                color: Theme.error
                 wrapMode: Text.WordWrap
-                Layout.preferredWidth: 460
+                Layout.fillWidth: true
                 font.pixelSize: Theme.fontSizeCaption
             }
         }
@@ -258,7 +285,7 @@ Item {
         id: shortcutsDialog
         title: "Keyboard Shortcuts"
         standardButtons: Dialog.Ok
-        width: 420
+        width: Theme.dialogWidthMedium
         // Explicit height, not left to Dialog's own implicit sizing: an inner
         // item's explicit `height:` override does not retroactively change
         // its own implicitHeight, so Dialog's outer frame (sized from content
@@ -334,7 +361,7 @@ Item {
         id: rgroupPerMoleculeResultsDialog
         title: "R-Group Results (Per-Molecule)"
         standardButtons: Dialog.Close
-        width: 380
+        width: Theme.dialogWidthLarge
         height: 380
 
         ListView {
