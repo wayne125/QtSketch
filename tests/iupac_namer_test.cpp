@@ -175,6 +175,9 @@ int main() {
         {"c1ccccc1S", "benzenethiol"},
         {"c1ccccc1S(=O)(=O)O", "benzenesulfonic acid"},
         {"C1CCCCC1S(=O)(=O)O", "cyclohexanesulfonic acid"},
+        // Phase 62: Ring-attached phosphonic acid
+        {"c1ccccc1P(=O)(O)O", "benzenephosphonic acid"},
+        {"C1CCCCC1P(=O)(O)O", "cyclohexanephosphonic acid"},
         {"C1CCCCC1S", "cyclohexanethiol"},
         {"c1ccccc1SC", "methylsulfanylbenzene"},
         {"c1ccccc1C(=O)Cl", "benzenecarbonyl chloride"},
@@ -188,6 +191,14 @@ int main() {
         {"CC(O)C(=O)Cl", "2-hydroxypropanoyl chloride"},
         {"CS(=O)(=O)O", "methanesulfonic acid"},
         {"OC(=O)CS(=O)(=O)O", "2-carboxyethanesulfonic acid"},
+        // Phase 62: Phosphonic acid
+        {"CP(=O)(O)O", "methanephosphonic acid"},
+        {"CCCP(=O)(O)O", "propane-1-phosphonic acid"},
+        // Phase 62: regression tests
+        {"Oc1ccccc1S(=O)(=O)O", "2-hydroxybenzenesulfonic acid"}, // regression test for existing sulfonic acid
+        {"CS(=O)(=O)O", "methanesulfonic acid"}, // regression test for existing sulfonic acid
+        {"CCP", "ethylphosphine"}, // regression test for existing phosphine
+        {"CCB(O)O", "ethylboronic acid"}, // regression test for existing boronic acid
         {"CCS", "ethanethiol"},
         {"CSC", "methylsulfanylmethane"},
         {"CN(=O)=O", "nitromethane"},
@@ -281,6 +292,8 @@ int main() {
         {"Cc1ccccc1CCC(=S)C", "4-(2-methylphenyl)butane-2-thione"},
         // Sulfonic acid chain-wins (exercises the new heteroatom-exclusion branch in isPrincipalGroupHeteroNeighbor):
         {"Cc1ccccc1CCCS(=O)(=O)O", "3-(2-methylphenyl)propane-1-sulfonic acid"},
+        // Phosphonic acid chain-wins (Phase 62):
+        {"Cc1ccccc1CCCP(=O)(O)O", "3-(2-methylphenyl)propane-1-phosphonic acid"},
         // Regression test for an existing Phase 54 chain-wins example (amide):
         {"Cc1ccccc1CCC(=O)N", "3-(2-methylphenyl)propanamide"},
         
@@ -1095,7 +1108,7 @@ int main() {
         int m = indigoLoadMoleculeFromString("CP(C)C");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
-        if (!r.success && r.error.contains("Phosphorus-containing groups other than phosphine are not supported")) {
+        if (!r.success && r.error.contains("Phosphorus-containing groups other than phosphine and phosphonic acid are not supported")) {
             std::cout << "[PASS] Unsupported P pattern (CP(C)C) correctly rejected: " << r.error.toStdString() << "\n";
             passed++;
         } else {
