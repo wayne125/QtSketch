@@ -1217,7 +1217,7 @@ QString nameBranchGraph(const Graph &g, int rootIdx, int parentIdx, const std::v
         for (size_t i = 0; i < g.nodes[curr].neighbors.size(); ++i) {
             int nei = g.nodes[curr].neighbors[i];
             if (nei == prev) continue;
-            if (g.nodes[nei].atomicNumber == 6) {
+            if (g.nodes[nei].atomicNumber == 6 && !forbiddenNodes.count(nei)) {
                 std::vector<int> stack = {nei};
                 std::map<int, int> dist;
                 dist[nei] = 1;
@@ -1229,7 +1229,7 @@ QString nameBranchGraph(const Graph &g, int rootIdx, int parentIdx, const std::v
                     int d = dist[u];
                     if (d > localMax) localMax = d;
                     for (int nxt : g.nodes[u].neighbors) {
-                        if (g.nodes[nxt].atomicNumber == 6 && dist.find(nxt) == dist.end() && nxt != prev) {
+                        if (g.nodes[nxt].atomicNumber == 6 && dist.find(nxt) == dist.end() && nxt != prev && !forbiddenNodes.count(nxt)) {
                             dist[nxt] = d + 1;
                             stack.push_back(nxt);
                         }
@@ -7393,6 +7393,10 @@ IupacResult IupacNamer::generateName(int mol) {
                     carbonGroup[i] = GroupType::SULFONIC_ACID;
                 } else if (carbonThiol.count(i)) {
                     carbonGroup[i] = GroupType::THIOL;
+                } else if (carbonBoronicAcid.count(i)) {
+                    carbonGroup[i] = GroupType::BORONIC_ACID;
+                } else if (carbonPhosphine.count(i)) {
+                    carbonGroup[i] = GroupType::PHOSPHINE;
                 }
             } else if (node.atomicNumber == 8) {
                 if (node.neighbors.size() == 2 && node.bondOrders[0] == 1 && node.bondOrders[1] == 1) {
@@ -7472,7 +7476,37 @@ IupacResult IupacNamer::generateName(int mol) {
                 // supported classes (ACID, AMIDE, NITRILE, ALDEHYDE, KETONE, ALCOHOL, THIOL,
                 // AMINE, THIAL, THIONE, SULFONIC_ACID, ESTER, ACYL_HALIDE) are gated by isChainParentWithRingSubstituentSupported so both
                 // call sites stay in lockstep; unsupported classes still reject cleanly.
-                if (isChainParentWithRingSubstituentSupported(combinedWinner)) {
+                // Phase 61: BORONIC_ACID and PHOSPHINE are handled separately here because they
+                // name the alkyl chain differently (alkyl + "boronic acid"/"phosphine" suffix).
+                if (combinedWinner == GroupType::BORONIC_ACID || combinedWinner == GroupType::PHOSPHINE) {
+                    int pOrBCarbon = -1;
+                    for (const auto &pair : carbonGroup) {
+                        if (pair.second == combinedWinner) {
+                            bool isOnOrExocyclic = ringNodeSet.count(pair.first) > 0;
+                            if (!isOnOrExocyclic) {
+                                for (int nei : g.nodes[pair.first].neighbors) {
+                                    if (ringNodeSet.count(nei) > 0) { isOnOrExocyclic = true; break; }
+                                }
+                            }
+                            if (!isOnOrExocyclic) {
+                                pOrBCarbon = pair.first;
+                                break;
+                            }
+                        }
+                    }
+                    if (pOrBCarbon != -1) {
+                        int pOrBNode = (combinedWinner == GroupType::PHOSPHINE) ? carbonPhosphine[pOrBCarbon] : carbonBoronicAcid[pOrBCarbon];
+                        QString alkylName = nameBranchGraph(g, pOrBCarbon, pOrBNode, allSSSRRings, ringNodeSet);
+                        if (alkylName.isEmpty()) {
+                            return {false, "", "Unsupported boronic acid/phosphine alkyl group."};
+                        }
+                        if (alkylName.startsWith("(") && alkylName.endsWith(")")) {
+                            alkylName = alkylName.mid(1, alkylName.length() - 2);
+                        }
+                        QString fullName = alkylName + ((combinedWinner == GroupType::PHOSPHINE) ? "phosphine" : "boronic acid");
+                        return {true, fullName, ""};
+                    }
+                } else if (isChainParentWithRingSubstituentSupported(combinedWinner)) {
                     QString chainName = nameChainParentWithRingSubstituent(mol, indigoToGraphIdx, g, ringNodeSet, allSSSRRings, carbonGroup, combinedWinner);
                     if (!chainName.isEmpty()) return {true, chainName, ""};
                 }
@@ -7991,6 +8025,10 @@ IupacResult IupacNamer::generateName(int mol) {
                 carbonGroup[i] = GroupType::SULFONIC_ACID;
             } else if (carbonThiol.count(i)) {
                 carbonGroup[i] = GroupType::THIOL;
+            } else if (carbonBoronicAcid.count(i)) {
+                carbonGroup[i] = GroupType::BORONIC_ACID;
+            } else if (carbonPhosphine.count(i)) {
+                carbonGroup[i] = GroupType::PHOSPHINE;
             }
         } else if (node.atomicNumber == 8) {
             if (node.neighbors.size() == 2 && node.bondOrders[0] == 1 && node.bondOrders[1] == 1) {
@@ -8070,7 +8108,37 @@ IupacResult IupacNamer::generateName(int mol) {
             // supported classes (ACID, AMIDE, NITRILE, ALDEHYDE, KETONE, ALCOHOL, THIOL,
             // AMINE, THIAL, THIONE, SULFONIC_ACID, ESTER, ACYL_HALIDE) are gated by isChainParentWithRingSubstituentSupported so both
             // call sites stay in lockstep; unsupported classes still reject cleanly.
-            if (isChainParentWithRingSubstituentSupported(combinedWinner)) {
+            // Phase 61: BORONIC_ACID and PHOSPHINE are handled separately here because they
+            // name the alkyl chain differently (alkyl + "boronic acid"/"phosphine" suffix).
+            if (combinedWinner == GroupType::BORONIC_ACID || combinedWinner == GroupType::PHOSPHINE) {
+                int pOrBCarbon = -1;
+                for (const auto &pair : carbonGroup) {
+                    if (pair.second == combinedWinner) {
+                        bool isOnOrExocyclic = ringNodeSet.count(pair.first) > 0;
+                        if (!isOnOrExocyclic) {
+                            for (int nei : g.nodes[pair.first].neighbors) {
+                                if (ringNodeSet.count(nei) > 0) { isOnOrExocyclic = true; break; }
+                            }
+                        }
+                        if (!isOnOrExocyclic) {
+                            pOrBCarbon = pair.first;
+                            break;
+                        }
+                    }
+                }
+                if (pOrBCarbon != -1) {
+                    int pOrBNode = (combinedWinner == GroupType::PHOSPHINE) ? carbonPhosphine[pOrBCarbon] : carbonBoronicAcid[pOrBCarbon];
+                    QString alkylName = nameBranchGraph(g, pOrBCarbon, pOrBNode, allSSSRRings, ringNodeSet);
+                    if (alkylName.isEmpty()) {
+                        return {false, "", "Unsupported boronic acid/phosphine alkyl group."};
+                    }
+                    if (alkylName.startsWith("(") && alkylName.endsWith(")")) {
+                        alkylName = alkylName.mid(1, alkylName.length() - 2);
+                    }
+                    QString fullName = alkylName + ((combinedWinner == GroupType::PHOSPHINE) ? "phosphine" : "boronic acid");
+                    return {true, fullName, ""};
+                }
+            } else if (isChainParentWithRingSubstituentSupported(combinedWinner)) {
                 QString chainName = nameChainParentWithRingSubstituent(mol, indigoToGraphIdx, g, ringNodeSet, allSSSRRings, carbonGroup, combinedWinner);
                 if (!chainName.isEmpty()) return {true, chainName, ""};
             }

@@ -1133,6 +1133,76 @@ int main() {
     }
 
     {
+        // Phase 61: P-44 ring-vs-chain for BORONIC_ACID - chain wins case
+        int m = indigoLoadMoleculeFromString("CC1CCCCC1CCCB(O)O");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "3-(2-methylcyclohexyl)propylboronic acid") {
+            std::cout << "[PASS] Phase 61 boronic acid chain-wins: CC1CCCCC1CCCB(O)O -> " << r.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Phase 61 boronic acid chain-wins -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Phase 61: P-44 ring-vs-chain for PHOSPHINE - chain wins case
+        int m = indigoLoadMoleculeFromString("CC1CCCCC1CCCP");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "3-(2-methylcyclohexyl)propylphosphine") {
+            std::cout << "[PASS] Phase 61 phosphine chain-wins: CC1CCCCC1CCCP -> " << r.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Phase 61 phosphine chain-wins -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Phase 61: regression - pure-acyclic boronic acid still works
+        int m = indigoLoadMoleculeFromString("CCB(O)O");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "ethylboronic acid") {
+            std::cout << "[PASS] Phase 61 regression: CCB(O)O -> " << r.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Phase 61 regression boronic acid -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Phase 61: regression - pure-acyclic phosphine still works
+        int m = indigoLoadMoleculeFromString("CCP");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "ethylphosphine") {
+            std::cout << "[PASS] Phase 61 regression: CCP -> " << r.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Phase 61 regression phosphine -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Phase 61: regression - existing Phase 52/54 acid chain-wins case unaffected
+        int m = indigoLoadMoleculeFromString("CC1CCCCC1CCC(=O)O");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "3-(2-methylcyclohexyl)propanoic acid") {
+            std::cout << "[PASS] Phase 61 regression: CC1CCCCC1CCC(=O)O -> " << r.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Phase 61 regression acid -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
         // Phase 25: Single-level branch stereocenter (Phase 4 converted test: CCCCC([C@H](Cl)C)CCC)
         int m1 = indigoLoadMoleculeFromString("CCCCC([C@H](Cl)C)CCC");
         int m2 = indigoLoadMoleculeFromString("CCCCC([C@@H](Cl)C)CCC");
