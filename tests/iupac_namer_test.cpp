@@ -197,6 +197,18 @@ int main() {
         // Phase 62: regression tests
         {"Oc1ccccc1S(=O)(=O)O", "2-hydroxybenzenesulfonic acid"}, // regression test for existing sulfonic acid
         {"CS(=O)(=O)O", "methanesulfonic acid"}, // regression test for existing sulfonic acid
+        // Phase 63: Sulfinic acid
+        {"CS(=O)O", "methanesulfinic acid"},
+        {"CCC(S(=O)O)C", "butane-2-sulfinic acid"},
+        {"c1ccccc1S(=O)O", "benzenesulfinic acid"},
+        {"C1CCCCC1S(=O)O", "cyclohexanesulfinic acid"},
+        {"CC1CCCCC1CCCS(=O)O", "3-(2-methylcyclohexyl)propane-1-sulfinic acid"},
+        {"Cc1ccccc1CCCS(=O)O", "3-(2-methylphenyl)propane-1-sulfinic acid"},
+        // Sulfoxide regression (should still work, not be misclassified as sulfinic acid)
+        {"CS(=O)C", "methylsulfinylmethane"},
+        // SULFINIC_ACID regression tests
+        {"Oc1ccccc1S(=O)O", "2-hydroxybenzenesulfinic acid"},
+        {"CS(=O)(=O)O", "methanesulfonic acid"}, // regression test for existing sulfonic acid
         {"CCP", "ethylphosphine"}, // regression test for existing phosphine
         {"CCB(O)O", "ethylboronic acid"}, // regression test for existing boronic acid
         {"CCS", "ethanethiol"},
