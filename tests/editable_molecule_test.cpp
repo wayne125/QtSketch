@@ -454,6 +454,39 @@ static void test_bondStereoSpike() {
     indigoReleaseSessionId(session);
 }
 
+static void test_atomQueryList() {
+    std::printf("--- Test 13: query atom list sidecar ---\n");
+    EditableMolecule m;
+    AtomId c1 = m.addAtom(QStringLiteral("C"), 0, 0);
+
+    CHECK(!m.hasAtomQueryList(c1), "fresh atom has no query list");
+
+    CHECK(m.setAtomQueryList(c1, QStringLiteral("C, N , O"), false), "setAtomQueryList succeeds");
+    CHECK(m.hasAtomQueryList(c1), "hasAtomQueryList true after setting");
+    CHECK(m.atomSymbol(c1) == QStringLiteral("L#"), "atomSymbol becomes the L# sentinel");
+    QList<int> nums = m.atomQueryListNumbers(c1);
+    CHECK(nums.size() == 3, "3 distinct elements parsed from the CSV (C, N, O)");
+    CHECK(nums.contains(6) && nums.contains(7) && nums.contains(8),
+          "parsed atomic numbers are exactly carbon/nitrogen/oxygen");
+    CHECK(!m.atomQueryListIsNotList(c1), "notList flag is false");
+
+    CHECK(m.setAtomQueryList(c1, QStringLiteral("F,Cl"), true), "re-setting the query list succeeds");
+    CHECK(m.atomQueryListIsNotList(c1), "notList flag is true after re-setting with notList=true");
+    CHECK(m.atomQueryListNumbers(c1).size() == 2, "2 elements after re-setting");
+
+    CHECK(m.clearAtomQueryList(c1, QStringLiteral("N")), "clearAtomQueryList succeeds");
+    CHECK(!m.hasAtomQueryList(c1), "hasAtomQueryList false after clearing");
+    CHECK(m.atomSymbol(c1) == QStringLiteral("N"), "atomSymbol reset to the fallback label");
+
+    CHECK(!m.setAtomQueryList(c1, QStringLiteral("NotAnElement,AlsoNot"), false),
+          "setAtomQueryList with zero valid labels fails cleanly (matches _makeAtomList returning null)");
+    CHECK(!m.hasAtomQueryList(c1), "no query list was set from all-invalid input");
+
+    AtomId invalid = 9999;
+    CHECK(!m.setAtomQueryList(invalid, QStringLiteral("C"), false), "invalid id: setAtomQueryList fails cleanly");
+    CHECK(!m.clearAtomQueryList(invalid, QStringLiteral("C")), "invalid id: clearAtomQueryList fails cleanly");
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -471,6 +504,7 @@ int main() {
     test_attachmentPointAccessors();
     test_sgroupMembershipSpike();
     test_bondStereoSpike();
+    test_atomQueryList();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);

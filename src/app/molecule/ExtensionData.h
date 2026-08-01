@@ -28,6 +28,7 @@ struct RxnArrow      { double x1 = 0, y1 = 0, x2 = 0, y2 = 0; };          // _st
 struct RxnPlus       { double x = 0, y = 0; };                            // _struct.rxnPluses
 struct MultitailArrow{ QList<double> headAndTails; };                     // _struct.multitailArrows (head x,y then tail x,y pairs)
 struct ImageRef      { double x = 0, y = 0, w = 0, h = 0; QByteArray pngData; }; // _struct.images
+struct AtomQueryList { QList<int> atomicNumbers; bool notList = false; };  // chem-core.js's atom.atomList sidecar (atom.label becomes the "L#" sentinel); NOT an Indigo concept -- plain molecule handles reject V2000 atom lists (sub-project 1 Test 6 finding)
 
 struct ExtensionData {
     QString name;                          // _struct.name (user-typed label)
@@ -39,6 +40,7 @@ struct ExtensionData {
     QHash<int, int> stereoFlags;           // fragmentIndex -> ABS/AND/OR flag (_struct.stereoFlags)
     QHash<int, int> atomAAM;               // AtomId -> atom-atom-mapping number
     QHash<int, bool> atomCheckWarnings;    // AtomId -> structure-check warning
+    QHash<int, AtomQueryList> atomQueryLists;  // AtomId -> query list (keyed directly by the already-stable AtomId, no separate counter needed)
 
     TextId nextTextId = 1;
     RxnArrowId nextRxnArrowId = 1;

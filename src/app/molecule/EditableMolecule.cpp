@@ -384,6 +384,78 @@ bool EditableMolecule::setAtomAttachmentOrder(AtomId id, int order) {
     return true;
 }
 
+bool EditableMolecule::setAtomQueryList(AtomId id, const QString& labelsCsv, bool notList) {
+    if (m_mol < 0 || !m_atomIdx.contains(id)) return false;
+    activateSession();
+
+    QList<int> atomicNumbers;
+    const QStringList labels = labelsCsv.split(QLatin1Char(','), Qt::SkipEmptyParts);
+    for (const QString& rawLabel : labels) {
+        const QString label = rawLabel.trimmed();
+        if (label.isEmpty()) continue;
+        // Element-symbol -> atomic-number lookup via a throwaway atom on the
+        // real molecule (removed immediately) rather than a ported periodic
+        // table -- Indigo already knows what a valid element symbol is.
+        int probe = indigoAddAtom(m_mol, label.toUtf8().constData());
+        if (probe < 0) continue;  // not a valid element symbol; skip, matching _makeAtomList's filter
+        int number = indigoAtomicNumber(probe);
+        indigoRemove(probe);
+        indigoFree(probe);
+        if (number > 0 && !atomicNumbers.contains(number)) atomicNumbers.append(number);
+    }
+    if (atomicNumbers.isEmpty()) return false;  // matches _makeAtomList returning null on zero valid labels
+
+    // Cannot go through the public setAtomLabel() here: "L#" is itself a
+    // pseudo-atom label (probe-confirmed: indigoResetAtom(a, "L#") makes
+    // indigoIsPseudoatom(a) true), and setAtomLabel deliberately REJECTS any
+    // reset that produces a pseudoatom (see its own comment) to reject
+    // garbage/R-group input for ordinary label changes. "L#" is this class's
+    // one legitimate internal pseudo-label use (the query-list sentinel), so
+    // it's applied directly via indigoResetAtom, bypassing that rejection.
+    int a = indigoGetAtom(m_mol, m_atomIdx.value(id));
+    if (a < 0) return false;
+    int oldCharge = 0; indigoGetCharge(a, &oldCharge);
+    int oldIsotope = indigoIsotope(a); if (oldIsotope < 0) oldIsotope = 0;
+    int oldRadical = 0; indigoGetRadical(a, &oldRadical);
+    int oldValence = -1; bool hadValence = indigoGetExplicitValence(a, &oldValence) != 0;
+    if (indigoResetAtom(a, "L#") < 0) {
+        m_lastError = QString::fromUtf8(indigoGetLastError());
+        indigoFree(a);
+        return false;
+    }
+    indigoSetCharge(a, oldCharge);
+    indigoSetIsotope(a, oldIsotope);
+    indigoSetRadical(a, oldRadical);
+    if (hadValence) indigoSetExplicitValence(a, oldValence);
+    indigoFree(a);
+
+    AtomQueryList list;
+    list.atomicNumbers = atomicNumbers;
+    list.notList = notList;
+    m_ext.atomQueryLists.insert(id, list);
+    return true;
+}
+
+bool EditableMolecule::clearAtomQueryList(AtomId id, const QString& fallbackLabel) {
+    if (m_mol < 0 || !m_atomIdx.contains(id)) return false;
+    if (!m_ext.atomQueryLists.contains(id)) return false;
+    if (!setAtomLabel(id, fallbackLabel)) return false;
+    m_ext.atomQueryLists.remove(id);
+    return true;
+}
+
+bool EditableMolecule::hasAtomQueryList(AtomId id) const {
+    return m_ext.atomQueryLists.contains(id);
+}
+
+QList<int> EditableMolecule::atomQueryListNumbers(AtomId id) const {
+    return m_ext.atomQueryLists.value(id).atomicNumbers;
+}
+
+bool EditableMolecule::atomQueryListIsNotList(AtomId id) const {
+    return m_ext.atomQueryLists.value(id).notList;
+}
+
 int EditableMolecule::bondOrder(BondId id) const {
     if (m_mol < 0 || !m_bondIdx.contains(id)) return -1;
     activateSession();

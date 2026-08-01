@@ -113,6 +113,11 @@ public:
     bool setBondOrderValue(BondId id, int order);
     int atomAttachmentOrder(AtomId id) const;
     bool setAtomAttachmentOrder(AtomId id, int order);
+    bool setAtomQueryList(AtomId id, const QString& labelsCsv, bool notList);
+    bool clearAtomQueryList(AtomId id, const QString& fallbackLabel);
+    bool hasAtomQueryList(AtomId id) const;
+    QList<int> atomQueryListNumbers(AtomId id) const;
+    bool atomQueryListIsNotList(AtomId id) const;
     bool atomPos(AtomId id, double& x, double& y) const;
     int bondOrder(BondId id) const;
     QList<AtomId> atomIds() const;
