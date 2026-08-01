@@ -5,6 +5,7 @@
 // one property the design depends on (indigoClone preserves indices).
 #include <cstdio>
 #include <cstring>
+#include "app/molecule/EditableMolecule.h"
 #include "indigo.h"
 
 static int g_pass = 0, g_fail = 0;
@@ -67,11 +68,34 @@ static void spike_idBehavior() {
     indigoFree(mol);
 }
 
+static void test_constructionAndMolfile() {
+    std::printf("--- Test 1: construction + molfile round-trip ---\n");
+
+    EditableMolecule empty;
+    CHECK(empty.isValid(), "empty molecule constructs valid");
+    CHECK(empty.atomCount() == 0, "empty molecule has 0 atoms");
+
+    // indigoLoadMoleculeFromString auto-detects SMILES.
+    EditableMolecule ethanol(QStringLiteral("CCO"));
+    CHECK(ethanol.isValid(), "ethanol constructs valid");
+    CHECK(ethanol.atomCount() == 3, "ethanol has 3 heavy atoms");
+    CHECK(ethanol.bondCount() == 2, "ethanol has 2 bonds");
+
+    StringResult mf = ethanol.toMolfile();
+    CHECK(mf.success, "toMolfile succeeds");
+    CHECK(mf.value.contains(QStringLiteral("M  END")), "molfile has M  END");
+
+    EditableMolecule bad(QStringLiteral("not_a_molecule((("));
+    CHECK(!bad.isValid(), "garbage input yields invalid molecule");
+    CHECK(!bad.lastError().isEmpty(), "invalid molecule carries an error string");
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
 
     spike_idBehavior();
+    test_constructionAndMolfile();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);

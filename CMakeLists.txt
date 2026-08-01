@@ -234,16 +234,22 @@ else()
 endif()
 add_test(NAME fused_ring_direction_detector_test COMMAND fused_ring_direction_detector_test)
 
-qt_add_executable(editable_molecule_test tests/editable_molecule_test.cpp)
-target_include_directories(editable_molecule_test PRIVATE
+add_library(molecule_model STATIC
+    src/app/molecule/EditableMolecule.h
+    src/app/molecule/EditableMolecule.cpp
+)
+target_include_directories(molecule_model PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/src/app
     ${CMAKE_CURRENT_SOURCE_DIR}/indigo/api/c/indigo
 )
 if (MSVC)
-    target_link_libraries(editable_molecule_test PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.lib)
+    target_link_libraries(molecule_model PUBLIC Qt6::Core ${INDIGO_LIB_DIR}/indigo.lib)
 else()
-    target_link_libraries(editable_molecule_test PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.dll)
+    target_link_libraries(molecule_model PUBLIC Qt6::Core ${INDIGO_LIB_DIR}/indigo.dll)
 endif()
+
+qt_add_executable(editable_molecule_test tests/editable_molecule_test.cpp)
+target_link_libraries(editable_molecule_test PRIVATE molecule_model)
 add_test(NAME editable_molecule_test COMMAND editable_molecule_test)
 
