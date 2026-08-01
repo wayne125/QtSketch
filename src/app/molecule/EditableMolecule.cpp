@@ -227,32 +227,37 @@ void EditableMolecule::setName(const QString& n) { m_ext.name = n; }
 QString EditableMolecule::name() const { return m_ext.name; }
 
 int EditableMolecule::addTextAnnotation(double x, double y, const QString& content) {
-    m_ext.texts.append({x, y, content});
-    return m_ext.texts.size() - 1;
+    TextId id = m_ext.nextTextId++;
+    m_ext.texts.insert(id, {x, y, content});
+    return id;
 }
 int EditableMolecule::textAnnotationCount() const { return m_ext.texts.size(); }
 
 int EditableMolecule::addRxnArrow(double x1, double y1, double x2, double y2) {
-    m_ext.rxnArrows.append({x1, y1, x2, y2});
-    return m_ext.rxnArrows.size() - 1;
+    RxnArrowId id = m_ext.nextRxnArrowId++;
+    m_ext.rxnArrows.insert(id, {x1, y1, x2, y2});
+    return id;
 }
 int EditableMolecule::rxnArrowCount() const { return m_ext.rxnArrows.size(); }
 
 int EditableMolecule::addRxnPlus(double x, double y) {
-    m_ext.rxnPluses.append({x, y});
-    return m_ext.rxnPluses.size() - 1;
+    RxnPlusId id = m_ext.nextRxnPlusId++;
+    m_ext.rxnPluses.insert(id, {x, y});
+    return id;
 }
 int EditableMolecule::rxnPlusCount() const { return m_ext.rxnPluses.size(); }
 
 int EditableMolecule::addMultitailArrow(const QList<double>& headAndTails) {
-    m_ext.multitailArrows.append({headAndTails});
-    return m_ext.multitailArrows.size() - 1;
+    MultitailArrowId id = m_ext.nextMultitailArrowId++;
+    m_ext.multitailArrows.insert(id, {headAndTails});
+    return id;
 }
 int EditableMolecule::multitailArrowCount() const { return m_ext.multitailArrows.size(); }
 
 int EditableMolecule::addImage(double x, double y, double w, double h, const QByteArray& pngData) {
-    m_ext.images.append({x, y, w, h, pngData});
-    return m_ext.images.size() - 1;
+    ImageId id = m_ext.nextImageId++;
+    m_ext.images.insert(id, {x, y, w, h, pngData});
+    return id;
 }
 int EditableMolecule::imageCount() const { return m_ext.images.size(); }
 
