@@ -256,3 +256,31 @@ int EditableMolecule::atomAAM(AtomId id) const { return m_ext.atomAAM.value(id, 
 void EditableMolecule::setAtomCheckWarning(AtomId id, bool warn) { m_ext.atomCheckWarnings.insert(id, warn); }
 bool EditableMolecule::atomCheckWarning(AtomId id) const { return m_ext.atomCheckWarnings.value(id, false); }
 
+int EditableMolecule::addDataSGroup(const QList<AtomId>& atoms, const QString& description, const QString& data) {
+    if (m_mol < 0) return -1;
+    activateSession();
+    QList<int> idx;
+    for (AtomId id : atoms) {
+        if (!m_atomIdx.contains(id)) return -1;
+        idx.append(m_atomIdx.value(id));
+    }
+    int sg = indigoAddDataSGroup(m_mol, static_cast<int>(idx.size()), idx.data(), 0, nullptr,
+                                 description.toUtf8().constData(), data.toUtf8().constData());
+    if (sg < 0) { m_lastError = QString::fromUtf8(indigoGetLastError()); return -1; }
+    int sgIdx = indigoIndex(sg);
+    indigoFree(sg);
+    return sgIdx;
+}
+
+int EditableMolecule::dataSGroupCount() const {
+    if (m_mol < 0) return 0;
+    activateSession();
+    int n = 0;
+    int iter = indigoIterateDataSGroups(m_mol);
+    if (iter >= 0) {
+        int h;
+        while ((h = indigoNext(iter)) > 0) { ++n; indigoFree(h); }
+        indigoFree(iter);
+    }
+    return n;
+}

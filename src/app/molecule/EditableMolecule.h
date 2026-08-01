@@ -80,6 +80,9 @@ public:
     void setAtomCheckWarning(AtomId id, bool warn);
     bool atomCheckWarning(AtomId id) const;
 
+    int addDataSGroup(const QList<AtomId>& atoms, const QString& description, const QString& data);
+    int dataSGroupCount() const;
+
 private:
     // One Indigo session per instance, held for the object's lifetime
     // (unlike IndigoService's alloc/release-per-call one-shot pattern).

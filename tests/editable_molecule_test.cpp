@@ -163,6 +163,19 @@ static void test_extensionData() {
     CHECK(!m.atomCheckWarning(ids[0]), "unset check warning is false");
 }
 
+static void test_sgroupPassthrough() {
+    std::printf("--- Test 4: data sgroup passthrough ---\n");
+    EditableMolecule m(QStringLiteral("CCO"));
+    QList<AtomId> ids = m.atomIds();
+
+    int sg = m.addDataSGroup({ids[0], ids[1]}, QStringLiteral("MYFIELD"), QStringLiteral("hello"));
+    CHECK(sg >= 0, "data sgroup added");
+    CHECK(m.dataSGroupCount() == 1, "data sgroup counted");
+
+    StringResult mf = m.toMolfile();
+    CHECK(mf.success && mf.value.contains(QStringLiteral("MYFIELD")), "sgroup survives molfile serialization");
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -171,6 +184,7 @@ int main() {
     test_constructionAndMolfile();
     test_atomBondCrud();
     test_extensionData();
+    test_sgroupPassthrough();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
