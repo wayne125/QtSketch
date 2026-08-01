@@ -65,6 +65,33 @@ public:
     void selectAll();
     SelectionState& selection();
 
+    AtomId addAtom(const QString& symbol, double x, double y);
+    BondId addBond(AtomId a, AtomId b, int order);
+    void deleteAtom(AtomId id);   // plain-atom-and-incident-bonds case only; see the
+                                  // sgroup-membership spike documented in EditableMolecule.h
+                                  // for why the sgroup-aware branch is deferred
+    void deleteBond(BondId id);
+
+    void changeAtomLabel(AtomId id, const QString& newLabel);
+    void setAtomMapping(AtomId id, int mappingNumber);
+    void changeAtomCharge(AtomId id, int newCharge);
+    void setAttachmentPoint(AtomId id, int order);
+    void changeAtomIsotope(AtomId id, int isotope);
+    void changeAtomRadical(AtomId id, int radical);
+    void changeAtomValence(AtomId id, int valence);
+
+    struct AtomProperties { QString label; int charge; int isotope; int radical; int explicitValence; };
+    AtomProperties atomProperties(AtomId id) const;
+
+    void changeBondOrder(BondId id, int newOrder);
+
+    void setAtomQueryList(AtomId id, const QString& labelsCsv, bool notList);
+    // KNOWN LIMITATION: undo after clearAtomQueryList does NOT restore the
+    // original query list (EditableMolecule has no set-list-from-numbers
+    // entry point bypassing the CSV parse) -- it only re-clears on redo.
+    // Revisit if a later sub-project needs this restored exactly.
+    void clearAtomQueryList(AtomId id, const QString& fallbackLabel);
+
 private:
     EditableMolecule m_molecule;
     std::vector<EditCommand> m_history;

@@ -466,6 +466,21 @@ int EditableMolecule::bondOrder(BondId id) const {
     return order;
 }
 
+bool EditableMolecule::bondEndpoints(BondId id, AtomId& a, AtomId& b) const {
+    if (m_mol < 0 || !m_bondIdx.contains(id)) return false;
+    activateSession();
+    int bond = indigoGetBond(m_mol, m_bondIdx.value(id));
+    if (bond < 0) return false;
+    int src = indigoSource(bond), dst = indigoDestination(bond);
+    int srcIdx = indigoIndex(src), dstIdx = indigoIndex(dst);
+    indigoFree(src); indigoFree(dst); indigoFree(bond);
+    for (auto it = m_atomIdx.constBegin(); it != m_atomIdx.constEnd(); ++it) {
+        if (it.value() == srcIdx) a = it.key();
+        if (it.value() == dstIdx) b = it.key();
+    }
+    return true;
+}
+
 QList<AtomId> EditableMolecule::atomIds() const {
     auto k = m_atomIdx.keys();
     std::sort(k.begin(), k.end());

@@ -120,6 +120,7 @@ public:
     bool atomQueryListIsNotList(AtomId id) const;
     bool atomPos(AtomId id, double& x, double& y) const;
     int bondOrder(BondId id) const;
+    bool bondEndpoints(BondId id, AtomId& a, AtomId& b) const;
     QList<AtomId> atomIds() const;
     QList<BondId> bondIds() const;
 

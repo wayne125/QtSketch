@@ -4,6 +4,7 @@
 #include "app/molecule/SelectionState.h"
 #include "app/molecule/EditCommand.h"
 #include "app/molecule/DocumentState.h"
+#include "indigo.h"
 
 static int g_pass = 0, g_fail = 0;
 #define CHECK(cond, name) do { \
@@ -120,6 +121,113 @@ static void test_documentStateHistoryCap() {
     CHECK(undoCount == 50, "at most 50 undos possible after 51 commands (history capped)");
 }
 
+static void test_documentStateEditingOperations() {
+    std::printf("--- Test 5: DocumentState editing operations ---\n");
+    DocumentState doc;
+
+    // addAtom / addBond / deleteBond / deleteAtom, with undo/redo.
+    AtomId a1 = doc.addAtom(QStringLiteral("C"), 0, 0);
+    AtomId a2 = doc.addAtom(QStringLiteral("O"), 1, 0);
+    CHECK(doc.molecule().atomCount() == 2, "2 atoms added via DocumentState::addAtom");
+    BondId b1 = doc.addBond(a1, a2, 1);
+    CHECK(doc.molecule().bondCount() == 1, "bond added via DocumentState::addBond");
+
+    doc.deleteBond(b1);
+    CHECK(doc.molecule().bondCount() == 0, "deleteBond removes the bond");
+    doc.undo();
+    CHECK(doc.molecule().bondCount() == 1, "undo restores the deleted bond");
+
+    doc.deleteAtom(a2);
+    CHECK(doc.molecule().atomCount() == 1, "deleteAtom removes the atom");
+    CHECK(doc.molecule().bondCount() == 0, "deleteAtom also removes its incident bond");
+    doc.undo();
+    CHECK(doc.molecule().atomCount() == 2, "undo restores the deleted atom");
+    CHECK(doc.molecule().bondCount() == 1, "undo restores the incident bond too");
+
+    // deleteAtom's undo recreates the atom under a NEW id (documented
+    // limitation -- EditableMolecule has no restore-at-exact-id primitive),
+    // so `a2`'s original value is now stale. Re-derive the current id of
+    // the recreated oxygen atom for the rest of this test.
+    for (AtomId id : doc.molecule().atomIds()) {
+        if (id != a1) a2 = id;
+    }
+
+    // changeAtomLabel: guarded (no-op when unchanged).
+    doc.changeAtomLabel(a1, QStringLiteral("N"));
+    CHECK(doc.molecule().atomSymbol(a1) == QStringLiteral("N"), "changeAtomLabel changes the symbol");
+    bool canUndoBeforeNoOpLabel = doc.canUndo();
+    doc.changeAtomLabel(a1, QStringLiteral("N")); // same label: must no-op, no new history entry
+    CHECK(doc.canUndo() == canUndoBeforeNoOpLabel, "changeAtomLabel to the SAME label pushes no history entry");
+    doc.undo();
+    CHECK(doc.molecule().atomSymbol(a1) == QStringLiteral("C"), "undo restores the original label");
+
+    // changeAtomCharge: guarded.
+    doc.changeAtomCharge(a1, 1);
+    CHECK(doc.molecule().atomCharge(a1) == 1, "changeAtomCharge sets the charge");
+    doc.undo();
+    CHECK(doc.molecule().atomCharge(a1) == 0, "undo restores the original charge (0)");
+
+    // changeAtomIsotope: NOT guarded (real JS always executes, even for an
+    // unchanged value). Proof: call it twice with the SAME value, then undo
+    // twice -- if it were guarded, the second call would push no history
+    // entry and a single undo would already reach isotope 0.
+    doc.changeAtomIsotope(a1, 5);
+    CHECK(doc.molecule().atomIsotope(a1) == 5, "changeAtomIsotope sets isotope to 5");
+    doc.changeAtomIsotope(a1, 5); // same value again -- must still push a history entry
+    doc.undo();
+    CHECK(doc.molecule().atomIsotope(a1) == 5,
+          "first undo only undoes the second (no-op-value) call -- isotope still 5, proving it WAS pushed");
+    doc.undo();
+    CHECK(doc.molecule().atomIsotope(a1) == 0, "second undo undoes the real change, back to 0");
+
+    // changeAtomRadical / changeAtomValence: real end-to-end undo of an actual change.
+    doc.changeAtomRadical(a1, INDIGO_SINGLET);
+    CHECK(doc.molecule().atomRadical(a1) == INDIGO_SINGLET, "changeAtomRadical sets the radical");
+    doc.undo();
+    CHECK(doc.molecule().atomRadical(a1) == 0, "undo restores radical to 0");
+
+    doc.changeAtomValence(a1, 4);
+    CHECK(doc.molecule().atomExplicitValence(a1) == 4, "changeAtomValence sets explicit valence");
+    doc.undo();
+    CHECK(doc.molecule().atomExplicitValence(a1) == -1, "undo restores valence to unset (-1)");
+
+    // setAttachmentPoint: NOT guarded.
+    doc.setAttachmentPoint(a1, 1);
+    CHECK(doc.molecule().atomAttachmentOrder(a1) == 1, "setAttachmentPoint sets order 1");
+    doc.undo();
+    CHECK(doc.molecule().atomAttachmentOrder(a1) == 0, "undo restores attachment order to 0 (none)");
+
+    // setAtomMapping: guarded.
+    doc.setAtomMapping(a1, 5);
+    CHECK(doc.molecule().atomAAM(a1) == 5, "setAtomMapping sets the AAM number");
+    doc.undo();
+    CHECK(doc.molecule().atomAAM(a1) == 0, "undo restores AAM to 0");
+
+    // atomProperties: read-only, not a command.
+    doc.changeAtomCharge(a1, 2);
+    DocumentState::AtomProperties props = doc.atomProperties(a1);
+    CHECK(props.label == QStringLiteral("C"), "atomProperties reports the current label");
+    CHECK(props.charge == 2, "atomProperties reports the current charge");
+
+    // changeBondOrder: guarded. Reuses the bond deleteAtom's undo already
+    // restored between a1 and (the recreated) a2 -- adding another bond on
+    // top of it would fail, since Indigo rejects a duplicate parallel edge
+    // between the same atom pair (probe-confirmed: "already have edge
+    // between vertices").
+    BondId liveBond = doc.molecule().bondIds().first();
+    doc.changeBondOrder(liveBond, 3);
+    CHECK(doc.molecule().bondOrder(liveBond) == 3, "changeBondOrder sets the new order");
+    doc.undo();
+    CHECK(doc.molecule().bondOrder(liveBond) == 1, "undo restores the original order");
+
+    // setAtomQueryList / clearAtomQueryList.
+    doc.setAtomQueryList(a2, QStringLiteral("C,N"), false);
+    CHECK(doc.molecule().hasAtomQueryList(a2), "setAtomQueryList sets the query list");
+    doc.undo();
+    CHECK(!doc.molecule().hasAtomQueryList(a2), "undo removes the query list");
+    CHECK(doc.molecule().atomSymbol(a2) == QStringLiteral("O"), "undo restores the original label too");
+}
+
 static void test_documentStateSelection() {
     std::printf("--- Test 4: DocumentState selection ---\n");
     DocumentState doc;
@@ -202,6 +310,7 @@ int main() {
     test_documentStateUndoRedo();
     test_documentStateHistoryCap();
     test_documentStateSelection();
+    test_documentStateEditingOperations();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

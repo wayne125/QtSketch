@@ -1,5 +1,7 @@
 // src/app/molecule/DocumentState.cpp
 #include "DocumentState.h"
+#include <memory>
+#include <algorithm>
 
 DocumentState::DocumentState(const QString& initialStructure)
     : m_molecule(initialStructure) {
@@ -104,4 +106,199 @@ void DocumentState::selectAll() {
 
 SelectionState& DocumentState::selection() {
     return m_selection;
+}
+
+AtomId DocumentState::addAtom(const QString& symbol, double x, double y) {
+    auto idBox = std::make_shared<AtomId>(-1);
+    EditableMolecule& mol = m_molecule;
+    EditCommand cmd;
+    cmd.execute = [&mol, idBox, symbol, x, y]() { *idBox = mol.addAtom(symbol, x, y); };
+    cmd.invert = [&mol, idBox]() { mol.removeAtom(*idBox); };
+    executeCommand(std::move(cmd));
+    return *idBox;
+}
+
+BondId DocumentState::addBond(AtomId a, AtomId b, int order) {
+    auto idBox = std::make_shared<BondId>(-1);
+    EditableMolecule& mol = m_molecule;
+    EditCommand cmd;
+    cmd.execute = [&mol, idBox, a, b, order]() { *idBox = mol.addBond(a, b, order); };
+    cmd.invert = [&mol, idBox]() { mol.removeBond(*idBox); };
+    executeCommand(std::move(cmd));
+    return *idBox;
+}
+
+void DocumentState::deleteAtom(AtomId id) {
+    // Plain-atom-and-incident-bonds case only in this sub-project (see the
+    // sgroup-membership spike, Task 4). EditableMolecule::removeAtom already
+    // cascades incident-bond removal internally (sub-project 1) for the
+    // forward direction; the inverse must recreate the atom AND every bond
+    // that existed on it, so incident-bond data is captured BEFORE removal
+    // via bondEndpoints (Step 4) -- mirroring 20-edit.js's deleteAtomById
+    // collecting bondsData first.
+    EditableMolecule& mol = m_molecule;
+    if (!mol.atomIds().contains(id)) return;
+
+    QString label = mol.atomSymbol(id);
+    double x = 0, y = 0;
+    mol.atomPos(id, x, y);
+
+    struct SavedBond { AtomId other; int order; bool idIsSource; };
+    QList<SavedBond> savedBonds;
+    for (BondId bid : mol.bondIds()) {
+        AtomId ea = -1, eb = -1;
+        if (!mol.bondEndpoints(bid, ea, eb)) continue;
+        if (ea == id) savedBonds.append({eb, mol.bondOrder(bid), true});
+        else if (eb == id) savedBonds.append({ea, mol.bondOrder(bid), false});
+    }
+
+    EditCommand cmd;
+    cmd.execute = [&mol, id]() { mol.removeAtom(id); };
+    cmd.invert = [&mol, label, x, y, savedBonds]() {
+        // newId is a fresh local created fresh on every invocation of this
+        // closure -- NOT a captured variable, so no dangling-reference risk.
+        AtomId newId = mol.addAtom(label, x, y);
+        for (const SavedBond& sb : savedBonds) {
+            if (sb.idIsSource) mol.addBond(newId, sb.other, sb.order);
+            else mol.addBond(sb.other, newId, sb.order);
+        }
+    };
+    executeCommand(std::move(cmd));
+}
+
+void DocumentState::deleteBond(BondId id) {
+    EditableMolecule& mol = m_molecule;
+    AtomId a = -1, b = -1;
+    if (!mol.bondEndpoints(id, a, b)) return;
+    int order = mol.bondOrder(id);
+
+    EditCommand cmd;
+    cmd.execute = [&mol, id]() { mol.removeBond(id); };
+    cmd.invert = [&mol, a, b, order]() { mol.addBond(a, b, order); };
+    executeCommand(std::move(cmd));
+}
+
+void DocumentState::changeAtomLabel(AtomId id, const QString& newLabel) {
+    EditableMolecule& mol = m_molecule;
+    QString oldLabel = mol.atomSymbol(id);
+    if (oldLabel.isEmpty() || oldLabel == newLabel) return; // guarded, matches real JS
+    EditCommand cmd;
+    cmd.execute = [&mol, id, newLabel]() { mol.setAtomLabel(id, newLabel); };
+    cmd.invert = [&mol, id, oldLabel]() { mol.setAtomLabel(id, oldLabel); };
+    executeCommand(std::move(cmd));
+}
+
+void DocumentState::setAtomMapping(AtomId id, int mappingNumber) {
+    EditableMolecule& mol = m_molecule;
+    int oldAam = mol.atomAAM(id);
+    if (oldAam == mappingNumber) return; // guarded, matches real JS
+    EditCommand cmd;
+    cmd.execute = [&mol, id, mappingNumber]() { mol.setAtomAAM(id, mappingNumber); };
+    cmd.invert = [&mol, id, oldAam]() { mol.setAtomAAM(id, oldAam); };
+    executeCommand(std::move(cmd));
+}
+
+void DocumentState::changeAtomCharge(AtomId id, int newCharge) {
+    newCharge = std::max(-3, std::min(3, newCharge));
+    EditableMolecule& mol = m_molecule;
+    int oldCharge = mol.atomCharge(id);
+    if (oldCharge == newCharge) return; // guarded, matches real JS
+    EditCommand cmd;
+    cmd.execute = [&mol, id, newCharge]() { mol.setAtomCharge(id, newCharge); };
+    cmd.invert = [&mol, id, oldCharge]() { mol.setAtomCharge(id, oldCharge); };
+    executeCommand(std::move(cmd));
+}
+
+void DocumentState::setAttachmentPoint(AtomId id, int order) {
+    // NOT guarded -- real 20-edit.js's setAttachmentPoint always executes.
+    EditableMolecule& mol = m_molecule;
+    int oldOrder = mol.atomAttachmentOrder(id);
+    EditCommand cmd;
+    cmd.execute = [&mol, id, order]() { mol.setAtomAttachmentOrder(id, order); };
+    cmd.invert = [&mol, id, oldOrder]() { mol.setAtomAttachmentOrder(id, oldOrder); };
+    executeCommand(std::move(cmd));
+}
+
+void DocumentState::changeAtomIsotope(AtomId id, int isotope) {
+    // NOT guarded -- real 20-edit.js's changeAtomIsotope always executes.
+    isotope = std::max(0, isotope);
+    EditableMolecule& mol = m_molecule;
+    int oldIsotope = mol.atomIsotope(id);
+    EditCommand cmd;
+    cmd.execute = [&mol, id, isotope]() { mol.setAtomIsotope(id, isotope); };
+    cmd.invert = [&mol, id, oldIsotope]() { mol.setAtomIsotope(id, oldIsotope); };
+    executeCommand(std::move(cmd));
+}
+
+void DocumentState::changeAtomRadical(AtomId id, int radical) {
+    // NOT guarded -- real 20-edit.js's changeAtomRadical always executes.
+    // No clamp: unlike charge (-3..3, a real formal-charge range) or isotope
+    // (>=0), radical is Indigo's own enum (INDIGO_SINGLET=101/DOUBLET=102/
+    // TRIPLET=103, plus 0 for none) -- an [0,3] clamp here (MDL molfile RAD
+    // code range, a different, incompatible encoding) would silently
+    // truncate every real radical value before it ever reaches
+    // EditableMolecule::setAtomRadical, which passes the value straight to
+    // indigoSetRadical unmodified (Task 1).
+    EditableMolecule& mol = m_molecule;
+    int oldRadical = mol.atomRadical(id);
+    EditCommand cmd;
+    cmd.execute = [&mol, id, radical]() { mol.setAtomRadical(id, radical); };
+    cmd.invert = [&mol, id, oldRadical]() { mol.setAtomRadical(id, oldRadical); };
+    executeCommand(std::move(cmd));
+}
+
+void DocumentState::changeAtomValence(AtomId id, int valence) {
+    // NOT guarded -- real 20-edit.js's changeAtomValence always executes.
+    EditableMolecule& mol = m_molecule;
+    int oldValence = mol.atomExplicitValence(id);
+    EditCommand cmd;
+    cmd.execute = [&mol, id, valence]() { mol.setAtomExplicitValence(id, valence); };
+    cmd.invert = [&mol, id, oldValence]() { mol.setAtomExplicitValence(id, oldValence); };
+    executeCommand(std::move(cmd));
+}
+
+DocumentState::AtomProperties DocumentState::atomProperties(AtomId id) const {
+    AtomProperties props;
+    props.label = m_molecule.atomSymbol(id);
+    props.charge = m_molecule.atomCharge(id);
+    props.isotope = m_molecule.atomIsotope(id);
+    props.radical = m_molecule.atomRadical(id);
+    props.explicitValence = m_molecule.atomExplicitValence(id);
+    return props;
+}
+
+void DocumentState::changeBondOrder(BondId id, int newOrder) {
+    EditableMolecule& mol = m_molecule;
+    int oldOrder = mol.bondOrder(id);
+    if (oldOrder == newOrder) return; // guarded, matches real JS's changeBondType
+    EditCommand cmd;
+    cmd.execute = [&mol, id, newOrder]() { mol.setBondOrderValue(id, newOrder); };
+    cmd.invert = [&mol, id, oldOrder]() { mol.setBondOrderValue(id, oldOrder); };
+    executeCommand(std::move(cmd));
+}
+
+void DocumentState::setAtomQueryList(AtomId id, const QString& labelsCsv, bool notList) {
+    EditableMolecule& mol = m_molecule;
+    QString oldLabel = mol.atomSymbol(id);
+    EditCommand cmd;
+    cmd.execute = [&mol, id, labelsCsv, notList]() { mol.setAtomQueryList(id, labelsCsv, notList); };
+    cmd.invert = [&mol, id, oldLabel]() { mol.clearAtomQueryList(id, oldLabel); };
+    executeCommand(std::move(cmd));
+}
+
+// KNOWN LIMITATION: undo after clearAtomQueryList does NOT restore the
+// original query list -- EditableMolecule has no "set query list directly
+// from a saved numbers list" entry point bypassing the CSV/symbol parse
+// (setAtomQueryList's only entry point takes a CSV string), so a correct
+// invert would need that entry point added first. Out of scope for 3a;
+// clearAtomQueryList's invert is documented as a no-op below rather than a
+// silently-wrong "looks like it restores something" implementation. Revisit
+// if a later sub-project needs this restored exactly.
+void DocumentState::clearAtomQueryList(AtomId id, const QString& fallbackLabel) {
+    EditableMolecule& mol = m_molecule;
+    if (!mol.hasAtomQueryList(id)) return;
+    EditCommand cmd;
+    cmd.execute = [&mol, id, fallbackLabel]() { mol.clearAtomQueryList(id, fallbackLabel); };
+    cmd.invert = []() { /* documented no-op -- see KNOWN LIMITATION comment above */ };
+    executeCommand(std::move(cmd));
 }
