@@ -487,6 +487,68 @@ static void test_atomQueryList() {
     CHECK(!m.clearAtomQueryList(invalid, QStringLiteral("C")), "invalid id: clearAtomQueryList fails cleanly");
 }
 
+static void test_bondStereoInvertSpike() {
+    std::printf("--- Test 14: indigoInvertStereo-on-a-bond spike (3b design question) ---\n");
+    unsigned long long session = indigoAllocSessionId();
+    indigoSetSessionId(session);
+
+    // A molfile with an explicit wedge bond (stereo code 1) -- SMILES cannot
+    // carry wedge/dash, and sub-project 3a's Test 12 proved a coordinate-less
+    // molecule never gets stereobonds marked, so this spike MUST start from a
+    // molfile that already has both 2D coordinates and an explicit wedge flag.
+    // Bond block column 4 is the stereo code: "1" = wedge up.
+    const char* molfile =
+        "\n  spike\n\n"
+        "  4  3  0  0  0  0  0  0  0  0999 V2000\n"
+        "    0.0000    0.0000    0.0000 C   0  0\n"
+        "    1.0000    0.0000    0.0000 N   0  0\n"
+        "    0.0000    1.0000    0.0000 O   0  0\n"
+        "   -1.0000    0.0000    0.0000 F   0  0\n"
+        "  1  2  1  1  0  0  0\n"
+        "  1  3  1  0  0  0  0\n"
+        "  1  4  1  0  0  0  0\n"
+        "M  END\n";
+
+    int mol = indigoLoadMoleculeFromString(molfile);
+    CHECK(mol >= 0, "spike: molfile with an explicit wedge bond loads");
+    if (mol < 0) {
+        std::printf("[INFO] spike: load error: %s\n", indigoGetLastError());
+        indigoReleaseSessionId(session);
+        return;
+    }
+
+    int bond0 = indigoGetBond(mol, 0);
+    CHECK(bond0 >= 0, "spike: got bond 0 handle");
+    int stereoBefore = indigoBondStereo(bond0);
+    std::printf("[INFO] spike: indigoBondStereo(bond0) as loaded = %d\n", stereoBefore);
+
+    // Q1: does indigoInvertStereo accept a BOND handle at all?
+    int invert1 = indigoInvertStereo(bond0);
+    std::printf("[INFO] spike: indigoInvertStereo(bond0) returned %d%s\n",
+                invert1, invert1 < 0 ? " (REJECTED)" : "");
+    if (invert1 < 0) std::printf("[INFO] spike: invert error: %s\n", indigoGetLastError());
+
+    // Q2: did the reported stereo actually change, and to what?
+    indigoFree(bond0);
+    bond0 = indigoGetBond(mol, 0);
+    int stereoAfter1 = indigoBondStereo(bond0);
+    std::printf("[INFO] spike: indigoBondStereo(bond0) after 1 invert = %d\n", stereoAfter1);
+
+    // Q3: is it its own inverse? (the EditCommand's invert() calls it again)
+    indigoInvertStereo(bond0);
+    indigoFree(bond0);
+    bond0 = indigoGetBond(mol, 0);
+    int stereoAfter2 = indigoBondStereo(bond0);
+    std::printf("[INFO] spike: indigoBondStereo(bond0) after 2 inverts = %d (round-trip %s)\n",
+                stereoAfter2, stereoAfter2 == stereoBefore ? "OK" : "BROKEN");
+
+    CHECK(true, "spike: bond-stereo invert investigation completed (see [INFO] lines above)");
+
+    indigoFree(bond0);
+    indigoFree(mol);
+    indigoReleaseSessionId(session);
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -505,6 +567,7 @@ int main() {
     test_sgroupMembershipSpike();
     test_bondStereoSpike();
     test_atomQueryList();
+    test_bondStereoInvertSpike();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);

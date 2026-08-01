@@ -62,6 +62,34 @@
 // changeBondOrder in this sub-project; it stays an explicit, documented gap
 // until serialization (sub-project 5) or a dedicated investigation with a
 // coordinate-bearing molecule finds a working mechanism.
+//
+// Bond stereo INVERT (sub-project 3b design question): spike findings
+// (tests/editable_molecule_test.cpp Test 14, a V2000 molfile WITH real 2D
+// coordinates AND an explicit wedge flag in bond-block column 4 -- the setup
+// 3a's Test 12 lacked):
+//   "indigoBondStereo(bond0) as loaded = 5"
+//   "indigoInvertStereo(bond0) returned -1 (REJECTED)"
+//   "invert error: core: indigoInvertStereo: not a stereobond"
+//   "indigoBondStereo(bond0) after 1 invert = 5"
+//   "indigoBondStereo(bond0) after 2 inverts = 5 (round-trip OK)"
+// Two consequences, both load-bearing:
+// (1) A wedge bond IS readable -- unlike 3a's coordinate-less SMILES case,
+//     indigoBondStereo reports a nonzero value once the molecule has real 2D
+//     coordinates and an explicit molfile wedge flag. But the value is
+//     Indigo's OWN enum, not the MDL molfile code: INDIGO_UP = 5 and
+//     INDIGO_DOWN = 6 (indigo.h:439-440), whereas MDL/chem-core.js use 1 for
+//     wedge-up and 6 for hash-down. The two encodings collide on 6 and
+//     disagree on up, so any future code bridging them MUST translate rather
+//     than pass the number through.
+// (2) indigoInvertStereo REJECTS a wedge bond outright ("not a stereobond" --
+//     it covers cis/trans stereobonds and stereocenters, not wedge/dash
+//     direction). Combined with indigoBondStereo being read-only and 3a's
+//     Test 12 ruling out the stereocenter-inference path, there is NO way to
+//     change a bond's wedge/dash through the Indigo C API as vendored here.
+// Therefore: DocumentState's flip transforms apply the coordinate mirror ONLY.
+// chem-core.js's transformSelection also swaps wedge stereo (1 <-> 6) for
+// bonds fully inside the selection so the depiction stays chemically
+// consistent; that swap is an explicit, documented gap, not an oversight.
 
 #include <QString>
 #include <QHash>
