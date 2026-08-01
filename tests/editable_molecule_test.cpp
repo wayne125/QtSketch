@@ -362,6 +362,46 @@ static void test_attachmentPointAccessors() {
     CHECK(m.atomAttachmentOrder(invalid) == 0, "invalid id: atomAttachmentOrder returns sentinel 0");
 }
 
+static void test_sgroupMembershipSpike() {
+    std::printf("--- Test 11: sgroup-atom-membership spike (3a design question) ---\n");
+    unsigned long long session = indigoAllocSessionId();
+    indigoSetSessionId(session);
+
+    int mol = indigoLoadMoleculeFromString("CCO");
+    CHECK(mol >= 0, "spike: load CCO for sgroup spike");
+
+    int atomIndices[2] = { 0, 1 };
+    int sg = indigoAddDataSGroup(mol, 2, atomIndices, 0, nullptr, "F", "d");
+    CHECK(sg >= 0, "spike: data sgroup created on the raw handle");
+
+    // Does indigoIterateAtoms work when called on the SGROUP handle itself
+    // (as opposed to the molecule handle)? indigo.h's own doc comment says
+    // "for all atoms of the given molecule" -- test empirically anyway.
+    int sgAtomIter = indigoIterateAtoms(sg);
+    int sgAtomCount = 0;
+    if (sgAtomIter >= 0) {
+        int h;
+        while ((h = indigoNext(sgAtomIter)) > 0) { ++sgAtomCount; indigoFree(h); }
+        indigoFree(sgAtomIter);
+    }
+    std::printf("[INFO] spike: indigoIterateAtoms(sgroupHandle) iterator=%s, atom count=%d\n",
+                sgAtomIter >= 0 ? "valid" : "invalid(-1)", sgAtomCount);
+
+    // Does the generic indigoRemove(item) delete a WHOLE sgroup (its atoms and
+    // bonds too), or just detach the sgroup record leaving atoms untouched, or
+    // fail outright? Order matters: check counts before/after.
+    int countBefore = indigoCountAtoms(mol);
+    int removeResult = indigoRemove(sg);
+    int countAfter = indigoCountAtoms(mol);
+    std::printf("[INFO] spike: indigoRemove(sgroupHandle) returned %d; atom count before=%d after=%d\n",
+                removeResult, countBefore, countAfter);
+
+    CHECK(true, "spike: sgroup-membership investigation completed (see [INFO] lines above)");
+
+    indigoFree(mol);
+    indigoReleaseSessionId(session);
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -377,6 +417,7 @@ int main() {
     test_atomAttributeAccessors();
     test_atomLabelAndBondOrder();
     test_attachmentPointAccessors();
+    test_sgroupMembershipSpike();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);

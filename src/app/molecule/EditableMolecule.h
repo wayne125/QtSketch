@@ -25,6 +25,24 @@
 // atom lists cannot live on the plain Indigo handle this class wraps -- they
 // must join ExtensionData (or a separate query-molecule-backed type) in a
 // later sub-project when query-feature editing is designed.
+//
+// SGroup-atom-membership (sub-project 3a design question): spike findings
+// (tests/editable_molecule_test.cpp Test 11, alanine-free CCO + a 2-atom data
+// sgroup): "indigoIterateAtoms(sgroupHandle) iterator=valid, atom count=2" --
+// calling indigoIterateAtoms on the SGROUP handle itself (not the molecule
+// handle) DOES work and enumerates exactly that sgroup's member atoms, so
+// sgroup-atom membership IS queryable through this path, contrary to this
+// header's original open question. "indigoRemove(sgroupHandle) returned 1;
+// atom count before=3 after=3" -- removing a sgroup handle succeeds and only
+// detaches the sgroup record; the molecule's atom count is unchanged, i.e.
+// indigoRemove does NOT cascade-delete a sgroup's member atoms. Consequence
+// for Task 7's deleteAtom: deleting a sgroup-member atom does not need to
+// special-case sgroup cleanup for atom survival (removing the atom directly
+// via the existing removeAtom path is safe and does not corrupt the sgroup
+// record's atom list on its own), but this class does NOT yet update a
+// sgroup's atom-index list when one of its member atoms is removed via
+// removeAtom -- that bookkeeping gap is a documented, explicit limitation
+// carried into a later sub-project, not attempted here.
 
 #include <QString>
 #include <QHash>
