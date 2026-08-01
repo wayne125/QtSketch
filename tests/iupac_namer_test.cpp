@@ -78,6 +78,11 @@ int main() {
         {"CC(=O)C", "propan-2-one"},
         {"CCO", "ethanol"},
         {"CCN", "ethanamine"},
+        // PHASE 67: IMINE (P-62.3, unsubstituted C=NH only)
+        {"CC=N", "ethanimine"},
+        {"CCC(C)=N", "butan-2-imine"},
+        // N-substituted imine rejection (out of scope this phase)
+        {"CC=NC", "", true, "N-substituted imines, oximes, hydrazones, and amidines are not supported in this phase"},
         // PHASE 64: HYDROPEROXIDE (peroxol)
         {"CCOO", "ethaneperoxol"},
         {"CCC(C)(C)OO", "2-methylbutane-2-peroxol"},

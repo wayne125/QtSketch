@@ -75,6 +75,7 @@ enum class GroupType {
     TELLUROL,      // Tellurol (Te analogue of alcohol)
     HYDROPEROXIDE, // Hydroperoxide
     AMINE,         // Amine
+    IMINE,         // Imine (C=NH)
     PHOSPHONIC_ACID, // Phosphonic acid
     PHOSPHINE      // Phosphine
 };
@@ -1493,6 +1494,13 @@ static QString principalGroupSuffix(GroupType winningType, int k, int pCount,
             for (int l : principalLocants) lStrs.append(QString::number(l));
             sfx = QString("-%1-%2amine").arg(lStrs.join(","), multiPrefix(pCount));
         }
+    } else if (winningType == GroupType::IMINE) {
+        if (pCount == 1) sfx = (k <= 2) ? QStringLiteral("imine") : QString("-%1-imine").arg(principalLocants[0]);
+        else {
+            QStringList lStrs;
+            for (int l : principalLocants) lStrs.append(QString::number(l));
+            sfx = QString("-%1-%2imine").arg(lStrs.join(","), multiPrefix(pCount));
+        }
     } else if (winningType == GroupType::HYDROPEROXIDE) {
         if (pCount == 1) sfx = (k <= 2) ? QStringLiteral("peroxol") : QString("-%1-peroxol").arg(principalLocants[0]);
         else {
@@ -1543,6 +1551,8 @@ static bool isPrincipalGroupHeteroNeighbor(GroupType winningType, const Graph &g
         if (nz == 8 && order == 1) return true;                         // near -O- of -O-O-H
     } else if (winningType == GroupType::AMINE) {
         if (nz == 7 && order == 1) return true;                         // -N<
+    } else if (winningType == GroupType::IMINE) {
+        if (nz == 7 && order == 2) return true;                         // =NH
     } else if (winningType == GroupType::SULFONIC_ACID) {
         if (nz == 16 && order == 1) return true;                        // -SO3H
     } else if (winningType == GroupType::SULFINIC_ACID) {
@@ -1940,7 +1950,7 @@ QString nameAcyclicChainParentWithSubstituents(
 static bool isChainParentWithRingSubstituentSupported(GroupType gt) {
     return gt == GroupType::ACID || gt == GroupType::AMIDE || gt == GroupType::NITRILE ||
            gt == GroupType::ALDEHYDE || gt == GroupType::KETONE ||
-           gt == GroupType::ALCOHOL || gt == GroupType::THIOL || gt == GroupType::SELENOL || gt == GroupType::TELLUROL || gt == GroupType::HYDROPEROXIDE || gt == GroupType::AMINE || gt == GroupType::THIAL || gt == GroupType::THIONE || gt == GroupType::SULFONIC_ACID ||
+           gt == GroupType::ALCOHOL || gt == GroupType::THIOL || gt == GroupType::SELENOL || gt == GroupType::TELLUROL || gt == GroupType::HYDROPEROXIDE || gt == GroupType::AMINE || gt == GroupType::IMINE || gt == GroupType::THIAL || gt == GroupType::THIONE || gt == GroupType::SULFONIC_ACID ||
            gt == GroupType::SULFINIC_ACID || gt == GroupType::PHOSPHONIC_ACID || gt == GroupType::ESTER || gt == GroupType::ACYL_HALIDE;
 }
 
@@ -3250,12 +3260,13 @@ IupacResult IupacNamer::generateName(int mol) {
         std::map<int, int> esterOxygen;
         std::set<int> etherOxygens;
         std::map<int, int> carbonHydroperoxide; // carbonNode -> near-oxygen node
+        std::map<int, int> carbonImine; // carbonNode -> nitrogenNode
 
         for (size_t i = 0; i < g.nodes.size(); ++i) {
             const GraphNode &node = g.nodes[i];
             if (node.atomicNumber == 6) {
                 if (isocyanateCarbons.count(static_cast<int>(i))) continue;
-                std::vector<int> doubleO, singleO, singleN, tripleN, halogens, doubleS;
+                std::vector<int> doubleO, singleO, singleN, tripleN, halogens, doubleS, doubleN;
 
                 for (size_t j = 0; j < node.neighbors.size(); ++j) {
                     int nei = node.neighbors[j];
@@ -3264,6 +3275,7 @@ IupacResult IupacNamer::generateName(int mol) {
 
                     if (nZ == 8 && order == 2) doubleO.push_back(nei);
                   else if (nZ == 16 && order == 2) doubleS.push_back(nei);
+                  else if (nZ == 7 && order == 2) doubleN.push_back(nei);
                     else if (nZ == 8 && order == 1) singleO.push_back(nei);
                     else if (nZ == 7 && order == 1) {
                         bool isNitroIsoOrAzide = false;
@@ -3274,7 +3286,6 @@ IupacResult IupacNamer::generateName(int mol) {
                     }
                     else if (nZ == 7 && order == 3) tripleN.push_back(nei);
                     else if ((nZ == 9 || nZ == 17 || nZ == 35 || nZ == 53) && order == 1) halogens.push_back(nei);
-                    else if (nZ == 16 && order == 2) doubleS.push_back(nei);
                 }
 
                 if (!doubleO.empty()) {
@@ -3485,6 +3496,14 @@ IupacResult IupacNamer::generateName(int mol) {
                     carbonGroup[i] = GroupType::THIAL;
                 } else if (!doubleS.empty()) {
                     carbonGroup[i] = GroupType::THIONE;
+                } else if (!doubleN.empty()) {
+                    int nNode = doubleN[0];
+                    if (doubleN.size() == 1 && (g.nodes[nNode].totalH >= 1 || g.nodes[nNode].neighbors.size() == 1)) {
+                        carbonImine[i] = nNode;
+                        carbonGroup[i] = GroupType::IMINE;
+                    } else {
+                        return {false, "", "N-substituted imines, oximes, hydrazones, and amidines are not supported in this phase; only the unsubstituted C=NH imine is supported."};
+                    }
                 } else if (!singleO.empty()) {
                     bool foundGroup = false;
                     for (int sO : singleO) {
@@ -3573,7 +3592,7 @@ IupacResult IupacNamer::generateName(int mol) {
         GroupType winningType = GroupType::NONE;
         static const GroupType seniorityOrder[] = {
             GroupType::SULFONIC_ACID, GroupType::SULFINIC_ACID, GroupType::ACID, GroupType::PHOSPHONIC_ACID, GroupType::BORONIC_ACID, GroupType::ESTER, GroupType::ACYL_HALIDE, GroupType::AMIDE, GroupType::NITRILE,
-            GroupType::ALDEHYDE, GroupType::THIAL, GroupType::KETONE, GroupType::THIONE, GroupType::ALCOHOL, GroupType::THIOL, GroupType::SELENOL, GroupType::TELLUROL, GroupType::HYDROPEROXIDE, GroupType::AMINE, GroupType::PHOSPHINE
+            GroupType::ALDEHYDE, GroupType::THIAL, GroupType::KETONE, GroupType::THIONE, GroupType::ALCOHOL, GroupType::THIOL, GroupType::SELENOL, GroupType::TELLUROL, GroupType::HYDROPEROXIDE, GroupType::AMINE, GroupType::IMINE, GroupType::PHOSPHINE
         };
 
         for (GroupType gt : seniorityOrder) {
@@ -3911,6 +3930,7 @@ IupacResult IupacNamer::generateName(int mol) {
                 if (carbonSelenol.count(cNode) && carbonSelenol[cNode] == nei) continue;
                 if (carbonTellurol.count(cNode) && carbonTellurol[cNode] == nei) continue;
                 if (carbonHydroperoxide.count(cNode) && carbonHydroperoxide[cNode] == nei) continue;
+                if (carbonImine.count(cNode) && carbonImine[cNode] == nei) continue;
                 if (carbonNitro.count(cNode) && std::find(carbonNitro[cNode].begin(), carbonNitro[cNode].end(), nei) != carbonNitro[cNode].end()) continue;
                 if (carbonIsocyanate.count(cNode) && std::find(carbonIsocyanate[cNode].begin(), carbonIsocyanate[cNode].end(), nei) != carbonIsocyanate[cNode].end()) continue;
                 if (carbonAzide.count(cNode) && std::find(carbonAzide[cNode].begin(), carbonAzide[cNode].end(), nei) != carbonAzide[cNode].end()) continue;
@@ -4067,6 +4087,9 @@ IupacResult IupacNamer::generateName(int mol) {
                         } else {
                             locantSubstituents[locant].append("amino");
                         }
+                    }
+                    if (carbonImine.count(cNode) && winningType != GroupType::IMINE) {
+                        locantSubstituents[locant].append("imino");
                     }
                 } else if (z == 6) {
                     if (allRingSubstituentNodes.count(nei)) {
@@ -7510,11 +7533,12 @@ IupacResult IupacNamer::generateName(int mol) {
         std::map<int, int> esterOxygen;
         std::set<int> etherOxygens;
         std::map<int, int> carbonHydroperoxide; // carbonNode -> near-oxygen node
+        std::map<int, int> carbonImine; // carbonNode -> nitrogenNode
 
         for (size_t i = 0; i < g.nodes.size(); ++i) {
             const GraphNode &node = g.nodes[i];
             if (node.atomicNumber == 6) {
-                std::vector<int> doubleO, singleO, singleN, tripleN, halogens, doubleS;
+                std::vector<int> doubleO, singleO, singleN, tripleN, halogens, doubleS, doubleN;
 
                 for (size_t j = 0; j < node.neighbors.size(); ++j) {
                     int nei = node.neighbors[j];
@@ -7523,6 +7547,7 @@ IupacResult IupacNamer::generateName(int mol) {
 
                     if (nZ == 8 && order == 2) doubleO.push_back(nei);
                   else if (nZ == 16 && order == 2) doubleS.push_back(nei);
+                  else if (nZ == 7 && order == 2) doubleN.push_back(nei);
                     else if (nZ == 8 && order == 1) singleO.push_back(nei);
                     else if (nZ == 7 && order == 1) {
                         bool isNitroIsoOrAzide = false;
@@ -7579,6 +7604,14 @@ IupacResult IupacNamer::generateName(int mol) {
                   carbonGroup[i] = GroupType::THIAL;
               } else if (!doubleS.empty()) {
                   carbonGroup[i] = GroupType::THIONE;
+              } else if (!doubleN.empty()) {
+                  int nNode = doubleN[0];
+                  if (doubleN.size() == 1 && (g.nodes[nNode].totalH >= 1 || g.nodes[nNode].neighbors.size() == 1)) {
+                      carbonImine[i] = nNode;
+                      carbonGroup[i] = GroupType::IMINE;
+                  } else {
+                      return {false, "", "N-substituted imines, oximes, hydrazones, and amidines are not supported in this phase; only the unsubstituted C=NH imine is supported."};
+                  }
                 } else if (!singleO.empty()) {
                     bool foundGroup = false;
                     for (int sO : singleO) {
@@ -7665,8 +7698,9 @@ IupacResult IupacNamer::generateName(int mol) {
                 case GroupType::TELLUROL: return 17;
                 case GroupType::HYDROPEROXIDE: return 18;
                 case GroupType::AMINE: return 19;
-                case GroupType::PHOSPHINE: return 20;
-                default: return 21;
+                case GroupType::IMINE: return 20;
+                case GroupType::PHOSPHINE: return 21;
+                default: return 22;
             }
         };
 
@@ -7810,7 +7844,7 @@ IupacResult IupacNamer::generateName(int mol) {
                     if (ringNodeSet.count(nei)) continue;
 
                     if (winningType != GroupType::NONE) {
-                        if ((winningType == GroupType::ALCOHOL || winningType == GroupType::KETONE || winningType == GroupType::AMINE || winningType == GroupType::SULFONIC_ACID || winningType == GroupType::SULFINIC_ACID || winningType == GroupType::THIOL || winningType == GroupType::SELENOL || winningType == GroupType::TELLUROL || winningType == GroupType::HYDROPEROXIDE || winningType == GroupType::PHOSPHONIC_ACID) && isPrincipalRNode) {
+                        if ((winningType == GroupType::ALCOHOL || winningType == GroupType::KETONE || winningType == GroupType::AMINE || winningType == GroupType::IMINE || winningType == GroupType::SULFONIC_ACID || winningType == GroupType::SULFINIC_ACID || winningType == GroupType::THIOL || winningType == GroupType::SELENOL || winningType == GroupType::TELLUROL || winningType == GroupType::HYDROPEROXIDE || winningType == GroupType::PHOSPHONIC_ACID) && isPrincipalRNode) {
                             int nz = g.nodes[nei].atomicNumber;
                             bool isAzide = (carbonAzide.count(rNode) && std::find(carbonAzide[rNode].begin(), carbonAzide[rNode].end(), nei) != carbonAzide[rNode].end());
                             if (!isAzide && (nz == 7 || nz == 8 || nz == 16 || nz == 34 || nz == 52 || nz == 15)) continue;
@@ -7856,6 +7890,8 @@ IupacResult IupacNamer::generateName(int mol) {
                             subName = "azido";
                         } else if (!isAzide && order == 1 && winningType != GroupType::AMINE) {
                             subName = "amino";
+                        } else if (!isAzide && order == 2 && carbonImine.count(rNode) && carbonImine[rNode] == nei && winningType != GroupType::IMINE) {
+                            subName = "imino";
                         }
                     } else if (nz == 16) {
                         if (carbonSulfonicAcid.count(rNode) && carbonSulfonicAcid[rNode] == nei && winningType != GroupType::SULFONIC_ACID) {
@@ -8079,6 +8115,7 @@ IupacResult IupacNamer::generateName(int mol) {
                 else if (winningType == GroupType::HYDROPEROXIDE) sfx = (pCount == 1) ? "peroxol" : "diperoxol";
                 else if (winningType == GroupType::KETONE) sfx = (pCount == 1) ? "one" : "dione";
                 else if (winningType == GroupType::AMINE) sfx = (pCount == 1) ? "amine" : "diamine";
+                else if (winningType == GroupType::IMINE) sfx = (pCount == 1) ? "imine" : "diimine";
 
                 if (pCount == 1) {
                     QString root = (!sfx.isEmpty() && isVowel(sfx[0])) ? "naphthalen" : "naphthalene";
@@ -8228,11 +8265,12 @@ IupacResult IupacNamer::generateName(int mol) {
     std::map<int, int> esterOxygen;
     std::set<int> etherOxygens;
     std::map<int, int> carbonHydroperoxide; // carbonNode -> near-oxygen node
+    std::map<int, int> carbonImine; // carbonNode -> nitrogenNode
 
     for (size_t i = 0; i < g.nodes.size(); ++i) {
         const GraphNode &node = g.nodes[i];
         if (node.atomicNumber == 6) {
-            std::vector<int> doubleO, singleO, singleN, tripleN, halogens, doubleS;
+            std::vector<int> doubleO, singleO, singleN, tripleN, halogens, doubleS, doubleN;
 
             for (size_t j = 0; j < node.neighbors.size(); ++j) {
                 int nei = node.neighbors[j];
@@ -8241,6 +8279,7 @@ IupacResult IupacNamer::generateName(int mol) {
 
                 if (nZ == 8 && order == 2) doubleO.push_back(nei);
                   else if (nZ == 16 && order == 2) doubleS.push_back(nei);
+                  else if (nZ == 7 && order == 2) doubleN.push_back(nei);
                 else if (nZ == 8 && order == 1) singleO.push_back(nei);
                 else if (nZ == 7 && order == 1) {
                     bool isNitroIsoOrAzide = false;
@@ -8297,6 +8336,14 @@ IupacResult IupacNamer::generateName(int mol) {
                   carbonGroup[i] = GroupType::THIAL;
               } else if (!doubleS.empty()) {
                   carbonGroup[i] = GroupType::THIONE;
+              } else if (!doubleN.empty()) {
+                  int nNode = doubleN[0];
+                  if (doubleN.size() == 1 && (g.nodes[nNode].totalH >= 1 || g.nodes[nNode].neighbors.size() == 1)) {
+                      carbonImine[i] = nNode;
+                      carbonGroup[i] = GroupType::IMINE;
+                  } else {
+                      return {false, "", "N-substituted imines, oximes, hydrazones, and amidines are not supported in this phase; only the unsubstituted C=NH imine is supported."};
+                  }
             } else if (!singleO.empty()) {
                 bool foundGroup = false;
                 for (int sO : singleO) {
@@ -8385,8 +8432,9 @@ IupacResult IupacNamer::generateName(int mol) {
             case GroupType::TELLUROL: return 18;
             case GroupType::HYDROPEROXIDE: return 19;
             case GroupType::AMINE: return 20;
-            case GroupType::PHOSPHINE: return 21;
-            default: return 22;
+            case GroupType::IMINE: return 21;
+            case GroupType::PHOSPHINE: return 22;
+            default: return 23;
         }
     };
 
@@ -8676,7 +8724,7 @@ IupacResult IupacNamer::generateName(int mol) {
                 if (ringNodeSet.count(nei)) continue;
 
                 if (winningType != GroupType::NONE) {
-                    if ((winningType == GroupType::ALCOHOL || winningType == GroupType::KETONE || winningType == GroupType::AMINE || winningType == GroupType::SULFONIC_ACID || winningType == GroupType::SULFINIC_ACID || winningType == GroupType::THIOL || winningType == GroupType::SELENOL || winningType == GroupType::TELLUROL || winningType == GroupType::HYDROPEROXIDE || winningType == GroupType::PHOSPHONIC_ACID) && isPrincipalRNode) {
+                    if ((winningType == GroupType::ALCOHOL || winningType == GroupType::KETONE || winningType == GroupType::AMINE || winningType == GroupType::IMINE || winningType == GroupType::SULFONIC_ACID || winningType == GroupType::SULFINIC_ACID || winningType == GroupType::THIOL || winningType == GroupType::SELENOL || winningType == GroupType::TELLUROL || winningType == GroupType::HYDROPEROXIDE || winningType == GroupType::PHOSPHONIC_ACID) && isPrincipalRNode) {
                         int nz = g.nodes[nei].atomicNumber;
                         bool isAzide = (carbonAzide.count(rNode) && std::find(carbonAzide[rNode].begin(), carbonAzide[rNode].end(), nei) != carbonAzide[rNode].end());
                         if (!isAzide && (nz == 7 || nz == 8 || nz == 16 || nz == 34 || nz == 52 || nz == 15)) continue;
@@ -8722,6 +8770,8 @@ IupacResult IupacNamer::generateName(int mol) {
                         subName = "azido";
                     } else if (!isAzide && order == 1 && winningType != GroupType::AMINE) {
                         subName = "amino";
+                    } else if (!isAzide && order == 2 && carbonImine.count(rNode) && carbonImine[rNode] == nei && winningType != GroupType::IMINE) {
+                        subName = "imino";
                     }
                 } else if (nz == 16) {
                     if (carbonSulfonicAcid.count(rNode) && carbonSulfonicAcid[rNode] == nei && winningType != GroupType::SULFONIC_ACID) {
@@ -9082,6 +9132,7 @@ IupacResult IupacNamer::generateName(int mol) {
             else if (winningType == GroupType::HYDROPEROXIDE) sfx = (pCount == 1) ? "peroxol" : "diperoxol";
             else if (winningType == GroupType::KETONE) sfx = (pCount == 1) ? "one" : "dione";
             else if (winningType == GroupType::AMINE) sfx = (pCount == 1) ? "amine" : "diamine";
+            else if (winningType == GroupType::IMINE) sfx = (pCount == 1) ? "imine" : "diimine";
 
             if (pCount == 1) {
                 QString stem = rootStr;
