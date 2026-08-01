@@ -231,6 +231,11 @@ int main() {
         {"C[Se]C", "methylselanylmethane"},
         {"C[Te]C", "methyltellanylmethane"},
         {"CC[Se]CC", "ethylselanylethane"},
+        // PHASE 68: seleninyl/selenonyl and tellurinyl/telluronyl substituent prefixes (P-35.3)
+        {"C[Se](=O)C", "methylseleninylmethane"},
+        {"C[Se](=O)(=O)C", "methylselenonylmethane"},
+        {"C[Te](=O)C", "methyltellurinylmethane"},
+        {"C[Te](=O)(=O)C", "methyltelluronylmethane"},
         // PHASE 65: SELENOL and TELLUROL (chalcogen analogues of THIOL, P-63.1.5)
         {"CC[SeH]", "ethaneselenol"},
         {"C[SeH]", "methaneselenol"},
