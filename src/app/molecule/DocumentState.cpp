@@ -623,3 +623,64 @@ void DocumentState::commitRotate() {
     m_rotateCenterX = 0.0;
     m_rotateCenterY = 0.0;
 }
+
+void DocumentState::scaleSelectionLive(double factor, double anchorX, double anchorY) {
+    if (m_scaleOrigPos.isEmpty()) {
+        QList<TransformPoint> pts = snapshotSelectionPoints();
+        if (pts.size() < 2) return;   // matches the real pts.length < 2 guard
+        m_scaleOrigPos = pts;
+        m_scaleAnchorX = anchorX;
+        m_scaleAnchorY = anchorY;
+        m_scaleTotalFactor = 1.0;
+    }
+    // Guard against a handle dragged through its own anchor (collapse/invert).
+    const double candidateFactor = std::max(0.05, factor);
+    const double ax = m_scaleAnchorX, ay = m_scaleAnchorY;
+
+    // Page-boundary hard clamp: freeze before any point would leave the page,
+    // the same "check the candidate, refuse if out of bounds" approach rotate
+    // uses.
+    for (const TransformPoint& op : m_scaleOrigPos) {
+        const double nx = ax + (op.x - ax) * candidateFactor;
+        const double ny = ay + (op.y - ay) * candidateFactor;
+        if (nx < kPageMinX || nx > kPageMaxX || ny < kPageMinY || ny > kPageMaxY) return;
+    }
+
+    m_scaleTotalFactor = candidateFactor;
+    for (const TransformPoint& p : m_scaleOrigPos)
+        writeTransformPoint(m_molecule, p, ax + (p.x - ax) * candidateFactor, ay + (p.y - ay) * candidateFactor);
+    m_dirty = true;
+}
+
+void DocumentState::commitScale() {
+    if (!m_scaleOrigPos.isEmpty() && m_scaleTotalFactor != 1.0) {
+        QList<TransformPoint> origPos = m_scaleOrigPos;
+        const double totalFactor = m_scaleTotalFactor;
+        const double ax = m_scaleAnchorX, ay = m_scaleAnchorY;
+        EditableMolecule& mol = m_molecule;
+        auto isFirst = std::make_shared<bool>(true);
+
+        // applyFactor(1) writes every point back to its snapshot position --
+        // exactly how the real commitScale implements its undo.
+        auto applyFactor = [&mol, origPos, ax, ay](double factor) {
+            for (const TransformPoint& p : origPos)
+                writeTransformPoint(mol, p, ax + (p.x - ax) * factor, ay + (p.y - ay) * factor);
+        };
+
+        EditCommand cmd;
+        cmd.execute = [isFirst, applyFactor, totalFactor]() {
+            if (*isFirst) { *isFirst = false; return; }
+            applyFactor(totalFactor);
+        };
+        cmd.invert = [isFirst, applyFactor]() {
+            *isFirst = false;
+            applyFactor(1.0);
+        };
+        executeCommand(std::move(cmd));
+    }
+    m_scaleOrigPos.clear();
+    m_scaleAnchorX = 0.0;
+    m_scaleAnchorY = 0.0;
+    m_scaleTotalFactor = 1.0;
+}
+

@@ -505,6 +505,73 @@ static void test_liveDragRotate() {
     }
 }
 
+static void test_liveDragScale() {
+    std::printf("--- Test 10: live-drag scale gesture ---\n");
+    // Seeded via doc.molecule() so history starts empty.
+    DocumentState doc;
+    AtomId a1 = doc.molecule().addAtom(QStringLiteral("C"), 0, 0);
+    AtomId a2 = doc.molecule().addAtom(QStringLiteral("C"), 2, 0);
+    doc.selectAtom(a1);
+    doc.addAtomToSelection(a2);
+
+    doc.scaleSelectionLive(2.0, 0.0, 0.0);   // anchor at the origin
+    double x = 0, y = 0;
+    CHECK(doc.molecule().atomPos(a1, x, y) && x == 0 && y == 0, "the anchor point itself stays fixed");
+    CHECK(doc.molecule().atomPos(a2, x, y) && x == 4 && y == 0, "scale 2x doubles the distance from the anchor");
+    CHECK(!doc.canUndo(), "live scale calls push NO history entry");
+
+    // factor is ABSOLUTE, not incremental: 3.0 means 3x from gesture start,
+    // NOT 2x then 3x (= 6x). This is the real code's semantics.
+    doc.scaleSelectionLive(3.0, 0.0, 0.0);
+    CHECK(doc.molecule().atomPos(a2, x, y) && x == 6 && y == 0,
+          "a second call with factor 3 gives 3x from ORIGINAL, not 6x");
+
+    doc.commitScale();
+    CHECK(doc.canUndo(), "commitScale pushes exactly one history entry");
+    doc.undo();
+    CHECK(doc.molecule().atomPos(a2, x, y) && x == 2 && y == 0, "undo restores the exact original position");
+    doc.redo();
+    CHECK(doc.molecule().atomPos(a2, x, y) && x == 6 && y == 0, "redo re-applies the scale");
+
+    // Factor is floored at 0.05 to stop a handle dragged through its anchor.
+    {
+        DocumentState d2;
+        AtomId b1 = d2.molecule().addAtom(QStringLiteral("C"), 0, 0);
+        AtomId b2 = d2.molecule().addAtom(QStringLiteral("C"), 10, 0);
+        d2.selectAtom(b1);
+        d2.addAtomToSelection(b2);
+        d2.scaleSelectionLive(-5.0, 0.0, 0.0);   // negative would invert/collapse
+        double bx = 0, by = 0;
+        CHECK(d2.molecule().atomPos(b2, bx, by) && std::fabs(bx - 0.5) < 1e-9,
+              "negative factor is floored to 0.05 (10 * 0.05 = 0.5)");
+    }
+
+    // Fewer than 2 snapshot points: no-op.
+    {
+        DocumentState d3;
+        AtomId c1 = d3.molecule().addAtom(QStringLiteral("C"), 5, 5);
+        d3.selectAtom(c1);
+        d3.scaleSelectionLive(2.0, 0.0, 0.0);
+        double cx = 0, cy = 0;
+        CHECK(d3.molecule().atomPos(c1, cx, cy) && cx == 5 && cy == 5, "single point: scale is a no-op");
+        d3.commitScale();
+        CHECK(!d3.canUndo(), "commitScale after a no-op gesture pushes nothing");
+    }
+
+    // Page-boundary clamp: a scale that would push a point off-page freezes.
+    {
+        DocumentState d4;
+        AtomId e1 = d4.molecule().addAtom(QStringLiteral("C"), 0, 0);
+        AtomId e2 = d4.molecule().addAtom(QStringLiteral("C"), 20, 0);
+        d4.selectAtom(e1);
+        d4.addAtomToSelection(e2);
+        d4.scaleSelectionLive(10.0, 0.0, 0.0);   // would put e2 at x=200, past kPageMaxX
+        double ex = 0, ey = 0;
+        CHECK(d4.molecule().atomPos(e2, ex, ey) && ex == 20 && ey == 0,
+              "out-of-page scale is refused: positions unchanged");
+    }
+}
+
 static void test_documentStateSelection() {
     std::printf("--- Test 4: DocumentState selection ---\n");
     DocumentState doc;
@@ -592,6 +659,7 @@ int main() {
     test_imageTransforms();
     test_liveDragMove();
     test_liveDragRotate();
+    test_liveDragScale();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

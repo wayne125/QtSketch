@@ -132,6 +132,16 @@ public:
     void rotateSelectionLive(double angleDelta);
     void commitRotate();
 
+    // Uniform scale about a caller-supplied FIXED anchor (the dragged handle's
+    // geometric opposite on the bbox), NOT the centroid -- matching real
+    // corner-drag resize behaviour and deliberately unlike rotate.
+    //
+    // NOTE: `factor` is ABSOLUTE (total scale measured from gesture start), not
+    // incremental like rotate's angleDelta. Calling this with 2.0 then 3.0
+    // yields 3x from the original, not 6x. Ported exactly from the real code.
+    void scaleSelectionLive(double factor, double anchorX, double anchorY);
+    void commitScale();
+
 private:
     enum class DiscreteTransform { RotateCW, RotateCCW, FlipH, FlipV };
     void applyDiscreteTransform(DiscreteTransform mode);
@@ -178,6 +188,11 @@ private:
     QList<TransformPoint> m_rotateOrigPos;
     double m_rotateCenterX = 0.0, m_rotateCenterY = 0.0;
     double m_rotateTotalAngle = 0.0;
+
+    // Scale-gesture drag state (mirrors the real _scaleDrag* vars).
+    QList<TransformPoint> m_scaleOrigPos;
+    double m_scaleAnchorX = 0.0, m_scaleAnchorY = 0.0;
+    double m_scaleTotalFactor = 1.0;
 
     EditableMolecule m_molecule;
     std::vector<EditCommand> m_history;
