@@ -238,6 +238,7 @@ add_library(molecule_model STATIC
     src/app/molecule/ExtensionData.h
     src/app/molecule/MoleculeSnapshot.h
     src/app/molecule/SelectionState.h
+    src/app/molecule/EditCommand.h
     src/app/molecule/EditableMolecule.h
     src/app/molecule/EditableMolecule.cpp
 )
