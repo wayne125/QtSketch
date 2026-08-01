@@ -572,6 +572,74 @@ static void test_liveDragScale() {
     }
 }
 
+static void test_dragStateResetOnUndoRedo() {
+    std::printf("--- Test 11: undo/redo reset ALL drag state (deliberate deviation) ---\n");
+    const double kPi = 3.14159265358979323846;
+
+    // Each case seeds atoms via doc.molecule() (no history), then creates
+    // EXACTLY ONE real history entry with changeAtomCharge. After the undo,
+    // history is empty, so `!canUndo()` after the commit is an exact signal:
+    // if the drag state had survived, the commit WOULD push an entry and
+    // canUndo() would flip to true. An equality-against-a-captured-bool check
+    // cannot detect that, because both states are "true".
+
+    // Move: an uncommitted gesture must not survive an undo.
+    {
+        DocumentState doc;
+        AtomId a1 = doc.molecule().addAtom(QStringLiteral("C"), 0, 0);
+        AtomId a2 = doc.molecule().addAtom(QStringLiteral("C"), 2, 0);
+        doc.selectAtom(a1);
+        doc.addAtomToSelection(a2);
+        doc.changeAtomCharge(a1, 1);           // the one and only history entry
+        doc.moveSelectionLive(1, 0);           // gesture in flight, uncommitted
+        doc.undo();                            // undoes the charge AND must clear drag state
+        CHECK(!doc.canUndo(), "history is empty after undoing the only entry");
+        doc.commitMove();
+        CHECK(!doc.canUndo(),
+              "commitMove after undo pushes nothing -- move drag state was cleared");
+    }
+
+    // Rotate: the snapshot must be discarded too (the real JS never clears it).
+    {
+        DocumentState doc;
+        AtomId a1 = doc.molecule().addAtom(QStringLiteral("C"), 1, 0);
+        AtomId a2 = doc.molecule().addAtom(QStringLiteral("C"), -1, 0);
+        doc.selectAtom(a1);
+        doc.addAtomToSelection(a2);
+        doc.changeAtomCharge(a1, 1);
+        doc.rotateSelectionLive(kPi / 2);
+        doc.undo();
+        CHECK(!doc.canUndo(), "history is empty after undoing the only entry");
+        doc.commitRotate();
+        CHECK(!doc.canUndo(),
+              "commitRotate after undo pushes nothing -- rotate drag state was cleared");
+    }
+
+    // Scale, via redo() rather than undo(). Here history is NOT empty after the
+    // redo, so canUndo() cannot distinguish the two outcomes -- assert on WHAT
+    // the next undo consumes instead.
+    {
+        DocumentState doc;
+        AtomId a1 = doc.molecule().addAtom(QStringLiteral("C"), 0, 0);
+        AtomId a2 = doc.molecule().addAtom(QStringLiteral("C"), 2, 0);
+        doc.selectAtom(a1);
+        doc.addAtomToSelection(a2);
+        doc.changeAtomCharge(a1, 1);
+        doc.undo();                            // give redo something to do
+        doc.selectAtom(a1);                    // undo cleared the selection
+        doc.addAtomToSelection(a2);
+        doc.scaleSelectionLive(2.0, 0.0, 0.0); // gesture in flight
+        doc.redo();                            // re-applies the charge; must clear drag state
+        CHECK(doc.molecule().atomCharge(a1) == 1, "redo re-applied the charge change");
+        doc.commitScale();
+        doc.undo();
+        // If the scale state had survived, commitScale would have pushed a
+        // command and this undo would have consumed IT, leaving charge at 1.
+        CHECK(doc.molecule().atomCharge(a1) == 0,
+              "undo consumed the charge entry, not a stale scale command -- scale drag state was cleared");
+    }
+}
+
 static void test_documentStateSelection() {
     std::printf("--- Test 4: DocumentState selection ---\n");
     DocumentState doc;
@@ -660,6 +728,7 @@ int main() {
     test_liveDragMove();
     test_liveDragRotate();
     test_liveDragScale();
+    test_dragStateResetOnUndoRedo();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

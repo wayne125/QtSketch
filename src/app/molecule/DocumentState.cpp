@@ -33,6 +33,7 @@ void DocumentState::undo() {
     m_history[m_historyPointer].invert();
     --m_historyPointer;
     m_selection.clear();
+    resetAllDragState();
     m_dirty = true;
 }
 
@@ -41,6 +42,7 @@ void DocumentState::redo() {
     ++m_historyPointer;
     m_history[m_historyPointer].execute();
     m_selection.clear();
+    resetAllDragState();
     m_dirty = true;
 }
 
@@ -678,6 +680,18 @@ void DocumentState::commitScale() {
         };
         executeCommand(std::move(cmd));
     }
+    m_scaleOrigPos.clear();
+    m_scaleAnchorX = 0.0;
+    m_scaleAnchorY = 0.0;
+    m_scaleTotalFactor = 1.0;
+}
+
+void DocumentState::resetAllDragState() {
+    resetMoveDragState();
+    m_rotateOrigPos.clear();
+    m_rotateTotalAngle = 0.0;
+    m_rotateCenterX = 0.0;
+    m_rotateCenterY = 0.0;
     m_scaleOrigPos.clear();
     m_scaleAnchorX = 0.0;
     m_scaleAnchorY = 0.0;

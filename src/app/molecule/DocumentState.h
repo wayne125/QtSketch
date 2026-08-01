@@ -164,6 +164,13 @@ private:
                         double dx, double dy);
     void resetMoveDragState();
 
+    // Clears move, rotate AND scale gesture state. DELIBERATE DEVIATION from
+    // 10-state.js, which resets only four move vars in undo() and nothing at
+    // all in redo(): stale rotate/scale snapshot state surviving an undo lets a
+    // later live call re-apply a transform computed from positions the undo has
+    // already invalidated, corrupting coordinates. Called by undo() and redo().
+    void resetAllDragState();
+
     // One snapshotted, transformable point. Shared by the rotate and scale
     // gestures (move does not use it -- it works from raw id lists, exactly
     // like the real moveSelection). Mirrors the real _snapshotSelectionPoints
