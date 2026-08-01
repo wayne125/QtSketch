@@ -129,6 +129,40 @@ static void test_atomBondCrud() {
     CHECK(!m.removeAtom(c2), "removing an already-removed ID fails cleanly");
 }
 
+static void test_extensionData() {
+    std::printf("--- Test 3: extension data storage ---\n");
+    EditableMolecule m(QStringLiteral("CCO"));
+    QList<AtomId> ids = m.atomIds();
+
+    m.setName(QStringLiteral("my ethanol"));
+    CHECK(m.name() == QStringLiteral("my ethanol"), "name round-trips");
+
+    CHECK(m.addTextAnnotation(1.0, 2.0, QStringLiteral("note")) >= 0, "text annotation added");
+    CHECK(m.textAnnotationCount() == 1, "text annotation counted");
+
+    CHECK(m.addRxnArrow(0, 0, 5, 0) >= 0, "rxn arrow added");
+    CHECK(m.addRxnPlus(2.5, 0) >= 0, "rxn plus added");
+    CHECK(m.rxnArrowCount() == 1 && m.rxnPlusCount() == 1, "arrow+plus counted");
+
+    CHECK(m.addMultitailArrow({5,5, 0,4, 0,6}) >= 0, "multitail arrow added");
+    CHECK(m.multitailArrowCount() == 1, "multitail counted");
+
+    CHECK(m.addImage(0, 0, 4, 3, QByteArray("fakepng")) >= 0, "image added");
+    CHECK(m.imageCount() == 1, "image counted");
+
+    m.setStereoFlag(0, 2);
+    CHECK(m.stereoFlag(0) == 2, "stereo flag round-trips");
+    CHECK(m.stereoFlag(1) == -1, "unset stereo flag is -1");
+
+    m.setAtomAAM(ids[0], 7);
+    CHECK(m.atomAAM(ids[0]) == 7, "AAM round-trips");
+    CHECK(m.atomAAM(ids[1]) == 0, "unset AAM is 0");
+
+    m.setAtomCheckWarning(ids[2], true);
+    CHECK(m.atomCheckWarning(ids[2]), "check warning round-trips");
+    CHECK(!m.atomCheckWarning(ids[0]), "unset check warning is false");
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -136,6 +170,7 @@ int main() {
     spike_idBehavior();
     test_constructionAndMolfile();
     test_atomBondCrud();
+    test_extensionData();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);

@@ -235,6 +235,7 @@ endif()
 add_test(NAME fused_ring_direction_detector_test COMMAND fused_ring_direction_detector_test)
 
 add_library(molecule_model STATIC
+    src/app/molecule/ExtensionData.h
     src/app/molecule/EditableMolecule.h
     src/app/molecule/EditableMolecule.cpp
 )

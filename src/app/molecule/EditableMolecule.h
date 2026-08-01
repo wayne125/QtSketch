@@ -21,6 +21,7 @@
 #include <QString>
 #include <QHash>
 #include <QList>
+#include "ExtensionData.h"
 
 using AtomId = int;
 using BondId = int;
@@ -59,6 +60,26 @@ public:
     QList<AtomId> atomIds() const;
     QList<BondId> bondIds() const;
 
+    // Extension data storage accessors
+    void setName(const QString& n);
+    QString name() const;
+    int addTextAnnotation(double x, double y, const QString& content);
+    int textAnnotationCount() const;
+    int addRxnArrow(double x1, double y1, double x2, double y2);
+    int rxnArrowCount() const;
+    int addRxnPlus(double x, double y);
+    int rxnPlusCount() const;
+    int addMultitailArrow(const QList<double>& headAndTails);
+    int multitailArrowCount() const;
+    int addImage(double x, double y, double w, double h, const QByteArray& pngData);
+    int imageCount() const;
+    void setStereoFlag(int fragmentIndex, int flag);
+    int stereoFlag(int fragmentIndex) const;
+    void setAtomAAM(AtomId id, int mapNumber);
+    int atomAAM(AtomId id) const;
+    void setAtomCheckWarning(AtomId id, bool warn);
+    bool atomCheckWarning(AtomId id) const;
+
 private:
     // One Indigo session per instance, held for the object's lifetime
     // (unlike IndigoService's alloc/release-per-call one-shot pattern).
@@ -70,6 +91,8 @@ private:
     QHash<BondId, int> m_bondIdx; // external stable ID -> indigo bond index
     AtomId m_nextAtomId = 1;      // monotonic, never reused
     BondId m_nextBondId = 1;
+
+    ExtensionData m_ext;
 
     void activateSession() const; // indigoSetSessionId(m_session)
     void rebuildIndexTables();

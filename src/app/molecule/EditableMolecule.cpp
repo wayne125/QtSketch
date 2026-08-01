@@ -213,3 +213,46 @@ void EditableMolecule::rebuildIndexTables() {
     if (bIds.size() == bIdx.size())
         for (int i = 0; i < bIds.size(); ++i) m_bondIdx[bIds[i]] = bIdx[i];
 }
+
+void EditableMolecule::setName(const QString& n) { m_ext.name = n; }
+QString EditableMolecule::name() const { return m_ext.name; }
+
+int EditableMolecule::addTextAnnotation(double x, double y, const QString& content) {
+    m_ext.texts.append({x, y, content});
+    return m_ext.texts.size() - 1;
+}
+int EditableMolecule::textAnnotationCount() const { return m_ext.texts.size(); }
+
+int EditableMolecule::addRxnArrow(double x1, double y1, double x2, double y2) {
+    m_ext.rxnArrows.append({x1, y1, x2, y2});
+    return m_ext.rxnArrows.size() - 1;
+}
+int EditableMolecule::rxnArrowCount() const { return m_ext.rxnArrows.size(); }
+
+int EditableMolecule::addRxnPlus(double x, double y) {
+    m_ext.rxnPluses.append({x, y});
+    return m_ext.rxnPluses.size() - 1;
+}
+int EditableMolecule::rxnPlusCount() const { return m_ext.rxnPluses.size(); }
+
+int EditableMolecule::addMultitailArrow(const QList<double>& headAndTails) {
+    m_ext.multitailArrows.append({headAndTails});
+    return m_ext.multitailArrows.size() - 1;
+}
+int EditableMolecule::multitailArrowCount() const { return m_ext.multitailArrows.size(); }
+
+int EditableMolecule::addImage(double x, double y, double w, double h, const QByteArray& pngData) {
+    m_ext.images.append({x, y, w, h, pngData});
+    return m_ext.images.size() - 1;
+}
+int EditableMolecule::imageCount() const { return m_ext.images.size(); }
+
+void EditableMolecule::setStereoFlag(int fragmentIndex, int flag) { m_ext.stereoFlags.insert(fragmentIndex, flag); }
+int EditableMolecule::stereoFlag(int fragmentIndex) const { return m_ext.stereoFlags.value(fragmentIndex, -1); }
+
+void EditableMolecule::setAtomAAM(AtomId id, int mapNumber) { m_ext.atomAAM.insert(id, mapNumber); }
+int EditableMolecule::atomAAM(AtomId id) const { return m_ext.atomAAM.value(id, 0); }
+
+void EditableMolecule::setAtomCheckWarning(AtomId id, bool warn) { m_ext.atomCheckWarnings.insert(id, warn); }
+bool EditableMolecule::atomCheckWarning(AtomId id) const { return m_ext.atomCheckWarnings.value(id, false); }
+
