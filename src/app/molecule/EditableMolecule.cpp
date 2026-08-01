@@ -175,6 +175,16 @@ bool EditableMolecule::atomPos(AtomId id, double& x, double& y) const {
     return true;
 }
 
+bool EditableMolecule::setAtomPos(AtomId id, double x, double y) {
+    if (m_mol < 0 || !m_atomIdx.contains(id)) return false;
+    activateSession();
+    int a = indigoGetAtom(m_mol, m_atomIdx.value(id));
+    if (a < 0) return false;
+    bool ok = indigoSetXYZ(a, static_cast<float>(x), static_cast<float>(y), 0.0f) >= 0;
+    indigoFree(a);
+    return ok;
+}
+
 int EditableMolecule::atomCharge(AtomId id) const {
     if (m_mol < 0 || !m_atomIdx.contains(id)) return 0;
     activateSession();
@@ -566,6 +576,57 @@ bool EditableMolecule::removeImage(ImageId id) { return m_ext.images.remove(id) 
 QList<RxnArrowId> EditableMolecule::rxnArrowIds() const { return m_ext.rxnArrows.keys(); }
 QList<RxnPlusId> EditableMolecule::rxnPlusIds() const { return m_ext.rxnPluses.keys(); }
 QList<MultitailArrowId> EditableMolecule::multitailArrowIds() const { return m_ext.multitailArrows.keys(); }
+
+bool EditableMolecule::rxnArrowEndpoints(RxnArrowId id, double& x1, double& y1, double& x2, double& y2) const {
+    if (!m_ext.rxnArrows.contains(id)) return false;
+    const RxnArrow& a = m_ext.rxnArrows[id];
+    x1 = a.x1; y1 = a.y1; x2 = a.x2; y2 = a.y2;
+    return true;
+}
+
+bool EditableMolecule::setRxnArrowEndpoints(RxnArrowId id, double x1, double y1, double x2, double y2) {
+    if (!m_ext.rxnArrows.contains(id)) return false;
+    m_ext.rxnArrows[id] = {x1, y1, x2, y2};
+    return true;
+}
+
+bool EditableMolecule::rxnPlusPos(RxnPlusId id, double& x, double& y) const {
+    if (!m_ext.rxnPluses.contains(id)) return false;
+    const RxnPlus& p = m_ext.rxnPluses[id];
+    x = p.x; y = p.y;
+    return true;
+}
+
+bool EditableMolecule::setRxnPlusPos(RxnPlusId id, double x, double y) {
+    if (!m_ext.rxnPluses.contains(id)) return false;
+    m_ext.rxnPluses[id] = {x, y};
+    return true;
+}
+
+QList<double> EditableMolecule::multitailArrowPoints(MultitailArrowId id) const {
+    if (!m_ext.multitailArrows.contains(id)) return {};
+    return m_ext.multitailArrows[id].headAndTails;
+}
+
+bool EditableMolecule::setMultitailArrowPoints(MultitailArrowId id, const QList<double>& points) {
+    if (!m_ext.multitailArrows.contains(id)) return false;
+    m_ext.multitailArrows[id].headAndTails = points;
+    return true;
+}
+
+bool EditableMolecule::imageRect(ImageId id, double& x, double& y, double& w, double& h) const {
+    if (!m_ext.images.contains(id)) return false;
+    const ImageRef& im = m_ext.images[id];
+    x = im.x; y = im.y; w = im.w; h = im.h;
+    return true;
+}
+
+bool EditableMolecule::setImageRect(ImageId id, double x, double y, double w, double h) {
+    if (!m_ext.images.contains(id)) return false;
+    ImageRef& im = m_ext.images[id];
+    im.x = x; im.y = y; im.w = w; im.h = h;   // pngData deliberately preserved
+    return true;
+}
 
 void EditableMolecule::setStereoFlag(int fragmentIndex, int flag) { m_ext.stereoFlags.insert(fragmentIndex, flag); }
 int EditableMolecule::stereoFlag(int fragmentIndex) const { return m_ext.stereoFlags.value(fragmentIndex, -1); }

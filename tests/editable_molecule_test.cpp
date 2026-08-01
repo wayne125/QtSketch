@@ -549,6 +549,64 @@ static void test_bondStereoInvertSpike() {
     indigoReleaseSessionId(session);
 }
 
+static void test_positionAccessors() {
+    std::printf("--- Test 15: position accessors for every repositionable entity ---\n");
+    EditableMolecule m;
+
+    // Atom
+    AtomId a1 = m.addAtom(QStringLiteral("C"), 1.5, 2.5);
+    double ax = 0, ay = 0;
+    CHECK(m.atomPos(a1, ax, ay) && ax == 1.5 && ay == 2.5, "atom starts at its add-time position");
+    CHECK(m.setAtomPos(a1, -3.25, 4.75), "setAtomPos succeeds");
+    CHECK(m.atomPos(a1, ax, ay) && ax == -3.25 && ay == 4.75, "setAtomPos round-trips");
+
+    // RxnArrow
+    RxnArrowId ar = m.addRxnArrow(0, 0, 5, 0);
+    double x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+    CHECK(m.rxnArrowEndpoints(ar, x1, y1, x2, y2) && x1 == 0 && y1 == 0 && x2 == 5 && y2 == 0,
+          "rxnArrowEndpoints reads the add-time endpoints");
+    CHECK(m.setRxnArrowEndpoints(ar, 1, 2, 3, 4), "setRxnArrowEndpoints succeeds");
+    CHECK(m.rxnArrowEndpoints(ar, x1, y1, x2, y2) && x1 == 1 && y1 == 2 && x2 == 3 && y2 == 4,
+          "setRxnArrowEndpoints round-trips");
+
+    // RxnPlus
+    RxnPlusId pl = m.addRxnPlus(2.5, 0);
+    double px = 0, py = 0;
+    CHECK(m.rxnPlusPos(pl, px, py) && px == 2.5 && py == 0, "rxnPlusPos reads the add-time position");
+    CHECK(m.setRxnPlusPos(pl, -1.5, 6.5), "setRxnPlusPos succeeds");
+    CHECK(m.rxnPlusPos(pl, px, py) && px == -1.5 && py == 6.5, "setRxnPlusPos round-trips");
+
+    // MultitailArrow
+    MultitailArrowId mta = m.addMultitailArrow({5, 5, 0, 4, 0, 6});
+    QList<double> pts = m.multitailArrowPoints(mta);
+    CHECK(pts.size() == 6 && pts[0] == 5 && pts[5] == 6, "multitailArrowPoints reads the add-time points");
+    CHECK(m.setMultitailArrowPoints(mta, {1, 2, 3, 4}), "setMultitailArrowPoints succeeds");
+    pts = m.multitailArrowPoints(mta);
+    CHECK(pts.size() == 4 && pts[0] == 1 && pts[3] == 4, "setMultitailArrowPoints round-trips");
+
+    // Image
+    ImageId img = m.addImage(0, 0, 4, 3, QByteArray("fakepng"));
+    double ix = 0, iy = 0, iw = 0, ih = 0;
+    CHECK(m.imageRect(img, ix, iy, iw, ih) && ix == 0 && iy == 0 && iw == 4 && ih == 3,
+          "imageRect reads the add-time rect");
+    CHECK(m.setImageRect(img, 1, 2, 8, 6), "setImageRect succeeds");
+    CHECK(m.imageRect(img, ix, iy, iw, ih) && ix == 1 && iy == 2 && iw == 8 && ih == 6,
+          "setImageRect round-trips");
+
+    // Invalid ids fail cleanly.
+    const int bad = 9999;
+    CHECK(!m.setAtomPos(bad, 0, 0), "invalid id: setAtomPos fails cleanly");
+    CHECK(!m.atomPos(bad, ax, ay), "invalid id: atomPos fails cleanly");
+    CHECK(!m.rxnArrowEndpoints(bad, x1, y1, x2, y2), "invalid id: rxnArrowEndpoints fails cleanly");
+    CHECK(!m.setRxnArrowEndpoints(bad, 0, 0, 0, 0), "invalid id: setRxnArrowEndpoints fails cleanly");
+    CHECK(!m.rxnPlusPos(bad, px, py), "invalid id: rxnPlusPos fails cleanly");
+    CHECK(!m.setRxnPlusPos(bad, 0, 0), "invalid id: setRxnPlusPos fails cleanly");
+    CHECK(m.multitailArrowPoints(bad).isEmpty(), "invalid id: multitailArrowPoints returns empty");
+    CHECK(!m.setMultitailArrowPoints(bad, {1, 2}), "invalid id: setMultitailArrowPoints fails cleanly");
+    CHECK(!m.imageRect(bad, ix, iy, iw, ih), "invalid id: imageRect fails cleanly");
+    CHECK(!m.setImageRect(bad, 0, 0, 1, 1), "invalid id: setImageRect fails cleanly");
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -568,6 +626,7 @@ int main() {
     test_bondStereoSpike();
     test_atomQueryList();
     test_bondStereoInvertSpike();
+    test_positionAccessors();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);

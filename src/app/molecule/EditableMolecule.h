@@ -147,6 +147,7 @@ public:
     QList<int> atomQueryListNumbers(AtomId id) const;
     bool atomQueryListIsNotList(AtomId id) const;
     bool atomPos(AtomId id, double& x, double& y) const;
+    bool setAtomPos(AtomId id, double x, double y);
     int bondOrder(BondId id) const;
     bool bondEndpoints(BondId id, AtomId& a, AtomId& b) const;
     QList<AtomId> atomIds() const;
@@ -173,6 +174,14 @@ public:
     QList<RxnArrowId> rxnArrowIds() const;
     QList<RxnPlusId> rxnPlusIds() const;
     QList<MultitailArrowId> multitailArrowIds() const;
+    bool rxnArrowEndpoints(RxnArrowId id, double& x1, double& y1, double& x2, double& y2) const;
+    bool setRxnArrowEndpoints(RxnArrowId id, double x1, double y1, double x2, double y2);
+    bool rxnPlusPos(RxnPlusId id, double& x, double& y) const;
+    bool setRxnPlusPos(RxnPlusId id, double x, double y);
+    QList<double> multitailArrowPoints(MultitailArrowId id) const;
+    bool setMultitailArrowPoints(MultitailArrowId id, const QList<double>& points);
+    bool imageRect(ImageId id, double& x, double& y, double& w, double& h) const;
+    bool setImageRect(ImageId id, double x, double y, double w, double h);
     void setStereoFlag(int fragmentIndex, int flag);
     int stereoFlag(int fragmentIndex) const;
     void setAtomAAM(AtomId id, int mapNumber);
