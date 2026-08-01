@@ -280,6 +280,40 @@ static void test_extensionEntityRemoval() {
     CHECK(m.imageCount() == 0, "0 images after removal");
 }
 
+static void test_atomAttributeAccessors() {
+    std::printf("--- Test 8: atom attribute accessors (charge/isotope/radical/valence) ---\n");
+    EditableMolecule m;
+    AtomId c1 = m.addAtom(QStringLiteral("C"), 0, 0);
+
+    CHECK(m.atomCharge(c1) == 0, "fresh atom has charge 0");
+    CHECK(m.setAtomCharge(c1, 1), "setAtomCharge succeeds");
+    CHECK(m.atomCharge(c1) == 1, "atomCharge reads back the set value");
+    CHECK(m.setAtomCharge(c1, -1), "setAtomCharge accepts negative charge");
+    CHECK(m.atomCharge(c1) == -1, "atomCharge reads back negative charge");
+
+    CHECK(m.atomIsotope(c1) == 0, "fresh atom has isotope 0 (none)");
+    CHECK(m.setAtomIsotope(c1, 13), "setAtomIsotope succeeds");
+    CHECK(m.atomIsotope(c1) == 13, "atomIsotope reads back the set value");
+
+    CHECK(m.atomRadical(c1) == 0, "fresh atom has radical 0 (none)");
+    CHECK(m.setAtomRadical(c1, INDIGO_SINGLET), "setAtomRadical succeeds");
+    CHECK(m.atomRadical(c1) == INDIGO_SINGLET, "atomRadical reads back the set value");
+
+    CHECK(m.atomExplicitValence(c1) == -1, "fresh atom has explicit valence -1 (unset)");
+    CHECK(m.setAtomExplicitValence(c1, 4), "setAtomExplicitValence succeeds");
+    CHECK(m.atomExplicitValence(c1) == 4, "atomExplicitValence reads back the set value");
+
+    AtomId invalid = 9999;
+    CHECK(m.atomCharge(invalid) == 0, "invalid id: atomCharge returns sentinel 0");
+    CHECK(!m.setAtomCharge(invalid, 1), "invalid id: setAtomCharge fails cleanly");
+    CHECK(m.atomIsotope(invalid) == 0, "invalid id: atomIsotope returns sentinel 0");
+    CHECK(!m.setAtomIsotope(invalid, 1), "invalid id: setAtomIsotope fails cleanly");
+    CHECK(m.atomRadical(invalid) == 0, "invalid id: atomRadical returns sentinel 0");
+    CHECK(!m.setAtomRadical(invalid, 1), "invalid id: setAtomRadical fails cleanly");
+    CHECK(m.atomExplicitValence(invalid) == -1, "invalid id: atomExplicitValence returns sentinel -1");
+    CHECK(!m.setAtomExplicitValence(invalid, 1), "invalid id: setAtomExplicitValence fails cleanly");
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -292,6 +326,7 @@ int main() {
     test_snapshotRestore();
     test_queryFeatureSpike();
     test_extensionEntityRemoval();
+    test_atomAttributeAccessors();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);

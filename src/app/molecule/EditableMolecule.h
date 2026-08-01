@@ -64,6 +64,14 @@ public:
     BondId addBond(AtomId a, AtomId b, int order);
     bool removeBond(BondId id);
     QString atomSymbol(AtomId id) const;
+    int atomCharge(AtomId id) const;
+    bool setAtomCharge(AtomId id, int charge);
+    int atomIsotope(AtomId id) const;
+    bool setAtomIsotope(AtomId id, int isotope);
+    int atomRadical(AtomId id) const;
+    bool setAtomRadical(AtomId id, int radical);
+    int atomExplicitValence(AtomId id) const;
+    bool setAtomExplicitValence(AtomId id, int valence);
     bool atomPos(AtomId id, double& x, double& y) const;
     int bondOrder(BondId id) const;
     QList<AtomId> atomIds() const;

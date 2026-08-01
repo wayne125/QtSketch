@@ -174,6 +174,89 @@ bool EditableMolecule::atomPos(AtomId id, double& x, double& y) const {
     return true;
 }
 
+int EditableMolecule::atomCharge(AtomId id) const {
+    if (m_mol < 0 || !m_atomIdx.contains(id)) return 0;
+    activateSession();
+    int a = indigoGetAtom(m_mol, m_atomIdx.value(id));
+    if (a < 0) return 0;
+    int charge = 0;
+    indigoGetCharge(a, &charge);
+    indigoFree(a);
+    return charge;
+}
+
+bool EditableMolecule::setAtomCharge(AtomId id, int charge) {
+    if (m_mol < 0 || !m_atomIdx.contains(id)) return false;
+    activateSession();
+    int a = indigoGetAtom(m_mol, m_atomIdx.value(id));
+    if (a < 0) return false;
+    bool ok = indigoSetCharge(a, charge) >= 0;
+    indigoFree(a);
+    return ok;
+}
+
+int EditableMolecule::atomIsotope(AtomId id) const {
+    if (m_mol < 0 || !m_atomIdx.contains(id)) return 0;
+    activateSession();
+    int a = indigoGetAtom(m_mol, m_atomIdx.value(id));
+    if (a < 0) return 0;
+    int iso = indigoIsotope(a);
+    indigoFree(a);
+    return iso > 0 ? iso : 0;
+}
+
+bool EditableMolecule::setAtomIsotope(AtomId id, int isotope) {
+    if (m_mol < 0 || !m_atomIdx.contains(id)) return false;
+    activateSession();
+    int a = indigoGetAtom(m_mol, m_atomIdx.value(id));
+    if (a < 0) return false;
+    bool ok = indigoSetIsotope(a, isotope) >= 0;
+    indigoFree(a);
+    return ok;
+}
+
+int EditableMolecule::atomRadical(AtomId id) const {
+    if (m_mol < 0 || !m_atomIdx.contains(id)) return 0;
+    activateSession();
+    int a = indigoGetAtom(m_mol, m_atomIdx.value(id));
+    if (a < 0) return 0;
+    int radical = 0;
+    indigoGetRadical(a, &radical);
+    indigoFree(a);
+    return radical;
+}
+
+bool EditableMolecule::setAtomRadical(AtomId id, int radical) {
+    if (m_mol < 0 || !m_atomIdx.contains(id)) return false;
+    activateSession();
+    int a = indigoGetAtom(m_mol, m_atomIdx.value(id));
+    if (a < 0) return false;
+    bool ok = indigoSetRadical(a, radical) >= 0;
+    indigoFree(a);
+    return ok;
+}
+
+int EditableMolecule::atomExplicitValence(AtomId id) const {
+    if (m_mol < 0 || !m_atomIdx.contains(id)) return -1;
+    activateSession();
+    int a = indigoGetAtom(m_mol, m_atomIdx.value(id));
+    if (a < 0) return -1;
+    int valence = -1;
+    int ok = indigoGetExplicitValence(a, &valence);
+    indigoFree(a);
+    return ok ? valence : -1;
+}
+
+bool EditableMolecule::setAtomExplicitValence(AtomId id, int valence) {
+    if (m_mol < 0 || !m_atomIdx.contains(id)) return false;
+    activateSession();
+    int a = indigoGetAtom(m_mol, m_atomIdx.value(id));
+    if (a < 0) return false;
+    bool ok = indigoSetExplicitValence(a, valence) >= 0;
+    indigoFree(a);
+    return ok;
+}
+
 int EditableMolecule::bondOrder(BondId id) const {
     if (m_mol < 0 || !m_bondIdx.contains(id)) return -1;
     activateSession();
