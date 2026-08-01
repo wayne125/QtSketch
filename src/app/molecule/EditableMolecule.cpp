@@ -1,5 +1,6 @@
 // src/app/molecule/EditableMolecule.cpp
 #include "EditableMolecule.h"
+#include "MoleculeSnapshot.h"
 #include "indigo.h"
 #include <algorithm>
 
@@ -46,6 +47,14 @@ EditableMolecule::~EditableMolecule() {
 
 void EditableMolecule::activateSession() const {
     indigoSetSessionId(m_session);
+}
+
+void MoleculeSnapshot::freeHandle() {
+    if (m_clone >= 0) {
+        indigoSetSessionId(m_session);
+        indigoFree(m_clone);
+        m_clone = -1;
+    }
 }
 
 int EditableMolecule::atomCount() const {
@@ -283,4 +292,33 @@ int EditableMolecule::dataSGroupCount() const {
         indigoFree(iter);
     }
     return n;
+}
+
+MoleculeSnapshot EditableMolecule::snapshot() const {
+    MoleculeSnapshot s;
+    if (m_mol < 0) return s;
+    activateSession();
+    s.m_clone = indigoClone(m_mol);
+    s.m_session = m_session;
+    s.m_ext = m_ext;
+    s.m_atomIdx = m_atomIdx;
+    s.m_bondIdx = m_bondIdx;
+    s.m_nextAtomId = m_nextAtomId;
+    s.m_nextBondId = m_nextBondId;
+    return s;
+}
+
+bool EditableMolecule::restore(const MoleculeSnapshot& snap) {
+    if (!snap.isValid() || snap.m_session != m_session) return false;
+    activateSession();
+    int fresh = indigoClone(snap.m_clone);
+    if (fresh < 0) { m_lastError = QString::fromUtf8(indigoGetLastError()); return false; }
+    if (m_mol >= 0) indigoFree(m_mol);
+    m_mol = fresh;
+    m_ext = snap.m_ext;
+    m_atomIdx = snap.m_atomIdx;
+    m_bondIdx = snap.m_bondIdx;
+    if (snap.m_nextAtomId > m_nextAtomId) m_nextAtomId = snap.m_nextAtomId;
+    if (snap.m_nextBondId > m_nextBondId) m_nextBondId = snap.m_nextBondId;
+    return true;
 }

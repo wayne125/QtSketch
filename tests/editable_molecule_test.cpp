@@ -176,6 +176,55 @@ static void test_sgroupPassthrough() {
     CHECK(mf.success && mf.value.contains(QStringLiteral("MYFIELD")), "sgroup survives molfile serialization");
 }
 
+static void test_snapshotRestore() {
+    std::printf("--- Test 5: snapshot/restore undo round-trip ---\n");
+    EditableMolecule m;
+    AtomId a1 = m.addAtom(QStringLiteral("C"), 0, 0);
+    AtomId a2 = m.addAtom(QStringLiteral("O"), 1, 0);
+    m.addBond(a1, a2, 1);
+    m.setName(QStringLiteral("before"));
+    m.setAtomAAM(a1, 3);
+    m.addTextAnnotation(0, 1, QStringLiteral("v1"));
+    m.addDataSGroup({a1}, QStringLiteral("F"), QStringLiteral("d"));
+    m.addRxnArrow(0, 0, 5, 0);
+    m.addRxnPlus(2.5, 0);
+    m.addMultitailArrow({5,5, 0,4, 0,6});
+    m.addImage(0, 0, 4, 3, QByteArray("png1"));
+    m.setStereoFlag(0, 1);
+    m.setAtomCheckWarning(a2, true);
+
+    MoleculeSnapshot snap = m.snapshot();
+
+    AtomId a3 = m.addAtom(QStringLiteral("N"), 2, 0);
+    m.addBond(a2, a3, 1);
+    m.removeAtom(a1);
+    m.setName(QStringLiteral("after"));
+    m.setAtomAAM(a2, 9);
+    m.addTextAnnotation(0, 2, QStringLiteral("v2"));
+    CHECK(m.atomCount() == 2 && m.name() == QStringLiteral("after"), "mutations applied");
+
+    CHECK(m.restore(snap), "restore succeeds");
+    CHECK(m.atomCount() == 2, "atom count restored");
+    CHECK(m.bondCount() == 1, "bond count restored");
+    CHECK(m.name() == QStringLiteral("before"), "name restored");
+    CHECK(m.atomAAM(a1) == 3, "AAM restored under the ORIGINAL AtomId");
+    CHECK(m.atomSymbol(a1) == QStringLiteral("C"), "original AtomId resolves after restore");
+    CHECK(m.textAnnotationCount() == 1, "extension list restored");
+    CHECK(m.dataSGroupCount() == 1, "sgroup survives snapshot/restore");
+    CHECK(m.rxnArrowCount() == 1 && m.rxnPlusCount() == 1, "rxn arrow+plus survive restore");
+    CHECK(m.multitailArrowCount() == 1, "multitail arrow survives restore");
+    CHECK(m.imageCount() == 1, "image survives restore");
+    CHECK(m.stereoFlag(0) == 1, "stereo flag survives restore");
+    CHECK(m.atomCheckWarning(a2), "check warning survives restore");
+
+    m.removeAtom(a2);
+    CHECK(m.restore(snap), "second restore of the same snapshot succeeds");
+    CHECK(m.atomCount() == 2, "second restore rolls back again");
+
+    AtomId a4 = m.addAtom(QStringLiteral("S"), 3, 0);
+    CHECK(a4 > a3, "ID counter survives restore (no reuse of discarded IDs)");
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -185,6 +234,7 @@ int main() {
     test_atomBondCrud();
     test_extensionData();
     test_sgroupPassthrough();
+    test_snapshotRestore();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);

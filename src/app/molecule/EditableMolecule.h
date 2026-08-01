@@ -22,6 +22,7 @@
 #include <QHash>
 #include <QList>
 #include "ExtensionData.h"
+#include "MoleculeSnapshot.h"
 
 using AtomId = int;
 using BondId = int;
@@ -82,6 +83,9 @@ public:
 
     int addDataSGroup(const QList<AtomId>& atoms, const QString& description, const QString& data);
     int dataSGroupCount() const;
+
+    MoleculeSnapshot snapshot() const;
+    bool restore(const MoleculeSnapshot&);
 
 private:
     // One Indigo session per instance, held for the object's lifetime
