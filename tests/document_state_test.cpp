@@ -347,6 +347,86 @@ static void test_imageTransforms() {
     CHECK(!doc.canUndo(), "invalid ImageId pushes no history entry");
 }
 
+static void test_liveDragMove() {
+    std::printf("--- Test 8: live-drag move gesture ---\n");
+    // Seeded via doc.molecule() so history starts empty -- see the seeding note
+    // in test_discreteTransforms.
+    DocumentState doc;
+    AtomId a1 = doc.molecule().addAtom(QStringLiteral("C"), 0, 0);
+    AtomId a2 = doc.molecule().addAtom(QStringLiteral("C"), 2, 0);
+    doc.selectAtom(a1);
+    doc.addAtomToSelection(a2);
+
+    doc.moveSelectionLive(1, 1);
+    doc.moveSelectionLive(0.5, -0.25);
+    double x = 0, y = 0;
+    CHECK(doc.molecule().atomPos(a1, x, y) && x == 1.5 && y == 0.75,
+          "live move accumulates increments onto current positions");
+    CHECK(!doc.canUndo(), "live move calls push NO history entry");
+
+    doc.commitMove();
+    CHECK(doc.canUndo(), "commitMove pushes exactly one history entry");
+    CHECK(doc.molecule().atomPos(a1, x, y) && x == 1.5 && y == 0.75,
+          "commitMove leaves the live-applied position in place (isFirst guard)");
+
+    doc.undo();
+    CHECK(doc.molecule().atomPos(a1, x, y) && x == 0 && y == 0, "undo restores a1 exactly");
+    CHECK(doc.molecule().atomPos(a2, x, y) && x == 2 && y == 0, "undo restores a2 exactly");
+    doc.redo();
+    CHECK(doc.molecule().atomPos(a1, x, y) && x == 1.5 && y == 0.75, "redo re-applies the move");
+
+    // commitMove with no movement pushes nothing.
+    {
+        DocumentState d2;
+        AtomId b1 = d2.molecule().addAtom(QStringLiteral("C"), 0, 0);
+        d2.selectAtom(b1);
+        d2.commitMove();
+        CHECK(!d2.canUndo(), "commitMove with zero delta pushes no history entry");
+    }
+
+    // Page-boundary clamp: the whole selection stops together at the edge.
+    {
+        DocumentState d3;
+        AtomId c1 = d3.molecule().addAtom(QStringLiteral("C"), 0, 0);
+        AtomId c2 = d3.molecule().addAtom(QStringLiteral("C"), 10, 0);
+        d3.selectAtom(c1);
+        d3.addAtomToSelection(c2);
+        d3.moveSelectionLive(1000, 0);   // far past kPageMaxX (30)
+        double cx1 = 0, cy1 = 0, cx2 = 0, cy2 = 0;
+        d3.molecule().atomPos(c1, cx1, cy1);
+        d3.molecule().atomPos(c2, cx2, cy2);
+        CHECK(cx2 == 30, "clamped: the rightmost atom lands exactly on the page edge");
+        CHECK(cx1 == 20, "clamped: the selection keeps its shape (10 units apart)");
+    }
+
+    // rxnArrow / rxnPlus / multitailArrow all translate with the selection.
+    {
+        DocumentState d4;
+        RxnArrowId ar = d4.molecule().addRxnArrow(0, 0, 5, 0);
+        RxnPlusId pl = d4.molecule().addRxnPlus(1, 1);
+        MultitailArrowId mta = d4.molecule().addMultitailArrow({0, 0, 2, 2});
+        d4.selectRxnArrow(ar);
+        d4.addRxnPlusToSelection(pl);
+        d4.addMultitailArrowToSelection(mta);
+
+        d4.moveSelectionLive(3, 4);
+        double x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+        CHECK(d4.molecule().rxnArrowEndpoints(ar, x1, y1, x2, y2) && x1 == 3 && y1 == 4 && x2 == 8 && y2 == 4,
+              "live move translates BOTH rxnArrow endpoints");
+        double px = 0, py = 0;
+        CHECK(d4.molecule().rxnPlusPos(pl, px, py) && px == 4 && py == 5, "live move translates the rxnPlus");
+        QList<double> pts = d4.molecule().multitailArrowPoints(mta);
+        CHECK(pts.size() == 4 && pts[0] == 3 && pts[1] == 4 && pts[2] == 5 && pts[3] == 6,
+              "live move translates EVERY multitailArrow point");
+
+        d4.commitMove();
+        d4.undo();
+        CHECK(d4.molecule().rxnPlusPos(pl, px, py) && px == 1 && py == 1, "undo restores the rxnPlus");
+        pts = d4.molecule().multitailArrowPoints(mta);
+        CHECK(pts.size() == 4 && pts[0] == 0 && pts[3] == 2, "undo restores the multitailArrow points");
+    }
+}
+
 static void test_documentStateSelection() {
     std::printf("--- Test 4: DocumentState selection ---\n");
     DocumentState doc;
@@ -432,6 +512,7 @@ int main() {
     test_documentStateEditingOperations();
     test_discreteTransforms();
     test_imageTransforms();
+    test_liveDragMove();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

@@ -390,3 +390,124 @@ void DocumentState::resizeImage(ImageId id, double scaleFactor) {
     };
     executeCommand(std::move(cmd));
 }
+
+void DocumentState::applyMoveDelta(const QList<AtomId>& atomIds, const QList<RxnArrowId>& arrowIds,
+                                   const QList<RxnPlusId>& plusIds, const QList<MultitailArrowId>& mtaIds,
+                                   double dx, double dy) {
+    for (AtomId id : atomIds) {
+        double x = 0, y = 0;
+        if (m_molecule.atomPos(id, x, y)) m_molecule.setAtomPos(id, x + dx, y + dy);
+    }
+    for (RxnArrowId id : arrowIds) {
+        double x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+        if (m_molecule.rxnArrowEndpoints(id, x1, y1, x2, y2))
+            m_molecule.setRxnArrowEndpoints(id, x1 + dx, y1 + dy, x2 + dx, y2 + dy);
+    }
+    for (RxnPlusId id : plusIds) {
+        double x = 0, y = 0;
+        if (m_molecule.rxnPlusPos(id, x, y)) m_molecule.setRxnPlusPos(id, x + dx, y + dy);
+    }
+    for (MultitailArrowId id : mtaIds) {
+        // The real code moves only chem-core's spineTopX/spineTopY anchor; our
+        // MultitailArrow stores absolute points with no anchor, so translating
+        // every point is the representation-equivalent result.
+        QList<double> pts = m_molecule.multitailArrowPoints(id);
+        for (int i = 0; i + 1 < pts.size(); i += 2) { pts[i] += dx; pts[i + 1] += dy; }
+        m_molecule.setMultitailArrowPoints(id, pts);
+    }
+}
+
+void DocumentState::resetMoveDragState() {
+    m_dragDeltaX = 0.0;
+    m_dragDeltaY = 0.0;
+    m_dragAtomIds.clear();
+    m_dragArrowIds.clear();
+    m_dragPlusIds.clear();
+    m_dragMultitailIds.clear();
+    m_dragHasOrigBBox = false;
+}
+
+void DocumentState::moveSelectionLive(double dx, double dy) {
+    if (m_selection.atoms.isEmpty() && m_selection.rxnArrows.isEmpty()
+        && m_selection.rxnPluses.isEmpty() && m_selection.multitailArrows.isEmpty()) return;
+
+    // First call of the gesture: snapshot the id lists and the ATOM-ONLY bbox.
+    if (m_dragDeltaX == 0.0 && m_dragDeltaY == 0.0) {
+        m_dragAtomIds.clear();
+        for (AtomId id : m_selection.atoms) m_dragAtomIds.append(id);
+        m_dragArrowIds.clear();
+        for (RxnArrowId id : m_selection.rxnArrows) m_dragArrowIds.append(id);
+        m_dragPlusIds.clear();
+        for (RxnPlusId id : m_selection.rxnPluses) m_dragPlusIds.append(id);
+        m_dragMultitailIds.clear();
+        for (MultitailArrowId id : m_selection.multitailArrows) m_dragMultitailIds.append(id);
+
+        m_dragHasOrigBBox = false;
+        double minX = 0, minY = 0, maxX = 0, maxY = 0;
+        bool any = false;
+        for (AtomId id : m_dragAtomIds) {
+            double x = 0, y = 0;
+            if (!m_molecule.atomPos(id, x, y)) continue;
+            if (!any) { minX = maxX = x; minY = maxY = y; any = true; }
+            else {
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+            }
+        }
+        if (any) {
+            m_dragHasOrigBBox = true;
+            m_dragBBoxMinX = minX; m_dragBBoxMinY = minY;
+            m_dragBBoxMaxX = maxX; m_dragBBoxMaxY = maxY;
+        }
+    }
+
+    // Page-boundary hard clamp: cap the CUMULATIVE delta against the ORIGINAL
+    // bbox so the whole selection stops together at the edge, like dragging a
+    // window against a screen edge, rather than each item clamping
+    // independently and flattening the shape. A selection wider/taller than the
+    // page leaves that axis unclamped rather than fighting it.
+    double newDeltaX = m_dragDeltaX + dx;
+    double newDeltaY = m_dragDeltaY + dy;
+    if (m_dragHasOrigBBox) {
+        double minDx = kPageMinX - m_dragBBoxMinX, maxDx = kPageMaxX - m_dragBBoxMaxX;
+        double minDy = kPageMinY - m_dragBBoxMinY, maxDy = kPageMaxY - m_dragBBoxMaxY;
+        if (minDx <= maxDx) newDeltaX = std::max(minDx, std::min(maxDx, newDeltaX));
+        if (minDy <= maxDy) newDeltaY = std::max(minDy, std::min(maxDy, newDeltaY));
+    }
+    double appliedDx = newDeltaX - m_dragDeltaX;
+    double appliedDy = newDeltaY - m_dragDeltaY;
+    m_dragDeltaX = newDeltaX;
+    m_dragDeltaY = newDeltaY;
+
+    applyMoveDelta(m_dragAtomIds, m_dragArrowIds, m_dragPlusIds, m_dragMultitailIds, appliedDx, appliedDy);
+    m_dirty = true;
+}
+
+void DocumentState::commitMove() {
+    if (m_dragDeltaX != 0.0 || m_dragDeltaY != 0.0) {
+        double dx = m_dragDeltaX, dy = m_dragDeltaY;
+        QList<AtomId> atomIds = m_dragAtomIds;
+        QList<RxnArrowId> arrowIds = m_dragArrowIds;
+        QList<RxnPlusId> plusIds = m_dragPlusIds;
+        QList<MultitailArrowId> mtaIds = m_dragMultitailIds;
+        auto isFirst = std::make_shared<bool>(true);
+        DocumentState* self = this;   // safe: m_history is a member, so `this` outlives every command in it
+
+        EditCommand cmd;
+        cmd.execute = [self, isFirst, atomIds, arrowIds, plusIds, mtaIds, dx, dy]() {
+            // The live calls already applied the delta, so executeCommand's own
+            // synchronous first execute() must be a no-op -- exactly the real
+            // commitMove's isFirst guard.
+            if (*isFirst) { *isFirst = false; return; }
+            self->applyMoveDelta(atomIds, arrowIds, plusIds, mtaIds, dx, dy);
+        };
+        cmd.invert = [self, isFirst, atomIds, arrowIds, plusIds, mtaIds, dx, dy]() {
+            *isFirst = false;
+            self->applyMoveDelta(atomIds, arrowIds, plusIds, mtaIds, -dx, -dy);
+        };
+        executeCommand(std::move(cmd));
+    }
+    resetMoveDragState();
+}

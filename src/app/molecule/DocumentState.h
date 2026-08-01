@@ -110,9 +110,41 @@ public:
     void moveImage(ImageId id, double dx, double dy);
     void resizeImage(ImageId id, double scaleFactor);
 
+    // ---- Live-drag gestures ------------------------------------------------
+    // Repeated *Live calls during a UI drag mutate positions directly and push
+    // NOTHING onto the undo history; the matching commit* call at gesture end
+    // pushes exactly one undoable command covering the whole gesture. Direct
+    // port of 20-edit.js's moveSelection/commitMove pair.
+    //
+    // NOTE the deliberate per-gesture asymmetry, ported exactly and NOT
+    // normalized: move takes an INCREMENTAL (dx,dy) applied to current
+    // positions; rotate takes an INCREMENTAL angle accumulated into a running
+    // total re-applied from the original snapshot; scale takes an ABSOLUTE
+    // factor measured from gesture start. See each method's port note.
+    void moveSelectionLive(double dx, double dy);
+    void commitMove();
+
 private:
     enum class DiscreteTransform { RotateCW, RotateCCW, FlipH, FlipV };
     void applyDiscreteTransform(DiscreteTransform mode);
+
+    // Page bounds, copied verbatim from 10-state.js:238-239.
+    static constexpr double kPageMinX = -30.0, kPageMaxX = 30.0;
+    static constexpr double kPageMinY = -21.0, kPageMaxY = 21.0;
+
+    // Move-gesture drag state (mirrors the real _drag* module-level vars).
+    double m_dragDeltaX = 0.0, m_dragDeltaY = 0.0;
+    QList<AtomId> m_dragAtomIds;
+    QList<RxnArrowId> m_dragArrowIds;
+    QList<RxnPlusId> m_dragPlusIds;
+    QList<MultitailArrowId> m_dragMultitailIds;
+    bool m_dragHasOrigBBox = false;
+    double m_dragBBoxMinX = 0.0, m_dragBBoxMinY = 0.0, m_dragBBoxMaxX = 0.0, m_dragBBoxMaxY = 0.0;
+
+    void applyMoveDelta(const QList<AtomId>& atomIds, const QList<RxnArrowId>& arrowIds,
+                        const QList<RxnPlusId>& plusIds, const QList<MultitailArrowId>& mtaIds,
+                        double dx, double dy);
+    void resetMoveDragState();
 
     EditableMolecule m_molecule;
     std::vector<EditCommand> m_history;
