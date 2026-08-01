@@ -72,6 +72,8 @@ public:
     bool setAtomRadical(AtomId id, int radical);
     int atomExplicitValence(AtomId id) const;
     bool setAtomExplicitValence(AtomId id, int valence);
+    bool setAtomLabel(AtomId id, const QString& newSymbol);
+    bool setBondOrderValue(BondId id, int order);
     bool atomPos(AtomId id, double& x, double& y) const;
     int bondOrder(BondId id) const;
     QList<AtomId> atomIds() const;

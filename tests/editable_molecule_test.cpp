@@ -314,6 +314,32 @@ static void test_atomAttributeAccessors() {
     CHECK(!m.setAtomExplicitValence(invalid, 1), "invalid id: setAtomExplicitValence fails cleanly");
 }
 
+static void test_atomLabelAndBondOrder() {
+    std::printf("--- Test 9: setAtomLabel + setBondOrderValue ---\n");
+    EditableMolecule m;
+    AtomId c1 = m.addAtom(QStringLiteral("C"), 0, 0);
+    m.setAtomCharge(c1, 1);
+    m.setAtomIsotope(c1, 13);
+
+    CHECK(m.setAtomLabel(c1, QStringLiteral("N")), "setAtomLabel to a valid element succeeds");
+    CHECK(m.atomSymbol(c1) == QStringLiteral("N"), "atomSymbol reflects the new label");
+    CHECK(m.atomCharge(c1) == 1, "charge survives the label change");
+    CHECK(m.atomIsotope(c1) == 13, "isotope survives the label change");
+
+    CHECK(!m.setAtomLabel(c1, QStringLiteral("NotAnElement")), "setAtomLabel rejects an invalid symbol");
+    CHECK(m.atomSymbol(c1) == QStringLiteral("N"), "label unchanged after a rejected setAtomLabel");
+
+    AtomId c2 = m.addAtom(QStringLiteral("C"), 1, 0);
+    BondId b1 = m.addBond(c1, c2, 1);
+    CHECK(m.bondOrder(b1) == 1, "fresh bond has order 1");
+    CHECK(m.setBondOrderValue(b1, 2), "setBondOrderValue succeeds");
+    CHECK(m.bondOrder(b1) == 2, "bondOrder reads back the new order");
+
+    AtomId invalid = 9999;
+    CHECK(!m.setAtomLabel(invalid, QStringLiteral("O")), "invalid atom id: setAtomLabel fails cleanly");
+    CHECK(!m.setBondOrderValue(invalid, 1), "invalid bond id: setBondOrderValue fails cleanly");
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -327,6 +353,7 @@ int main() {
     test_queryFeatureSpike();
     test_extensionEntityRemoval();
     test_atomAttributeAccessors();
+    test_atomLabelAndBondOrder();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);

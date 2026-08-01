@@ -257,6 +257,61 @@ bool EditableMolecule::setAtomExplicitValence(AtomId id, int valence) {
     return ok;
 }
 
+bool EditableMolecule::setAtomLabel(AtomId id, const QString& newSymbol) {
+    if (m_mol < 0 || !m_atomIdx.contains(id)) return false;
+    activateSession();
+    int a = indigoGetAtom(m_mol, m_atomIdx.value(id));
+    if (a < 0) return false;
+    // Read every attribute indigoResetAtom might not preserve BEFORE resetting,
+    // since its effect on charge/isotope/radical/explicit valence is unverified
+    // and must not be assumed. Re-apply them unconditionally after a successful
+    // reset -- a harmless no-op if it turns out they were already preserved.
+    int oldCharge = 0; indigoGetCharge(a, &oldCharge);
+    int oldIsotope = indigoIsotope(a); if (oldIsotope < 0) oldIsotope = 0;
+    int oldRadical = 0; indigoGetRadical(a, &oldRadical);
+    int oldValence = -1; bool hadValence = indigoGetExplicitValence(a, &oldValence) != 0;
+    const char* oldSymbolRaw = indigoSymbol(a);
+    QString oldSymbol = oldSymbolRaw ? QString::fromUtf8(oldSymbolRaw) : QString();
+
+    int result = indigoResetAtom(a, newSymbol.toUtf8().constData());
+    if (result < 0) {
+        m_lastError = QString::fromUtf8(indigoGetLastError());
+        indigoFree(a);
+        return false;
+    }
+    // indigoResetAtom does not validate the symbol against the periodic table --
+    // an unrecognized string (spike-confirmed: tests/editable_molecule_test.cpp
+    // Test 9) silently succeeds as a pseudo-atom label instead of failing. Detect
+    // that case via indigoIsPseudoatom and revert to the original symbol, since
+    // this class (like plain Indigo molecule handles generally) does not support
+    // pseudo-atoms/R-sites.
+    if (indigoIsPseudoatom(a)) {
+        indigoResetAtom(a, oldSymbol.toUtf8().constData());
+        indigoSetCharge(a, oldCharge);
+        indigoSetIsotope(a, oldIsotope);
+        indigoSetRadical(a, oldRadical);
+        if (hadValence) indigoSetExplicitValence(a, oldValence);
+        indigoFree(a);
+        return false;
+    }
+    indigoSetCharge(a, oldCharge);
+    indigoSetIsotope(a, oldIsotope);
+    indigoSetRadical(a, oldRadical);
+    if (hadValence) indigoSetExplicitValence(a, oldValence);
+    indigoFree(a);
+    return true;
+}
+
+bool EditableMolecule::setBondOrderValue(BondId id, int order) {
+    if (m_mol < 0 || !m_bondIdx.contains(id)) return false;
+    activateSession();
+    int b = indigoGetBond(m_mol, m_bondIdx.value(id));
+    if (b < 0) return false;
+    bool ok = indigoSetBondOrder(b, order) >= 0;
+    indigoFree(b);
+    return ok;
+}
+
 int EditableMolecule::bondOrder(BondId id) const {
     if (m_mol < 0 || !m_bondIdx.contains(id)) return -1;
     activateSession();
