@@ -222,6 +222,13 @@ int main() {
         {"CCB(O)O", "ethylboronic acid"}, // regression test for existing boronic acid
         {"CCS", "ethanethiol"},
         {"CSC", "methylsulfanylmethane"},
+        // PHASE 65: SELENOL and TELLUROL (chalcogen analogues of THIOL, P-63.1.5)
+        {"CC[SeH]", "ethaneselenol"},
+        {"C[SeH]", "methaneselenol"},
+        {"CC[TeH]", "ethanetellurol"},
+        // Selenol/tellurol as prefix when a senior group is present (alcohol > selenol > tellurol)
+        {"[SeH]CCO", "2-selanylethanol"},
+        {"[TeH]CCO", "2-tellanylethanol"},
         {"CN(=O)=O", "nitromethane"},
         {"C[N+](=O)[O-]", "nitromethane"},
         {"CCN=C=O", "isocyanatoethane"},
