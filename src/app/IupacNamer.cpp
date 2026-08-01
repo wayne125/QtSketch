@@ -2683,9 +2683,11 @@ IupacResult IupacNamer::generateName(int mol) {
     std::set<int> selenoetherSeleniums;    // seleniumNodes
     std::set<int> selenoxideSeleniums;     // seleniumNodes: R2Se=O (seleninyl)
     std::set<int> selenoneSeleniums;       // seleniumNodes: R2SeO2 (selenonyl)
+    std::set<int> diselenideSeleniums;     // seleniumNodes: R-Se-Se-R' (diselanyl)
     std::set<int> telluroetherTelluriums;  // telluriumNodes
     std::set<int> telluroxideTelluriums;   // telluriumNodes: R2Te=O (tellurinyl)
     std::set<int> telluroneTelluriums;     // telluriumNodes: R2TeO2 (telluronyl)
+    std::set<int> ditellurideTelluriums;   // telluriumNodes: R-Te-Te-R' (ditellanyl)
     std::map<int, std::vector<int>> carbonAzide;      // carbonNode -> vector of azide N1 nodes
     std::map<int, int> carbonPhosphine;        // carbonNode -> phosphorusNode
     std::map<int, int> carbonPhosphonicAcid;   // carbonNode -> phosphorusNode
@@ -2815,7 +2817,7 @@ IupacResult IupacNamer::generateName(int mol) {
                 return {false, "", "Boron-containing groups other than boronic acid are not supported in this phase."};
             }
         } else if (node.atomicNumber == 34) {
-            int sglC = 0, dblO = 0;
+            int sglC = 0, dblO = 0, sglSe = 0;
             std::vector<int> cNeighbors;
             for (size_t j = 0; j < node.neighbors.size(); ++j) {
                 int nei = node.neighbors[j];
@@ -2826,6 +2828,8 @@ IupacResult IupacNamer::generateName(int mol) {
                     cNeighbors.push_back(nei);
                 } else if (nZ == 8 && order == 2) {
                     dblO++;
+                } else if (nZ == 34 && order == 1) {
+                    sglSe++;
                 }
             }
             if (sglC == 1 && node.neighbors.size() == 1 && node.totalH >= 1) {
@@ -2836,13 +2840,15 @@ IupacResult IupacNamer::generateName(int mol) {
                 selenoxideSeleniums.insert(static_cast<int>(i));
             } else if (dblO == 2 && sglC == 2 && node.neighbors.size() == 4) {
                 selenoneSeleniums.insert(static_cast<int>(i));
+            } else if (sglSe == 1 && sglC == 1 && dblO == 0 && node.neighbors.size() == 2) {
+                diselenideSeleniums.insert(static_cast<int>(i));
             }
             // Note: unlike phosphorus/boron, selenium is also used elsewhere in this file
             // for ring heterocycles (selenophene, selenazole, etc.) -- a Se atom that
             // doesn't match the plain -SeH shape above is left unclassified here (not
             // rejected) so those ring-heterocycle code paths still see it untouched.
         } else if (node.atomicNumber == 52) {
-            int sglC = 0, dblO = 0;
+            int sglC = 0, dblO = 0, sglTe = 0;
             std::vector<int> cNeighbors;
             for (size_t j = 0; j < node.neighbors.size(); ++j) {
                 int nei = node.neighbors[j];
@@ -2853,6 +2859,8 @@ IupacResult IupacNamer::generateName(int mol) {
                     cNeighbors.push_back(nei);
                 } else if (nZ == 8 && order == 2) {
                     dblO++;
+                } else if (nZ == 52 && order == 1) {
+                    sglTe++;
                 }
             }
             if (sglC == 1 && node.neighbors.size() == 1 && node.totalH >= 1) {
@@ -2863,6 +2871,8 @@ IupacResult IupacNamer::generateName(int mol) {
                 telluroxideTelluriums.insert(static_cast<int>(i));
             } else if (dblO == 2 && sglC == 2 && node.neighbors.size() == 4) {
                 telluroneTelluriums.insert(static_cast<int>(i));
+            } else if (sglTe == 1 && sglC == 1 && dblO == 0 && node.neighbors.size() == 2) {
+                ditellurideTelluriums.insert(static_cast<int>(i));
             }
             // Note: unlike phosphorus/boron, tellurium is also used elsewhere in this file
             // for ring heterocycles (tellurophene, etc.) -- a Te atom that doesn't match
@@ -4036,6 +4046,22 @@ IupacResult IupacNamer::generateName(int mol) {
                             alkylName += "selenonyl";
                             locantSubstituents[locant].append(alkylName);
                         }
+                    } else if (diselenideSeleniums.count(nei)) {
+                        int se2Nei = -1;
+                        for (int oNei : g.nodes[nei].neighbors) {
+                            if (g.nodes[oNei].atomicNumber == 34 && oNei != cNode) { se2Nei = oNei; break; }
+                        }
+                        if (se2Nei != -1) {
+                            int alkylNei = -1;
+                            for (int oNei : g.nodes[se2Nei].neighbors) {
+                                if (g.nodes[oNei].atomicNumber == 6 && oNei != nei) { alkylNei = oNei; break; }
+                            }
+                            if (alkylNei != -1) {
+                                QString alkylName = nameBranchGraph(g, alkylNei, se2Nei, allSSSRRings);
+                                alkylName += "diselanyl";
+                                locantSubstituents[locant].append(alkylName);
+                            }
+                        }
                     }
                 } else if (z == 52) {
                     if (telluroetherTelluriums.count(nei)) {
@@ -4067,6 +4093,22 @@ IupacResult IupacNamer::generateName(int mol) {
                             QString alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
                             alkylName += "telluronyl";
                             locantSubstituents[locant].append(alkylName);
+                        }
+                    } else if (ditellurideTelluriums.count(nei)) {
+                        int te2Nei = -1;
+                        for (int oNei : g.nodes[nei].neighbors) {
+                            if (g.nodes[oNei].atomicNumber == 52 && oNei != cNode) { te2Nei = oNei; break; }
+                        }
+                        if (te2Nei != -1) {
+                            int alkylNei = -1;
+                            for (int oNei : g.nodes[te2Nei].neighbors) {
+                                if (g.nodes[oNei].atomicNumber == 6 && oNei != nei) { alkylNei = oNei; break; }
+                            }
+                            if (alkylNei != -1) {
+                                QString alkylName = nameBranchGraph(g, alkylNei, te2Nei, allSSSRRings);
+                                alkylName += "ditellanyl";
+                                locantSubstituents[locant].append(alkylName);
+                            }
                         }
                     }
                 } else if (z == 9 || z == 17 || z == 35 || z == 53) {
