@@ -1,6 +1,7 @@
 // tests/document_state_test.cpp
 // Standalone tests for DocumentState (chem-core.js migration, sub-project 2).
 #include <cstdio>
+#include <cmath>
 #include "app/molecule/SelectionState.h"
 #include "app/molecule/EditCommand.h"
 #include "app/molecule/DocumentState.h"
@@ -427,6 +428,83 @@ static void test_liveDragMove() {
     }
 }
 
+static void test_liveDragRotate() {
+    std::printf("--- Test 9: live-drag rotate gesture ---\n");
+    DocumentState doc;
+    // Symmetric pair about the origin -> centroid (0,0), easy exact math.
+    // Seeded via doc.molecule() so history starts empty.
+    AtomId a1 = doc.molecule().addAtom(QStringLiteral("C"), 1, 0);
+    AtomId a2 = doc.molecule().addAtom(QStringLiteral("C"), -1, 0);
+    doc.selectAtom(a1);
+    doc.addAtomToSelection(a2);
+
+    const double kPi = 3.14159265358979323846;
+    doc.rotateSelectionLive(kPi / 2);   // +90 degrees about (0,0): (1,0) -> (0,1)
+    double x = 0, y = 0;
+    CHECK(doc.molecule().atomPos(a1, x, y) && std::fabs(x - 0.0) < 1e-9 && std::fabs(y - 1.0) < 1e-9,
+          "live rotate by +90 moves (1,0) to (0,1)");
+    CHECK(!doc.canUndo(), "live rotate calls push NO history entry");
+
+    // A second incremental call accumulates: another +90 => 180 total.
+    doc.rotateSelectionLive(kPi / 2);
+    CHECK(doc.molecule().atomPos(a1, x, y) && std::fabs(x + 1.0) < 1e-9 && std::fabs(y - 0.0) < 1e-9,
+          "a second increment accumulates to 180 degrees total");
+
+    doc.commitRotate();
+    CHECK(doc.canUndo(), "commitRotate pushes exactly one history entry");
+    doc.undo();
+    CHECK(doc.molecule().atomPos(a1, x, y) && std::fabs(x - 1.0) < 1e-9 && std::fabs(y - 0.0) < 1e-9,
+          "undo restores a1 to its exact original position");
+    CHECK(doc.molecule().atomPos(a2, x, y) && std::fabs(x + 1.0) < 1e-9 && std::fabs(y - 0.0) < 1e-9,
+          "undo restores a2 to its exact original position");
+    doc.redo();
+    CHECK(doc.molecule().atomPos(a1, x, y) && std::fabs(x + 1.0) < 1e-9, "redo re-applies the rotation");
+
+    // Fewer than 2 snapshot points: no-op (real code's pts.length < 2 guard).
+    {
+        DocumentState d2;
+        AtomId b1 = d2.molecule().addAtom(QStringLiteral("C"), 5, 5);
+        d2.selectAtom(b1);
+        d2.rotateSelectionLive(kPi / 2);
+        double bx = 0, by = 0;
+        CHECK(d2.molecule().atomPos(b1, bx, by) && bx == 5 && by == 5, "single point: rotate is a no-op");
+        d2.commitRotate();
+        CHECK(!d2.canUndo(), "commitRotate after a no-op gesture pushes nothing");
+    }
+
+    // Page-boundary clamp: a rotation that would push a point off-page freezes.
+    {
+        DocumentState d3;
+        AtomId c1 = d3.molecule().addAtom(QStringLiteral("C"), 29, 0);
+        AtomId c2 = d3.molecule().addAtom(QStringLiteral("C"), -29, 0);
+        d3.selectAtom(c1);
+        d3.addAtomToSelection(c2);
+        // 90 degrees would put both at y = +-29, outside kPageMaxY (21).
+        d3.rotateSelectionLive(kPi / 2);
+        double cx = 0, cy = 0;
+        CHECK(d3.molecule().atomPos(c1, cx, cy) && cx == 29 && cy == 0,
+              "out-of-page rotation is refused: positions unchanged");
+    }
+
+    // Multitail arrows are excluded from rotate but do not block it.
+    {
+        DocumentState d4;
+        AtomId e1 = d4.molecule().addAtom(QStringLiteral("C"), 1, 0);
+        AtomId e2 = d4.molecule().addAtom(QStringLiteral("C"), -1, 0);
+        MultitailArrowId mta = d4.molecule().addMultitailArrow({4, 4, 6, 6});
+        d4.selectAtom(e1);
+        d4.addAtomToSelection(e2);
+        d4.addMultitailArrowToSelection(mta);
+        d4.rotateSelectionLive(kPi / 2);
+        double ex = 0, ey = 0;
+        CHECK(d4.molecule().atomPos(e1, ex, ey) && std::fabs(ey - 1.0) < 1e-9,
+              "atoms still rotate when a multitail arrow is also selected");
+        QList<double> pts = d4.molecule().multitailArrowPoints(mta);
+        CHECK(pts.size() == 4 && pts[0] == 4 && pts[3] == 6,
+              "multitail arrow points are NOT rotated (documented limitation)");
+    }
+}
+
 static void test_documentStateSelection() {
     std::printf("--- Test 4: DocumentState selection ---\n");
     DocumentState doc;
@@ -513,6 +591,7 @@ int main() {
     test_discreteTransforms();
     test_imageTransforms();
     test_liveDragMove();
+    test_liveDragRotate();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

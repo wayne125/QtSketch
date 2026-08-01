@@ -124,6 +124,14 @@ public:
     void moveSelectionLive(double dx, double dy);
     void commitMove();
 
+    // Rotate about the centroid of the snapshotted selection points.
+    // angleDelta is INCREMENTAL (radians); the running total is re-applied to
+    // the ORIGINAL snapshot every call, which is what keeps a long drag free
+    // of floating-point drift. Multitail arrows are excluded -- see the
+    // limitation note on snapshotSelectionPoints below.
+    void rotateSelectionLive(double angleDelta);
+    void commitRotate();
+
 private:
     enum class DiscreteTransform { RotateCW, RotateCCW, FlipH, FlipV };
     void applyDiscreteTransform(DiscreteTransform mode);
@@ -145,6 +153,31 @@ private:
                         const QList<RxnPlusId>& plusIds, const QList<MultitailArrowId>& mtaIds,
                         double dx, double dy);
     void resetMoveDragState();
+
+    // One snapshotted, transformable point. Shared by the rotate and scale
+    // gestures (move does not use it -- it works from raw id lists, exactly
+    // like the real moveSelection). Mirrors the real _snapshotSelectionPoints
+    // tagged-point records; an RxnArrow contributes two independent points.
+    //
+    // KNOWN LIMITATION (deliberate): multitail arrows are NOT represented here.
+    // chem-core's rotate/scale transform only a multitail arrow's spineTop
+    // anchor point, and our MultitailArrow has no anchor -- only absolute
+    // points -- so there is no faithful mapping. They participate in move
+    // (translation is representation-independent) and are excluded from
+    // rotate/scale rather than given invented rigid-body behaviour.
+    struct TransformPoint {
+        enum class Kind { Atom, RxnArrowP1, RxnArrowP2, RxnPlus };
+        Kind kind;
+        int id;
+        double x, y;
+    };
+    QList<TransformPoint> snapshotSelectionPoints() const;
+    static void writeTransformPoint(EditableMolecule& mol, const TransformPoint& pt, double nx, double ny);
+
+    // Rotate-gesture drag state (mirrors the real _rotateDrag* vars).
+    QList<TransformPoint> m_rotateOrigPos;
+    double m_rotateCenterX = 0.0, m_rotateCenterY = 0.0;
+    double m_rotateTotalAngle = 0.0;
 
     EditableMolecule m_molecule;
     std::vector<EditCommand> m_history;

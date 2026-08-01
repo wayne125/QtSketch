@@ -2,6 +2,7 @@
 #include "DocumentState.h"
 #include <memory>
 #include <algorithm>
+#include <cmath>
 
 DocumentState::DocumentState(const QString& initialStructure)
     : m_molecule(initialStructure) {
@@ -510,4 +511,115 @@ void DocumentState::commitMove() {
         executeCommand(std::move(cmd));
     }
     resetMoveDragState();
+}
+
+QList<DocumentState::TransformPoint> DocumentState::snapshotSelectionPoints() const {
+    QList<TransformPoint> pts;
+    for (AtomId id : m_selection.atoms) {
+        double x = 0, y = 0;
+        if (m_molecule.atomPos(id, x, y)) pts.append({TransformPoint::Kind::Atom, id, x, y});
+    }
+    for (RxnArrowId id : m_selection.rxnArrows) {
+        double x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+        if (!m_molecule.rxnArrowEndpoints(id, x1, y1, x2, y2)) continue;
+        pts.append({TransformPoint::Kind::RxnArrowP1, id, x1, y1});
+        pts.append({TransformPoint::Kind::RxnArrowP2, id, x2, y2});
+    }
+    for (RxnPlusId id : m_selection.rxnPluses) {
+        double x = 0, y = 0;
+        if (m_molecule.rxnPlusPos(id, x, y)) pts.append({TransformPoint::Kind::RxnPlus, id, x, y});
+    }
+    // Multitail arrows deliberately omitted -- see the header's limitation note.
+    return pts;
+}
+
+void DocumentState::writeTransformPoint(EditableMolecule& mol, const TransformPoint& pt, double nx, double ny) {
+    switch (pt.kind) {
+        case TransformPoint::Kind::Atom:
+            mol.setAtomPos(pt.id, nx, ny);
+            break;
+        case TransformPoint::Kind::RxnArrowP1: {
+            double x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+            if (mol.rxnArrowEndpoints(pt.id, x1, y1, x2, y2)) mol.setRxnArrowEndpoints(pt.id, nx, ny, x2, y2);
+            break;
+        }
+        case TransformPoint::Kind::RxnArrowP2: {
+            double x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+            if (mol.rxnArrowEndpoints(pt.id, x1, y1, x2, y2)) mol.setRxnArrowEndpoints(pt.id, x1, y1, nx, ny);
+            break;
+        }
+        case TransformPoint::Kind::RxnPlus:
+            mol.setRxnPlusPos(pt.id, nx, ny);
+            break;
+    }
+}
+
+void DocumentState::rotateSelectionLive(double angleDelta) {
+    if (m_rotateOrigPos.isEmpty()) {
+        QList<TransformPoint> pts = snapshotSelectionPoints();
+        if (pts.size() < 2) return;   // matches the real pts.length < 2 guard
+        double cx = 0, cy = 0;
+        for (const TransformPoint& p : pts) { cx += p.x; cy += p.y; }
+        m_rotateOrigPos = pts;
+        m_rotateCenterX = cx / pts.size();
+        m_rotateCenterY = cy / pts.size();
+        m_rotateTotalAngle = 0.0;
+    }
+    const double cx = m_rotateCenterX, cy = m_rotateCenterY;
+    const double candidateTotal = m_rotateTotalAngle + angleDelta;
+    const double cosA = std::cos(candidateTotal), sinA = std::sin(candidateTotal);
+
+    // Page-boundary hard clamp: a rotation's effect on the bbox is not a simple
+    // linear delta, so rather than solving for an exact boundary angle, refuse
+    // to advance past the point where any point would leave the page. The drag
+    // freezes there; the user can still rotate back the other way.
+    for (const TransformPoint& op : m_rotateOrigPos) {
+        const double odx = op.x - cx, ody = op.y - cy;
+        const double nx = cx + odx * cosA - ody * sinA;
+        const double ny = cy + odx * sinA + ody * cosA;
+        if (nx < kPageMinX || nx > kPageMaxX || ny < kPageMinY || ny > kPageMaxY) return;
+    }
+
+    m_rotateTotalAngle = candidateTotal;
+    for (const TransformPoint& p : m_rotateOrigPos) {
+        const double dx = p.x - cx, dy = p.y - cy;
+        writeTransformPoint(m_molecule, p, cx + dx * cosA - dy * sinA, cy + dx * sinA + dy * cosA);
+    }
+    m_dirty = true;
+}
+
+void DocumentState::commitRotate() {
+    if (!m_rotateOrigPos.isEmpty() && m_rotateTotalAngle != 0.0) {
+        QList<TransformPoint> origPos = m_rotateOrigPos;
+        const double totalAngle = m_rotateTotalAngle;
+        const double cx = m_rotateCenterX, cy = m_rotateCenterY;
+        EditableMolecule& mol = m_molecule;
+        auto isFirst = std::make_shared<bool>(true);
+
+        // applyAngle(0) writes every point back to its snapshot position
+        // (cos0=1, sin0=0 is the identity about the centre) -- that is exactly
+        // how the real commitRotate implements its undo.
+        auto applyAngle = [&mol, origPos, cx, cy](double angle) {
+            const double c = std::cos(angle), s = std::sin(angle);
+            for (const TransformPoint& p : origPos) {
+                const double dx = p.x - cx, dy = p.y - cy;
+                writeTransformPoint(mol, p, cx + dx * c - dy * s, cy + dx * s + dy * c);
+            }
+        };
+
+        EditCommand cmd;
+        cmd.execute = [isFirst, applyAngle, totalAngle]() {
+            if (*isFirst) { *isFirst = false; return; }
+            applyAngle(totalAngle);
+        };
+        cmd.invert = [isFirst, applyAngle]() {
+            *isFirst = false;
+            applyAngle(0.0);
+        };
+        executeCommand(std::move(cmd));
+    }
+    m_rotateOrigPos.clear();
+    m_rotateTotalAngle = 0.0;
+    m_rotateCenterX = 0.0;
+    m_rotateCenterY = 0.0;
 }
