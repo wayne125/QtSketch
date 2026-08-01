@@ -87,6 +87,9 @@ public:
     bool removeRxnPlus(RxnPlusId id);
     bool removeMultitailArrow(MultitailArrowId id);
     bool removeImage(ImageId id);
+    QList<RxnArrowId> rxnArrowIds() const;
+    QList<RxnPlusId> rxnPlusIds() const;
+    QList<MultitailArrowId> multitailArrowIds() const;
     void setStereoFlag(int fragmentIndex, int flag);
     int stereoFlag(int fragmentIndex) const;
     void setAtomAAM(AtomId id, int mapNumber);

@@ -266,6 +266,9 @@ bool EditableMolecule::removeRxnArrow(RxnArrowId id) { return m_ext.rxnArrows.re
 bool EditableMolecule::removeRxnPlus(RxnPlusId id) { return m_ext.rxnPluses.remove(id) > 0; }
 bool EditableMolecule::removeMultitailArrow(MultitailArrowId id) { return m_ext.multitailArrows.remove(id) > 0; }
 bool EditableMolecule::removeImage(ImageId id) { return m_ext.images.remove(id) > 0; }
+QList<RxnArrowId> EditableMolecule::rxnArrowIds() const { return m_ext.rxnArrows.keys(); }
+QList<RxnPlusId> EditableMolecule::rxnPlusIds() const { return m_ext.rxnPluses.keys(); }
+QList<MultitailArrowId> EditableMolecule::multitailArrowIds() const { return m_ext.multitailArrows.keys(); }
 
 void EditableMolecule::setStereoFlag(int fragmentIndex, int flag) { m_ext.stereoFlags.insert(fragmentIndex, flag); }
 int EditableMolecule::stereoFlag(int fragmentIndex) const { return m_ext.stereoFlags.value(fragmentIndex, -1); }

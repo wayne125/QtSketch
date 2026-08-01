@@ -36,9 +36,34 @@ public:
     bool canUndo() const;
     bool canRedo() const;
 
-    // Task 6 adds: selectAtom/selectBond/selectRxnArrow/selectRxnPlus/
-    // selectMultitailArrow/clearSelection/add*ToSelection/remove*FromSelection/
-    // selectAll/selection().
+    void selectAtom(AtomId id);
+    void selectBond(BondId id);
+    void selectRxnArrow(RxnArrowId id);
+    void selectRxnPlus(RxnPlusId id);
+    void selectMultitailArrow(MultitailArrowId id);
+    void clearSelection();
+
+    void addAtomToSelection(AtomId id);
+    void addBondToSelection(BondId id);
+    void addRxnArrowToSelection(RxnArrowId id);
+    void addRxnPlusToSelection(RxnPlusId id);
+    void addMultitailArrowToSelection(MultitailArrowId id);
+
+    void removeAtomFromSelection(AtomId id);
+    void removeBondFromSelection(BondId id);
+    void removeRxnArrowFromSelection(RxnArrowId id);
+    void removeRxnPlusFromSelection(RxnPlusId id);
+    void removeMultitailArrowFromSelection(MultitailArrowId id);
+
+    // Selects every current atom/bond/rxnArrow/rxnPlus/multitailArrow. KNOWN
+    // SIMPLIFICATION: the real 10-state.js selectAll() excludes atoms hidden
+    // inside a contracted SUP functional-group sgroup (selecting the sgroup's
+    // own pill id instead) -- that needs sgroup-contraction awareness
+    // (type/isExpanded) EditableMolecule doesn't have yet. This selectAll()
+    // selects raw atoms/bonds with no sgroup-contraction logic; revisit once
+    // a later sub-project models contracted sgroups.
+    void selectAll();
+    SelectionState& selection();
 
 private:
     EditableMolecule m_molecule;

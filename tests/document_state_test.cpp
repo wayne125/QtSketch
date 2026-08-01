@@ -120,11 +120,88 @@ static void test_documentStateHistoryCap() {
     CHECK(undoCount == 50, "at most 50 undos possible after 51 commands (history capped)");
 }
 
+static void test_documentStateSelection() {
+    std::printf("--- Test 4: DocumentState selection ---\n");
+    DocumentState doc;
+    EditableMolecule& mol = doc.molecule();
+    AtomId a1 = mol.addAtom(QStringLiteral("C"), 0, 0);
+    AtomId a2 = mol.addAtom(QStringLiteral("O"), 1, 0);
+    BondId b1 = mol.addBond(a1, a2, 1);
+    int ra1 = mol.addRxnArrow(0, 0, 5, 0);
+    int rp1 = mol.addRxnPlus(2, 0);
+    int mta1 = mol.addMultitailArrow({5,5, 0,4, 0,6});
+
+    CHECK(doc.selection().isEmpty(), "fresh DocumentState has empty selection");
+
+    // selectX REPLACES the whole selection (matches every real _selection
+    // literal in 10-state.js -- each clears the other 4 sets).
+    doc.selectAtom(a1);
+    CHECK(doc.selection().atoms.contains(a1) && doc.selection().atoms.size() == 1,
+          "selectAtom selects exactly that atom");
+    CHECK(doc.selection().bonds.isEmpty(), "selectAtom clears bonds");
+
+    doc.selectBond(b1);
+    CHECK(doc.selection().bonds.contains(b1), "selectBond selects that bond");
+    CHECK(doc.selection().atoms.isEmpty(), "selectBond clears atoms (replace, not add)");
+
+    doc.selectRxnArrow(ra1);
+    CHECK(doc.selection().rxnArrows.contains(ra1), "selectRxnArrow works");
+    doc.selectRxnPlus(rp1);
+    CHECK(doc.selection().rxnPluses.contains(rp1), "selectRxnPlus works");
+    doc.selectMultitailArrow(mta1);
+    CHECK(doc.selection().multitailArrows.contains(mta1), "selectMultitailArrow works");
+
+    doc.clearSelection();
+    CHECK(doc.selection().isEmpty(), "clearSelection empties everything");
+
+    // add*ToSelection: additive, does not clear other types.
+    doc.addAtomToSelection(a1);
+    doc.addAtomToSelection(a2);
+    doc.addBondToSelection(b1);
+    CHECK(doc.selection().atoms.size() == 2, "addAtomToSelection is additive");
+    CHECK(doc.selection().bonds.contains(b1), "addBondToSelection didn't clear atoms");
+
+    doc.removeAtomFromSelection(a1);
+    CHECK(!doc.selection().atoms.contains(a1) && doc.selection().atoms.contains(a2),
+          "removeAtomFromSelection removes only the specified atom");
+    CHECK(doc.selection().bonds.contains(b1), "removeAtomFromSelection didn't touch bonds");
+
+    doc.clearSelection();
+    doc.selectAll();
+    CHECK(doc.selection().atoms.size() == 2, "selectAll selects both atoms");
+    CHECK(doc.selection().bonds.size() == 1, "selectAll selects the bond");
+    CHECK(doc.selection().rxnArrows.size() == 1, "selectAll selects the rxn arrow");
+    CHECK(doc.selection().rxnPluses.size() == 1, "selectAll selects the rxn plus");
+    CHECK(doc.selection().multitailArrows.size() == 1, "selectAll selects the multitail arrow");
+
+    // Spec requirement: selection clears after both undo() and redo() (the
+    // real 10-state.js undo()/redo() both reset _selection to all-empty).
+    // undo()/redo() were implemented in Task 5 before selection() existed to
+    // assert against -- verified here, now that it does.
+    EditCommand addSulfur;
+    addSulfur.execute = [&mol]() { mol.addAtom(QStringLiteral("S"), 3, 0); };
+    addSulfur.invert = [&mol]() {
+        QList<AtomId> ids = mol.atomIds();
+        if (!ids.isEmpty()) mol.removeAtom(ids.last());
+    };
+    doc.executeCommand(addSulfur);
+    doc.selectAll();
+    CHECK(!doc.selection().isEmpty(), "selection is non-empty right before undo");
+    doc.undo();
+    CHECK(doc.selection().isEmpty(), "undo() clears the selection");
+
+    doc.selectAll();
+    CHECK(!doc.selection().isEmpty(), "selection is non-empty right before redo");
+    doc.redo();
+    CHECK(doc.selection().isEmpty(), "redo() clears the selection");
+}
+
 int main() {
     test_selectionStateBasics();
     test_editCommandBasics();
     test_documentStateUndoRedo();
     test_documentStateHistoryCap();
+    test_documentStateSelection();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }
