@@ -351,3 +351,42 @@ void DocumentState::rotateSelection90CW()      { applyDiscreteTransform(Discrete
 void DocumentState::rotateSelection90CCW()     { applyDiscreteTransform(DiscreteTransform::RotateCCW); }
 void DocumentState::flipSelectionHorizontal()  { applyDiscreteTransform(DiscreteTransform::FlipH); }
 void DocumentState::flipSelectionVertical()    { applyDiscreteTransform(DiscreteTransform::FlipV); }
+
+void DocumentState::moveImage(ImageId id, double dx, double dy) {
+    EditableMolecule& mol = m_molecule;
+    double x = 0, y = 0, w = 0, h = 0;
+    if (!mol.imageRect(id, x, y, w, h)) return;   // matches the real `if (!img) return`
+
+    EditCommand cmd;
+    cmd.execute = [&mol, id, dx, dy]() {
+        double cx = 0, cy = 0, cw = 0, ch = 0;
+        if (mol.imageRect(id, cx, cy, cw, ch)) mol.setImageRect(id, cx + dx, cy + dy, cw, ch);
+    };
+    cmd.invert = [&mol, id, dx, dy]() {
+        double cx = 0, cy = 0, cw = 0, ch = 0;
+        if (mol.imageRect(id, cx, cy, cw, ch)) mol.setImageRect(id, cx - dx, cy - dy, cw, ch);
+    };
+    executeCommand(std::move(cmd));
+}
+
+void DocumentState::resizeImage(ImageId id, double scaleFactor) {
+    // DELIBERATE ADDITION, not in the real JS: a zero factor would make
+    // invert's 1/scaleFactor non-finite and permanently corrupt the image's
+    // stored size. ImageRef holds plain doubles with no validation of its own.
+    if (scaleFactor == 0.0) return;
+
+    EditableMolecule& mol = m_molecule;
+    double x = 0, y = 0, w = 0, h = 0;
+    if (!mol.imageRect(id, x, y, w, h)) return;
+
+    EditCommand cmd;
+    cmd.execute = [&mol, id, scaleFactor]() {
+        double cx = 0, cy = 0, cw = 0, ch = 0;
+        if (mol.imageRect(id, cx, cy, cw, ch)) mol.setImageRect(id, cx, cy, cw * scaleFactor, ch * scaleFactor);
+    };
+    cmd.invert = [&mol, id, scaleFactor]() {
+        double cx = 0, cy = 0, cw = 0, ch = 0;
+        if (mol.imageRect(id, cx, cy, cw, ch)) mol.setImageRect(id, cx, cy, cw / scaleFactor, ch / scaleFactor);
+    };
+    executeCommand(std::move(cmd));
+}

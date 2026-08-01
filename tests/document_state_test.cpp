@@ -310,6 +310,43 @@ static void test_discreteTransforms() {
     }
 }
 
+static void test_imageTransforms() {
+    std::printf("--- Test 7: image move / resize ---\n");
+    DocumentState doc;
+    ImageId img = doc.molecule().addImage(1, 2, 4, 3, QByteArray("fakepng"));
+
+    double x = 0, y = 0, w = 0, h = 0;
+    doc.moveImage(img, 2.5, -1.5);
+    CHECK(doc.molecule().imageRect(img, x, y, w, h) && x == 3.5 && y == 0.5,
+          "moveImage offsets the image position");
+    CHECK(w == 4 && h == 3, "moveImage leaves the size untouched");
+    doc.undo();
+    CHECK(doc.molecule().imageRect(img, x, y, w, h) && x == 1 && y == 2,
+          "undo restores the original image position exactly");
+
+    doc.resizeImage(img, 2.0);
+    CHECK(doc.molecule().imageRect(img, x, y, w, h) && w == 8 && h == 6,
+          "resizeImage scales the image size");
+    CHECK(x == 1 && y == 2, "resizeImage leaves the position untouched");
+    doc.undo();
+    CHECK(doc.molecule().imageRect(img, x, y, w, h) && w == 4 && h == 3,
+          "undo restores the original image size exactly");
+
+    // Both undos above emptied the history, so !canUndo() is an exact signal here.
+    CHECK(!doc.canUndo(), "history is empty after undoing both image commands");
+
+    // scaleFactor 0 would make invert's 1/0 non-finite: guarded no-op.
+    doc.resizeImage(img, 0.0);
+    CHECK(!doc.canUndo(), "resizeImage(0) pushes no history entry");
+    CHECK(doc.molecule().imageRect(img, x, y, w, h) && w == 4 && h == 3,
+          "resizeImage(0) leaves the size unchanged");
+
+    // Invalid ids no-op cleanly.
+    doc.moveImage(9999, 1, 1);
+    doc.resizeImage(9999, 2.0);
+    CHECK(!doc.canUndo(), "invalid ImageId pushes no history entry");
+}
+
 static void test_documentStateSelection() {
     std::printf("--- Test 4: DocumentState selection ---\n");
     DocumentState doc;
@@ -394,6 +431,7 @@ int main() {
     test_documentStateSelection();
     test_documentStateEditingOperations();
     test_discreteTransforms();
+    test_imageTransforms();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

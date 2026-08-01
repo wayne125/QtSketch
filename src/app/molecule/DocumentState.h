@@ -102,6 +102,14 @@ public:
     void flipSelectionHorizontal();
     void flipSelectionVertical();
 
+    // Per-image transforms (20-edit.js has none; these port 50-reactions.js's
+    // moveImage/resizeImage). Take an explicit id rather than reading the
+    // selection -- images are deliberately not a SelectionState entity type.
+    // Both commit immediately as one undoable command; there is no live-drag
+    // protocol for images in the real code either.
+    void moveImage(ImageId id, double dx, double dy);
+    void resizeImage(ImageId id, double scaleFactor);
+
 private:
     enum class DiscreteTransform { RotateCW, RotateCCW, FlipH, FlipV };
     void applyDiscreteTransform(DiscreteTransform mode);
