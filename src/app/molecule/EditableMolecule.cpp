@@ -3,6 +3,7 @@
 #include "MoleculeSnapshot.h"
 #include "indigo.h"
 #include <algorithm>
+#include <utility>
 
 EditableMolecule::EditableMolecule(const QString& initialStructure) {
     m_session = indigoAllocSessionId();
@@ -310,6 +311,77 @@ bool EditableMolecule::setBondOrderValue(BondId id, int order) {
     bool ok = indigoSetBondOrder(b, order) >= 0;
     indigoFree(b);
     return ok;
+}
+
+int EditableMolecule::atomAttachmentOrder(AtomId id) const {
+    if (m_mol < 0 || !m_atomIdx.contains(id)) return 0;
+    activateSession();
+    int targetIdx = m_atomIdx.value(id);
+    int maxOrder = indigoCountAttachmentPoints(m_mol);
+    for (int order = 1; order <= maxOrder; ++order) {
+        int iter = indigoIterateAttachmentPoints(m_mol, order);
+        if (iter < 0) continue;
+        int h;
+        while ((h = indigoNext(iter)) > 0) {
+            int idx = indigoIndex(h);
+            indigoFree(h);
+            if (idx == targetIdx) {
+                indigoFree(iter);
+                return order;
+            }
+        }
+        indigoFree(iter);
+    }
+    return 0;
+}
+
+bool EditableMolecule::setAtomAttachmentOrder(AtomId id, int order) {
+    if (m_mol < 0 || !m_atomIdx.contains(id)) return false;
+    activateSession();
+    int targetIdx = m_atomIdx.value(id);
+
+    // Two probe-confirmed Indigo API quirks make this harder than it looks:
+    // (1) indigoClearAttachmentPoints only accepts the MOLECULE handle, not an
+    // atom handle (passing an atom handle fails with -1) -- and it wipes every
+    // atom's attachment points, not just one. (2) indigoSetAttachmentPoint
+    // ADDS the atom to a new order rather than replacing any existing one (an
+    // atom set to order 1 then order 2 ends up a member of BOTH orders). To
+    // make this a true single-atom "set" (each atom in at most one order),
+    // capture every OTHER atom's current (order, atomIdx) pairs, clear the
+    // whole molecule's attachment points, then re-apply the captured pairs
+    // plus this atom's new order (if any).
+    int maxOrder = indigoCountAttachmentPoints(m_mol);
+    QList<std::pair<int, int>> others; // (order, atomIdx), excludes targetIdx
+    for (int ord = 1; ord <= maxOrder; ++ord) {
+        int iter = indigoIterateAttachmentPoints(m_mol, ord);
+        if (iter < 0) continue;
+        int h;
+        while ((h = indigoNext(iter)) > 0) {
+            int idx = indigoIndex(h);
+            indigoFree(h);
+            if (idx != targetIdx) others.append({ord, idx});
+        }
+        indigoFree(iter);
+    }
+
+    if (maxOrder > 0 && indigoClearAttachmentPoints(m_mol) < 0) return false;
+
+    for (const auto& pr : others) {
+        int atomHandle = indigoGetAtom(m_mol, pr.second);
+        if (atomHandle >= 0) {
+            indigoSetAttachmentPoint(atomHandle, pr.first);
+            indigoFree(atomHandle);
+        }
+    }
+
+    if (order > 0) {
+        int a = indigoGetAtom(m_mol, targetIdx);
+        if (a < 0) return false;
+        bool ok = indigoSetAttachmentPoint(a, order) >= 0;
+        indigoFree(a);
+        return ok;
+    }
+    return true;
 }
 
 int EditableMolecule::bondOrder(BondId id) const {

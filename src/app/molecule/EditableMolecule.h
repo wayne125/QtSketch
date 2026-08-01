@@ -74,6 +74,8 @@ public:
     bool setAtomExplicitValence(AtomId id, int valence);
     bool setAtomLabel(AtomId id, const QString& newSymbol);
     bool setBondOrderValue(BondId id, int order);
+    int atomAttachmentOrder(AtomId id) const;
+    bool setAtomAttachmentOrder(AtomId id, int order);
     bool atomPos(AtomId id, double& x, double& y) const;
     int bondOrder(BondId id) const;
     QList<AtomId> atomIds() const;

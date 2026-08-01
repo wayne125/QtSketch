@@ -340,6 +340,28 @@ static void test_atomLabelAndBondOrder() {
     CHECK(!m.setBondOrderValue(invalid, 1), "invalid bond id: setBondOrderValue fails cleanly");
 }
 
+static void test_attachmentPointAccessors() {
+    std::printf("--- Test 10: attachment-point accessors ---\n");
+    EditableMolecule m;
+    AtomId c1 = m.addAtom(QStringLiteral("C"), 0, 0);
+    AtomId c2 = m.addAtom(QStringLiteral("C"), 1, 0);
+
+    CHECK(m.atomAttachmentOrder(c1) == 0, "fresh atom has attachment order 0 (none)");
+    CHECK(m.setAtomAttachmentOrder(c1, 1), "setAtomAttachmentOrder(1) succeeds");
+    CHECK(m.atomAttachmentOrder(c1) == 1, "atomAttachmentOrder reads back order 1");
+
+    CHECK(m.setAtomAttachmentOrder(c2, 2), "setAtomAttachmentOrder(2) on a different atom succeeds");
+    CHECK(m.atomAttachmentOrder(c2) == 2, "second atom reports its own order 2");
+    CHECK(m.atomAttachmentOrder(c1) == 1, "first atom's order unaffected by the second set");
+
+    CHECK(m.setAtomAttachmentOrder(c1, 0), "setAtomAttachmentOrder(0) clears it");
+    CHECK(m.atomAttachmentOrder(c1) == 0, "atomAttachmentOrder reports 0 after clearing");
+
+    AtomId invalid = 9999;
+    CHECK(!m.setAtomAttachmentOrder(invalid, 1), "invalid id: setAtomAttachmentOrder fails cleanly");
+    CHECK(m.atomAttachmentOrder(invalid) == 0, "invalid id: atomAttachmentOrder returns sentinel 0");
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -354,6 +376,7 @@ int main() {
     test_extensionEntityRemoval();
     test_atomAttributeAccessors();
     test_atomLabelAndBondOrder();
+    test_attachmentPointAccessors();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
