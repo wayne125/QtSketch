@@ -43,6 +43,25 @@
 // sgroup's atom-index list when one of its member atoms is removed via
 // removeAtom -- that bookkeeping gap is a documented, explicit limitation
 // carried into a later sub-project, not attempted here.
+//
+// Bond stereo (sub-project 3a design question): spike findings
+// (tests/editable_molecule_test.cpp Test 12, alanine CC(N)C(=O)O loaded from
+// a plain SMILES with no 2D coordinates): "stereocenter type before
+// indigoAddStereocenter: 0" (none detected on load, as expected -- SMILES
+// carries no wedge/dash). "indigoAddStereocenter(ABS) returned 1" (the call
+// to force a specific tetrahedral arrangement at the stereocenter succeeds).
+// "indigoMarkStereobonds returned 0" and "bonds with nonzero
+// indigoBondStereo() after marking: 0" -- despite the forced stereocenter,
+// NOT ONE incident bond ended up with a nonzero (wedge/dash) value from the
+// read-only indigoBondStereo() query. Consequence: indigoAddStereocenter +
+// indigoMarkStereobonds does NOT translate into a settable per-bond
+// wedge/dash through this path on a molecule with no 2D layout to derive a
+// direction from (plausible root cause: wedge/dash assignment needs existing
+// atom coordinates to pick which bond to mark, which this spike's molecule
+// never had). Bond stereo (wedge/dash) is therefore NOT supported by
+// changeBondOrder in this sub-project; it stays an explicit, documented gap
+// until serialization (sub-project 5) or a dedicated investigation with a
+// coordinate-bearing molecule finds a working mechanism.
 
 #include <QString>
 #include <QHash>

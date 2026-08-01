@@ -402,6 +402,58 @@ static void test_sgroupMembershipSpike() {
     indigoReleaseSessionId(session);
 }
 
+static void test_bondStereoSpike() {
+    std::printf("--- Test 12: bond-stereo mechanism spike (3a design question) ---\n");
+    unsigned long long session = indigoAllocSessionId();
+    indigoSetSessionId(session);
+
+    // Alanine (CC(N)C(=O)O) has a real stereocenter at atom index 1 -- used to
+    // test whether forcing a specific tetrahedral arrangement via
+    // indigoAddStereocenter, then indigoMarkStereobonds, causes any incident
+    // bond's (read-only) indigoBondStereo() to report a nonzero wedge/dash.
+    int mol = indigoLoadMoleculeFromString("CC(N)C(=O)O");
+    CHECK(mol >= 0, "spike: load alanine for bond-stereo spike");
+
+    int centerAtom = indigoGetAtom(mol, 1);
+    CHECK(centerAtom >= 0, "spike: got the stereocenter atom handle");
+    int beforeType = indigoStereocenterType(centerAtom);
+    std::printf("[INFO] spike: stereocenter type before indigoAddStereocenter: %d\n", beforeType);
+
+    QList<int> neiIdx;
+    int neiIter = indigoIterateNeighbors(centerAtom);
+    if (neiIter >= 0) {
+        int h;
+        while ((h = indigoNext(neiIter)) > 0) { neiIdx.append(indigoIndex(h)); indigoFree(h); }
+        indigoFree(neiIter);
+    }
+    int v1 = neiIdx.size() > 0 ? neiIdx[0] : -1;
+    int v2 = neiIdx.size() > 1 ? neiIdx[1] : -1;
+    int v3 = neiIdx.size() > 2 ? neiIdx[2] : -1;
+    int setResult = indigoAddStereocenter(centerAtom, INDIGO_ABS, v1, v2, v3, -1);
+    std::printf("[INFO] spike: indigoAddStereocenter(ABS) returned %d\n", setResult);
+
+    int markResult = indigoMarkStereobonds(mol);
+    std::printf("[INFO] spike: indigoMarkStereobonds returned %d\n", markResult);
+
+    int bondIter = indigoIterateBonds(mol);
+    int stereoBondsFound = 0;
+    if (bondIter >= 0) {
+        int b;
+        while ((b = indigoNext(bondIter)) > 0) {
+            if (indigoBondStereo(b) != 0) ++stereoBondsFound;
+            indigoFree(b);
+        }
+        indigoFree(bondIter);
+    }
+    std::printf("[INFO] spike: bonds with nonzero indigoBondStereo() after marking: %d\n", stereoBondsFound);
+
+    CHECK(true, "spike: bond-stereo mechanism investigation completed (see [INFO] lines above)");
+
+    indigoFree(centerAtom);
+    indigoFree(mol);
+    indigoReleaseSessionId(session);
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -418,6 +470,7 @@ int main() {
     test_atomLabelAndBondOrder();
     test_attachmentPointAccessors();
     test_sgroupMembershipSpike();
+    test_bondStereoSpike();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
