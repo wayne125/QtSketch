@@ -82,6 +82,11 @@ public:
     int multitailArrowCount() const;
     int addImage(double x, double y, double w, double h, const QByteArray& pngData);
     int imageCount() const;
+    bool removeTextAnnotation(TextId id);
+    bool removeRxnArrow(RxnArrowId id);
+    bool removeRxnPlus(RxnPlusId id);
+    bool removeMultitailArrow(MultitailArrowId id);
+    bool removeImage(ImageId id);
     void setStereoFlag(int fragmentIndex, int flag);
     int stereoFlag(int fragmentIndex) const;
     void setAtomAAM(AtomId id, int mapNumber);

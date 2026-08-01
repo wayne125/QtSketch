@@ -261,6 +261,12 @@ int EditableMolecule::addImage(double x, double y, double w, double h, const QBy
 }
 int EditableMolecule::imageCount() const { return m_ext.images.size(); }
 
+bool EditableMolecule::removeTextAnnotation(TextId id) { return m_ext.texts.remove(id) > 0; }
+bool EditableMolecule::removeRxnArrow(RxnArrowId id) { return m_ext.rxnArrows.remove(id) > 0; }
+bool EditableMolecule::removeRxnPlus(RxnPlusId id) { return m_ext.rxnPluses.remove(id) > 0; }
+bool EditableMolecule::removeMultitailArrow(MultitailArrowId id) { return m_ext.multitailArrows.remove(id) > 0; }
+bool EditableMolecule::removeImage(ImageId id) { return m_ext.images.remove(id) > 0; }
+
 void EditableMolecule::setStereoFlag(int fragmentIndex, int flag) { m_ext.stereoFlags.insert(fragmentIndex, flag); }
 int EditableMolecule::stereoFlag(int fragmentIndex) const { return m_ext.stereoFlags.value(fragmentIndex, -1); }
 

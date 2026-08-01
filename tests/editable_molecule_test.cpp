@@ -249,6 +249,37 @@ static void test_queryFeatureSpike() {
     if (query >= 0) indigoFree(query);
 }
 
+static void test_extensionEntityRemoval() {
+    std::printf("--- Test 7: extension entity removal with stable IDs ---\n");
+    EditableMolecule m;
+
+    int t1 = m.addTextAnnotation(0, 0, QStringLiteral("a"));
+    int t2 = m.addTextAnnotation(1, 1, QStringLiteral("b"));
+    CHECK(m.textAnnotationCount() == 2, "2 texts after adds");
+    CHECK(m.removeTextAnnotation(t1), "removeTextAnnotation succeeds for a live id");
+    CHECK(m.textAnnotationCount() == 1, "1 text remains after removal");
+    CHECK(!m.removeTextAnnotation(t1), "removing an already-removed id fails cleanly");
+    int t3 = m.addTextAnnotation(2, 2, QStringLiteral("c"));
+    CHECK(t3 != t1 && t3 > t2, "new text id is fresh, not recycled");
+
+    int ra1 = m.addRxnArrow(0, 0, 1, 1);
+    CHECK(m.removeRxnArrow(ra1), "removeRxnArrow succeeds");
+    CHECK(m.rxnArrowCount() == 0, "0 rxn arrows after removal");
+    CHECK(!m.removeRxnArrow(ra1), "double-remove of rxn arrow fails cleanly");
+
+    int rp1 = m.addRxnPlus(0, 0);
+    CHECK(m.removeRxnPlus(rp1), "removeRxnPlus succeeds");
+    CHECK(m.rxnPlusCount() == 0, "0 rxn pluses after removal");
+
+    int mta1 = m.addMultitailArrow({0,0, 1,1});
+    CHECK(m.removeMultitailArrow(mta1), "removeMultitailArrow succeeds");
+    CHECK(m.multitailArrowCount() == 0, "0 multitail arrows after removal");
+
+    int img1 = m.addImage(0, 0, 1, 1, QByteArray("x"));
+    CHECK(m.removeImage(img1), "removeImage succeeds");
+    CHECK(m.imageCount() == 0, "0 images after removal");
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -260,6 +291,7 @@ int main() {
     test_sgroupPassthrough();
     test_snapshotRestore();
     test_queryFeatureSpike();
+    test_extensionEntityRemoval();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
