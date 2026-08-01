@@ -241,6 +241,8 @@ add_library(molecule_model STATIC
     src/app/molecule/EditCommand.h
     src/app/molecule/EditableMolecule.h
     src/app/molecule/EditableMolecule.cpp
+    src/app/molecule/DocumentState.h
+    src/app/molecule/DocumentState.cpp
 )
 target_include_directories(molecule_model PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
