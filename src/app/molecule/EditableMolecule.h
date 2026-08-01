@@ -17,6 +17,14 @@
 //   why AtomId/BondId are a separate never-reused counter, not raw Indigo indices -- reuse
 //   would let an old undo-snapshot's ID silently alias a different, newer atom."
 // Verified hard requirement: indigoClone preserves atom/bond indices.
+//
+// Query atom lists (spec risk 3): plain molecule handles REJECT V2000 atom
+// lists outright -- indigoLoadMoleculeFromString returns an error ("atom
+// lists are allowed only for queries"); only indigoLoadQueryMoleculeFromString
+// accepts them (spike: editable_molecule_test Test 6). Consequence: query
+// atom lists cannot live on the plain Indigo handle this class wraps -- they
+// must join ExtensionData (or a separate query-molecule-backed type) in a
+// later sub-project when query-feature editing is designed.
 
 #include <QString>
 #include <QHash>

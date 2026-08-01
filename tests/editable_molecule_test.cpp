@@ -225,6 +225,30 @@ static void test_snapshotRestore() {
     CHECK(a4 > a3, "ID counter survives restore (no reuse of discarded IDs)");
 }
 
+static void test_queryFeatureSpike() {
+    std::printf("--- Test 6: query-atom-features spike (spec risk 3) ---\n");
+    // Molfile with an atom list ([N,O] on atom 1) -- V2000 query feature.
+    const char* molWithAtomList =
+        "\n  spike  \n\n"
+        "  2  1  1  0  0  0  0  0  0  0999 V2000\n"
+        "    0.0000    0.0000    0.0000 L   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "    1.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "  1  2  1  0  0  0  0\n"
+        "  1 T    2   7   8\n"
+        "M  END\n";
+
+    indigoSetSessionId(indigoAllocSessionId()); // fresh session, throwaway
+    int plain = indigoLoadMoleculeFromString(molWithAtomList);
+    std::printf("[INFO] spike: atom-list molfile into PLAIN molecule handle: %s\n",
+                plain >= 0 ? "ACCEPTED" : indigoGetLastError());
+    int query = indigoLoadQueryMoleculeFromString(molWithAtomList);
+    std::printf("[INFO] spike: atom-list molfile into QUERY molecule handle: %s\n",
+                query >= 0 ? "ACCEPTED" : indigoGetLastError());
+    CHECK(plain >= 0 || query >= 0, "atom-list molfile loads via at least one loader");
+    if (plain >= 0) indigoFree(plain);
+    if (query >= 0) indigoFree(query);
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -235,6 +259,7 @@ int main() {
     test_extensionData();
     test_sgroupPassthrough();
     test_snapshotRestore();
+    test_queryFeatureSpike();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
