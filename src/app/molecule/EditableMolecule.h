@@ -20,6 +20,7 @@
 
 #include <QString>
 #include <QHash>
+#include <QList>
 
 using AtomId = int;
 using BondId = int;
@@ -47,6 +48,17 @@ public:
     int bondCount() const;
     StringResult toMolfile() const;
 
+    // Atom/bond CRUD with stable never-reused external IDs
+    AtomId addAtom(const QString& symbol, double x, double y);
+    bool removeAtom(AtomId id);
+    BondId addBond(AtomId a, AtomId b, int order);
+    bool removeBond(BondId id);
+    QString atomSymbol(AtomId id) const;
+    bool atomPos(AtomId id, double& x, double& y) const;
+    int bondOrder(BondId id) const;
+    QList<AtomId> atomIds() const;
+    QList<BondId> bondIds() const;
+
 private:
     // One Indigo session per instance, held for the object's lifetime
     // (unlike IndigoService's alloc/release-per-call one-shot pattern).
@@ -60,6 +72,7 @@ private:
     BondId m_nextBondId = 1;
 
     void activateSession() const; // indigoSetSessionId(m_session)
+    void rebuildIndexTables();
 };
 
 #endif // EDITABLEMOLECULE_H

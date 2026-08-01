@@ -90,12 +90,52 @@ static void test_constructionAndMolfile() {
     CHECK(!bad.lastError().isEmpty(), "invalid molecule carries an error string");
 }
 
+static void test_atomBondCrud() {
+    std::printf("--- Test 2: atom/bond CRUD with stable IDs ---\n");
+    EditableMolecule m;
+
+    AtomId c1 = m.addAtom(QStringLiteral("C"), 0.0, 0.0);
+    AtomId c2 = m.addAtom(QStringLiteral("C"), 1.0, 0.0);
+    AtomId o1 = m.addAtom(QStringLiteral("O"), 2.0, 0.0);
+    CHECK(c1 > 0 && c2 > 0 && o1 > 0, "addAtom returns positive IDs");
+    CHECK(c1 != c2 && c2 != o1, "IDs are distinct");
+    CHECK(m.atomCount() == 3, "3 atoms after adds");
+    CHECK(m.atomSymbol(o1) == QStringLiteral("O"), "atomSymbol reads back");
+
+    double x = -1, y = -1;
+    CHECK(m.atomPos(c2, x, y) && x == 1.0 && y == 0.0, "atomPos reads back");
+
+    BondId b1 = m.addBond(c1, c2, 1);
+    BondId b2 = m.addBond(c2, o1, 2);
+    CHECK(b1 > 0 && b2 > 0, "addBond returns positive IDs");
+    CHECK(m.bondOrder(b2) == 2, "bondOrder reads back");
+
+    // Remove the middle atom: its two incident bonds must die with it.
+    CHECK(m.removeAtom(c2), "removeAtom succeeds");
+    CHECK(m.atomCount() == 2, "2 atoms remain");
+    CHECK(m.bondCount() == 0, "incident bonds removed with the atom");
+    CHECK(m.bondOrder(b1) == -1, "stale BondId no longer resolves");
+    CHECK(m.atomSymbol(c2).isEmpty(), "stale AtomId no longer resolves");
+
+    // Survivors still resolve correctly through the indirection table even
+    // if Indigo compacted/reused indices underneath.
+    CHECK(m.atomSymbol(c1) == QStringLiteral("C"), "survivor c1 still resolves");
+    CHECK(m.atomSymbol(o1) == QStringLiteral("O"), "survivor o1 still resolves");
+
+    // A new atom must get a fresh ID, never a recycled one.
+    AtomId n1 = m.addAtom(QStringLiteral("N"), 3.0, 0.0);
+    CHECK(n1 != c2 && n1 > o1, "new ID is fresh, not recycled");
+    CHECK(m.removeBond(m.addBond(c1, n1, 1)), "removeBond on a live bond succeeds");
+    CHECK(!m.removeAtom(c2), "removing an already-removed ID fails cleanly");
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
 
     spike_idBehavior();
     test_constructionAndMolfile();
+    test_atomBondCrud();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);

@@ -1,6 +1,7 @@
 // src/app/molecule/EditableMolecule.cpp
 #include "EditableMolecule.h"
 #include "indigo.h"
+#include <algorithm>
 
 EditableMolecule::EditableMolecule(const QString& initialStructure) {
     m_session = indigoAllocSessionId();
@@ -68,4 +69,147 @@ StringResult EditableMolecule::toMolfile() const {
     r.success = true;
     r.value = QString::fromUtf8(mf);
     return r;
+}
+
+AtomId EditableMolecule::addAtom(const QString& symbol, double x, double y) {
+    if (m_mol < 0) return -1;
+    activateSession();
+    int a = indigoAddAtom(m_mol, symbol.toUtf8().constData());
+    if (a < 0) { m_lastError = QString::fromUtf8(indigoGetLastError()); return -1; }
+    indigoSetXYZ(a, static_cast<float>(x), static_cast<float>(y), 0.0f);
+    int idx = indigoIndex(a);
+    indigoFree(a);
+    AtomId id = m_nextAtomId++;
+    m_atomIdx.insert(id, idx);
+    return id;
+}
+
+bool EditableMolecule::removeAtom(AtomId id) {
+    if (m_mol < 0 || !m_atomIdx.contains(id)) return false;
+    activateSession();
+    int idx = m_atomIdx.value(id);
+    int a = indigoGetAtom(m_mol, idx);
+    if (a < 0) return false;
+
+    // Record which bond indices die with this atom BEFORE removal, by
+    // scanning all bonds for ones touching idx.
+    QList<BondId> deadBonds;
+    for (auto it = m_bondIdx.constBegin(); it != m_bondIdx.constEnd(); ++it) {
+        int b = indigoGetBond(m_mol, it.value());
+        if (b < 0) continue;
+        int src = indigoSource(b), dst = indigoDestination(b);
+        int srcIdx = indigoIndex(src), dstIdx = indigoIndex(dst);
+        indigoFree(src); indigoFree(dst); indigoFree(b);
+        if (srcIdx == idx || dstIdx == idx) deadBonds.append(it.key());
+    }
+
+    if (indigoRemove(a) < 0) {
+        m_lastError = QString::fromUtf8(indigoGetLastError());
+        indigoFree(a);
+        return false;
+    }
+    m_atomIdx.remove(id);
+    for (BondId bid : deadBonds) m_bondIdx.remove(bid);
+    rebuildIndexTables();
+    indigoFree(a);
+    return true;
+}
+
+BondId EditableMolecule::addBond(AtomId a, AtomId b, int order) {
+    if (m_mol < 0 || !m_atomIdx.contains(a) || !m_atomIdx.contains(b)) return -1;
+    activateSession();
+    int ha = indigoGetAtom(m_mol, m_atomIdx.value(a));
+    int hb = indigoGetAtom(m_mol, m_atomIdx.value(b));
+    if (ha < 0 || hb < 0) return -1;
+    int bond = indigoAddBond(ha, hb, order);
+    indigoFree(ha); indigoFree(hb);
+    if (bond < 0) { m_lastError = QString::fromUtf8(indigoGetLastError()); return -1; }
+    int idx = indigoIndex(bond);
+    indigoFree(bond);
+    BondId id = m_nextBondId++;
+    m_bondIdx.insert(id, idx);
+    return id;
+}
+
+bool EditableMolecule::removeBond(BondId id) {
+    if (m_mol < 0 || !m_bondIdx.contains(id)) return false;
+    activateSession();
+    int b = indigoGetBond(m_mol, m_bondIdx.value(id));
+    if (b < 0) return false;
+    if (indigoRemove(b) < 0) { indigoFree(b); return false; }
+    m_bondIdx.remove(id);
+    rebuildIndexTables();
+    indigoFree(b);
+    return true;
+}
+
+QString EditableMolecule::atomSymbol(AtomId id) const {
+    if (m_mol < 0 || !m_atomIdx.contains(id)) return {};
+    activateSession();
+    int a = indigoGetAtom(m_mol, m_atomIdx.value(id));
+    if (a < 0) return {};
+    QString s = QString::fromUtf8(indigoSymbol(a));
+    indigoFree(a);
+    return s;
+}
+
+bool EditableMolecule::atomPos(AtomId id, double& x, double& y) const {
+    if (m_mol < 0 || !m_atomIdx.contains(id)) return false;
+    activateSession();
+    int a = indigoGetAtom(m_mol, m_atomIdx.value(id));
+    if (a < 0) return false;
+    float* xyz = indigoXYZ(a);
+    if (!xyz) { indigoFree(a); return false; }
+    x = xyz[0]; y = xyz[1];
+    indigoFree(a);
+    return true;
+}
+
+int EditableMolecule::bondOrder(BondId id) const {
+    if (m_mol < 0 || !m_bondIdx.contains(id)) return -1;
+    activateSession();
+    int b = indigoGetBond(m_mol, m_bondIdx.value(id));
+    if (b < 0) return -1;
+    int order = indigoBondOrder(b);
+    indigoFree(b);
+    return order;
+}
+
+QList<AtomId> EditableMolecule::atomIds() const {
+    auto k = m_atomIdx.keys();
+    std::sort(k.begin(), k.end());
+    return k;
+}
+
+QList<BondId> EditableMolecule::bondIds() const {
+    auto k = m_bondIdx.keys();
+    std::sort(k.begin(), k.end());
+    return k;
+}
+
+void EditableMolecule::rebuildIndexTables() {
+    activateSession();
+    QList<AtomId> aIds = m_atomIdx.keys();
+    std::sort(aIds.begin(), aIds.end());
+    QList<int> aIdx;
+    int iter = indigoIterateAtoms(m_mol);
+    if (iter >= 0) {
+        int h;
+        while ((h = indigoNext(iter)) > 0) { aIdx.append(indigoIndex(h)); indigoFree(h); }
+        indigoFree(iter);
+    }
+    if (aIds.size() == aIdx.size())
+        for (int i = 0; i < aIds.size(); ++i) m_atomIdx[aIds[i]] = aIdx[i];
+
+    QList<BondId> bIds = m_bondIdx.keys();
+    std::sort(bIds.begin(), bIds.end());
+    QList<int> bIdx;
+    iter = indigoIterateBonds(m_mol);
+    if (iter >= 0) {
+        int h;
+        while ((h = indigoNext(iter)) > 0) { bIdx.append(indigoIndex(h)); indigoFree(h); }
+        indigoFree(iter);
+    }
+    if (bIds.size() == bIdx.size())
+        for (int i = 0; i < bIds.size(); ++i) m_bondIdx[bIds[i]] = bIdx[i];
 }
