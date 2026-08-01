@@ -222,6 +222,10 @@ int main() {
         {"CCB(O)O", "ethylboronic acid"}, // regression test for existing boronic acid
         {"CCS", "ethanethiol"},
         {"CSC", "methylsulfanylmethane"},
+        // PHASE 66: selenoether / telluroether substituent prefixes (P-63.2.2.1.2)
+        {"C[Se]C", "methylselanylmethane"},
+        {"C[Te]C", "methyltellanylmethane"},
+        {"CC[Se]CC", "ethylselanylethane"},
         // PHASE 65: SELENOL and TELLUROL (chalcogen analogues of THIOL, P-63.1.5)
         {"CC[SeH]", "ethaneselenol"},
         {"C[SeH]", "methaneselenol"},
