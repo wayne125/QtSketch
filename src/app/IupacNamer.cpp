@@ -71,6 +71,7 @@ enum class GroupType {
     THIONE,        // Thione (C=S ketone analog)
     ALCOHOL,       // Alcohol
     THIOL,         // Thiol
+    HYDROPEROXIDE, // Hydroperoxide
     AMINE,         // Amine
     PHOSPHONIC_ACID, // Phosphonic acid
     PHOSPHINE      // Phosphine
@@ -1476,6 +1477,13 @@ static QString principalGroupSuffix(GroupType winningType, int k, int pCount,
             for (int l : principalLocants) lStrs.append(QString::number(l));
             sfx = QString("-%1-%2amine").arg(lStrs.join(","), multiPrefix(pCount));
         }
+    } else if (winningType == GroupType::HYDROPEROXIDE) {
+        if (pCount == 1) sfx = (k <= 2) ? QStringLiteral("peroxol") : QString("-%1-peroxol").arg(principalLocants[0]);
+        else {
+            QStringList lStrs;
+            for (int l : principalLocants) lStrs.append(QString::number(l));
+            sfx = QString("-%1-%2peroxol").arg(lStrs.join(","), multiPrefix(pCount));
+        }
     }
     return sfx;
 }
@@ -1511,6 +1519,8 @@ static bool isPrincipalGroupHeteroNeighbor(GroupType winningType, const Graph &g
         if (nz == 8 && order == 1) return true;                         // -OH
     } else if (winningType == GroupType::THIOL) {
         if (nz == 16 && order == 1) return true;                        // -SH
+    } else if (winningType == GroupType::HYDROPEROXIDE) {
+        if (nz == 8 && order == 1) return true;                         // near -O- of -O-O-H
     } else if (winningType == GroupType::AMINE) {
         if (nz == 7 && order == 1) return true;                         // -N<
     } else if (winningType == GroupType::SULFONIC_ACID) {
@@ -1910,7 +1920,7 @@ QString nameAcyclicChainParentWithSubstituents(
 static bool isChainParentWithRingSubstituentSupported(GroupType gt) {
     return gt == GroupType::ACID || gt == GroupType::AMIDE || gt == GroupType::NITRILE ||
            gt == GroupType::ALDEHYDE || gt == GroupType::KETONE ||
-           gt == GroupType::ALCOHOL || gt == GroupType::THIOL || gt == GroupType::AMINE || gt == GroupType::THIAL || gt == GroupType::THIONE || gt == GroupType::SULFONIC_ACID ||
+           gt == GroupType::ALCOHOL || gt == GroupType::THIOL || gt == GroupType::HYDROPEROXIDE || gt == GroupType::AMINE || gt == GroupType::THIAL || gt == GroupType::THIONE || gt == GroupType::SULFONIC_ACID ||
            gt == GroupType::SULFINIC_ACID || gt == GroupType::PHOSPHONIC_ACID || gt == GroupType::ESTER || gt == GroupType::ACYL_HALIDE;
 }
 
@@ -3173,6 +3183,7 @@ IupacResult IupacNamer::generateName(int mol) {
         std::map<int, int> esterAlkylRoot;
         std::map<int, int> esterOxygen;
         std::set<int> etherOxygens;
+        std::map<int, int> carbonHydroperoxide; // carbonNode -> near-oxygen node
 
         for (size_t i = 0; i < g.nodes.size(); ++i) {
             const GraphNode &node = g.nodes[i];
@@ -3409,9 +3420,38 @@ IupacResult IupacNamer::generateName(int mol) {
                 } else if (!doubleS.empty()) {
                     carbonGroup[i] = GroupType::THIONE;
                 } else if (!singleO.empty()) {
+                    bool foundGroup = false;
                     for (int sO : singleO) {
                         if (g.nodes[sO].totalH >= 1 || g.nodes[sO].neighbors.size() == 1) {
-                            carbonGroup[i] = GroupType::ALCOHOL; break;
+                            carbonGroup[i] = GroupType::ALCOHOL; foundGroup = true; break;
+                        }
+                    }
+                    if (!foundGroup) {
+                        for (int sO : singleO) {
+                            if (g.nodes[sO].neighbors.size() == 2) {
+                                for (int oNei : g.nodes[sO].neighbors) {
+                                    if (oNei != static_cast<int>(i) && g.nodes[oNei].atomicNumber == 8) {
+                                        // Check if this is a dialkyl peroxide (R-O-O-R')
+                                        bool isFarOHydroperoxide = (g.nodes[oNei].totalH >= 1 || g.nodes[oNei].neighbors.size() == 1);
+                                        bool isFarODialkyl = false;
+                                        for (int farNei : g.nodes[oNei].neighbors) {
+                                            if (farNei != sO && g.nodes[farNei].atomicNumber == 6) {
+                                                isFarODialkyl = true;
+                                                break;
+                                            }
+                                        }
+                                        if (isFarOHydroperoxide) {
+                                            carbonHydroperoxide[i] = sO; // carbonNode -> near-oxygen node
+                                            carbonGroup[i] = GroupType::HYDROPEROXIDE;
+                                            foundGroup = true;
+                                            break;
+                                        } else if (isFarODialkyl) {
+                                            return {false, "", "Dialkyl peroxides are not supported in this phase."};
+                                        }
+                                    }
+                                }
+                            }
+                            if (foundGroup) break;
                         }
                     }
                 } else if (!singleN.empty()) {
@@ -3426,6 +3466,8 @@ IupacResult IupacNamer::generateName(int mol) {
                     carbonGroup[i] = GroupType::PHOSPHONIC_ACID;
                 } else if (carbonThiol.count(i)) {
                     carbonGroup[i] = GroupType::THIOL;
+                } else if (carbonHydroperoxide.count(i)) {
+                    carbonGroup[i] = GroupType::HYDROPEROXIDE;
                 } else if (carbonPhosphine.count(i)) {
                     carbonGroup[i] = GroupType::PHOSPHINE;
                 }
@@ -3461,7 +3503,7 @@ IupacResult IupacNamer::generateName(int mol) {
         GroupType winningType = GroupType::NONE;
         static const GroupType seniorityOrder[] = {
             GroupType::SULFONIC_ACID, GroupType::SULFINIC_ACID, GroupType::ACID, GroupType::PHOSPHONIC_ACID, GroupType::BORONIC_ACID, GroupType::ESTER, GroupType::ACYL_HALIDE, GroupType::AMIDE, GroupType::NITRILE,
-            GroupType::ALDEHYDE, GroupType::THIAL, GroupType::KETONE, GroupType::THIONE, GroupType::ALCOHOL, GroupType::THIOL, GroupType::AMINE, GroupType::PHOSPHINE
+            GroupType::ALDEHYDE, GroupType::THIAL, GroupType::KETONE, GroupType::THIONE, GroupType::ALCOHOL, GroupType::THIOL, GroupType::HYDROPEROXIDE, GroupType::AMINE, GroupType::PHOSPHINE
         };
 
         for (GroupType gt : seniorityOrder) {
@@ -3754,6 +3796,9 @@ IupacResult IupacNamer::generateName(int mol) {
             if (carbonPhosphine.count(cNode) && winningType != GroupType::PHOSPHINE) {
                 locantSubstituents[locant].append("phosphino");
             }
+            if (carbonHydroperoxide.count(cNode) && winningType != GroupType::HYDROPEROXIDE) {
+                locantSubstituents[locant].append("hydroperoxy");
+            }
             if (carbonGroup.count(cNode) && winningType != carbonGroup[cNode]) {
                 if (carbonGroup[cNode] == GroupType::ACID) {
                     locantSubstituents[locant].append("carboxy");
@@ -3787,6 +3832,7 @@ IupacResult IupacNamer::generateName(int mol) {
                 if (carbonSulfinicAcid.count(cNode) && carbonSulfinicAcid[cNode] == nei) continue;
                 if (carbonPhosphonicAcid.count(cNode) && carbonPhosphonicAcid[cNode] == nei) continue;
                 if (carbonThiol.count(cNode) && carbonThiol[cNode] == nei) continue;
+                if (carbonHydroperoxide.count(cNode) && carbonHydroperoxide[cNode] == nei) continue;
                 if (carbonNitro.count(cNode) && std::find(carbonNitro[cNode].begin(), carbonNitro[cNode].end(), nei) != carbonNitro[cNode].end()) continue;
                 if (carbonIsocyanate.count(cNode) && std::find(carbonIsocyanate[cNode].begin(), carbonIsocyanate[cNode].end(), nei) != carbonIsocyanate[cNode].end()) continue;
                 if (carbonAzide.count(cNode) && std::find(carbonAzide[cNode].begin(), carbonAzide[cNode].end(), nei) != carbonAzide[cNode].end()) continue;
@@ -7361,6 +7407,7 @@ IupacResult IupacNamer::generateName(int mol) {
         std::map<int, int> esterAlkylRoot;
         std::map<int, int> esterOxygen;
         std::set<int> etherOxygens;
+        std::map<int, int> carbonHydroperoxide; // carbonNode -> near-oxygen node
 
         for (size_t i = 0; i < g.nodes.size(); ++i) {
             const GraphNode &node = g.nodes[i];
@@ -7431,9 +7478,38 @@ IupacResult IupacNamer::generateName(int mol) {
               } else if (!doubleS.empty()) {
                   carbonGroup[i] = GroupType::THIONE;
                 } else if (!singleO.empty()) {
+                    bool foundGroup = false;
                     for (int sO : singleO) {
                         if (g.nodes[sO].totalH >= 1 || g.nodes[sO].neighbors.size() == 1) {
-                            carbonGroup[i] = GroupType::ALCOHOL; break;
+                            carbonGroup[i] = GroupType::ALCOHOL; foundGroup = true; break;
+                        }
+                    }
+                    if (!foundGroup) {
+                        for (int sO : singleO) {
+                            if (g.nodes[sO].neighbors.size() == 2) {
+                                for (int oNei : g.nodes[sO].neighbors) {
+                                    if (oNei != static_cast<int>(i) && g.nodes[oNei].atomicNumber == 8) {
+                                        // Check if this is a dialkyl peroxide (R-O-O-R')
+                                        bool isFarOHydroperoxide = (g.nodes[oNei].totalH >= 1 || g.nodes[oNei].neighbors.size() == 1);
+                                        bool isFarODialkyl = false;
+                                        for (int farNei : g.nodes[oNei].neighbors) {
+                                            if (farNei != sO && g.nodes[farNei].atomicNumber == 6) {
+                                                isFarODialkyl = true;
+                                                break;
+                                            }
+                                        }
+                                        if (isFarOHydroperoxide) {
+                                            carbonHydroperoxide[i] = sO; // carbonNode -> near-oxygen node
+                                            carbonGroup[i] = GroupType::HYDROPEROXIDE;
+                                            foundGroup = true;
+                                            break;
+                                        } else if (isFarODialkyl) {
+                                            return {false, "", "Dialkyl peroxides are not supported in this phase."};
+                                        }
+                                    }
+                                }
+                            }
+                            if (foundGroup) break;
                         }
                     }
                 } else if (singleN.size() > 0) {
@@ -7446,6 +7522,8 @@ IupacResult IupacNamer::generateName(int mol) {
                     carbonGroup[i] = GroupType::BORONIC_ACID;
                 } else if (carbonPhosphonicAcid.count(i)) {
                     carbonGroup[i] = GroupType::PHOSPHONIC_ACID;
+                } else if (carbonHydroperoxide.count(i)) {
+                    carbonGroup[i] = GroupType::HYDROPEROXIDE;
                 } else if (carbonPhosphine.count(i)) {
                     carbonGroup[i] = GroupType::PHOSPHINE;
                 }
@@ -7477,9 +7555,10 @@ IupacResult IupacNamer::generateName(int mol) {
                 case GroupType::THIONE: return 13;
                 case GroupType::ALCOHOL: return 14;
                 case GroupType::THIOL: return 15;
-                case GroupType::AMINE: return 16;
-                case GroupType::PHOSPHINE: return 17;
-                default: return 17;
+                case GroupType::HYDROPEROXIDE: return 16;
+                case GroupType::AMINE: return 17;
+                case GroupType::PHOSPHINE: return 18;
+                default: return 19;
             }
         };
 
@@ -7623,7 +7702,7 @@ IupacResult IupacNamer::generateName(int mol) {
                     if (ringNodeSet.count(nei)) continue;
 
                     if (winningType != GroupType::NONE) {
-                        if ((winningType == GroupType::ALCOHOL || winningType == GroupType::KETONE || winningType == GroupType::AMINE || winningType == GroupType::SULFONIC_ACID || winningType == GroupType::SULFINIC_ACID || winningType == GroupType::THIOL || winningType == GroupType::PHOSPHONIC_ACID) && isPrincipalRNode) {
+                        if ((winningType == GroupType::ALCOHOL || winningType == GroupType::KETONE || winningType == GroupType::AMINE || winningType == GroupType::SULFONIC_ACID || winningType == GroupType::SULFINIC_ACID || winningType == GroupType::THIOL || winningType == GroupType::HYDROPEROXIDE || winningType == GroupType::PHOSPHONIC_ACID) && isPrincipalRNode) {
                             int nz = g.nodes[nei].atomicNumber;
                             bool isAzide = (carbonAzide.count(rNode) && std::find(carbonAzide[rNode].begin(), carbonAzide[rNode].end(), nei) != carbonAzide[rNode].end());
                             if (!isAzide && (nz == 7 || nz == 8 || nz == 16 || nz == 15)) continue;
@@ -7675,6 +7754,8 @@ IupacResult IupacNamer::generateName(int mol) {
                             subName = "sulfo";
                         } else if (carbonSulfinicAcid.count(rNode) && carbonSulfinicAcid[rNode] == nei && winningType != GroupType::SULFINIC_ACID) {
                             subName = "sulfino";
+                        } else if (carbonHydroperoxide.count(rNode) && carbonHydroperoxide[rNode] == nei && winningType != GroupType::HYDROPEROXIDE) {
+                            subName = "hydroperoxy";
                         } else if (carbonThiol.count(rNode) && carbonThiol[rNode] == nei && winningType != GroupType::THIOL) {
                             subName = "sulfanyl";
                         } else if (order == 1) {
@@ -7855,6 +7936,7 @@ IupacResult IupacNamer::generateName(int mol) {
                 else if (winningType == GroupType::PHOSPHONIC_ACID) sfx = (pCount == 1) ? "phosphonic acid" : "diphosphonic acid";
                 else if (winningType == GroupType::THIOL) sfx = (pCount == 1) ? "thiol" : "dithiol";
                 else if (winningType == GroupType::ALCOHOL) sfx = (pCount == 1) ? "ol" : "diol";
+                else if (winningType == GroupType::HYDROPEROXIDE) sfx = (pCount == 1) ? "peroxol" : "diperoxol";
                 else if (winningType == GroupType::KETONE) sfx = (pCount == 1) ? "one" : "dione";
                 else if (winningType == GroupType::AMINE) sfx = (pCount == 1) ? "amine" : "diamine";
 
@@ -8005,6 +8087,7 @@ IupacResult IupacNamer::generateName(int mol) {
     std::map<int, int> esterAlkylRoot;
     std::map<int, int> esterOxygen;
     std::set<int> etherOxygens;
+    std::map<int, int> carbonHydroperoxide; // carbonNode -> near-oxygen node
 
     for (size_t i = 0; i < g.nodes.size(); ++i) {
         const GraphNode &node = g.nodes[i];
@@ -8075,9 +8158,38 @@ IupacResult IupacNamer::generateName(int mol) {
               } else if (!doubleS.empty()) {
                   carbonGroup[i] = GroupType::THIONE;
             } else if (!singleO.empty()) {
+                bool foundGroup = false;
                 for (int sO : singleO) {
                     if (g.nodes[sO].totalH >= 1 || g.nodes[sO].neighbors.size() == 1) {
-                        carbonGroup[i] = GroupType::ALCOHOL; break;
+                        carbonGroup[i] = GroupType::ALCOHOL; foundGroup = true; break;
+                    }
+                }
+                if (!foundGroup) {
+                    for (int sO : singleO) {
+                        if (g.nodes[sO].neighbors.size() == 2) {
+                            for (int oNei : g.nodes[sO].neighbors) {
+                                if (oNei != static_cast<int>(i) && g.nodes[oNei].atomicNumber == 8) {
+                                    // Check if this is a dialkyl peroxide (R-O-O-R')
+                                    bool isFarOHydroperoxide = (g.nodes[oNei].totalH >= 1 || g.nodes[oNei].neighbors.size() == 1);
+                                    bool isFarODialkyl = false;
+                                    for (int farNei : g.nodes[oNei].neighbors) {
+                                        if (farNei != sO && g.nodes[farNei].atomicNumber == 6) {
+                                            isFarODialkyl = true;
+                                            break;
+                                        }
+                                    }
+                                    if (isFarOHydroperoxide) {
+                                        carbonHydroperoxide[i] = sO; // carbonNode -> near-oxygen node
+                                        carbonGroup[i] = GroupType::HYDROPEROXIDE;
+                                        foundGroup = true;
+                                        break;
+                                    } else if (isFarODialkyl) {
+                                        return {false, "", "Dialkyl peroxides are not supported in this phase."};
+                                    }
+                                }
+                            }
+                        }
+                        if (foundGroup) break;
                     }
                 }
             } else if (!singleN.empty()) {
@@ -8092,6 +8204,8 @@ IupacResult IupacNamer::generateName(int mol) {
                 carbonGroup[i] = GroupType::BORONIC_ACID;
             } else if (carbonPhosphonicAcid.count(i)) {
                 carbonGroup[i] = GroupType::PHOSPHONIC_ACID;
+            } else if (carbonHydroperoxide.count(i)) {
+                carbonGroup[i] = GroupType::HYDROPEROXIDE;
             } else if (carbonPhosphine.count(i)) {
                 carbonGroup[i] = GroupType::PHOSPHINE;
             }
@@ -8123,9 +8237,10 @@ IupacResult IupacNamer::generateName(int mol) {
             case GroupType::THIONE: return 13;
             case GroupType::ALCOHOL: return 15;
             case GroupType::THIOL: return 16;
-            case GroupType::AMINE: return 17;
-            case GroupType::PHOSPHINE: return 18;
-            default: return 19;
+            case GroupType::HYDROPEROXIDE: return 17;
+            case GroupType::AMINE: return 18;
+            case GroupType::PHOSPHINE: return 19;
+            default: return 20;
         }
     };
 
@@ -8415,7 +8530,7 @@ IupacResult IupacNamer::generateName(int mol) {
                 if (ringNodeSet.count(nei)) continue;
 
                 if (winningType != GroupType::NONE) {
-                    if ((winningType == GroupType::ALCOHOL || winningType == GroupType::KETONE || winningType == GroupType::AMINE || winningType == GroupType::SULFONIC_ACID || winningType == GroupType::SULFINIC_ACID || winningType == GroupType::THIOL || winningType == GroupType::PHOSPHONIC_ACID) && isPrincipalRNode) {
+                    if ((winningType == GroupType::ALCOHOL || winningType == GroupType::KETONE || winningType == GroupType::AMINE || winningType == GroupType::SULFONIC_ACID || winningType == GroupType::SULFINIC_ACID || winningType == GroupType::THIOL || winningType == GroupType::HYDROPEROXIDE || winningType == GroupType::PHOSPHONIC_ACID) && isPrincipalRNode) {
                         int nz = g.nodes[nei].atomicNumber;
                         bool isAzide = (carbonAzide.count(rNode) && std::find(carbonAzide[rNode].begin(), carbonAzide[rNode].end(), nei) != carbonAzide[rNode].end());
                         if (!isAzide && (nz == 7 || nz == 8 || nz == 16 || nz == 15)) continue;
@@ -8467,6 +8582,8 @@ IupacResult IupacNamer::generateName(int mol) {
                         subName = "sulfo";
                     } else if (carbonSulfinicAcid.count(rNode) && carbonSulfinicAcid[rNode] == nei && winningType != GroupType::SULFINIC_ACID) {
                         subName = "sulfino";
+                    } else if (carbonHydroperoxide.count(rNode) && carbonHydroperoxide[rNode] == nei && winningType != GroupType::HYDROPEROXIDE) {
+                        subName = "hydroperoxy";
                     } else if (carbonThiol.count(rNode) && carbonThiol[rNode] == nei && winningType != GroupType::THIOL) {
                         subName = "sulfanyl";
                     } else if (order == 1) {
@@ -8784,6 +8901,7 @@ IupacResult IupacNamer::generateName(int mol) {
             else if (winningType == GroupType::PHOSPHONIC_ACID) sfx = (pCount == 1) ? "phosphonic acid" : "diphosphonic acid";
             else if (winningType == GroupType::THIOL) sfx = (pCount == 1) ? "thiol" : "dithiol";
             else if (winningType == GroupType::ALCOHOL) sfx = (pCount == 1) ? "ol" : "diol";
+            else if (winningType == GroupType::HYDROPEROXIDE) sfx = (pCount == 1) ? "peroxol" : "diperoxol";
             else if (winningType == GroupType::KETONE) sfx = (pCount == 1) ? "one" : "dione";
             else if (winningType == GroupType::AMINE) sfx = (pCount == 1) ? "amine" : "diamine";
 

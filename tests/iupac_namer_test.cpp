@@ -78,6 +78,15 @@ int main() {
         {"CC(=O)C", "propan-2-one"},
         {"CCO", "ethanol"},
         {"CCN", "ethanamine"},
+        // PHASE 64: HYDROPEROXIDE (peroxol)
+        {"CCOO", "ethaneperoxol"},
+        {"CCC(C)(C)OO", "2-methylbutane-2-peroxol"},
+        // HYDROPEROXIDE as prefix (alcohol > hydroperoxide in seniority)
+        {"OOCCO", "2-hydroperoxyethanol"},
+        // Regression: ensure diol naming is unaffected
+        {"CC(O)CO", "propane-1,2-diol"},
+        // Dialkyl peroxide rejection (R-O-O-R' not supported)
+        {"CCOOCC", "", true, "Dialkyl peroxides are not supported in this phase."},
 
         // Seniority / multi-group split
         {"CC(O)C(=O)O", "2-hydroxypropanoic acid"},
