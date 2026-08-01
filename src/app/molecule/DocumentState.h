@@ -92,7 +92,20 @@ public:
     // Revisit if a later sub-project needs this restored exactly.
     void clearAtomQueryList(AtomId id, const QString& fallbackLabel);
 
+    // Discrete transforms of the selected ATOMS about their unweighted
+    // centroid -- a direct port of 20-edit.js's transformSelection(mode),
+    // split into four named methods instead of its JS mode-string dispatch.
+    // Each no-ops below 2 selected atoms, matching the real ids.length < 2
+    // guard, and pushes exactly one undoable command.
+    void rotateSelection90CW();
+    void rotateSelection90CCW();
+    void flipSelectionHorizontal();
+    void flipSelectionVertical();
+
 private:
+    enum class DiscreteTransform { RotateCW, RotateCCW, FlipH, FlipV };
+    void applyDiscreteTransform(DiscreteTransform mode);
+
     EditableMolecule m_molecule;
     std::vector<EditCommand> m_history;
     int m_historyPointer = -1;

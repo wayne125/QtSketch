@@ -228,6 +228,88 @@ static void test_documentStateEditingOperations() {
     CHECK(doc.molecule().atomSymbol(a2) == QStringLiteral("O"), "undo restores the original label too");
 }
 
+static void test_discreteTransforms() {
+    std::printf("--- Test 6: discrete 90-degree rotate / flip ---\n");
+
+    // NOTE on seeding: these tests create entities via doc.molecule().addAtom(...)
+    // rather than doc.addAtom(...). The latter is itself undoable, which would
+    // leave history non-empty and make canUndo() -- a plain bool -- useless for
+    // asserting "this operation pushed exactly one entry". Seeding through the
+    // molecule directly keeps history empty, so canUndo() is an exact signal.
+
+    // Two atoms at (0,0) and (2,0) -> centroid (1,0).
+    {
+        DocumentState doc;
+        AtomId a1 = doc.molecule().addAtom(QStringLiteral("C"), 0, 0);
+        AtomId a2 = doc.molecule().addAtom(QStringLiteral("C"), 2, 0);
+        doc.selectAtom(a1);
+        doc.addAtomToSelection(a2);
+        CHECK(!doc.canUndo(), "history starts empty (atoms seeded via the molecule)");
+
+        doc.rotateSelection90CW();
+        CHECK(doc.canUndo(), "rotate CW pushes exactly one history entry");
+        double x = 0, y = 0;
+        // rotate_cw: (cx + (y-cy), cy - (x-cx)); for a1 (0,0): (1+0, 0-(-1)) = (1,1)
+        CHECK(doc.molecule().atomPos(a1, x, y) && x == 1 && y == 1, "rotate CW moves a1 to (1,1)");
+        // for a2 (2,0): (1+0, 0-(1)) = (1,-1)
+        CHECK(doc.molecule().atomPos(a2, x, y) && x == 1 && y == -1, "rotate CW moves a2 to (1,-1)");
+        doc.undo();
+        CHECK(doc.molecule().atomPos(a1, x, y) && x == 0 && y == 0, "undo restores a1 exactly");
+        CHECK(doc.molecule().atomPos(a2, x, y) && x == 2 && y == 0, "undo restores a2 exactly");
+        CHECK(!doc.canUndo(), "history is empty again after undoing the only entry");
+    }
+
+    {
+        DocumentState doc;
+        AtomId a1 = doc.molecule().addAtom(QStringLiteral("C"), 0, 0);
+        AtomId a2 = doc.molecule().addAtom(QStringLiteral("C"), 2, 0);
+        doc.selectAtom(a1);
+        doc.addAtomToSelection(a2);
+
+        doc.rotateSelection90CCW();
+        double x = 0, y = 0;
+        // rotate_ccw: (cx - (y-cy), cy + (x-cx)); for a1 (0,0): (1-0, 0+(-1)) = (1,-1)
+        CHECK(doc.molecule().atomPos(a1, x, y) && x == 1 && y == -1, "rotate CCW moves a1 to (1,-1)");
+        CHECK(doc.molecule().atomPos(a2, x, y) && x == 1 && y == 1, "rotate CCW moves a2 to (1,1)");
+    }
+
+    {
+        DocumentState doc;
+        AtomId a1 = doc.molecule().addAtom(QStringLiteral("C"), 0, 3);
+        AtomId a2 = doc.molecule().addAtom(QStringLiteral("C"), 2, 5);
+        doc.selectAtom(a1);
+        doc.addAtomToSelection(a2);
+        // centroid (1,4). flip_h: (2*1 - x, y). flip_v: (x, 2*4 - y).
+        doc.flipSelectionHorizontal();
+        double x = 0, y = 0;
+        CHECK(doc.molecule().atomPos(a1, x, y) && x == 2 && y == 3, "flip H mirrors a1 across cx");
+        CHECK(doc.molecule().atomPos(a2, x, y) && x == 0 && y == 5, "flip H mirrors a2 across cx");
+        doc.undo();
+        CHECK(doc.molecule().atomPos(a1, x, y) && x == 0 && y == 3, "undo restores a1 after flip H");
+
+        doc.selectAtom(a1);
+        doc.addAtomToSelection(a2);
+        doc.flipSelectionVertical();
+        CHECK(doc.molecule().atomPos(a1, x, y) && x == 0 && y == 5, "flip V mirrors a1 across cy");
+        CHECK(doc.molecule().atomPos(a2, x, y) && x == 2 && y == 3, "flip V mirrors a2 across cy");
+    }
+
+    // Fewer than 2 selected atoms: no-op, no history entry (real code's ids.length < 2 guard).
+    {
+        DocumentState doc;
+        AtomId a1 = doc.molecule().addAtom(QStringLiteral("C"), 7, 7);
+        doc.selectAtom(a1);
+        doc.rotateSelection90CW();
+        CHECK(!doc.canUndo(), "single-atom selection pushes no history entry");
+        double x = 0, y = 0;
+        CHECK(doc.molecule().atomPos(a1, x, y) && x == 7 && y == 7, "single-atom selection is unmoved");
+
+        doc.clearSelection();
+        doc.flipSelectionHorizontal();
+        CHECK(!doc.canUndo(), "empty selection pushes no history entry");
+    }
+}
+
 static void test_documentStateSelection() {
     std::printf("--- Test 4: DocumentState selection ---\n");
     DocumentState doc;
@@ -311,6 +393,7 @@ int main() {
     test_documentStateHistoryCap();
     test_documentStateSelection();
     test_documentStateEditingOperations();
+    test_discreteTransforms();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

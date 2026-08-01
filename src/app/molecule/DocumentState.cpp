@@ -302,3 +302,52 @@ void DocumentState::clearAtomQueryList(AtomId id, const QString& fallbackLabel) 
     cmd.invert = []() { /* documented no-op -- see KNOWN LIMITATION comment above */ };
     executeCommand(std::move(cmd));
 }
+
+// KNOWN LIMITATION: chem-core.js's transformSelection also swaps wedge-bond
+// stereo (codes 1<->6) for bonds fully inside the selection on a flip, so the
+// depiction stays chemically consistent. Indigo exposes no way to do that --
+// indigoBondStereo is read-only, the stereocenter-inference path was ruled out
+// by sub-project 3a's Test 12, and indigoInvertStereo was ruled out by Test 14
+// ("not a stereobond"; see EditableMolecule.h). Flips here apply the coordinate
+// mirror ONLY; the stereo swap is an explicit, documented gap for a later
+// sub-project.
+void DocumentState::applyDiscreteTransform(DiscreteTransform mode) {
+    EditableMolecule& mol = m_molecule;
+
+    // Atoms only, exactly like the real transformSelection.
+    struct SavedPos { AtomId id; double x, y; };
+    QList<SavedPos> oldPos;
+    double cx = 0, cy = 0;
+    for (AtomId id : m_selection.atoms) {
+        double x = 0, y = 0;
+        if (!mol.atomPos(id, x, y)) continue;
+        oldPos.append({id, x, y});
+        cx += x; cy += y;
+    }
+    if (oldPos.size() < 2) return;   // matches the real ids.length < 2 guard
+    cx /= oldPos.size();
+    cy /= oldPos.size();
+
+    EditCommand cmd;
+    cmd.execute = [&mol, mode, oldPos, cx, cy]() {
+        for (const SavedPos& p : oldPos) {
+            double nx = p.x, ny = p.y;
+            switch (mode) {
+                case DiscreteTransform::RotateCW:  nx = cx + (p.y - cy); ny = cy - (p.x - cx); break;
+                case DiscreteTransform::RotateCCW: nx = cx - (p.y - cy); ny = cy + (p.x - cx); break;
+                case DiscreteTransform::FlipH:     nx = 2 * cx - p.x;    ny = p.y;             break;
+                case DiscreteTransform::FlipV:     nx = p.x;             ny = 2 * cy - p.y;    break;
+            }
+            mol.setAtomPos(p.id, nx, ny);
+        }
+    };
+    cmd.invert = [&mol, oldPos]() {
+        for (const SavedPos& p : oldPos) mol.setAtomPos(p.id, p.x, p.y);
+    };
+    executeCommand(std::move(cmd));
+}
+
+void DocumentState::rotateSelection90CW()      { applyDiscreteTransform(DiscreteTransform::RotateCW); }
+void DocumentState::rotateSelection90CCW()     { applyDiscreteTransform(DiscreteTransform::RotateCCW); }
+void DocumentState::flipSelectionHorizontal()  { applyDiscreteTransform(DiscreteTransform::FlipH); }
+void DocumentState::flipSelectionVertical()    { applyDiscreteTransform(DiscreteTransform::FlipV); }
