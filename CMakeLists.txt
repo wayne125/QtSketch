@@ -237,6 +237,7 @@ add_test(NAME fused_ring_direction_detector_test COMMAND fused_ring_direction_de
 add_library(molecule_model STATIC
     src/app/molecule/ExtensionData.h
     src/app/molecule/MoleculeSnapshot.h
+    src/app/molecule/SelectionState.h
     src/app/molecule/EditableMolecule.h
     src/app/molecule/EditableMolecule.cpp
 )
@@ -254,4 +255,8 @@ endif()
 qt_add_executable(editable_molecule_test tests/editable_molecule_test.cpp)
 target_link_libraries(editable_molecule_test PRIVATE molecule_model)
 add_test(NAME editable_molecule_test COMMAND editable_molecule_test)
+
+qt_add_executable(document_state_test tests/document_state_test.cpp)
+target_link_libraries(document_state_test PRIVATE molecule_model)
+add_test(NAME document_state_test COMMAND document_state_test)
 
