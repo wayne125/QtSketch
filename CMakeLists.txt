@@ -245,6 +245,8 @@ add_library(molecule_model STATIC
     src/app/molecule/DocumentState.cpp
     src/app/molecule/TemplateLibrary.h
     src/app/molecule/TemplateLibrary.cpp
+    src/app/molecule/ElementData.h
+    src/app/molecule/RenderPrimitives.h
 )
 target_include_directories(molecule_model PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -266,4 +268,9 @@ qt_add_executable(document_state_test tests/document_state_test.cpp)
 target_link_libraries(document_state_test PRIVATE molecule_model)
 target_compile_definitions(document_state_test PRIVATE SKETCH_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 add_test(NAME document_state_test COMMAND document_state_test)
+
+qt_add_executable(render_primitives_test tests/render_primitives_test.cpp)
+target_link_libraries(render_primitives_test PRIVATE molecule_model)
+target_compile_definitions(render_primitives_test PRIVATE SKETCH_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_test(NAME render_primitives_test COMMAND render_primitives_test)
 
