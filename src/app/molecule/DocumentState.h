@@ -111,6 +111,17 @@ public:
     void moveImage(ImageId id, double dx, double dy);
     void resizeImage(ImageId id, double scaleFactor);
 
+    // Rxn-arrow lifecycle (50-reactions.js: addRxnArrow/addCurvedArrow/setRxnArrowMode/
+    // setRxnArrowConditions/deleteRxnArrow). addRxnArrow computes its default second endpoint
+    // the same way the real JS does (2.5 bond-lengths to the right). deleteRxnArrow's undo
+    // recreates a fresh-id arrow with the same mode/conditions/curvature, matching this class's
+    // established deleteAtom precedent (fresh id, not the original).
+    RxnArrowId addRxnArrow(double cx, double cy, const QString& mode = QStringLiteral("filled-triangle"));
+    RxnArrowId addCurvedArrow(double x1, double y1, double ctrlX, double ctrlY, double x2, double y2);
+    void setRxnArrowMode(RxnArrowId id, const QString& newMode);
+    void setRxnArrowConditions(RxnArrowId id, const QString& above, const QString& below);
+    void deleteRxnArrow(RxnArrowId id);
+
     // ---- Live-drag gestures ------------------------------------------------
     // Repeated *Live calls during a UI drag mutate positions directly and push
     // NOTHING onto the undo history; the matching commit* call at gesture end

@@ -1065,6 +1065,62 @@ static void test_toggleSgroupExpanded() {
     CHECK(doc.molecule().sgroupExpanded(sgId), "invalid-id toggle call left the real sgroup untouched");
 }
 
+static void test_rxnArrowLifecycle() {
+    std::printf("--- Test 17: rxn-arrow lifecycle ---\n");
+    DocumentState doc;
+
+    RxnArrowId a1 = doc.addRxnArrow(0, 0);
+    double x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+    CHECK(doc.molecule().rxnArrowEndpoints(a1, x1, y1, x2, y2), "addRxnArrow creates a real arrow");
+    CHECK(x1 == 0 && y1 == 0 && x2 == 1.5 * 2.5 && y2 == 0, "default second endpoint is 2.5 bond-lengths to the right");
+    CHECK(doc.molecule().rxnArrowMode(a1) == QStringLiteral("filled-triangle"), "default mode is filled-triangle");
+    doc.undo();
+    CHECK(doc.molecule().rxnArrowIds().isEmpty(), "undo removes the created arrow");
+
+    // Recreate a1 for real -- the throwaway above only proved undo works; everything below
+    // needs a persistent first arrow to compare counts against.
+    a1 = doc.addRxnArrow(0, 0);
+
+    RxnArrowId a2 = doc.addRxnArrow(1, 1, QStringLiteral("resonance"));
+    CHECK(doc.molecule().rxnArrowMode(a2) == QStringLiteral("resonance"), "explicit mode is applied at creation");
+
+    RxnArrowId curved = doc.addCurvedArrow(0, 0, 1, 2, 3, 0);
+    CHECK(doc.molecule().rxnArrowMode(curved) == QStringLiteral("curved-mechanism"), "addCurvedArrow sets curved-mechanism mode");
+    double cx = 0, cy = 0;
+    CHECK(doc.molecule().rxnArrowCurvature(curved, cx, cy) && cx == 1 && cy == 2, "addCurvedArrow stores the control point");
+    doc.undo();
+    CHECK(!doc.molecule().rxnArrowIds().contains(curved), "undo removes the curved arrow too");
+
+    doc.setRxnArrowMode(a2, QStringLiteral("hollow-triangle"));
+    CHECK(doc.molecule().rxnArrowMode(a2) == QStringLiteral("hollow-triangle"), "setRxnArrowMode changes the mode");
+    bool canUndoBefore = doc.canUndo();
+    doc.setRxnArrowMode(a2, QStringLiteral("hollow-triangle")); // unchanged -- must no-op
+    CHECK(doc.canUndo() == canUndoBefore, "setRxnArrowMode to the SAME mode pushes no history entry");
+    doc.undo();
+    CHECK(doc.molecule().rxnArrowMode(a2) == QStringLiteral("resonance"), "undo restores the original mode");
+
+    doc.setRxnArrowConditions(a2, QStringLiteral("Pd/C"), QStringLiteral("H2"));
+    CHECK(doc.molecule().rxnArrowConditionsAbove(a2) == QStringLiteral("Pd/C"), "conditions above set");
+    CHECK(doc.molecule().rxnArrowConditionsBelow(a2) == QStringLiteral("H2"), "conditions below set");
+    doc.undo();
+    CHECK(doc.molecule().rxnArrowConditionsAbove(a2).isEmpty(), "undo restores conditions to empty");
+
+    doc.setRxnArrowConditions(a2, QStringLiteral("cond"), QStringLiteral("cond2"));
+    doc.molecule().setRxnArrowCurvature(a2, 9, 9, true); // no DocumentState-level command for this exists (matches the real JS: curvature is only ever set via addCurvedArrow) -- mutate the molecule directly so the deleteRxnArrow capture-before-delete below has real curvature to preserve
+    doc.deleteRxnArrow(a2);
+    CHECK(doc.molecule().rxnArrowIds().size() == 1, "deleteRxnArrow removes the arrow (only a1 remains)");
+    doc.undo();
+    CHECK(doc.molecule().rxnArrowIds().size() == 2, "undo recreates the deleted arrow (fresh id)");
+    bool foundRestored = false;
+    for (RxnArrowId id : doc.molecule().rxnArrowIds()) {
+        if (id != a1 && doc.molecule().rxnArrowConditionsAbove(id) == QStringLiteral("cond")) foundRestored = true;
+    }
+    CHECK(foundRestored, "restored arrow keeps its mode/conditions/curvature from before deletion");
+
+    doc.deleteRxnArrow(9999);
+    CHECK(!doc.canUndo() || doc.molecule().rxnArrowIds().size() == 2, "deleteRxnArrow on an unknown id is a no-op");
+}
+
 int main() {
     test_selectionStateBasics();
     test_editCommandBasics();
@@ -1083,6 +1139,7 @@ int main() {
     test_insertFunctionalGroup();
     test_insertLibraryTemplateFused();
     test_toggleSgroupExpanded();
+    test_rxnArrowLifecycle();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

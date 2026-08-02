@@ -998,6 +998,28 @@ bool EditableMolecule::rxnArrowCurvature(RxnArrowId id, double& x, double& y) co
     return true;
 }
 
+bool EditableMolecule::setRxnArrowMode(RxnArrowId id, const QString& mode) {
+    if (!m_ext.rxnArrows.contains(id)) return false;
+    m_ext.rxnArrows[id].mode = mode;
+    return true;
+}
+
+bool EditableMolecule::setRxnArrowConditions(RxnArrowId id, const QString& above, const QString& below) {
+    if (!m_ext.rxnArrows.contains(id)) return false;
+    m_ext.rxnArrows[id].conditionsAbove = above;
+    m_ext.rxnArrows[id].conditionsBelow = below;
+    return true;
+}
+
+bool EditableMolecule::setRxnArrowCurvature(RxnArrowId id, double x, double y, bool has) {
+    if (!m_ext.rxnArrows.contains(id)) return false;
+    RxnArrow& r = m_ext.rxnArrows[id];
+    r.hasCurvature = has;
+    r.curvatureX = has ? x : 0;
+    r.curvatureY = has ? y : 0;
+    return true;
+}
+
 int EditableMolecule::implicitHydrogenCount(AtomId id) const {
     if (m_mol < 0 || !m_atomIdx.contains(id)) return 0;
     activateSession();

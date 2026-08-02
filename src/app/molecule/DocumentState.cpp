@@ -397,6 +397,82 @@ void DocumentState::resizeImage(ImageId id, double scaleFactor) {
     executeCommand(std::move(cmd));
 }
 
+RxnArrowId DocumentState::addRxnArrow(double cx, double cy, const QString& mode) {
+    auto idBox = std::make_shared<RxnArrowId>(-1);
+    EditableMolecule& mol = m_molecule;
+    double x2 = cx + kBondLength * 2.5;
+    double y2 = cy;
+
+    EditCommand cmd;
+    cmd.execute = [&mol, idBox, cx, cy, x2, y2, mode]() {
+        *idBox = mol.addRxnArrow(cx, cy, x2, y2);
+        if (mode != QStringLiteral("filled-triangle")) mol.setRxnArrowMode(*idBox, mode);
+    };
+    cmd.invert = [&mol, idBox]() { mol.removeRxnArrow(*idBox); };
+    executeCommand(std::move(cmd));
+    return *idBox;
+}
+
+RxnArrowId DocumentState::addCurvedArrow(double x1, double y1, double ctrlX, double ctrlY, double x2, double y2) {
+    auto idBox = std::make_shared<RxnArrowId>(-1);
+    EditableMolecule& mol = m_molecule;
+
+    EditCommand cmd;
+    cmd.execute = [&mol, idBox, x1, y1, ctrlX, ctrlY, x2, y2]() {
+        *idBox = mol.addRxnArrow(x1, y1, x2, y2);
+        mol.setRxnArrowMode(*idBox, QStringLiteral("curved-mechanism"));
+        mol.setRxnArrowCurvature(*idBox, ctrlX, ctrlY);
+    };
+    cmd.invert = [&mol, idBox]() { mol.removeRxnArrow(*idBox); };
+    executeCommand(std::move(cmd));
+    return *idBox;
+}
+
+void DocumentState::setRxnArrowMode(RxnArrowId id, const QString& newMode) {
+    EditableMolecule& mol = m_molecule;
+    QString oldMode = mol.rxnArrowMode(id);
+    if (!mol.rxnArrowIds().contains(id) || oldMode == newMode) return;
+
+    EditCommand cmd;
+    cmd.execute = [&mol, id, newMode]() { mol.setRxnArrowMode(id, newMode); };
+    cmd.invert = [&mol, id, oldMode]() { mol.setRxnArrowMode(id, oldMode); };
+    executeCommand(std::move(cmd));
+}
+
+void DocumentState::setRxnArrowConditions(RxnArrowId id, const QString& above, const QString& below) {
+    EditableMolecule& mol = m_molecule;
+    if (!mol.rxnArrowIds().contains(id)) return;
+    QString oldAbove = mol.rxnArrowConditionsAbove(id);
+    QString oldBelow = mol.rxnArrowConditionsBelow(id);
+    if (oldAbove == above && oldBelow == below) return;
+
+    EditCommand cmd;
+    cmd.execute = [&mol, id, above, below]() { mol.setRxnArrowConditions(id, above, below); };
+    cmd.invert = [&mol, id, oldAbove, oldBelow]() { mol.setRxnArrowConditions(id, oldAbove, oldBelow); };
+    executeCommand(std::move(cmd));
+}
+
+void DocumentState::deleteRxnArrow(RxnArrowId id) {
+    EditableMolecule& mol = m_molecule;
+    double x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+    if (!mol.rxnArrowEndpoints(id, x1, y1, x2, y2)) return;
+    QString mode = mol.rxnArrowMode(id);
+    QString above = mol.rxnArrowConditionsAbove(id);
+    QString below = mol.rxnArrowConditionsBelow(id);
+    double cx = 0, cy = 0;
+    bool hasCurvature = mol.rxnArrowCurvature(id, cx, cy);
+
+    EditCommand cmd;
+    cmd.execute = [&mol, id]() { mol.removeRxnArrow(id); };
+    cmd.invert = [&mol, x1, y1, x2, y2, mode, above, below, hasCurvature, cx, cy]() {
+        int newId = mol.addRxnArrow(x1, y1, x2, y2);
+        mol.setRxnArrowMode(newId, mode);
+        mol.setRxnArrowConditions(newId, above, below);
+        if (hasCurvature) mol.setRxnArrowCurvature(newId, cx, cy);
+    };
+    executeCommand(std::move(cmd));
+}
+
 void DocumentState::applyMoveDelta(const QList<AtomId>& atomIds, const QList<RxnArrowId>& arrowIds,
                                    const QList<RxnPlusId>& plusIds, const QList<MultitailArrowId>& mtaIds,
                                    double dx, double dy) {

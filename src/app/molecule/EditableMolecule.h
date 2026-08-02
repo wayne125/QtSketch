@@ -235,14 +235,19 @@ public:
     QString atomCheckWarningText(AtomId id) const;
     QString bondCheckWarningText(BondId id) const;
 
-    // Reaction-arrow display fields buildRenderPrimitives reads but sub-project 1 never stored:
-    // display mode, above/below condition text, and optional curvature control point. Read-only:
-    // setRxnArrowMode/setRxnArrowConditions (src/worker/50-reactions.js) are undoable editing
-    // operations, out of scope here (sub-project 3e).
+    // Reaction-arrow display fields buildRenderPrimitives reads: display mode, above/below
+    // condition text, and optional curvature control point.
     QString rxnArrowMode(RxnArrowId id) const;
     QString rxnArrowConditionsAbove(RxnArrowId id) const;
     QString rxnArrowConditionsBelow(RxnArrowId id) const;
     bool rxnArrowCurvature(RxnArrowId id, double& x, double& y) const;
+
+    // Mutators for the fields above (sub-project 3e: setRxnArrowMode/setRxnArrowConditions from
+    // src/worker/50-reactions.js). false if id unknown; setRxnArrowCurvature(has=false) clears
+    // curvature back to none.
+    bool setRxnArrowMode(RxnArrowId id, const QString& mode);
+    bool setRxnArrowConditions(RxnArrowId id, const QString& above, const QString& below);
+    bool setRxnArrowCurvature(RxnArrowId id, double x, double y, bool has = true);
 
     // Pure read-only Indigo queries -- no mutation. implicitHydrogenCount wraps
     // indigoCountHydrogens; neighborAtomIds wraps this class's own bond-endpoint

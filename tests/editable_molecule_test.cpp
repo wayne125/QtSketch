@@ -1155,6 +1155,28 @@ static void test_sgroupIntrospectionAccessors() {
     CHECK(m.sgroupIds().size() == 1, "sgroupIds is unaffected by querying an invalid id");
 }
 
+static void test_rxnArrowMutators() {
+    std::printf("--- Test 26: rxn-arrow mutators ---\n");
+    EditableMolecule m;
+    int id = m.addRxnArrow(0, 0, 5, 0);
+
+    CHECK(m.rxnArrowMode(id) == QStringLiteral("filled-triangle"), "new rxn arrow defaults to filled-triangle mode");
+    CHECK(m.setRxnArrowMode(id, QStringLiteral("curved-mechanism")), "setRxnArrowMode succeeds for a real id");
+    CHECK(m.rxnArrowMode(id) == QStringLiteral("curved-mechanism"), "mode actually changed");
+    CHECK(!m.setRxnArrowMode(9999, QStringLiteral("filled-triangle")), "setRxnArrowMode fails for an unknown id");
+
+    CHECK(m.setRxnArrowConditions(id, QStringLiteral("H2O"), QStringLiteral("reflux")), "setRxnArrowConditions succeeds");
+    CHECK(m.rxnArrowConditionsAbove(id) == QStringLiteral("H2O"), "conditions above set");
+    CHECK(m.rxnArrowConditionsBelow(id) == QStringLiteral("reflux"), "conditions below set");
+    CHECK(!m.setRxnArrowConditions(9999, QStringLiteral("x"), QStringLiteral("y")), "setRxnArrowConditions fails for an unknown id");
+
+    CHECK(m.setRxnArrowCurvature(id, 2.5, 1.0), "setRxnArrowCurvature succeeds");
+    double cx = 0, cy = 0;
+    CHECK(m.rxnArrowCurvature(id, cx, cy) && cx == 2.5 && cy == 1.0, "curvature stored and readable");
+    CHECK(m.setRxnArrowCurvature(id, 0, 0, false), "setRxnArrowCurvature(has=false) succeeds");
+    CHECK(!m.rxnArrowCurvature(id, cx, cy), "curvature cleared -- rxnArrowCurvature now reports false");
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -1185,6 +1207,7 @@ int main() {
     test_ringAndNeighborAccessors();
     test_stereoCipAccessors();
     test_sgroupIntrospectionAccessors();
+    test_rxnArrowMutators();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
