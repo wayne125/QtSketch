@@ -186,6 +186,10 @@ public:
     void insertLibraryTemplateFused(const TemplateLibrary& lib, const QString& fgName,
                                      double cx, double cy, BondId targetBondId);
 
+    // Ports 30-templates.js's toggleSgroupExpanded. No-ops if id doesn't
+    // resolve to a real sgroup (matches the real function's early return).
+    void toggleSgroupExpanded(SGroupId id);
+
 private:
     enum class DiscreteTransform { RotateCW, RotateCCW, FlipH, FlipV };
     void applyDiscreteTransform(DiscreteTransform mode);

@@ -1032,6 +1032,39 @@ static void test_insertLibraryTemplateFused() {
     }
 }
 
+static void test_toggleSgroupExpanded() {
+    std::printf("--- Test 16: toggleSgroupExpanded ---\n");
+    TemplateLibrary lib(
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/fg.sdf"),
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/library.sdf"),
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/salts-and-solvents.sdf"));
+
+    // Seeded via doc.molecule() directly (not doc.insertFunctionalGroup,
+    // which is itself undoable) so history starts empty and canUndo() is an
+    // exact, unambiguous signal for the checks below -- the same seeding
+    // discipline used throughout this migration whenever a test needs to
+    // prove "this call pushed exactly one/zero history entries."
+    DocumentState doc;
+    QString acMolfile = lib.molfileText(lib.functionalGroup(QStringLiteral("Ac")));
+    EditableMolecule::InsertResult r = doc.molecule().insertStructure(
+        acMolfile, [](double x, double y) { return QPointF(x, y); });
+    CHECK(r.createdSGroups.size() == 1, "setup: \"Ac\" produces exactly one sgroup");
+    SGroupId sgId = r.createdSGroups[0];
+    CHECK(doc.molecule().sgroupExpanded(sgId), "newly-inserted sgroup starts expanded=true");
+    CHECK(!doc.canUndo(), "history is empty (sgroup seeded via the molecule directly)");
+
+    doc.toggleSgroupExpanded(sgId);
+    CHECK(doc.canUndo(), "toggleSgroupExpanded pushes exactly one history entry");
+    CHECK(!doc.molecule().sgroupExpanded(sgId), "toggle flips expanded true -> false");
+    doc.undo();
+    CHECK(doc.molecule().sgroupExpanded(sgId), "undo restores expanded=true");
+    CHECK(!doc.canUndo(), "history is empty again after undoing the only entry");
+
+    doc.toggleSgroupExpanded(9999);
+    CHECK(!doc.canUndo(), "invalid SGroupId pushes no history entry");
+    CHECK(doc.molecule().sgroupExpanded(sgId), "invalid-id toggle call left the real sgroup untouched");
+}
+
 int main() {
     test_selectionStateBasics();
     test_editCommandBasics();
@@ -1049,6 +1082,8 @@ int main() {
     test_addChain();
     test_insertFunctionalGroup();
     test_insertLibraryTemplateFused();
+    test_toggleSgroupExpanded();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }
+

@@ -1214,3 +1214,16 @@ void DocumentState::insertLibraryTemplateFused(const TemplateLibrary& lib, const
     executeCommand(std::move(cmd));
 }
 
+void DocumentState::toggleSgroupExpanded(SGroupId id) {
+    EditableMolecule& mol = m_molecule;
+    AtomId probe = -1;
+    if (!mol.superatomAttachAtom(id, probe)) return;   // no such sgroup: no-op
+    bool wasExpanded = mol.sgroupExpanded(id);
+
+    EditCommand cmd;
+    cmd.execute = [&mol, id, wasExpanded]() { mol.setSGroupExpanded(id, !wasExpanded); };
+    cmd.invert = [&mol, id, wasExpanded]() { mol.setSGroupExpanded(id, wasExpanded); };
+    executeCommand(std::move(cmd));
+}
+
+
