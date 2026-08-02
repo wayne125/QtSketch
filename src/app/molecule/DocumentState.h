@@ -15,6 +15,7 @@
 // undo/redo.
 
 #include "EditableMolecule.h"
+#include "TemplateLibrary.h"
 #include "EditCommand.h"
 #include "SelectionState.h"
 #include <vector>
@@ -162,6 +163,17 @@ public:
     // committed structure drifting apart). Reuses mergeOverlappingAtoms so
     // endpoints graft onto whatever they overlap, exactly like addRing.
     void addChain(double x1, double y1, double x2, double y2);
+
+    // Ports 30-templates.js's insertFunctionalGroup. TemplateLibrary is
+    // passed explicitly by the caller (this class has no module-level
+    // template-registry globals, unlike the real worker). graft = targetAtomId
+    // resolves to a real atom AND the template has a SUP attachment point;
+    // grafting fuses the template's attach atom onto targetAtomId via
+    // graftAtomOnto rather than a position-coincidence merge. Falls back to
+    // a single placeholder atom labeled fgName if the template is missing or
+    // structurally empty. One undoable command per call.
+    void insertFunctionalGroup(const TemplateLibrary& lib, const QString& fgName,
+                                double cx, double cy, AtomId targetAtomId = -1, bool fullStructure = true);
 
 private:
     enum class DiscreteTransform { RotateCW, RotateCCW, FlipH, FlipV };

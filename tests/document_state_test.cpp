@@ -5,6 +5,7 @@
 #include "app/molecule/SelectionState.h"
 #include "app/molecule/EditCommand.h"
 #include "app/molecule/DocumentState.h"
+#include "app/molecule/TemplateLibrary.h"
 #include "indigo.h"
 
 static int g_pass = 0, g_fail = 0;
@@ -843,6 +844,68 @@ static void test_addChain() {
     }
 }
 
+static void test_insertFunctionalGroup() {
+    std::printf("--- Test 14: insertFunctionalGroup ---\n");
+    TemplateLibrary lib(
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/fg.sdf"),
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/library.sdf"),
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/salts-and-solvents.sdf"));
+
+    // Plain paste: no target atom, centers on (cx, cy).
+    {
+        DocumentState doc;
+        CHECK(!doc.canUndo(), "history starts empty");
+        doc.insertFunctionalGroup(lib, QStringLiteral("Ac"), 10.0, 10.0);
+        CHECK(doc.canUndo(), "insertFunctionalGroup pushes exactly one history entry");
+        CHECK(doc.molecule().atomCount() == 3, "\"Ac\" plain paste creates 3 atoms");
+        CHECK(doc.molecule().bondCount() == 2, "\"Ac\" plain paste creates 2 bonds");
+        doc.undo();
+        CHECK(doc.molecule().atomCount() == 0, "undo removes every pasted atom");
+        CHECK(doc.molecule().bondCount() == 0, "undo removes every pasted bond");
+    }
+
+    // Graft onto an existing atom: "Ac"'s attach atom (SUP attachment point
+    // at atom index 0, confirmed by direct file read) fuses onto the target,
+    // which survives with the template's remaining bonds attached.
+    {
+        DocumentState doc;
+        AtomId target = doc.molecule().addAtom(QStringLiteral("C"), 0.0, 0.0);
+        doc.insertFunctionalGroup(lib, QStringLiteral("Ac"), 0.0, 0.0, target, true);
+
+        // "Ac" has 3 atoms; grafting fuses its attach atom onto the
+        // pre-existing target, so 1 pre-existing + 3 new - 1 fused = 3 total.
+        CHECK(doc.molecule().atomCount() == 3, "graft: 1 pre-existing + 3 new - 1 fused = 3 total");
+        CHECK(doc.molecule().atomSymbol(target) == QStringLiteral("C"), "target atom survives");
+        int bondsFromTarget = 0;
+        for (BondId bid : doc.molecule().bondIds()) {
+            AtomId a = -1, b = -1;
+            doc.molecule().bondEndpoints(bid, a, b);
+            if (a == target || b == target) ++bondsFromTarget;
+        }
+        // "Ac"'s attach atom (atom index 0, the carbonyl carbon) is bonded
+        // to BOTH other atoms within the fragment (bond block: "2 1 1" and
+        // "1 3 2", i.e. atom 1 = attach atom is bonded to atom 2 [CH3] and
+        // atom 3 [O]) -- confirmed by direct read of the real fg.sdf record,
+        // not assumed. graftAtomOnto rewires ALL of the attach atom's
+        // incident bonds onto the target, so the target gains 2 bonds, not 1.
+        CHECK(bondsFromTarget == 2, "target atom gained both of the grafted attach atom's bonds");
+        doc.undo();
+        CHECK(doc.molecule().atomCount() == 1, "undo restores to just the pre-existing target atom");
+    }
+
+    // Missing template: placeholder-atom fallback.
+    {
+        DocumentState doc;
+        doc.insertFunctionalGroup(lib, QStringLiteral("NotARealTemplateName"), 2.0, 3.0);
+        CHECK(doc.molecule().atomCount() == 1, "missing template falls back to one placeholder atom");
+        QList<AtomId> ids = doc.molecule().atomIds();
+        CHECK(doc.molecule().atomSymbol(ids[0]) == QStringLiteral("NotARealTemplateName"),
+              "placeholder atom is labeled with the requested (missing) template name");
+        doc.undo();
+        CHECK(doc.molecule().atomCount() == 0, "undo removes the placeholder atom");
+    }
+}
+
 
 static void test_documentStateSelection() {
     std::printf("--- Test 4: DocumentState selection ---\n");
@@ -935,6 +998,7 @@ int main() {
     test_dragStateResetOnUndoRedo();
     test_addRing();
     test_addChain();
+    test_insertFunctionalGroup();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

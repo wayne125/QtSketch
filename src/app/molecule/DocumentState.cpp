@@ -3,6 +3,7 @@
 #include <memory>
 #include <algorithm>
 #include <cmath>
+#include "indigo.h"
 
 DocumentState::DocumentState(const QString& initialStructure)
     : m_molecule(initialStructure) {
@@ -853,6 +854,127 @@ void DocumentState::addChain(double x1, double y1, double x2, double y2) {
         }
         *createdAtoms = survivors;
         for (BondId b : mergeResult.createdBonds) createdBonds->append(b);
+    };
+    cmd.invert = [&mol, createdAtoms, createdBonds]() {
+        for (BondId b : *createdBonds) mol.removeBond(b);
+        for (AtomId a : *createdAtoms) mol.removeAtom(a);
+    };
+    executeCommand(std::move(cmd));
+}
+
+void DocumentState::insertFunctionalGroup(const TemplateLibrary& lib, const QString& fgName,
+                                           double cx, double cy, AtomId targetAtomId, bool fullStructure) {
+    cx = std::max(kPageMinX, std::min(kPageMaxX, cx));
+    cy = std::max(kPageMinY, std::min(kPageMaxY, cy));
+
+    int fgHandle = lib.functionalGroup(fgName);
+    if (fgHandle < 0) fgHandle = lib.saltOrSolvent(fgName);
+    if (fgHandle < 0) fgHandle = lib.libraryTemplate(fgName);
+
+    EditableMolecule& mol = m_molecule;
+
+    if (fgHandle < 0 || indigoCountAtoms(fgHandle) == 0) {
+        // Fallback: a single placeholder atom labeled fgName.
+        auto idBox = std::make_shared<AtomId>(-1);
+        EditCommand cmd;
+        cmd.execute = [&mol, idBox, fgName, cx, cy]() { *idBox = mol.addAtom(fgName, cx, cy); };
+        cmd.invert = [&mol, idBox]() { mol.removeAtom(*idBox); };
+        executeCommand(std::move(cmd));
+        return;
+    }
+
+    // IMPORTANT (see Global Constraints, "sequencing consequence for Tasks
+    // 4/5"): TemplateLibrary owns its own Indigo session, separate from
+    // m_molecule's. Every direct indigo* call against fgHandle below MUST
+    // happen before the first call into `mol` (mol.atomPos, below) --
+    // EditableMolecule's own methods activate THEIR session on entry, which
+    // would silently invalidate fgHandle for any later indigo* call in this
+    // scope. So: find the attach point, compute the template's own bounding
+    // box, AND capture the Molfile text (the only thing safe to carry across
+    // the session boundary and into the command lambda, which may run again
+    // much later via redo()) all first -- only then touch `mol`.
+
+    int templateAttachIdx = -1;
+    if (indigoCountSuperatoms(fgHandle) > 0) {
+        int sup = indigoGetSuperatom(fgHandle, 0);
+        if (sup >= 0) {
+            int apIter = indigoIterateSGroupAttachmentPoints(sup);
+            if (apIter >= 0) {
+                int ap = indigoNext(apIter);
+                if (ap > 0) { templateAttachIdx = indigoGetSGroupAttachmentPointAtomIdx(ap); indigoFree(ap); }
+                indigoFree(apIter);
+            }
+            indigoFree(sup);
+        }
+    }
+
+    double minX = 0, maxX = 0, minY = 0, maxY = 0, attachX = 0, attachY = 0;
+    {
+        bool any = false;
+        int aIter = indigoIterateAtoms(fgHandle);
+        if (aIter >= 0) {
+            int a;
+            while ((a = indigoNext(aIter)) > 0) {
+                float* xyz = indigoXYZ(a);
+                if (xyz) {
+                    if (!any) { minX = maxX = xyz[0]; minY = maxY = xyz[1]; any = true; }
+                    else {
+                        if (xyz[0] < minX) minX = xyz[0];
+                        if (xyz[0] > maxX) maxX = xyz[0];
+                        if (xyz[1] < minY) minY = xyz[1];
+                        if (xyz[1] > maxY) maxY = xyz[1];
+                    }
+                    if (indigoIndex(a) == templateAttachIdx) { attachX = xyz[0]; attachY = xyz[1]; }
+                }
+                indigoFree(a);
+            }
+            indigoFree(aIter);
+        }
+    }
+
+    // Last thing done against TemplateLibrary's session: capture the
+    // structure as Molfile text. Everything from here on touches only `mol`
+    // (a different session) and plain captured values.
+    QString fgMolfile = lib.molfileText(fgHandle);
+
+    bool graft = (targetAtomId >= 0) && templateAttachIdx >= 0;
+    double targetX = 0, targetY = 0;
+    if (graft) graft = mol.atomPos(targetAtomId, targetX, targetY);
+
+    // Compute the placement offset: align attach-atom-to-target if grafting,
+    // else center the template's bounding box on (cx, cy).
+    double dx = 0, dy = 0;
+    if (graft) { dx = targetX - attachX; dy = targetY - attachY; }
+    else { dx = cx - (minX + maxX) / 2.0; dy = cy - (minY + maxY) / 2.0; }
+
+    auto createdAtoms = std::make_shared<QList<AtomId>>();
+    auto createdBonds = std::make_shared<QList<BondId>>();
+    auto createdSGroups = std::make_shared<QList<SGroupId>>();
+
+    EditCommand cmd;
+    cmd.execute = [&mol, fgMolfile, dx, dy, templateAttachIdx, graft, targetAtomId, fullStructure,
+                   createdAtoms, createdBonds, createdSGroups]() {
+        createdAtoms->clear();
+        createdBonds->clear();
+        createdSGroups->clear();
+
+        EditableMolecule::InsertResult result = mol.insertStructure(fgMolfile, [dx, dy](double x, double y) {
+            return QPointF(x + dx, y + dy);
+        });
+        *createdAtoms = result.createdAtoms;
+        *createdBonds = result.createdBonds;
+        *createdSGroups = result.createdSGroups;
+
+        if (graft && templateAttachIdx >= 0) {
+            AtomId newAttachAtom = result.sourceIndexToNewAtomId.value(templateAttachIdx, -1);
+            if (newAttachAtom >= 0) {
+                QList<BondId> rewired = mol.graftAtomOnto(newAttachAtom, targetAtomId);
+                createdAtoms->removeAll(newAttachAtom);
+                for (BondId b : rewired) createdBonds->append(b);
+            }
+        }
+
+        for (SGroupId sg : *createdSGroups) mol.setSGroupExpanded(sg, fullStructure);
     };
     cmd.invert = [&mol, createdAtoms, createdBonds]() {
         for (BondId b : *createdBonds) mol.removeBond(b);
