@@ -24,7 +24,13 @@ using MultitailArrowId = int;
 using ImageId = int;
 
 struct TextAnnotation { double x = 0, y = 0; QString content; };          // _struct.texts (plain string; Lexical-JSON conversion is serialization's job, sub-project 5)
-struct RxnArrow      { double x1 = 0, y1 = 0, x2 = 0, y2 = 0; };          // _struct.rxnArrows
+struct RxnArrow {
+    double x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+    QString mode = QStringLiteral("filled-triangle");   // buildRenderPrimitives' arr.mode || "filled-triangle"
+    QString conditionsAbove, conditionsBelow;           // arr.conditionsText || {above:"", below:""}
+    bool hasCurvature = false;
+    double curvatureX = 0, curvatureY = 0;              // arr.curvature || null
+};   // _struct.rxnArrows
 struct RxnPlus       { double x = 0, y = 0; };                            // _struct.rxnPluses
 struct MultitailArrow{ QList<double> headAndTails; };                     // _struct.multitailArrows (head x,y then tail x,y pairs)
 struct ImageRef      { double x = 0, y = 0, w = 0, h = 0; QByteArray pngData; }; // _struct.images
@@ -40,6 +46,10 @@ struct ExtensionData {
     QHash<int, int> stereoFlags;           // fragmentIndex -> ABS/AND/OR flag (_struct.stereoFlags)
     QHash<int, int> atomAAM;               // AtomId -> atom-atom-mapping number
     QHash<int, bool> atomCheckWarnings;    // AtomId -> structure-check warning
+    QString stereoFlagsType = QStringLiteral("abs");   // _struct.stereoFlags.type -- document-level,
+    int stereoFlagsGroupId = 0;                        // NOT the same concept as the stereoFlags QHash above
+    QHash<int, QString> atomCheckWarningTexts;         // AtomId -> real string warning type (see below)
+    QHash<int, QString> bondCheckWarningTexts;         // BondId -> real string warning type
     QHash<int, AtomQueryList> atomQueryLists;  // AtomId -> query list (keyed directly by the already-stable AtomId, no separate counter needed)
 
     TextId nextTextId = 1;

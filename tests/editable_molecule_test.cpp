@@ -943,6 +943,35 @@ static void test_insertStructure() {
     indigoReleaseSessionId(session);
 }
 
+static void test_renderSupportStorageDefaults() {
+    std::printf("--- Test 22: render-support storage (stereoFlags/checkWarning text/rxnArrow extras) ---\n");
+
+    EditableMolecule m;
+    CHECK(m.stereoFlagsType() == QStringLiteral("abs"), "stereoFlagsType defaults to \"abs\"");
+    CHECK(m.stereoFlagsGroupId() == 0, "stereoFlagsGroupId defaults to 0");
+
+    AtomId a1 = m.addAtom(QStringLiteral("C"), 0.0, 0.0);
+    CHECK(m.atomCheckWarningText(a1).isEmpty(), "atomCheckWarningText defaults to empty");
+    CHECK(m.bondCheckWarningText(9999).isEmpty(), "bondCheckWarningText on unknown id defaults to empty");
+
+    AtomId a2 = m.addAtom(QStringLiteral("O"), 1.0, 0.0);
+    BondId b1 = m.addBond(a1, a2, 1);
+    CHECK(m.bondCheckWarningText(b1).isEmpty(), "bondCheckWarningText defaults to empty for a real bond");
+
+    int arrowId = m.addRxnArrow(0.0, 0.0, 5.0, 0.0);
+    CHECK(m.rxnArrowMode(arrowId) == QStringLiteral("filled-triangle"),
+          "rxnArrowMode defaults to \"filled-triangle\"");
+    CHECK(m.rxnArrowConditionsAbove(arrowId).isEmpty(), "rxnArrowConditionsAbove defaults to empty");
+    CHECK(m.rxnArrowConditionsBelow(arrowId).isEmpty(), "rxnArrowConditionsBelow defaults to empty");
+    double cx = 0, cy = 0;
+    CHECK(!m.rxnArrowCurvature(arrowId, cx, cy), "rxnArrowCurvature defaults to false (no curvature set)");
+
+    // Invalid ids fail cleanly / return sensible defaults, not crash.
+    CHECK(m.rxnArrowMode(9999) == QStringLiteral("filled-triangle"),
+          "rxnArrowMode on unknown id still returns the default, not garbage");
+    CHECK(m.atomCheckWarningText(9999).isEmpty(), "atomCheckWarningText on unknown id defaults to empty");
+}
+
 static void test_graftAtomOnto() {
     std::printf("--- Test 21: graftAtomOnto ---\n");
 
@@ -1009,6 +1038,7 @@ int main() {
     test_templateLibraryLoading();
     test_insertStructure();
     test_graftAtomOnto();
+    test_renderSupportStorageDefaults();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);

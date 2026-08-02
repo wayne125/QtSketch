@@ -212,6 +212,34 @@ public:
     void setAtomCheckWarning(AtomId id, bool warn);
     bool atomCheckWarning(AtomId id) const;
 
+    // Document-level stereo-display toggle (_struct.stereoFlags = {type, groupId}), genuinely
+    // consumed by MainToolbar.qml's ABS/REL combo box. Deliberately SEPARATE from the
+    // per-fragment stereoFlag/setStereoFlag above, which models an unrelated, real chem-core
+    // concept (a per-fragment ABS/AND/OR/MIXED value that is actually COMPUTED from atom stereo
+    // labels, never stored) -- reusing that field's QHash<int,int> shape here would be wrong: it
+    // cannot represent one document-wide {type, groupId} pair. Read-only: the setter
+    // (setStereoFlags, src/worker/50-reactions.js) is an undoable editing operation, out of scope
+    // here (sub-project 3e).
+    QString stereoFlagsType() const;
+    int stereoFlagsGroupId() const;
+
+    // Real string check-warning TYPE (e.g. "valence", set by external structure-check results --
+    // src/worker/60-analysis.js's setCheckIssues), NOT the same as the boolean
+    // atomCheckWarning/setAtomCheckWarning above (sub-project 1 mismodeled the real field as a
+    // yes/no flag). Bonds have no check-warning storage at all before this. Read-only for the
+    // same reason as stereoFlagsType.
+    QString atomCheckWarningText(AtomId id) const;
+    QString bondCheckWarningText(BondId id) const;
+
+    // Reaction-arrow display fields buildRenderPrimitives reads but sub-project 1 never stored:
+    // display mode, above/below condition text, and optional curvature control point. Read-only:
+    // setRxnArrowMode/setRxnArrowConditions (src/worker/50-reactions.js) are undoable editing
+    // operations, out of scope here (sub-project 3e).
+    QString rxnArrowMode(RxnArrowId id) const;
+    QString rxnArrowConditionsAbove(RxnArrowId id) const;
+    QString rxnArrowConditionsBelow(RxnArrowId id) const;
+    bool rxnArrowCurvature(RxnArrowId id, double& x, double& y) const;
+
     int addDataSGroup(const QList<AtomId>& atoms, const QString& description, const QString& data);
     int dataSGroupCount() const;
 

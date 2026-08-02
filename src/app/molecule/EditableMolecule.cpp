@@ -953,3 +953,31 @@ bool EditableMolecule::sgroupExpanded(SGroupId id) const {
     return m_sgroupExpanded.value(id, true);
 }
 
+QString EditableMolecule::stereoFlagsType() const { return m_ext.stereoFlagsType; }
+int EditableMolecule::stereoFlagsGroupId() const { return m_ext.stereoFlagsGroupId; }
+
+QString EditableMolecule::atomCheckWarningText(AtomId id) const {
+    return m_ext.atomCheckWarningTexts.value(id, QString());
+}
+QString EditableMolecule::bondCheckWarningText(BondId id) const {
+    return m_ext.bondCheckWarningTexts.value(id, QString());
+}
+
+QString EditableMolecule::rxnArrowMode(RxnArrowId id) const {
+    return m_ext.rxnArrows.value(id).mode;
+}
+QString EditableMolecule::rxnArrowConditionsAbove(RxnArrowId id) const {
+    return m_ext.rxnArrows.value(id).conditionsAbove;
+}
+QString EditableMolecule::rxnArrowConditionsBelow(RxnArrowId id) const {
+    return m_ext.rxnArrows.value(id).conditionsBelow;
+}
+bool EditableMolecule::rxnArrowCurvature(RxnArrowId id, double& x, double& y) const {
+    if (!m_ext.rxnArrows.contains(id)) return false;
+    const RxnArrow& arrow = m_ext.rxnArrows.value(id);
+    if (!arrow.hasCurvature) return false;
+    x = arrow.curvatureX;
+    y = arrow.curvatureY;
+    return true;
+}
+
