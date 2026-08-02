@@ -1078,6 +1078,44 @@ static void test_ringAndNeighborAccessors() {
     }
 }
 
+static void test_stereoCipAccessors() {
+    std::printf("--- Test 24: stereocenter type/group + CIP descriptor accessors ---\n");
+
+    // Real R/S case: F[C@H](Cl)Br -- the chiral carbon is atom index 1.
+    {
+        EditableMolecule m(QStringLiteral("F[C@H](Cl)Br"));
+        QList<AtomId> ids = m.atomIds();
+        CHECK(ids.size() == 4, "setup: F-C(H)(Cl)-Br has 4 heavy atoms");
+        AtomId chiralC = ids[1];
+        CHECK(m.stereocenterType(chiralC) != 0, "the chiral carbon is a real stereocenter");
+        CHECK(m.atomCipDescriptor(chiralC) == 5, "the chiral carbon's CIP descriptor is R (CIPDesc::R == 5)");
+
+        AtomId fluorine = ids[0];
+        CHECK(m.stereocenterType(fluorine) == 0, "fluorine is not a stereocenter");
+        CHECK(m.atomCipDescriptor(fluorine) == 0, "fluorine's CIP descriptor is NONE (0)");
+    }
+
+    // Bond stereo direction: trans-2-butene has a real TRANS double bond.
+    {
+        EditableMolecule m(QStringLiteral("C/C=C/C"));
+        QList<BondId> bids = m.bondIds();
+        bool foundTrans = false;
+        for (BondId bid : bids) {
+            if (m.bondOrder(bid) == 2 && m.bondStereoDirection(bid) == 8) foundTrans = true;   // INDIGO_TRANS == 8
+        }
+        CHECK(foundTrans, "the double bond reports INDIGO_TRANS (8) stereo direction");
+    }
+
+    // Invalid ids fail cleanly.
+    {
+        EditableMolecule m(QStringLiteral("CCO"));
+        CHECK(m.stereocenterType(9999) == 0, "invalid id: stereocenterType returns 0");
+        CHECK(m.stereocenterGroup(9999) == 0, "invalid id: stereocenterGroup returns 0");
+        CHECK(m.bondStereoDirection(9999) == 0, "invalid id: bondStereoDirection returns 0");
+        CHECK(m.atomCipDescriptor(9999) == 0, "invalid id: atomCipDescriptor returns 0");
+    }
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -1106,6 +1144,7 @@ int main() {
     test_graftAtomOnto();
     test_renderSupportStorageDefaults();
     test_ringAndNeighborAccessors();
+    test_stereoCipAccessors();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);

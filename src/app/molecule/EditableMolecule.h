@@ -256,6 +256,21 @@ public:
     };
     QList<RingMembership> ringMembership() const;
 
+    // Read-only queries on whatever stereo info the molecule already carries from load/perception
+    // -- no mutation. 0 (not a stereocenter/stereobond) is the invalid-id sentinel too, matching
+    // Indigo's own "0 if not a stereocenter" convention for these two calls.
+    int stereocenterType(AtomId id) const;      // 0, or INDIGO_ABS/OR/AND/EITHER (indigo.h)
+    int stereocenterGroup(AtomId id) const;     // AND/OR group number
+    int bondStereoDirection(BondId id) const;   // 0, or INDIGO_UP/DOWN/EITHER/CIS/TRANS
+
+    // CIP descriptor (R/S/r/s/E/Z, or NONE/UNKNOWN) as Indigo's own CIPDesc enum value, cast to
+    // int (molecule_cip_calculator.h: NONE=0, UNKNOWN=1, s=2, r=3, S=4, R=5, E=6, Z=7). Computed
+    // via a throwaway clone since indigoAddCIPStereoDescriptors mutates -- this molecule (m_mol)
+    // is never touched. Confirmed by direct probe: no bond-level (E/Z) path exists through this
+    // API applied to a double bond's own atoms -- this accessor is atom-only, matching Indigo's
+    // own "does not represent an atom" rejection of a bond handle.
+    int atomCipDescriptor(AtomId id) const;
+
     int addDataSGroup(const QList<AtomId>& atoms, const QString& description, const QString& data);
     int dataSGroupCount() const;
 

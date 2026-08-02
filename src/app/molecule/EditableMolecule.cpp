@@ -1049,3 +1049,48 @@ QList<EditableMolecule::RingMembership> EditableMolecule::ringMembership() const
     return result;
 }
 
+int EditableMolecule::stereocenterType(AtomId id) const {
+    if (m_mol < 0 || !m_atomIdx.contains(id)) return 0;
+    activateSession();
+    int a = indigoGetAtom(m_mol, m_atomIdx.value(id));
+    if (a < 0) return 0;
+    int t = indigoStereocenterType(a);
+    indigoFree(a);
+    return t;
+}
+
+int EditableMolecule::stereocenterGroup(AtomId id) const {
+    if (m_mol < 0 || !m_atomIdx.contains(id)) return 0;
+    activateSession();
+    int a = indigoGetAtom(m_mol, m_atomIdx.value(id));
+    if (a < 0) return 0;
+    int g = indigoStereocenterGroup(a);
+    indigoFree(a);
+    return g;
+}
+
+int EditableMolecule::bondStereoDirection(BondId id) const {
+    if (m_mol < 0 || !m_bondIdx.contains(id)) return 0;
+    activateSession();
+    int b = indigoGetBond(m_mol, m_bondIdx.value(id));
+    if (b < 0) return 0;
+    int s = indigoBondStereo(b);
+    indigoFree(b);
+    return s;
+}
+
+int EditableMolecule::atomCipDescriptor(AtomId id) const {
+    if (m_mol < 0 || !m_atomIdx.contains(id)) return 0;
+    activateSession();
+    int idx = m_atomIdx.value(id);
+    int clone = indigoClone(m_mol);
+    if (clone < 0) return 0;
+    if (indigoAddCIPStereoDescriptors(clone) < 0) { indigoFree(clone); return 0; }
+    int a = indigoGetAtom(clone, idx);
+    if (a < 0) { indigoFree(clone); return 0; }
+    int cip = indigoStereocenterCIPDescriptor(a);
+    indigoFree(a);
+    indigoFree(clone);
+    return cip > 0 ? cip : 0;
+}
+
