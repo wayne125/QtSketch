@@ -778,3 +778,166 @@ QList<AtomId> EditableMolecule::addBenzeneRing(double cx, double cy) {
     return addedAtoms;
 }
 
+EditableMolecule::InsertResult EditableMolecule::insertStructure(const QString& sourceMolfile,
+                                                                   const std::function<QPointF(double, double)>& transform) {
+    InsertResult result;
+    if (m_mol < 0 || sourceMolfile.isEmpty()) return result;
+    activateSession();
+
+    // Reparse the Molfile text into a fresh handle IN THIS (now-active)
+    // session -- this is the confirmed-safe way to receive a structure from
+    // TemplateLibrary's own, different session; a raw handle from that
+    // session cannot be used here directly (confirmed by direct probe:
+    // cross-session handle reuse either fails or silently aliases an
+    // unrelated object). Since this handle is a private, fresh reparse (not
+    // shared with anything), it's safe to mutate directly and free once done.
+    int clone = indigoLoadMoleculeFromString(sourceMolfile.toUtf8().constData());
+    if (clone < 0) return result;
+    int atomIter = indigoIterateAtoms(clone);
+    if (atomIter >= 0) {
+        int a;
+        while ((a = indigoNext(atomIter)) > 0) {
+            float* xyz = indigoXYZ(a);
+            if (xyz) {
+                QPointF p = transform(xyz[0], xyz[1]);
+                indigoSetXYZ(a, static_cast<float>(p.x()), static_cast<float>(p.y()), 0.0f);
+            }
+            indigoFree(a);
+        }
+        indigoFree(atomIter);
+    }
+
+    // Snapshot before state for diffing. rebuildIndexTables() is NOT used
+    // here: it only re-syncs indigo indices for AtomIds/BondIds this class
+    // ALREADY tracks, guarded by "tracked count == current indigo count" --
+    // it has no mechanism to register a brand-new atom/bond indigoMerge just
+    // added (that guard fails the moment counts differ, silently leaving
+    // every merged-in atom/bond untracked). New ids are assigned directly
+    // below instead, the same way addAtom()/addBond() do.
+    QSet<int> atomIdxBefore = QSet<int>(m_atomIdx.begin(), m_atomIdx.end());
+    QSet<int> bondIdxBefore = QSet<int>(m_bondIdx.begin(), m_bondIdx.end());
+    QSet<int> sgroupIdxBefore;
+    {
+        int n = indigoCountSuperatoms(m_mol);
+        for (int i = 0; i < n; ++i) {
+            int sup = indigoGetSuperatom(m_mol, i);
+            if (sup >= 0) { sgroupIdxBefore.insert(indigoIndex(sup)); indigoFree(sup); }
+        }
+    }
+    // Also record the clone's own atom index -> its position, so after
+    // merging we can match destination atoms back to source indices by
+    // iteration order (confirmed stable by direct probe).
+    QList<int> cloneAtomIndicesInOrder;
+    {
+        int it = indigoIterateAtoms(clone);
+        if (it >= 0) {
+            int a;
+            while ((a = indigoNext(it)) > 0) { cloneAtomIndicesInOrder.append(indigoIndex(a)); indigoFree(a); }
+            indigoFree(it);
+        }
+    }
+
+    int mergeRc = indigoMerge(m_mol, clone);
+    indigoFree(clone);
+    if (mergeRc < 0) { m_lastError = QString::fromUtf8(indigoGetLastError()); return result; }
+
+    // New atoms: any post-merge indigo index not already tracked gets a
+    // fresh, never-reused AtomId (same assignment addAtom() uses). indigoMerge
+    // appends in the source's own order and leaves pre-existing atoms' own
+    // indices unchanged (confirmed by direct probe), so iterating m_mol in
+    // order and collecting just the untracked ones reproduces the source's
+    // relative atom order -- these are NOT the same absolute index VALUES as
+    // cloneAtomIndicesInOrder (the destination's own pre-existing atoms
+    // already occupy the low indices, shifting the merged-in ones), so the
+    // correspondence must be zipped POSITIONALLY, not matched by value.
+    QList<AtomId> newAtomIds;
+    {
+        int it = indigoIterateAtoms(m_mol);
+        if (it >= 0) {
+            int a;
+            while ((a = indigoNext(it)) > 0) {
+                int idx = indigoIndex(a);
+                if (!atomIdxBefore.contains(idx)) {
+                    AtomId id = m_nextAtomId++;
+                    m_atomIdx.insert(id, idx);
+                    newAtomIds.append(id);
+                }
+                indigoFree(a);
+            }
+            indigoFree(it);
+        }
+    }
+    result.createdAtoms = newAtomIds;
+    for (int i = 0; i < newAtomIds.size() && i < cloneAtomIndicesInOrder.size(); ++i) {
+        result.sourceIndexToNewAtomId.insert(cloneAtomIndicesInOrder[i], newAtomIds[i]);
+    }
+
+    // New bonds: same idea, using m_nextBondId.
+    {
+        int it = indigoIterateBonds(m_mol);
+        if (it >= 0) {
+            int b;
+            while ((b = indigoNext(it)) > 0) {
+                int idx = indigoIndex(b);
+                if (!bondIdxBefore.contains(idx)) {
+                    BondId id = m_nextBondId++;
+                    m_bondIdx.insert(id, idx);
+                    result.createdBonds.append(id);
+                }
+                indigoFree(b);
+            }
+            indigoFree(it);
+        }
+    }
+
+    // New sgroups: any superatom index not present before the merge. Assign
+    // each a fresh stable SGroupId, defaulting expanded=true (chem-core's own
+    // default for sg.data.expanded).
+    int n = indigoCountSuperatoms(m_mol);
+    for (int i = 0; i < n; ++i) {
+        int sup = indigoGetSuperatom(m_mol, i);
+        if (sup < 0) continue;
+        int idx = indigoIndex(sup);
+        indigoFree(sup);
+        if (sgroupIdxBefore.contains(idx)) continue;
+        SGroupId sgId = m_nextSGroupId++;
+        m_sgroupIdx.insert(sgId, idx);
+        m_sgroupExpanded.insert(sgId, true);
+        result.createdSGroups.append(sgId);
+    }
+
+    return result;
+}
+
+bool EditableMolecule::superatomAttachAtom(SGroupId id, AtomId& out) const {
+    if (m_mol < 0 || !m_sgroupIdx.contains(id)) return false;
+    activateSession();
+    int sup = indigoGetSuperatom(m_mol, m_sgroupIdx.value(id));
+    if (sup < 0) return false;
+    int apIter = indigoIterateSGroupAttachmentPoints(sup);
+    bool found = false;
+    if (apIter >= 0) {
+        int ap = indigoNext(apIter);
+        if (ap > 0) {
+            int atomIdx = indigoGetSGroupAttachmentPointAtomIdx(ap);
+            for (auto it = m_atomIdx.constBegin(); it != m_atomIdx.constEnd(); ++it) {
+                if (it.value() == atomIdx) { out = it.key(); found = true; break; }
+            }
+            indigoFree(ap);
+        }
+        indigoFree(apIter);
+    }
+    indigoFree(sup);
+    return found;
+}
+
+void EditableMolecule::setSGroupExpanded(SGroupId id, bool expanded) {
+    if (!m_sgroupIdx.contains(id)) return;
+    m_sgroupExpanded.insert(id, expanded);
+}
+
+bool EditableMolecule::sgroupExpanded(SGroupId id) const {
+    if (!m_sgroupIdx.contains(id)) return false;
+    return m_sgroupExpanded.value(id, true);
+}
+

@@ -5,6 +5,8 @@
 // one property the design depends on (indigoClone preserves indices).
 #include <cstdio>
 #include <cstring>
+#include <QPointF>
+#include <functional>
 #include "app/molecule/EditableMolecule.h"
 #include "app/molecule/TemplateLibrary.h"
 #include "indigo.h"
@@ -846,6 +848,101 @@ static void test_templateLibraryLoading() {
           "a missing SDF file leaves that registry empty rather than crashing");
 }
 
+static void test_insertStructure() {
+    std::printf("--- Test 20: insertStructure ---\n");
+    // A prior test (test_templateLibraryLoading) constructs local
+    // TemplateLibrary objects whose destructor releases THEIR OWN session,
+    // leaving the process-global "current session" pointing at an
+    // already-released id. This test is the first one to make raw indigo*
+    // calls before constructing any session-owning wrapper object (dest,
+    // below), so -- matching every other raw-indigo-call test in this file
+    // (e.g. test_atomMergeMechanicsSpike) -- it allocates and activates its
+    // own session up front rather than relying on inherited global state.
+    unsigned long long session = indigoAllocSessionId();
+    indigoSetSessionId(session);
+
+    // Plain translation transform, no superatom. The source is built and
+    // serialized to Molfile text BEFORE `dest` is even constructed, so this
+    // genuinely exercises the cross-session handoff contract (dest's own
+    // constructor activates its own, different session) rather than relying
+    // on both handles happening to share whatever session is globally active.
+    {
+        int src = indigoCreateMolecule();
+        int a1 = indigoAddAtom(src, "N");
+        int a2 = indigoAddAtom(src, "O");
+        indigoSetXYZ(a1, 0.0f, 0.0f, 0.0f);
+        indigoSetXYZ(a2, 1.0f, 0.0f, 0.0f);
+        indigoAddBond(a1, a2, 2);
+        QString srcMolfile = QString::fromUtf8(indigoMolfile(src));
+        indigoFree(src);
+
+        EditableMolecule dest;
+        dest.addAtom(QStringLiteral("C"), 0.0, 0.0);   // 1 pre-existing atom
+
+        EditableMolecule::InsertResult result = dest.insertStructure(srcMolfile, [](double x, double y) {
+            return QPointF(x + 5.0, y + 5.0);
+        });
+        CHECK(result.createdAtoms.size() == 2, "insertStructure creates 2 new atoms");
+        CHECK(result.createdBonds.size() == 1, "insertStructure creates 1 new bond");
+        CHECK(result.createdSGroups.isEmpty(), "no sgroups when the source has none");
+        CHECK(result.sourceIndexToNewAtomId.size() == 2, "source-index map covers both new atoms");
+
+        double x = 0, y = 0;
+        CHECK(dest.atomPos(result.createdAtoms[0], x, y) && x == 5.0 && y == 5.0,
+              "first inserted atom is translated by the transform");
+        CHECK(dest.atomPos(result.createdAtoms[1], x, y) && x == 6.0 && y == 5.0,
+              "second inserted atom is translated by the transform");
+        CHECK(dest.atomCount() == 3, "destination has 1 pre-existing + 2 new = 3 atoms");
+    }
+
+    // Source with a superatom: insertStructure discovers it and assigns a
+    // stable SGroupId, with the attachment point correctly resolved. Same
+    // build-then-serialize-then-free-before-dest-exists shape as above.
+    // Reactivate this test's own session first: the previous block's `dest`
+    // released ITS session on scope exit (EditableMolecule's destructor
+    // does this, same as TemplateLibrary's), leaving global session state
+    // stale again.
+    indigoSetSessionId(session);
+    {
+        int src = indigoCreateMolecule();
+        int sa1 = indigoAddAtom(src, "N");
+        int sa2 = indigoAddAtom(src, "C");
+        indigoSetXYZ(sa1, 0.0f, 0.0f, 0.0f);
+        indigoSetXYZ(sa2, 1.0f, 0.0f, 0.0f);
+        indigoAddBond(sa1, sa2, 1);
+        int sa1Idx = indigoIndex(sa1);
+        int atomIdxs[2] = { sa1Idx, indigoIndex(sa2) };
+        int sup = indigoAddSuperatom(src, 2, atomIdxs, "TestGroup");
+        indigoAddSGroupAttachmentPoint(sup, sa1Idx, -1, "");
+        QString srcMolfile = QString::fromUtf8(indigoMolfile(src));
+        indigoFree(src);   // sa1/sa2/sup are child handles of src; nothing below re-uses them
+
+        EditableMolecule dest;
+        EditableMolecule::InsertResult result = dest.insertStructure(srcMolfile, [](double x, double y) {
+            return QPointF(x, y);
+        });
+        CHECK(result.createdSGroups.size() == 1, "insertStructure discovers the propagated superatom");
+        AtomId attachAtom = -1;
+        CHECK(dest.superatomAttachAtom(result.createdSGroups[0], attachAtom),
+              "superatomAttachAtom resolves for the discovered sgroup");
+        CHECK(result.sourceIndexToNewAtomId.value(sa1Idx, -1) == attachAtom,
+              "the resolved attach atom matches the source's own attach-point atom");
+        CHECK(dest.sgroupExpanded(result.createdSGroups[0]),
+              "a newly-discovered sgroup defaults to expanded=true");
+        dest.setSGroupExpanded(result.createdSGroups[0], false);
+        CHECK(!dest.sgroupExpanded(result.createdSGroups[0]), "setSGroupExpanded round-trips");
+    }
+
+    // Invalid SGroupId / AtomId out-param cases fail cleanly.
+    {
+        EditableMolecule dest;
+        AtomId out = -1;
+        CHECK(!dest.superatomAttachAtom(9999, out), "invalid SGroupId: superatomAttachAtom fails cleanly");
+        CHECK(!dest.sgroupExpanded(9999), "invalid SGroupId: sgroupExpanded returns false");
+    }
+    indigoReleaseSessionId(session);
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -870,6 +967,7 @@ int main() {
     test_mergeOverlappingAtomsAndFindBond();
     test_addBenzeneRing();
     test_templateLibraryLoading();
+    test_insertStructure();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);

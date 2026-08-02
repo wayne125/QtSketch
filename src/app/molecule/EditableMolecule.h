@@ -113,11 +113,14 @@
 #include <QString>
 #include <QHash>
 #include <QList>
+#include <QPointF>
+#include <functional>
 #include "ExtensionData.h"
 #include "MoleculeSnapshot.h"
 
 using AtomId = int;
 using BondId = int;
+using SGroupId = int;
 
 struct StringResult {
     bool success = false;
@@ -233,6 +236,41 @@ public:
     // entry, matching the real function exactly.
     QList<AtomId> addBenzeneRing(double cx, double cy);
 
+    // Re-expresses chem-core's tempStruct.mergeInto(_struct, ..., aidMap) in
+    // terms of indigoMerge, whose own return value is a plain status code,
+    // not an id mapping. Confirmed by direct probe against the real
+    // indigo.dll (not assumed): indigoMerge appends the source's atoms/bonds
+    // to this molecule in the source's OWN iteration order, and automatically
+    // propagates any SUP sgroups (with attachment points) the source carries.
+    // Before/after diffing therefore correctly discovers every created id,
+    // including sgroups -- no manual sgroup reconstruction is needed.
+    //
+    // Takes Molfile TEXT, not a raw Indigo handle: TemplateLibrary owns its
+    // own Indigo session (separate from this EditableMolecule's), and a raw
+    // handle is a small integer scoped to whichever session created it --
+    // confirmed by direct probe that reusing one across sessions either fails
+    // or silently aliases an unrelated object. TemplateLibrary::molfileText()
+    // is the confirmed-safe way to cross that boundary.
+    struct InsertResult {
+        QList<AtomId> createdAtoms;
+        QList<BondId> createdBonds;
+        QList<SGroupId> createdSGroups;
+        QHash<int, AtomId> sourceIndexToNewAtomId;   // source molecule's internal atom index -> new AtomId
+    };
+    InsertResult insertStructure(const QString& sourceMolfile,
+                                  const std::function<QPointF(double, double)>& transform);
+
+    // Superatom (SUP sgroup) support. A new stable, never-reused SGroupId
+    // (like AtomId/BondId) rather than the existing addDataSGroup precedent's
+    // raw, reusable indigoIndex() -- these ARE looked up again later
+    // (toggleSgroupExpanded), so a reused index could alias a different,
+    // newer sgroup. There is no public constructor: insertStructure discovers
+    // and assigns ids for merge-propagated sgroups internally, and nothing in
+    // this sub-project's scope needs to build one from bare atoms.
+    bool superatomAttachAtom(SGroupId id, AtomId& out) const;   // first attachment point's atom, if any
+    void setSGroupExpanded(SGroupId id, bool expanded);
+    bool sgroupExpanded(SGroupId id) const;
+
 private:
     // One Indigo session per instance, held for the object's lifetime
     // (unlike IndigoService's alloc/release-per-call one-shot pattern).
@@ -246,6 +284,10 @@ private:
     BondId m_nextBondId = 1;
 
     ExtensionData m_ext;
+
+    QHash<SGroupId, int> m_sgroupIdx;   // external stable ID -> indigo superatom index
+    SGroupId m_nextSGroupId = 1;        // monotonic, never reused
+    QHash<int, bool> m_sgroupExpanded;  // SGroupId -> expanded flag (Indigo has no such concept)
 
     void activateSession() const; // indigoSetSessionId(m_session)
     void rebuildIndexTables();
