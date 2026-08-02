@@ -201,6 +201,170 @@ RenderPrimitives RenderPrimitiveBuilder::build(const EditableMolecule& mol, bool
         }
     }
 
+    // ---- Ring primitives ----
+    QList<EditableMolecule::RingMembership> rings = mol.ringMembership();
+    QHash<BondId, int> bondToFirstRing;   // "first ring wins" tie-break, matching the real code
+    QHash<int, QPointF> ringCenterById;
+    int ringPrimId = 0;
+    for (const EditableMolecule::RingMembership& rm : rings) {
+        double cx = 0, cy = 0;
+        for (AtomId aid : rm.atoms) {
+            double ax = 0, ay = 0;
+            if (mol.atomPos(aid, ax, ay)) { cx += ax; cy += ay; }
+        }
+        if (!rm.atoms.isEmpty()) { cx /= rm.atoms.size(); cy /= rm.atoms.size(); }
+
+        bool hasBondType4 = false;
+        int doubleCount = 0;
+        for (BondId bid : rm.bonds) {
+            int order = mol.bondOrder(bid);
+            if (order == 4) hasBondType4 = true;
+            if (order == 2) ++doubleCount;
+        }
+        bool isAromatic = hasBondType4;
+        if (!isAromatic && rm.atoms.size() == 6 && doubleCount == 3) isAromatic = true;
+
+        double radius = 0;
+        if (!rm.atoms.isEmpty()) {
+            double ax = 0, ay = 0;
+            if (mol.atomPos(rm.atoms[0], ax, ay)) {
+                double dx = ax - cx, dy = ay - cy;
+                radius = std::sqrt(dx * dx + dy * dy);
+            }
+        }
+
+        RingPrim ringPrim;
+        ringPrim.id = ringPrimId;
+        ringPrim.atoms = rm.atoms;
+        ringPrim.x = cx; ringPrim.y = cy; ringPrim.radius = radius;
+        ringPrim.isAromatic = isAromatic;
+        ringPrim.hasBondType4 = hasBondType4;
+        result.rings.append(ringPrim);
+
+        if (isAromatic) {
+            for (BondId bid : rm.bonds) {
+                if (!bondToFirstRing.contains(bid)) bondToFirstRing.insert(bid, ringPrimId);
+            }
+        }
+        // Ring-center offset uses the FIRST ring found containing the bond, regardless of
+        // aromaticity (matches buildRenderPrimitives: bondRingCenter is populated for every ring,
+        // not only aromatic ones), so track it separately from the aromatic-only bondToFirstRing.
+        for (BondId bid : rm.bonds) {
+            if (!ringCenterById.contains(bid)) ringCenterById.insert(bid, QPointF(cx, cy));
+        }
+        ++ringPrimId;
+    }
+    // aromaticBondIds (distinct from ringCenterById): only bonds in an AROMATIC ring get
+    // inAromaticRing=true, matching the real code's separate aromaticBondIds map.
+    QSet<BondId> aromaticBondIds;
+    for (auto it = bondToFirstRing.constBegin(); it != bondToFirstRing.constEnd(); ++it) {
+        aromaticBondIds.insert(it.key());
+    }
+
+    // ---- Bond primitives ----
+    for (BondId bid : mol.bondIds()) {
+        AtomId ea = -1, eb = -1;
+        if (!mol.bondEndpoints(bid, ea, eb)) continue;
+
+        bool beginSg = atomToSgroup.contains(ea);
+        bool endSg = atomToSgroup.contains(eb);
+        // Fully-internal bond: both endpoints hidden by the SAME sgroup -- skip entirely,
+        // matching buildRenderPrimitives' "if (beginSgId !== undefined && beginSgId === endSgId)
+        // return". A cross-bond (exactly one endpoint hidden, OR both hidden by DIFFERENT
+        // sgroups) is NOT skipped -- its hidden endpoint(s) are substituted with the owning
+        // sgroup's synthetic id below, exactly matching the real code's own substitution.
+        if (beginSg && endSg && atomToSgroup.value(ea) == atomToSgroup.value(eb)) continue;
+
+        AtomId begin = beginSg ? static_cast<AtomId>(atomToSgroup.value(ea)) : ea;
+        AtomId end = endSg ? static_cast<AtomId>(atomToSgroup.value(eb)) : eb;
+
+        BondPrim prim;
+        prim.id = bid;
+        prim.begin = begin;
+        prim.end = end;
+        prim.beginIsSgroup = beginSg;
+        prim.endIsSgroup = endSg;
+        prim.type = mol.bondOrder(bid);
+        prim.stereo = (beginSg || endSg) ? 0 : mol.bondStereoDirection(bid);
+        prim.checkWarning = mol.bondCheckWarningText(bid);
+        prim.cipLabel = QString();          // always empty -- no bond-level CIP path, see file header
+        prim.reactingCenterStatus = 0;       // always 0 -- no reaction objects in this port
+
+        prim.inAromaticRing = aromaticBondIds.contains(bid);
+
+        if (ringCenterById.contains(bid)) {
+            QPointF c = ringCenterById.value(bid);
+            prim.hasRingCenter = true;
+            prim.ringCenterX = c.x();
+            prim.ringCenterY = c.y();
+        }
+
+        // Matches buildRenderPrimitives exactly: invalidStereo is computed (and can only be
+        // non-false) when the bond is a real stereobond (prim.stereo > 0) with neither endpoint
+        // sgroup-contracted, and it is the NEGATION of isCorrectStereoCenter (the real code:
+        // "invalidStereo = !StereoValidator.isCorrectStereoCenter(...)"). Missing this negation
+        // would invert the flag's meaning entirely.
+        prim.invalidStereo = false;
+        if (!beginSg && !endSg && prim.stereo > 0) {
+            QList<AtomId> beginNeighbors = mol.neighborAtomIds(ea);
+            QList<AtomId> endNeighbors = mol.neighborAtomIds(eb);
+            int endOtherNeighborCount = 0;
+            if (endNeighbors.size() == 2) {
+                AtomId endOther = (endNeighbors[0] == ea) ? endNeighbors[1] : endNeighbors[0];
+                endOtherNeighborCount = mol.neighborAtomIds(endOther).size();
+            }
+            prim.invalidStereo = !isCorrectStereoCenter(
+                prim.stereo, beginNeighbors.size(), endNeighbors.size(),
+                mol.implicitHydrogenCount(ea), endOtherNeighborCount);
+        }
+
+        result.bonds.append(prim);
+    }
+
+    // ---- Auxiliary primitives: texts, images, rxn arrows/pluses, multitail arrows ----
+    // These need id lists, which EditableMolecule already exposes; each field is a direct
+    // accessor call, no derived logic.
+    for (int id : mol.rxnPlusIds()) {
+        double x = 0, y = 0;
+        if (!mol.rxnPlusPos(id, x, y)) continue;
+        result.rxnPluses.append(RxnPlusPrim{id, x, y});
+    }
+    for (int id : mol.rxnArrowIds()) {
+        double x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+        if (!mol.rxnArrowEndpoints(id, x1, y1, x2, y2)) continue;
+        RxnArrowPrim prim;
+        prim.id = id; prim.p1x = x1; prim.p1y = y1; prim.p2x = x2; prim.p2y = y2;
+        prim.mode = mol.rxnArrowMode(id);
+        prim.conditionsAbove = mol.rxnArrowConditionsAbove(id);
+        prim.conditionsBelow = mol.rxnArrowConditionsBelow(id);
+        double cx = 0, cy = 0;
+        prim.hasCurvature = mol.rxnArrowCurvature(id, cx, cy);
+        prim.curvatureX = cx; prim.curvatureY = cy;
+        result.rxnArrows.append(prim);
+    }
+    for (int id : mol.multitailArrowIds()) {
+        QList<double> pts = mol.multitailArrowPoints(id);
+        if (pts.size() < 2) continue;
+        MultitailArrowPrim prim;
+        prim.id = id;
+        prim.headX = pts[0];
+        prim.headY = pts[1];
+        for (int i = 2; i + 1 < pts.size(); i += 2) {
+            prim.tails.append(QPointF(pts[i], pts[i + 1]));
+        }
+        result.multitailArrows.append(prim);
+    }
+    for (int id : mol.textAnnotationIds()) {
+        double x = 0, y = 0; QString content;
+        if (!mol.textAnnotationContent(id, x, y, content)) continue;
+        result.texts.append(TextPrim{id, x, y, content, false, false});
+    }
+    for (int id : mol.imageIds()) {
+        double x = 0, y = 0, w = 0, h = 0; QByteArray png;
+        if (!mol.imageData(id, x, y, w, h, png)) continue;
+        result.images.append(ImagePrim{id, x, y, w, h, png});
+    }
+
     result.bbox.valid = haveBBox;
     if (haveBBox) { result.bbox.minX = minX; result.bbox.minY = minY; result.bbox.maxX = maxX; result.bbox.maxY = maxY; }
 

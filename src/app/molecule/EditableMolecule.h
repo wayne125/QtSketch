@@ -197,6 +197,10 @@ public:
     QList<RxnArrowId> rxnArrowIds() const;
     QList<RxnPlusId> rxnPlusIds() const;
     QList<MultitailArrowId> multitailArrowIds() const;
+    QList<TextId> textAnnotationIds() const;
+    QList<ImageId> imageIds() const;
+    bool textAnnotationContent(TextId id, double& x, double& y, QString& content) const;
+    bool imageData(ImageId id, double& x, double& y, double& w, double& h, QByteArray& pngData) const;
     bool rxnArrowEndpoints(RxnArrowId id, double& x1, double& y1, double& x2, double& y2) const;
     bool setRxnArrowEndpoints(RxnArrowId id, double x1, double y1, double x2, double y2);
     bool rxnPlusPos(RxnPlusId id, double& x, double& y) const;

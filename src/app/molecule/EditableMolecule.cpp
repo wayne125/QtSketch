@@ -588,6 +588,23 @@ QList<RxnArrowId> EditableMolecule::rxnArrowIds() const { return m_ext.rxnArrows
 QList<RxnPlusId> EditableMolecule::rxnPlusIds() const { return m_ext.rxnPluses.keys(); }
 QList<MultitailArrowId> EditableMolecule::multitailArrowIds() const { return m_ext.multitailArrows.keys(); }
 
+QList<TextId> EditableMolecule::textAnnotationIds() const { return m_ext.texts.keys(); }
+QList<ImageId> EditableMolecule::imageIds() const { return m_ext.images.keys(); }
+
+bool EditableMolecule::textAnnotationContent(TextId id, double& x, double& y, QString& content) const {
+    if (!m_ext.texts.contains(id)) return false;
+    const TextAnnotation& t = m_ext.texts.value(id);
+    x = t.x; y = t.y; content = t.content;
+    return true;
+}
+
+bool EditableMolecule::imageData(ImageId id, double& x, double& y, double& w, double& h, QByteArray& pngData) const {
+    if (!m_ext.images.contains(id)) return false;
+    const ImageRef& img = m_ext.images.value(id);
+    x = img.x; y = img.y; w = img.w; h = img.h; pngData = img.pngData;
+    return true;
+}
+
 bool EditableMolecule::rxnArrowEndpoints(RxnArrowId id, double& x1, double& y1, double& x2, double& y2) const {
     if (!m_ext.rxnArrows.contains(id)) return false;
     const RxnArrow& a = m_ext.rxnArrows[id];
