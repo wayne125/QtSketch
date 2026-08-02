@@ -175,6 +175,17 @@ public:
     void insertFunctionalGroup(const TemplateLibrary& lib, const QString& fgName,
                                 double cx, double cy, AtomId targetAtomId = -1, bool fullStructure = true);
 
+    // Ports 30-templates.js's insertLibraryTemplateFused. Maps the template's
+    // designated fusion bond onto targetBondId via a 2-point similarity
+    // transform, then reuses the EXISTING mergeOverlappingAtoms +
+    // applyRingAlternation pipeline (sub-project 3c) unchanged -- library.sdf
+    // templates have zero SUP groups (confirmed), so this path never touches
+    // sgroup logic. Falls back to insertFunctionalGroup(lib, fgName, cx, cy)
+    // with NO target atom on any precondition failure (missing fusion
+    // metadata, missing target bond, template bond not in a ring).
+    void insertLibraryTemplateFused(const TemplateLibrary& lib, const QString& fgName,
+                                     double cx, double cy, BondId targetBondId);
+
 private:
     enum class DiscreteTransform { RotateCW, RotateCCW, FlipH, FlipV };
     void applyDiscreteTransform(DiscreteTransform mode);
@@ -241,6 +252,14 @@ private:
     QList<TransformPoint> m_scaleOrigPos;
     double m_scaleAnchorX = 0.0, m_scaleAnchorY = 0.0;
     double m_scaleTotalFactor = 1.0;
+
+    // Pure geometry/graph helpers ported from 10-state.js, used only by
+    // insertLibraryTemplateFused.
+    static std::function<QPointF(double, double)> makeSimilarityTransform(
+        double p1x, double p1y, double p2x, double p2y, double q1x, double q1y, double q2x, double q2y);
+    static QList<int> shortestRingThroughBond(int moleculeHandle, int bondIdx);   // atom indices, or empty if none
+    double chooseEmptySide(double qax, double qay, double qbx, double qby, AtomId excludeA, AtomId excludeB,
+                           double cursorX, double cursorY) const;
 
     EditableMolecule m_molecule;
     std::vector<EditCommand> m_history;

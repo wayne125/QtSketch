@@ -983,6 +983,55 @@ static void test_documentStateSelection() {
     CHECK(doc.selection().isEmpty(), "redo() clears the selection");
 }
 
+static void test_insertLibraryTemplateFused() {
+    std::printf("--- Test 15: insertLibraryTemplateFused ---\n");
+    TemplateLibrary lib(
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/fg.sdf"),
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/library.sdf"),
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/salts-and-solvents.sdf"));
+
+    // Real fusion success: "Indole" (9 atoms, 10 bonds, bondIdx=6) fused onto
+    // a document bond. The seam bond's committed order must survive.
+    {
+        DocumentState doc;
+        AtomId a0 = doc.molecule().addAtom(QStringLiteral("C"), 0.0, 0.0);
+        AtomId a1 = doc.molecule().addAtom(QStringLiteral("C"), 1.5, 0.0);
+        BondId seam = doc.molecule().addBond(a0, a1, 2);
+        CHECK(!doc.canUndo(), "history starts empty (seeded via the molecule directly)");
+
+        doc.insertLibraryTemplateFused(lib, QStringLiteral("Indole"), 0.75, 3.0, seam);
+        CHECK(doc.canUndo(), "insertLibraryTemplateFused pushes exactly one history entry");
+        CHECK(doc.molecule().bondOrder(seam) == 2, "the seam bond's committed order is UNCHANGED");
+        // "Indole" has 9 atoms; a successful bond-fusion merges exactly 2 of
+        // them onto the pre-existing a0/a1 (the fusion bond's own two atoms),
+        // so 2 pre-existing + 9 new - 2 fused = 9 total.
+        CHECK(doc.molecule().atomCount() == 9, "2 pre-existing + 9 new - 2 fused onto the seam = 9 total");
+        doc.undo();
+        CHECK(doc.molecule().atomCount() == 2, "undo restores to just a0/a1");
+        CHECK(doc.molecule().bondCount() == 1, "undo restores to just the seam bond");
+        CHECK(doc.molecule().bondOrder(seam) == 2, "the seam bond survives undo with its original order");
+    }
+
+    // Fallback: template with no fusion metadata (any fg.sdf entry).
+    {
+        DocumentState doc;
+        AtomId a0 = doc.molecule().addAtom(QStringLiteral("C"), 0.0, 0.0);
+        AtomId a1 = doc.molecule().addAtom(QStringLiteral("C"), 1.5, 0.0);
+        BondId b = doc.molecule().addBond(a0, a1, 1);
+        doc.insertLibraryTemplateFused(lib, QStringLiteral("Ac"), 0.0, 0.0, b);
+        // Falls back to plain insertFunctionalGroup(lib, "Ac", cx, cy) --
+        // "Ac" has 3 atoms, no graft (fallback never passes a target atom).
+        CHECK(doc.molecule().atomCount() == 2 + 3, "no-fusion-metadata fallback pastes \"Ac\" plainly");
+    }
+
+    // Fallback: targetBondId that doesn't resolve.
+    {
+        DocumentState doc;
+        doc.insertLibraryTemplateFused(lib, QStringLiteral("Indole"), 0.0, 0.0, 9999);
+        CHECK(doc.molecule().atomCount() == 9, "missing target bond: falls back to plain \"Indole\" paste");
+    }
+}
+
 int main() {
     test_selectionStateBasics();
     test_editCommandBasics();
@@ -999,6 +1048,7 @@ int main() {
     test_addRing();
     test_addChain();
     test_insertFunctionalGroup();
+    test_insertLibraryTemplateFused();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

@@ -3,6 +3,8 @@
 #include <memory>
 #include <algorithm>
 #include <cmath>
+#include <functional>
+#include <QPointF>
 #include "indigo.h"
 
 DocumentState::DocumentState(const QString& initialStructure)
@@ -975,6 +977,235 @@ void DocumentState::insertFunctionalGroup(const TemplateLibrary& lib, const QStr
         }
 
         for (SGroupId sg : *createdSGroups) mol.setSGroupExpanded(sg, fullStructure);
+    };
+    cmd.invert = [&mol, createdAtoms, createdBonds]() {
+        for (BondId b : *createdBonds) mol.removeBond(b);
+        for (AtomId a : *createdAtoms) mol.removeAtom(a);
+    };
+    executeCommand(std::move(cmd));
+}
+
+std::function<QPointF(double, double)> DocumentState::makeSimilarityTransform(
+        double p1x, double p1y, double p2x, double p2y, double q1x, double q1y, double q2x, double q2y) {
+    double dp = std::sqrt((p2x - p1x) * (p2x - p1x) + (p2y - p1y) * (p2y - p1y));
+    if (dp < 1e-9) return nullptr;
+    double dq = std::sqrt((q2x - q1x) * (q2x - q1x) + (q2y - q1y) * (q2y - q1y));
+    double s = dq / dp;
+    double rot = std::atan2(q2y - q1y, q2x - q1x) - std::atan2(p2y - p1y, p2x - p1x);
+    double cosR = std::cos(rot), sinR = std::sin(rot);
+    return [=](double x, double y) {
+        double rx = x - p1x, ry = y - p1y;
+        return QPointF(q1x + s * (rx * cosR - ry * sinR), q1y + s * (rx * sinR + ry * cosR));
+    };
+}
+
+QList<int> DocumentState::shortestRingThroughBond(int moleculeHandle, int bondIdx) {
+    int bond = indigoGetBond(moleculeHandle, bondIdx);
+    if (bond < 0) return {};
+    int src = indigoSource(bond), dst = indigoDestination(bond);
+    int start = indigoIndex(src), goal = indigoIndex(dst);
+    indigoFree(src); indigoFree(dst); indigoFree(bond);
+
+    QHash<int, QList<int>> adj;
+    int bIter = indigoIterateBonds(moleculeHandle);
+    if (bIter >= 0) {
+        int b;
+        while ((b = indigoNext(bIter)) > 0) {
+            if (indigoIndex(b) != bondIdx) {
+                int s = indigoSource(b), d = indigoDestination(b);
+                int si = indigoIndex(s), di = indigoIndex(d);
+                indigoFree(s); indigoFree(d);
+                adj[si].append(di);
+                adj[di].append(si);
+            }
+            indigoFree(b);
+        }
+        indigoFree(bIter);
+    }
+
+    QHash<int, int> prev;
+    prev.insert(start, -2);   // -2: sentinel meaning "no predecessor" (distinct from "unvisited")
+    QList<int> queue = { start };
+    int qi = 0;
+    while (qi < queue.size()) {
+        int cur = queue[qi++];
+        if (cur == goal) break;
+        for (int nb : adj.value(cur)) {
+            if (!prev.contains(nb)) { prev.insert(nb, cur); queue.append(nb); }
+        }
+    }
+    if (!prev.contains(goal)) return {};
+
+    QList<int> cycle;
+    for (int a = goal; a != -2; a = prev.value(a)) cycle.append(a);
+    return cycle;
+}
+
+double DocumentState::chooseEmptySide(double qax, double qay, double qbx, double qby, AtomId excludeA, AtomId excludeB,
+                                       double cursorX, double cursorY) const {
+    double vx = qbx - qax, vy = qby - qay;
+    double scorePos = 0, scoreNeg = 0;
+    for (AtomId id : m_molecule.atomIds()) {
+        if (id == excludeA || id == excludeB) continue;
+        double x = 0, y = 0;
+        if (!m_molecule.atomPos(id, x, y)) continue;
+        double cross = vx * (y - qay) - vy * (x - qax);
+        if (cross > 0) scorePos += cross;
+        else if (cross < 0) scoreNeg -= cross;
+    }
+    if (scorePos == 0 && scoreNeg == 0) {
+        // Both sides empty: the real code breaks the tie using the live
+        // cursor position at drop time. This port has no live cursor input,
+        // but insertLibraryTemplateFused's own (cx, cy) parameters ARE the
+        // drop-position equivalent, so they are threaded through here and
+        // used exactly as the real code's cursorCross tiebreak does.
+        double cursorCross = vx * (cursorY - qay) - vy * (cursorX - qax);
+        return cursorCross >= 0 ? 1 : -1;
+    }
+    return scorePos <= scoreNeg ? 1 : -1;
+}
+
+void DocumentState::insertLibraryTemplateFused(const TemplateLibrary& lib, const QString& fgName,
+                                                double cx, double cy, BondId targetBondId) {
+    int fgHandle = lib.libraryTemplate(fgName);
+    int bondIdx = lib.libraryTemplateFusionBondIdx(fgName);
+    // Capture as Molfile text immediately -- nothing below ever touches
+    // fgHandle (TemplateLibrary's own session) again. See Global Constraints,
+    // "sequencing consequence for Tasks 4/5": every subsequent indigo* call
+    // on the template's structure uses a LOCAL reparse (localFg, below) made
+    // in m_molecule's own session instead, since m_molecule.bondEndpoints
+    // (next line) already switches the active session away from
+    // TemplateLibrary's.
+    QString fgMolfile = (fgHandle >= 0) ? lib.molfileText(fgHandle) : QString();
+
+    AtomId ta = -1, tb = -1;
+    bool haveTargetBond = m_molecule.bondEndpoints(targetBondId, ta, tb);   // activates m_molecule's session
+
+    int localFg = -1;
+    if (!fgMolfile.isEmpty()) localFg = indigoLoadMoleculeFromString(fgMolfile.toUtf8().constData());
+
+    QList<int> ringCycle;
+    if (localFg >= 0 && bondIdx >= 0) ringCycle = shortestRingThroughBond(localFg, bondIdx);
+
+    if (fgHandle < 0 || bondIdx < 0 || !haveTargetBond || ringCycle.isEmpty()) {
+        if (localFg >= 0) indigoFree(localFg);
+        insertFunctionalGroup(lib, fgName, cx, cy);
+        return;
+    }
+
+    int fusionBond = indigoGetBond(localFg, bondIdx);
+    int paH = indigoSource(fusionBond), pbH = indigoDestination(fusionBond);
+    // indigoXYZ() returns a pointer into a buffer Indigo reuses across
+    // calls (confirmed by this exact bug: reading both paXY and pbXY AFTER
+    // making both calls returned pbH's coordinates for both, since the
+    // second call overwrote the first's buffer) -- each result must be
+    // copied out into plain doubles immediately, before the next indigoXYZ
+    // call, matching the read-immediately pattern every other indigoXYZ use
+    // in this codebase already follows (e.g. the bounding-box loops above).
+    float* paXY = indigoXYZ(paH);
+    double pax = paXY[0], pay = paXY[1];
+    float* pbXY = indigoXYZ(pbH);
+    double pbx = pbXY[0], pby = pbXY[1];
+    indigoFree(paH); indigoFree(pbH); indigoFree(fusionBond);
+    // Note: the fusion bond's own two atom indices are NOT captured
+    // separately here -- shortestRingThroughBond's returned ringCycle
+    // already includes both of the fusion bond's endpoints as part of the
+    // cycle (it walks from one endpoint to the other through the rest of the
+    // ring), so the later sourceIndexToNewAtomId lookup over ringCycle covers
+    // them without a separate paIdx/pbIdx variable.
+
+    double qax = 0, qay = 0, qbx = 0, qby = 0;
+    m_molecule.atomPos(ta, qax, qay);
+    m_molecule.atomPos(tb, qbx, qby);
+
+    // Which side of the fusion bond does the template's own ring mass sit on?
+    double ccx = 0, ccy = 0;
+    for (int aidx : ringCycle) {
+        int a = indigoGetAtom(localFg, aidx);
+        float* xyz = indigoXYZ(a);
+        ccx += xyz[0]; ccy += xyz[1];
+        indigoFree(a);
+    }
+    ccx /= ringCycle.size(); ccy /= ringCycle.size();
+    double templSide = ((pbx - pax) * (ccy - pay) - (pby - pay) * (ccx - pax)) >= 0 ? 1 : -1;
+    double targetSide = chooseEmptySide(qax, qay, qbx, qby, ta, tb, cx, cy);
+
+    std::function<QPointF(double, double)> transform;
+    if (templSide == targetSide) transform = makeSimilarityTransform(pax, pay, pbx, pby, qax, qay, qbx, qby);
+    else transform = makeSimilarityTransform(pax, pay, pbx, pby, qbx, qby, qax, qay);
+    if (!transform) {
+        indigoFree(localFg);
+        insertFunctionalGroup(lib, fgName, cx, cy);
+        return;
+    }
+
+    // Derive aromatic from the template's own authored bond types around the
+    // ring cycle: any non-single bond -> true; all single -> false. Collect
+    // every ring-cycle edge's bond ONCE up front (single pass over the
+    // template's bonds), rather than re-scanning all bonds per ring edge.
+    bool aromatic = false;
+    {
+        int n = ringCycle.size();
+        int bIter = indigoIterateBonds(localFg);
+        if (bIter >= 0) {
+            int b;
+            while ((b = indigoNext(bIter)) > 0) {
+                int s = indigoSource(b), d = indigoDestination(b);
+                int si = indigoIndex(s), di = indigoIndex(d);
+                indigoFree(s); indigoFree(d);
+                for (int k = 0; k < n; ++k) {
+                    int a1 = ringCycle[k], a2 = ringCycle[(k + 1) % n];
+                    if ((si == a1 && di == a2) || (si == a2 && di == a1)) {
+                        if (indigoBondOrder(b) != 1) aromatic = true;
+                        break;
+                    }
+                }
+                indigoFree(b);
+            }
+            indigoFree(bIter);
+        }
+    }
+
+    // Done with the local working copy -- insertStructure (inside
+    // cmd.execute, below) reparses fgMolfile independently, in whatever
+    // session is active when the command actually runs (its own first line
+    // activates m_molecule's session regardless).
+    indigoFree(localFg);
+
+    EditableMolecule& mol = m_molecule;
+    auto createdAtoms = std::make_shared<QList<AtomId>>();
+    auto createdBonds = std::make_shared<QList<BondId>>();
+
+    EditCommand cmd;
+    cmd.execute = [this, &mol, fgMolfile, transform, ringCycle, aromatic, createdAtoms, createdBonds]() {
+        createdAtoms->clear();
+        createdBonds->clear();
+
+        QList<OldBondType> oldBonds;
+        for (BondId bid : mol.bondIds()) {
+            AtomId a = -1, b = -1;
+            if (mol.bondEndpoints(bid, a, b)) oldBonds.append({a, b, mol.bondOrder(bid)});
+        }
+
+        EditableMolecule::InsertResult result = mol.insertStructure(fgMolfile, transform);
+        *createdAtoms = result.createdAtoms;
+        *createdBonds = result.createdBonds;
+
+        EditableMolecule::MergeResult mergeResult = mol.mergeOverlappingAtoms();
+        QList<AtomId> survivors;
+        for (AtomId a : *createdAtoms) {
+            if (!mergeResult.mergedAway.contains(a)) survivors.append(a);
+        }
+        *createdAtoms = survivors;
+        for (BondId b : mergeResult.createdBonds) createdBonds->append(b);
+
+        QList<AtomId> finalRingAtoms;
+        for (int idx : ringCycle) {
+            AtomId aid = result.sourceIndexToNewAtomId.value(idx, -1);
+            if (aid < 0) continue;
+            finalRingAtoms.append(mergeResult.mergedAway.value(aid, aid));
+        }
+        applyRingAlternation(finalRingAtoms, oldBonds, aromatic);
     };
     cmd.invert = [&mol, createdAtoms, createdBonds]() {
         for (BondId b : *createdBonds) mol.removeBond(b);
