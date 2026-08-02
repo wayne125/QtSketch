@@ -774,6 +774,76 @@ static void test_addRing() {
     }
 }
 
+static void test_addChain() {
+    std::printf("--- Test 13: addChain ---\n");
+
+    // Horizontal chain, dist=6, bondLen=1.5 -> nBonds = round(6/1.5) = 4 ->
+    // 5 atoms, 4 bonds. theta=0, half=PI/6.
+    {
+        DocumentState doc;
+        CHECK(!doc.canUndo(), "history starts empty");
+        doc.addChain(0.0, 0.0, 6.0, 0.0);
+        CHECK(doc.canUndo(), "addChain pushes exactly one history entry");
+        CHECK(doc.molecule().atomCount() == 5, "5 atoms for a 4-bond chain");
+        CHECK(doc.molecule().bondCount() == 4, "4 bonds in the chain");
+
+        // Hand-computed expected vertices (theta=0, half=PI/6, bondLen=1.5),
+        // matching ChainPlacementEngine::compute's exact formula.
+        const double kPi = 3.14159265358979323846;
+        const double half = kPi / 6.0;
+        const double bondLen = 1.5;
+        double px = 0.0, py = 0.0;
+        QList<AtomId> ids = doc.molecule().atomIds();
+        CHECK(ids.size() == 5, "setup: 5 atom ids to check");
+        for (int i = 0; i <= 4; ++i) {
+            double x = 0, y = 0;
+            CHECK(doc.molecule().atomPos(ids[i], x, y), "atom position readable");
+            // 1e-5, not 1e-9: EditableMolecule::addAtom stores coordinates via
+            // indigoSetXYZ, which takes float (32-bit), not double -- exact
+            // round numbers (0.0, 1.0, -0.5, etc.) survive that round-trip
+            // losslessly, but these expected values are irrational trig
+            // results, which lose precision below float32's ~7 significant
+            // digits. 1e-5 is comfortably above that rounding error for
+            // values in this test's range (0 to ~5.2).
+            CHECK(std::fabs(x - px) < 1e-5 && std::fabs(y - py) < 1e-5, "vertex position matches the formula");
+            double ang = 0.0 + ((i % 2 == 0) ? half : -half);
+            px += bondLen * std::cos(ang);
+            py += bondLen * std::sin(ang);
+        }
+
+        doc.undo();
+        CHECK(doc.molecule().atomCount() == 0, "undo removes every chain atom");
+        CHECK(doc.molecule().bondCount() == 0, "undo removes every chain bond");
+    }
+
+    // A zero-length drag still lays at least one bond (max(1, ...)).
+    {
+        DocumentState doc;
+        doc.addChain(2.0, 2.0, 2.0, 2.0);
+        CHECK(doc.molecule().atomCount() == 2, "zero-length drag still produces a 2-atom chain");
+        CHECK(doc.molecule().bondCount() == 1, "zero-length drag still produces 1 bond");
+    }
+
+    // Chain endpoint placed exactly on an existing atom grafts onto it
+    // (total atom count reflects the merge, not a duplicate).
+    {
+        DocumentState doc;
+        AtomId existing = doc.molecule().addAtom(QStringLiteral("C"), 0.0, 0.0);
+        doc.addChain(0.0, 0.0, 3.0, 0.0);   // dist=3 -> nBonds=2 -> 3 atoms, first one coincides
+        // 1 pre-existing + 3 new - 1 fused = 3 total.
+        CHECK(doc.molecule().atomCount() == 3, "chain endpoint fuses onto the existing atom");
+        CHECK(doc.molecule().atomSymbol(existing) == QStringLiteral("C"), "the existing atom survives");
+        int chainBondsFromExisting = 0;
+        for (BondId bid : doc.molecule().bondIds()) {
+            AtomId a = -1, b = -1;
+            doc.molecule().bondEndpoints(bid, a, b);
+            if (a == existing || b == existing) ++chainBondsFromExisting;
+        }
+        CHECK(chainBondsFromExisting == 1, "the existing atom gained exactly one chain bond");
+    }
+}
+
+
 static void test_documentStateSelection() {
     std::printf("--- Test 4: DocumentState selection ---\n");
     DocumentState doc;
@@ -864,6 +934,7 @@ int main() {
     test_liveDragScale();
     test_dragStateResetOnUndoRedo();
     test_addRing();
+    test_addChain();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

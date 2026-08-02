@@ -807,3 +807,57 @@ void DocumentState::addRing(const QList<double>& coords, bool aromatic) {
     executeCommand(std::move(cmd));
 }
 
+void DocumentState::addChain(double x1, double y1, double x2, double y2) {
+    // Page-boundary clamp of the two INPUT endpoints, before any geometry is
+    // derived -- matches the real addChain's _clampToPage(x1,y1)/_clampToPage(x2,y2).
+    x1 = std::max(kPageMinX, std::min(kPageMaxX, x1));
+    y1 = std::max(kPageMinY, std::min(kPageMaxY, y1));
+    x2 = std::max(kPageMinX, std::min(kPageMaxX, x2));
+    y2 = std::max(kPageMinY, std::min(kPageMaxY, y2));
+
+    const double kPi = 3.14159265358979323846;
+    double dx = x2 - x1, dy = y2 - y1;
+    double dist = std::sqrt(dx * dx + dy * dy);
+    int nBonds = std::max(1, static_cast<int>(std::round(dist / kBondLength)));
+    double theta = std::atan2(dy, dx);
+    double half = kPi / 6.0;
+
+    EditableMolecule& mol = m_molecule;
+    auto createdAtoms = std::make_shared<QList<AtomId>>();
+    auto createdBonds = std::make_shared<QList<BondId>>();
+
+    EditCommand cmd;
+    cmd.execute = [&mol, x1, y1, nBonds, theta, half, createdAtoms, createdBonds]() {
+        createdAtoms->clear();
+        createdBonds->clear();
+
+        QList<AtomId> chainAtoms;
+        double px = x1, py = y1;
+        for (int i = 0; i <= nBonds; ++i) {
+            AtomId aid = mol.addAtom(QStringLiteral("C"), px, py);
+            chainAtoms.append(aid);
+            createdAtoms->append(aid);
+            if (i > 0) {
+                BondId bid = mol.addBond(chainAtoms[i - 1], chainAtoms[i], 1);
+                if (bid >= 0) createdBonds->append(bid);
+            }
+            double ang = theta + ((i % 2 == 0) ? half : -half);
+            px += kBondLength * std::cos(ang);
+            py += kBondLength * std::sin(ang);
+        }
+
+        EditableMolecule::MergeResult mergeResult = mol.mergeOverlappingAtoms();
+        QList<AtomId> survivors;
+        for (AtomId a : *createdAtoms) {
+            if (!mergeResult.mergedAway.contains(a)) survivors.append(a);
+        }
+        *createdAtoms = survivors;
+        for (BondId b : mergeResult.createdBonds) createdBonds->append(b);
+    };
+    cmd.invert = [&mol, createdAtoms, createdBonds]() {
+        for (BondId b : *createdBonds) mol.removeBond(b);
+        for (AtomId a : *createdAtoms) mol.removeAtom(a);
+    };
+    executeCommand(std::move(cmd));
+}
+

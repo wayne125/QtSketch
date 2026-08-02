@@ -153,9 +153,21 @@ public:
     // representation here.
     void addRing(const QList<double>& coords, bool aromatic = true);
 
+    // Zig-zag chain tool, ported from 20-edit.js's addChain. Both endpoints
+    // are clamped to the page bounds FIRST, before any geometry is derived.
+    // Geometry matches PlacementEngines.cpp's ChainPlacementEngine::compute
+    // exactly (same nBonds/theta/half-angle formula) -- that class is the
+    // live-drag preview and is deliberately NOT reused here (see its own
+    // header comment: duplicating the merge step there risks preview and
+    // committed structure drifting apart). Reuses mergeOverlappingAtoms so
+    // endpoints graft onto whatever they overlap, exactly like addRing.
+    void addChain(double x1, double y1, double x2, double y2);
+
 private:
     enum class DiscreteTransform { RotateCW, RotateCCW, FlipH, FlipV };
     void applyDiscreteTransform(DiscreteTransform mode);
+
+    static constexpr double kBondLength = 1.5;   // chem-core's StandardBondLength
 
     // Shared by addRing's alternation step: one bond as it stood BEFORE this
     // operation began, keyed by its endpoint pair. Presence of a pair here
