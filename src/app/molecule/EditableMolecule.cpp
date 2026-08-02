@@ -1094,3 +1094,29 @@ int EditableMolecule::atomCipDescriptor(AtomId id) const {
     return cip > 0 ? cip : 0;
 }
 
+QList<SGroupId> EditableMolecule::sgroupIds() const {
+    return m_sgroupIdx.keys();
+}
+
+QList<AtomId> EditableMolecule::sgroupMemberAtomIds(SGroupId id) const {
+    QList<AtomId> result;
+    if (m_mol < 0 || !m_sgroupIdx.contains(id)) return result;
+    activateSession();
+    int sup = indigoGetSuperatom(m_mol, m_sgroupIdx.value(id));
+    if (sup < 0) return result;
+    int aIter = indigoIterateAtoms(sup);
+    if (aIter >= 0) {
+        int a;
+        while ((a = indigoNext(aIter)) > 0) {
+            int idx = indigoIndex(a);
+            for (auto it = m_atomIdx.constBegin(); it != m_atomIdx.constEnd(); ++it) {
+                if (it.value() == idx) { result.append(it.key()); break; }
+            }
+            indigoFree(a);
+        }
+        indigoFree(aIter);
+    }
+    indigoFree(sup);
+    return result;
+}
+

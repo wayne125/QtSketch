@@ -1116,6 +1116,45 @@ static void test_stereoCipAccessors() {
     }
 }
 
+static void test_sgroupIntrospectionAccessors() {
+    std::printf("--- Test 25: sgroupIds + sgroupMemberAtomIds ---\n");
+
+    EditableMolecule m;
+    // "Ac" molfile: 3 atoms (C, C, O), 2 bonds, one SUP superatom labeled "Ac"
+    // with an attachment point at atom index 0 -- the same real bundled template
+    // data confirmed in sub-project 3d, embedded here directly so this test has no
+    // dependency on TemplateLibrary/file I/O.
+    QString acMolfile = QStringLiteral(
+        "Ac\n"
+        "  Ketcher\n\n"
+        "  3  2  0  0  0  0  0  0  0  0999 V2000\n"
+        "    3.3951   -3.5754    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "    2.6785   -3.9891    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "    3.3951   -2.7480    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "  2  1  1  0  0  0  0\n"
+        "  1  3  2  0  0  0  0\n"
+        "M  STY  1   1 SUP\n"
+        "M  SLB  1   1   1\n"
+        "M  SAL   1  3   1   2   3\n"
+        "M  SAP   1  1   1   0\n"
+        "M  SMT   1 Ac\n"
+        "M  END\n");
+    EditableMolecule::InsertResult r = m.insertStructure(acMolfile, [](double x, double y) { return QPointF(x, y); });
+    CHECK(r.createdSGroups.size() == 1, "setup: \"Ac\" produces exactly one sgroup");
+    SGroupId sgId = r.createdSGroups[0];
+
+    CHECK(m.sgroupIds() == QList<SGroupId>{sgId}, "sgroupIds lists exactly the one created sgroup");
+
+    QList<AtomId> members = m.sgroupMemberAtomIds(sgId);
+    CHECK(members.size() == 3, "\"Ac\"'s sgroup has all 3 atoms as members (M SAL lists atoms 1,2,3)");
+    AtomId attach = -1;
+    CHECK(m.superatomAttachAtom(sgId, attach), "setup: attach atom resolves");
+    CHECK(members.contains(attach), "the member set includes the attach atom");
+
+    CHECK(m.sgroupMemberAtomIds(9999).isEmpty(), "invalid SGroupId: sgroupMemberAtomIds returns empty");
+    CHECK(m.sgroupIds().size() == 1, "sgroupIds is unaffected by querying an invalid id");
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -1145,6 +1184,7 @@ int main() {
     test_renderSupportStorageDefaults();
     test_ringAndNeighborAccessors();
     test_stereoCipAccessors();
+    test_sgroupIntrospectionAccessors();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);

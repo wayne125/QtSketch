@@ -338,6 +338,13 @@ public:
     void setSGroupExpanded(SGroupId id, bool expanded);
     bool sgroupExpanded(SGroupId id) const;
 
+    // Sgroup introspection beyond superatomAttachAtom's single-attachment-point view: every
+    // currently-existing sgroup id, and a given sgroup's FULL member-atom set (not just its
+    // attach atom). Needed for correct render-primitive contraction (sub-project 4), which must
+    // hide every member atom of a collapsed sgroup, not only its attach atom.
+    QList<SGroupId> sgroupIds() const;
+    QList<AtomId> sgroupMemberAtomIds(SGroupId id) const;
+
 private:
     // One Indigo session per instance, held for the object's lifetime
     // (unlike IndigoService's alloc/release-per-call one-shot pattern).

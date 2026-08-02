@@ -247,6 +247,7 @@ add_library(molecule_model STATIC
     src/app/molecule/TemplateLibrary.cpp
     src/app/molecule/ElementData.h
     src/app/molecule/RenderPrimitives.h
+    src/app/molecule/RenderPrimitives.cpp
 )
 target_include_directories(molecule_model PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src

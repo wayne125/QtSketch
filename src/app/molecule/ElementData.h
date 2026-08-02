@@ -35,6 +35,11 @@ public:
         return it == table.constEnd() ? nullptr : &it.value();
     }
 
+    static QString symbolForNumber(int number) {
+        static const QHash<int, QString> table = buildNumberTable();
+        return table.value(number, QString());
+    }
+
 private:
     static QHash<QString, QString> buildColorTable() {
         static const struct { const char* symbol; const char* hex; } kColors[] = {
@@ -288,6 +293,12 @@ private:
             table.insert(QString::fromUtf8(e.label),
                          ElementInfo{e.number, QString::fromUtf8(e.label), QString::fromUtf8(e.title), e.mass});
         }
+        return table;
+    }
+
+    static QHash<int, QString> buildNumberTable() {
+        QHash<int, QString> table;
+        for (const auto& e : buildInfoTable()) table.insert(e.number, e.label);
         return table;
     }
 };
