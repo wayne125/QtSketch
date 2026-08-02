@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstring>
 #include "app/molecule/EditableMolecule.h"
+#include "app/molecule/TemplateLibrary.h"
 #include "indigo.h"
 
 static int g_pass = 0, g_fail = 0;
@@ -772,6 +773,59 @@ static void test_addBenzeneRing() {
     }
 }
 
+static void test_templateLibraryLoading() {
+    std::printf("--- Test 19: TemplateLibrary loading ---\n");
+    TemplateLibrary lib(
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/fg.sdf"),
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/library.sdf"),
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/salts-and-solvents.sdf"));
+
+    // "Ac" is a real fg.sdf entry: 3 atoms, 2 bonds, one SUP group. Its record
+    // carries the Ketcher "G    1  0" line that must be stripped to parse.
+    int ac = lib.functionalGroup(QStringLiteral("Ac"));
+    CHECK(ac >= 0, "functionalGroup(\"Ac\") resolves to a valid handle");
+    if (ac >= 0) {
+        CHECK(indigoCountAtoms(ac) == 3, "\"Ac\" has 3 atoms");
+        CHECK(indigoCountBonds(ac) == 2, "\"Ac\" has 2 bonds");
+        CHECK(indigoCountSuperatoms(ac) == 1, "\"Ac\" has 1 superatom group");
+    }
+
+    // "Indole" is a real library.sdf entry: 9 atoms, 10 bonds, bondIdx=6
+    // (confirmed by direct file read: the aromatic N-C bond at the
+    // pyrrole/benzene fusion seam). library.sdf entries have no G-line and no
+    // superatoms.
+    int indole = lib.libraryTemplate(QStringLiteral("Indole"));
+    CHECK(indole >= 0, "libraryTemplate(\"Indole\") resolves to a valid handle");
+    if (indole >= 0) {
+        CHECK(indigoCountAtoms(indole) == 9, "\"Indole\" has 9 atoms");
+        CHECK(indigoCountBonds(indole) == 10, "\"Indole\" has 10 bonds");
+        CHECK(indigoCountSuperatoms(indole) == 0, "\"Indole\" has no superatom groups");
+    }
+    CHECK(lib.libraryTemplateFusionBondIdx(QStringLiteral("Indole")) == 6,
+          "\"Indole\"'s fusion bond index is 6");
+
+    // A name with no fusion metadata (any fg.sdf entry, since bondIdx only
+    // ever appears in library.sdf) returns -1.
+    CHECK(lib.libraryTemplateFusionBondIdx(QStringLiteral("Ac")) == -1,
+          "a name with no library-registry fusion metadata returns -1");
+
+    // Names that don't exist anywhere resolve to -1 across every registry.
+    CHECK(lib.functionalGroup(QStringLiteral("NotARealTemplateName")) < 0,
+          "an unknown functional-group name resolves to -1");
+    CHECK(lib.libraryTemplate(QStringLiteral("NotARealTemplateName")) < 0,
+          "an unknown library-template name resolves to -1");
+    CHECK(lib.saltOrSolvent(QStringLiteral("NotARealTemplateName")) < 0,
+          "an unknown salt/solvent name resolves to -1");
+
+    // A missing file leaves its registry empty, not crashing.
+    TemplateLibrary missingFile(
+        QStringLiteral("/nonexistent/path/fg.sdf"),
+        QStringLiteral("/nonexistent/path/library.sdf"),
+        QStringLiteral("/nonexistent/path/salts.sdf"));
+    CHECK(missingFile.functionalGroup(QStringLiteral("Ac")) < 0,
+          "a missing SDF file leaves that registry empty rather than crashing");
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -795,6 +849,7 @@ int main() {
     test_atomMergeMechanicsSpike();
     test_mergeOverlappingAtomsAndFindBond();
     test_addBenzeneRing();
+    test_templateLibraryLoading();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);

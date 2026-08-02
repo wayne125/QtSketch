@@ -243,6 +243,8 @@ add_library(molecule_model STATIC
     src/app/molecule/EditableMolecule.cpp
     src/app/molecule/DocumentState.h
     src/app/molecule/DocumentState.cpp
+    src/app/molecule/TemplateLibrary.h
+    src/app/molecule/TemplateLibrary.cpp
 )
 target_include_directories(molecule_model PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -257,9 +259,11 @@ endif()
 
 qt_add_executable(editable_molecule_test tests/editable_molecule_test.cpp)
 target_link_libraries(editable_molecule_test PRIVATE molecule_model)
+target_compile_definitions(editable_molecule_test PRIVATE SKETCH_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 add_test(NAME editable_molecule_test COMMAND editable_molecule_test)
 
 qt_add_executable(document_state_test tests/document_state_test.cpp)
 target_link_libraries(document_state_test PRIVATE molecule_model)
+target_compile_definitions(document_state_test PRIVATE SKETCH_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 add_test(NAME document_state_test COMMAND document_state_test)
 
