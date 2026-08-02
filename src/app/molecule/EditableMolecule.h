@@ -169,6 +169,7 @@ public:
     bool setAtomPos(AtomId id, double x, double y);
     int bondOrder(BondId id) const;
     bool bondEndpoints(BondId id, AtomId& a, AtomId& b) const;
+    BondId findBond(AtomId a, AtomId b) const;   // -1 if no such bond
     QList<AtomId> atomIds() const;
     QList<BondId> bondIds() const;
 
@@ -213,6 +214,19 @@ public:
 
     MoleculeSnapshot snapshot() const;
     bool restore(const MoleculeSnapshot&);
+
+    // Re-expresses fuseOverlappingAtoms (10-state.js:179-228) in terms Indigo
+    // actually supports: Indigo has no "reassign a bond's endpoints" API, so a
+    // coincident-atom merge is done as capture-incident-bonds, try to create
+    // each as a replacement bond onto the kept atom, then remove the doomed
+    // atom (removeAtom's cascade cleans up whatever of doomed's original
+    // bonds remain). See the header's "Atom-merge mechanics" spike paragraph
+    // for the three Indigo behaviors this depends on.
+    struct MergeResult {
+        QHash<AtomId, AtomId> mergedAway;   // doomed id -> kept id
+        QList<BondId> createdBonds;         // NEW replacement bonds created while rewiring
+    };
+    MergeResult mergeOverlappingAtoms(double tolerance = 0.1);
 
 private:
     // One Indigo session per instance, held for the object's lifetime

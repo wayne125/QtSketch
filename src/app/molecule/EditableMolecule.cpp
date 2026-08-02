@@ -4,6 +4,8 @@
 #include "indigo.h"
 #include <algorithm>
 #include <utility>
+#include <cmath>
+#include <QSet>
 
 EditableMolecule::EditableMolecule(const QString& initialStructure) {
     m_session = indigoAllocSessionId();
@@ -491,6 +493,15 @@ bool EditableMolecule::bondEndpoints(BondId id, AtomId& a, AtomId& b) const {
     return true;
 }
 
+BondId EditableMolecule::findBond(AtomId a, AtomId b) const {
+    for (BondId bid : bondIds()) {
+        AtomId ea = -1, eb = -1;
+        if (!bondEndpoints(bid, ea, eb)) continue;
+        if ((ea == a && eb == b) || (ea == b && eb == a)) return bid;
+    }
+    return -1;
+}
+
 QList<AtomId> EditableMolecule::atomIds() const {
     auto k = m_atomIdx.keys();
     std::sort(k.begin(), k.end());
@@ -694,3 +705,59 @@ bool EditableMolecule::restore(const MoleculeSnapshot& snap) {
     if (snap.m_nextBondId > m_nextBondId) m_nextBondId = snap.m_nextBondId;
     return true;
 }
+
+EditableMolecule::MergeResult EditableMolecule::mergeOverlappingAtoms(double tolerance) {
+    MergeResult result;
+    // Ascending id order == insertion order for our never-reused AtomId
+    // counter -- the exact invariant fuseOverlappingAtoms relies on to make
+    // "kept" always the earlier (pre-existing) atom in a coincident pair.
+    QList<AtomId> ids = atomIds();
+    QSet<AtomId> doomedSet;
+
+    for (int i = 0; i < ids.size(); ++i) {
+        AtomId keptId = ids[i];
+        if (doomedSet.contains(keptId)) continue;
+        double kx = 0, ky = 0;
+        if (!atomPos(keptId, kx, ky)) continue;
+
+        for (int j = i + 1; j < ids.size(); ++j) {
+            AtomId doomedId = ids[j];
+            if (doomedSet.contains(doomedId)) continue;
+            double dx = 0, dy = 0;
+            if (!atomPos(doomedId, dx, dy)) continue;
+            double ddx = kx - dx, ddy = ky - dy;
+            if (std::sqrt(ddx * ddx + ddy * ddy) >= tolerance) continue;
+
+            // Capture doomed's incident bonds BEFORE mutating anything -- the
+            // same capture-before-destroy shape DocumentState::deleteAtom
+            // (sub-project 3a) uses.
+            struct Neighbor { AtomId other; int order; };
+            QList<Neighbor> neighbors;
+            for (BondId bid : bondIds()) {
+                AtomId ea = -1, eb = -1;
+                if (!bondEndpoints(bid, ea, eb)) continue;
+                if (ea == doomedId) neighbors.append({eb, bondOrder(bid)});
+                else if (eb == doomedId) neighbors.append({ea, bondOrder(bid)});
+            }
+
+            for (const Neighbor& nb : neighbors) {
+                if (nb.other == keptId) continue;  // would become a self-loop; dropped,
+                                                    // matching the real code's b.begin===b.end dedupe
+                BondId newBond = addBond(keptId, nb.other, nb.order);
+                // A negative return is the SEAM case (Test 16, Q3): kept is
+                // already bonded to nb.other, so Indigo rejects the duplicate
+                // parallel edge -- the pre-existing bond survives untouched.
+                // Not an error; simply nothing to record.
+                if (newBond >= 0) result.createdBonds.append(newBond);
+            }
+
+            // removeAtom cascades to delete doomed's remaining incident
+            // bonds automatically (Test 16, Q1).
+            removeAtom(doomedId);
+            result.mergedAway.insert(doomedId, keptId);
+            doomedSet.insert(doomedId);
+        }
+    }
+    return result;
+}
+

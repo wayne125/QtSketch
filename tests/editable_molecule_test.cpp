@@ -678,6 +678,79 @@ static void test_atomMergeMechanicsSpike() {
     indigoReleaseSessionId(session);
 }
 
+static void test_mergeOverlappingAtomsAndFindBond() {
+    std::printf("--- Test 17: mergeOverlappingAtoms + findBond ---\n");
+
+    // Two coincident atoms collapse to one; a bond incident to the doomed
+    // atom survives, reattached to the kept atom, with its order carried
+    // over; the kept id is the LOWER (pre-existing) one.
+    {
+        EditableMolecule m;
+        AtomId kept = m.addAtom(QStringLiteral("C"), 0.0, 0.0);
+        AtomId other = m.addAtom(QStringLiteral("N"), 5.0, 0.0);
+        AtomId doomed = m.addAtom(QStringLiteral("C"), 0.05, 0.02);   // within 0.1 of kept
+        AtomId target = m.addAtom(QStringLiteral("O"), 3.0, 0.0);
+        m.addBond(other, kept, 2);       // untouched bystander bond
+        BondId toRewire = m.addBond(doomed, target, 3);
+        CHECK(toRewire > 0, "setup: doomed-target bond added");
+
+        EditableMolecule::MergeResult result = m.mergeOverlappingAtoms();
+        CHECK(result.mergedAway.value(doomed, -1) == kept, "doomed merges into kept (the lower id)");
+        CHECK(result.createdBonds.size() == 1, "exactly one replacement bond created");
+        CHECK(m.atomSymbol(doomed).isEmpty(), "doomed atom no longer resolves");
+        CHECK(m.atomSymbol(kept) == QStringLiteral("C"), "kept atom survives with its own label");
+
+        BondId newBond = m.findBond(kept, target);
+        CHECK(newBond >= 0, "kept is now bonded to target");
+        CHECK(m.bondOrder(newBond) == 3, "replacement bond carries over the original order");
+        BondId bystander = m.findBond(kept, other);
+        CHECK(bystander >= 0 && m.bondOrder(bystander) == 2, "the untouched bystander bond is unaffected");
+    }
+
+    // Non-coincident atoms are left alone; empty merge map.
+    {
+        EditableMolecule m;
+        AtomId a = m.addAtom(QStringLiteral("C"), 0.0, 0.0);
+        AtomId b = m.addAtom(QStringLiteral("C"), 5.0, 0.0);
+        EditableMolecule::MergeResult result = m.mergeOverlappingAtoms();
+        CHECK(result.mergedAway.isEmpty(), "no merges when nothing overlaps");
+        CHECK(result.createdBonds.isEmpty(), "no replacement bonds when nothing overlaps");
+        CHECK(m.atomSymbol(a) == QStringLiteral("C") && m.atomSymbol(b) == QStringLiteral("C"),
+              "both atoms untouched");
+    }
+
+    // Seam case: kept already bonded to target -- the duplicate is
+    // correctly dropped, not created, and the pre-existing bond's order is
+    // untouched.
+    {
+        EditableMolecule m;
+        AtomId kept = m.addAtom(QStringLiteral("C"), 0.0, 0.0);
+        AtomId target = m.addAtom(QStringLiteral("C"), 1.5, 0.0);
+        BondId seam = m.addBond(kept, target, 2);
+        AtomId doomed = m.addAtom(QStringLiteral("C"), 0.02, 0.0);   // coincides with kept
+        m.addBond(doomed, target, 1);   // duplicate edge to the same target
+
+        EditableMolecule::MergeResult result = m.mergeOverlappingAtoms();
+        CHECK(result.mergedAway.value(doomed, -1) == kept, "doomed still merges into kept");
+        CHECK(result.createdBonds.isEmpty(), "no replacement bond created for the seam-duplicate edge");
+        CHECK(m.bondOrder(seam) == 2, "pre-existing seam bond order is untouched");
+        CHECK(m.bondCount() == 1, "exactly one bond survives (the pre-existing seam bond)");
+    }
+
+    // findBond: both argument orders, and the not-found/invalid cases.
+    {
+        EditableMolecule m;
+        AtomId a = m.addAtom(QStringLiteral("C"), 0.0, 0.0);
+        AtomId b = m.addAtom(QStringLiteral("C"), 1.0, 0.0);
+        AtomId c = m.addAtom(QStringLiteral("C"), 2.0, 0.0);
+        BondId ab = m.addBond(a, b, 1);
+        CHECK(m.findBond(a, b) == ab, "findBond finds a bond in (a,b) order");
+        CHECK(m.findBond(b, a) == ab, "findBond finds the same bond in (b,a) order");
+        CHECK(m.findBond(a, c) == -1, "findBond returns -1 for a non-adjacent pair");
+        CHECK(m.findBond(9999, a) == -1, "findBond returns -1 for an invalid id");
+    }
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -699,6 +772,7 @@ int main() {
     test_bondStereoInvertSpike();
     test_positionAccessors();
     test_atomMergeMechanicsSpike();
+    test_mergeOverlappingAtomsAndFindBond();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
