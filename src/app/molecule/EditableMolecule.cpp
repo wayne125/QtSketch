@@ -706,6 +706,42 @@ bool EditableMolecule::restore(const MoleculeSnapshot& snap) {
     return true;
 }
 
+QList<BondId> EditableMolecule::graftAtomOnto(AtomId doomed, AtomId kept) {
+    QList<BondId> createdBonds;
+    if (m_mol < 0 || !m_atomIdx.contains(doomed) || !m_atomIdx.contains(kept)) return createdBonds;
+
+    // Capture doomed's incident bonds BEFORE mutating anything -- the same
+    // capture-before-destroy shape DocumentState::deleteAtom (sub-project 3a)
+    // uses.
+    struct Neighbor { AtomId other; int order; };
+    QList<Neighbor> neighbors;
+    for (BondId bid : bondIds()) {
+        AtomId ea = -1, eb = -1;
+        if (!bondEndpoints(bid, ea, eb)) continue;
+        if (ea == doomed) neighbors.append({eb, bondOrder(bid)});
+        else if (eb == doomed) neighbors.append({ea, bondOrder(bid)});
+    }
+
+    for (const Neighbor& nb : neighbors) {
+        if (nb.other == kept) continue;   // would become a self-loop; dropped,
+                                           // matching the real code's b.begin===b.end dedupe
+        BondId newBond = addBond(kept, nb.other, nb.order);
+        // A negative return is the SEAM case (3c's Test 16, Q3): kept is
+        // already bonded to nb.other, so Indigo rejects the duplicate
+        // parallel edge -- the pre-existing bond survives untouched. Not an
+        // error; simply nothing to record.
+        if (newBond >= 0) createdBonds.append(newBond);
+    }
+
+    // removeAtom cascades to delete doomed's remaining incident bonds
+    // automatically (3c's Test 16, Q1). Confirmed safe even when doomed is a
+    // superatom's member (sub-project 3d's own probe): the sgroup survives
+    // intact, its attachment-point iteration simply yields no further
+    // entries afterward.
+    removeAtom(doomed);
+    return createdBonds;
+}
+
 EditableMolecule::MergeResult EditableMolecule::mergeOverlappingAtoms(double tolerance) {
     MergeResult result;
     // Ascending id order == insertion order for our never-reused AtomId
@@ -728,32 +764,8 @@ EditableMolecule::MergeResult EditableMolecule::mergeOverlappingAtoms(double tol
             double ddx = kx - dx, ddy = ky - dy;
             if (std::sqrt(ddx * ddx + ddy * ddy) >= tolerance) continue;
 
-            // Capture doomed's incident bonds BEFORE mutating anything -- the
-            // same capture-before-destroy shape DocumentState::deleteAtom
-            // (sub-project 3a) uses.
-            struct Neighbor { AtomId other; int order; };
-            QList<Neighbor> neighbors;
-            for (BondId bid : bondIds()) {
-                AtomId ea = -1, eb = -1;
-                if (!bondEndpoints(bid, ea, eb)) continue;
-                if (ea == doomedId) neighbors.append({eb, bondOrder(bid)});
-                else if (eb == doomedId) neighbors.append({ea, bondOrder(bid)});
-            }
-
-            for (const Neighbor& nb : neighbors) {
-                if (nb.other == keptId) continue;  // would become a self-loop; dropped,
-                                                    // matching the real code's b.begin===b.end dedupe
-                BondId newBond = addBond(keptId, nb.other, nb.order);
-                // A negative return is the SEAM case (Test 16, Q3): kept is
-                // already bonded to nb.other, so Indigo rejects the duplicate
-                // parallel edge -- the pre-existing bond survives untouched.
-                // Not an error; simply nothing to record.
-                if (newBond >= 0) result.createdBonds.append(newBond);
-            }
-
-            // removeAtom cascades to delete doomed's remaining incident
-            // bonds automatically (Test 16, Q1).
-            removeAtom(doomedId);
+            QList<BondId> newBonds = graftAtomOnto(doomedId, keptId);
+            result.createdBonds.append(newBonds);
             result.mergedAway.insert(doomedId, keptId);
             doomedSet.insert(doomedId);
         }

@@ -231,6 +231,14 @@ public:
     };
     MergeResult mergeOverlappingAtoms(double tolerance = 0.1);
 
+    // Rewires `doomed`'s incident bonds onto `kept` (creating each as a new
+    // bond, or dropping it as a rejected-seam parallel edge), then removes
+    // `doomed`. Returns the newly created replacement bonds. Extracted from
+    // mergeOverlappingAtoms's own per-pair body (sub-project 3c) so
+    // insertFunctionalGroup's explicit-substitution graft (sub-project 3d)
+    // can reuse the identical mechanism instead of duplicating it.
+    QList<BondId> graftAtomOnto(AtomId doomed, AtomId kept);
+
     // Non-undoable document-seeding helper (30-templates.js's addBenzeneRing)
     // -- NOT a DocumentState command; mutates directly and has no history
     // entry, matching the real function exactly.

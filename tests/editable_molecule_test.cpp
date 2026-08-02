@@ -943,6 +943,46 @@ static void test_insertStructure() {
     indigoReleaseSessionId(session);
 }
 
+static void test_graftAtomOnto() {
+    std::printf("--- Test 21: graftAtomOnto ---\n");
+
+    // A bond incident to the doomed atom survives, reattached to kept, order
+    // carried over -- the same contract mergeOverlappingAtoms's Test 17 proves
+    // for the position-triggered case, now exercised directly by explicit id.
+    {
+        EditableMolecule m;
+        AtomId kept = m.addAtom(QStringLiteral("C"), 0.0, 0.0);
+        AtomId doomed = m.addAtom(QStringLiteral("N"), 5.0, 5.0);   // far apart: NOT position-coincident
+        AtomId target = m.addAtom(QStringLiteral("O"), 3.0, 0.0);
+        BondId toRewire = m.addBond(doomed, target, 3);
+        CHECK(toRewire > 0, "setup: doomed-target bond added");
+
+        QList<BondId> created = m.graftAtomOnto(doomed, kept);
+        CHECK(created.size() == 1, "graftAtomOnto creates exactly one replacement bond");
+        CHECK(m.atomSymbol(doomed).isEmpty(), "doomed atom no longer resolves");
+        CHECK(m.atomSymbol(kept) == QStringLiteral("C"), "kept atom survives untouched");
+        BondId newBond = m.findBond(kept, target);
+        CHECK(newBond >= 0 && m.bondOrder(newBond) == 3,
+              "kept is now bonded to target with the original order carried over");
+    }
+
+    // Seam case: kept already bonded to target -- the duplicate is dropped,
+    // not created, matching graftAtomOnto's documented parallel-edge contract.
+    {
+        EditableMolecule m;
+        AtomId kept = m.addAtom(QStringLiteral("C"), 0.0, 0.0);
+        AtomId target = m.addAtom(QStringLiteral("C"), 1.5, 0.0);
+        BondId seam = m.addBond(kept, target, 2);
+        AtomId doomed = m.addAtom(QStringLiteral("N"), 9.0, 9.0);
+        m.addBond(doomed, target, 1);
+
+        QList<BondId> created = m.graftAtomOnto(doomed, kept);
+        CHECK(created.isEmpty(), "no replacement bond created for the seam-duplicate edge");
+        CHECK(m.bondOrder(seam) == 2, "pre-existing seam bond order is untouched");
+        CHECK(m.bondCount() == 1, "exactly one bond survives");
+    }
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -968,6 +1008,7 @@ int main() {
     test_addBenzeneRing();
     test_templateLibraryLoading();
     test_insertStructure();
+    test_graftAtomOnto();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
