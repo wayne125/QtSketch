@@ -1121,6 +1121,29 @@ static void test_rxnArrowLifecycle() {
     CHECK(!doc.canUndo() || doc.molecule().rxnArrowIds().size() == 2, "deleteRxnArrow on an unknown id is a no-op");
 }
 
+static void test_setStereoFlags() {
+    std::printf("--- Test 18: setStereoFlags ---\n");
+    DocumentState doc;
+    CHECK(doc.molecule().stereoFlagsType() == QStringLiteral("abs"), "default type is abs");
+    CHECK(doc.molecule().stereoFlagsGroupId() == 0, "default groupId is 0");
+
+    doc.setStereoFlags(QStringLiteral("rel"), 2);
+    CHECK(doc.molecule().stereoFlagsType() == QStringLiteral("rel"), "setStereoFlags sets type");
+    CHECK(doc.molecule().stereoFlagsGroupId() == 2, "setStereoFlags sets groupId");
+    bool canUndoBefore = doc.canUndo();
+    doc.setStereoFlags(QStringLiteral("rel"), 2); // unchanged -- must no-op
+    CHECK(doc.canUndo() == canUndoBefore, "unchanged setStereoFlags pushes no history entry");
+    doc.undo();
+    CHECK(doc.molecule().stereoFlagsType() == QStringLiteral("abs"), "undo restores type to abs");
+    CHECK(doc.molecule().stereoFlagsGroupId() == 0, "undo restores groupId to 0");
+
+    // Falsy args default like the real JS (type || 'abs', groupId || 0).
+    doc.setStereoFlags(QString(), 0);
+    canUndoBefore = doc.canUndo();
+    doc.setStereoFlags(QString(), 0);
+    CHECK(doc.canUndo() == canUndoBefore, "empty-string type still normalizes to the current abs/0 state -- no-op");
+}
+
 int main() {
     test_selectionStateBasics();
     test_editCommandBasics();
@@ -1140,6 +1163,7 @@ int main() {
     test_insertLibraryTemplateFused();
     test_toggleSgroupExpanded();
     test_rxnArrowLifecycle();
+    test_setStereoFlags();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

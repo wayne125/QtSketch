@@ -221,11 +221,14 @@ public:
     // per-fragment stereoFlag/setStereoFlag above, which models an unrelated, real chem-core
     // concept (a per-fragment ABS/AND/OR/MIXED value that is actually COMPUTED from atom stereo
     // labels, never stored) -- reusing that field's QHash<int,int> shape here would be wrong: it
-    // cannot represent one document-wide {type, groupId} pair. Read-only: the setter
-    // (setStereoFlags, src/worker/50-reactions.js) is an undoable editing operation, out of scope
-    // here (sub-project 3e).
+    // cannot represent one document-wide {type, groupId} pair.
     QString stereoFlagsType() const;
     int stereoFlagsGroupId() const;
+    // Mutator (sub-project 3e: setStereoFlags, src/worker/50-reactions.js). Named
+    // setStereoFlagsDocument, NOT setStereoFlags, to avoid confusion with the unrelated
+    // per-fragment setStereoFlag(fragmentIndex, flag) above -- DocumentState::setStereoFlags is
+    // the JS-name-matching public entry point that calls this.
+    void setStereoFlagsDocument(const QString& type, int groupId);
 
     // Real string check-warning TYPE (e.g. "valence", set by external structure-check results --
     // src/worker/60-analysis.js's setCheckIssues), NOT the same as the boolean

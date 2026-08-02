@@ -122,6 +122,10 @@ public:
     void setRxnArrowConditions(RxnArrowId id, const QString& above, const QString& below);
     void deleteRxnArrow(RxnArrowId id);
 
+    // Document-level stereo-display toggle (50-reactions.js's setStereoFlags). Defaults type to
+    // "abs" and groupId to 0 exactly like the real function's `type || 'abs', groupId || 0`.
+    void setStereoFlags(const QString& type, int groupId);
+
     // ---- Live-drag gestures ------------------------------------------------
     // Repeated *Live calls during a UI drag mutate positions directly and push
     // NOTHING onto the undo history; the matching commit* call at gesture end

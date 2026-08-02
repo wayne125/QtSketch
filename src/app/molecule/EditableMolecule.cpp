@@ -972,6 +972,10 @@ bool EditableMolecule::sgroupExpanded(SGroupId id) const {
 
 QString EditableMolecule::stereoFlagsType() const { return m_ext.stereoFlagsType; }
 int EditableMolecule::stereoFlagsGroupId() const { return m_ext.stereoFlagsGroupId; }
+void EditableMolecule::setStereoFlagsDocument(const QString& type, int groupId) {
+    m_ext.stereoFlagsType = type;
+    m_ext.stereoFlagsGroupId = groupId;
+}
 
 QString EditableMolecule::atomCheckWarningText(AtomId id) const {
     return m_ext.atomCheckWarningTexts.value(id, QString());

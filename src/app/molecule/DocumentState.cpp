@@ -473,6 +473,20 @@ void DocumentState::deleteRxnArrow(RxnArrowId id) {
     executeCommand(std::move(cmd));
 }
 
+void DocumentState::setStereoFlags(const QString& type, int groupId) {
+    EditableMolecule& mol = m_molecule;
+    QString newType = type.isEmpty() ? QStringLiteral("abs") : type;
+    int newGroupId = groupId;
+    QString oldType = mol.stereoFlagsType();
+    int oldGroupId = mol.stereoFlagsGroupId();
+    if (oldType == newType && oldGroupId == newGroupId) return;
+
+    EditCommand cmd;
+    cmd.execute = [&mol, newType, newGroupId]() { mol.setStereoFlagsDocument(newType, newGroupId); };
+    cmd.invert = [&mol, oldType, oldGroupId]() { mol.setStereoFlagsDocument(oldType, oldGroupId); };
+    executeCommand(std::move(cmd));
+}
+
 void DocumentState::applyMoveDelta(const QList<AtomId>& atomIds, const QList<RxnArrowId>& arrowIds,
                                    const QList<RxnPlusId>& plusIds, const QList<MultitailArrowId>& mtaIds,
                                    double dx, double dy) {

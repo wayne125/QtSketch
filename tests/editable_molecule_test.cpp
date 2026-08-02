@@ -1177,6 +1177,22 @@ static void test_rxnArrowMutators() {
     CHECK(!m.rxnArrowCurvature(id, cx, cy), "curvature cleared -- rxnArrowCurvature now reports false");
 }
 
+static void test_stereoFlagsDocumentMutator() {
+    std::printf("--- Test 27: document-level stereoFlags mutator ---\n");
+    EditableMolecule m;
+    CHECK(m.stereoFlagsType() == QStringLiteral("abs"), "default document stereoFlags type is abs");
+    CHECK(m.stereoFlagsGroupId() == 0, "default document stereoFlags groupId is 0");
+
+    m.setStereoFlagsDocument(QStringLiteral("rel"), 3);
+    CHECK(m.stereoFlagsType() == QStringLiteral("rel"), "setStereoFlagsDocument changes the type");
+    CHECK(m.stereoFlagsGroupId() == 3, "setStereoFlagsDocument changes the groupId");
+
+    // Distinct from the unrelated per-fragment setStereoFlag/stereoFlag pair.
+    m.setStereoFlag(0, 5);
+    CHECK(m.stereoFlag(0) == 5, "per-fragment setStereoFlag/stereoFlag is untouched by the document-level mutator");
+    CHECK(m.stereoFlagsType() == QStringLiteral("rel"), "document-level type is untouched by the per-fragment setter");
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -1208,6 +1224,7 @@ int main() {
     test_stereoCipAccessors();
     test_sgroupIntrospectionAccessors();
     test_rxnArrowMutators();
+    test_stereoFlagsDocumentMutator();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
