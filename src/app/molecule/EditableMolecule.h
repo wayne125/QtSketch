@@ -228,6 +228,11 @@ public:
     };
     MergeResult mergeOverlappingAtoms(double tolerance = 0.1);
 
+    // Non-undoable document-seeding helper (30-templates.js's addBenzeneRing)
+    // -- NOT a DocumentState command; mutates directly and has no history
+    // entry, matching the real function exactly.
+    QList<AtomId> addBenzeneRing(double cx, double cy);
+
 private:
     // One Indigo session per instance, held for the object's lifetime
     // (unlike IndigoService's alloc/release-per-call one-shot pattern).

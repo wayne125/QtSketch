@@ -761,3 +761,20 @@ EditableMolecule::MergeResult EditableMolecule::mergeOverlappingAtoms(double tol
     return result;
 }
 
+QList<AtomId> EditableMolecule::addBenzeneRing(double cx, double cy) {
+    static const double kPi = 3.14159265358979323846;
+    const double r = 1.5;   // chem-core's StandardBondLength
+    QList<AtomId> addedAtoms;
+    for (int i = 0; i < 6; ++i) {
+        double angle = (kPi / 3.0) * i - kPi / 2.0;
+        double px = cx + r * std::cos(angle);
+        double py = cy + r * std::sin(angle);
+        addedAtoms.append(addAtom(QStringLiteral("C"), px, py));
+    }
+    for (int j = 0; j < 6; ++j) {
+        int bType = (j % 2 == 0) ? 2 : 1;
+        addBond(addedAtoms[j], addedAtoms[(j + 1) % 6], bType);
+    }
+    return addedAtoms;
+}
+

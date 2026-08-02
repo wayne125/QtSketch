@@ -751,6 +751,27 @@ static void test_mergeOverlappingAtomsAndFindBond() {
     }
 }
 
+static void test_addBenzeneRing() {
+    std::printf("--- Test 18: addBenzeneRing ---\n");
+    EditableMolecule m;
+    QList<AtomId> ring = m.addBenzeneRing(4.0, 4.0);
+
+    CHECK(ring.size() == 6, "addBenzeneRing returns 6 atom ids");
+    CHECK(m.atomCount() == 6, "6 atoms created");
+    CHECK(m.bondCount() == 6, "6 bonds created (closed cycle)");
+
+    for (AtomId id : ring) {
+        CHECK(m.atomSymbol(id) == QStringLiteral("C"), "every ring atom is carbon");
+    }
+
+    for (int i = 0; i < 6; ++i) {
+        BondId bid = m.findBond(ring[i], ring[(i + 1) % 6]);
+        CHECK(bid >= 0, "consecutive ring atoms are bonded");
+        int expectedOrder = (i % 2 == 0) ? 2 : 1;
+        CHECK(m.bondOrder(bid) == expectedOrder, "ring bond alternates 2/1/2/1/2/1");
+    }
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -773,6 +794,7 @@ int main() {
     test_positionAccessors();
     test_atomMergeMechanicsSpike();
     test_mergeOverlappingAtomsAndFindBond();
+    test_addBenzeneRing();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
