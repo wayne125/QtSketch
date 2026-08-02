@@ -1012,6 +1012,72 @@ static void test_graftAtomOnto() {
     }
 }
 
+static void test_ringAndNeighborAccessors() {
+    std::printf("--- Test 23: implicit-H, neighbors, SSSR ring membership ---\n");
+
+    // Ethanol: C-C-O chain. Terminal carbon has 3 implicit H, middle carbon
+    // has 2, oxygen has 1. Neighbor counts: 1, 2, 1.
+    {
+        EditableMolecule m(QStringLiteral("CCO"));
+        QList<AtomId> ids = m.atomIds();
+        CHECK(ids.size() == 3, "setup: ethanol has 3 heavy atoms");
+        CHECK(m.implicitHydrogenCount(ids[0]) == 3, "terminal carbon has 3 implicit H");
+        CHECK(m.implicitHydrogenCount(ids[1]) == 2, "middle carbon has 2 implicit H");
+        CHECK(m.implicitHydrogenCount(ids[2]) == 1, "oxygen has 1 implicit H");
+        CHECK(m.neighborAtomIds(ids[0]).size() == 1, "terminal carbon has 1 neighbor");
+        CHECK(m.neighborAtomIds(ids[1]).size() == 2, "middle carbon has 2 neighbors");
+        QList<AtomId> midNeighbors = m.neighborAtomIds(ids[1]);
+        CHECK(midNeighbors.contains(ids[0]) && midNeighbors.contains(ids[2]),
+              "middle carbon's neighbors are the terminal carbon and the oxygen");
+        CHECK(m.implicitHydrogenCount(9999) == 0, "invalid id: implicitHydrogenCount returns 0");
+        CHECK(m.neighborAtomIds(9999).isEmpty(), "invalid id: neighborAtomIds returns empty");
+        CHECK(m.ringMembership().isEmpty(), "acyclic molecule has no SSSR rings");
+    }
+
+    // Benzene (real aromatic SMILES): one SSSR ring, 6 atoms, 6 bonds, all
+    // real aromatic order (4).
+    {
+        EditableMolecule m(QStringLiteral("c1ccccc1"));
+        CHECK(m.atomCount() == 6, "setup: benzene has 6 atoms");
+        QList<EditableMolecule::RingMembership> rings = m.ringMembership();
+        CHECK(rings.size() == 1, "benzene has exactly one SSSR ring");
+        if (!rings.isEmpty()) {
+            CHECK(rings[0].atoms.size() == 6, "the ring has 6 atoms");
+            CHECK(rings[0].bonds.size() == 6, "the ring has 6 bonds");
+            bool allAromatic = true;
+            for (BondId bid : rings[0].bonds) {
+                if (m.bondOrder(bid) != 4) allAromatic = false;
+            }
+            CHECK(allAromatic, "every ring bond has real aromatic order (4)");
+        }
+    }
+
+    // A manually-alternating Kekule 6-ring (single/double/single/double/single/double,
+    // built via explicit bonds, no real aromatic order anywhere) still has exactly
+    // one SSSR ring -- ring PERCEPTION doesn't require aromaticity, matching the
+    // real code's need to separately test the 6-ring/3-double-bond heuristic later.
+    {
+        EditableMolecule m;
+        QList<AtomId> ring;
+        for (int i = 0; i < 6; ++i) ring.append(m.addAtom(QStringLiteral("C"), i * 1.0, 0.0));
+        for (int i = 0; i < 6; ++i) {
+            int order = (i % 2 == 0) ? 2 : 1;
+            m.addBond(ring[i], ring[(i + 1) % 6], order);
+        }
+        QList<EditableMolecule::RingMembership> rings = m.ringMembership();
+        CHECK(rings.size() == 1, "the Kekule 6-ring is perceived as one SSSR ring");
+        if (!rings.isEmpty()) {
+            CHECK(rings[0].atoms.size() == 6, "the Kekule ring has 6 atoms");
+            CHECK(rings[0].bonds.size() == 6, "the Kekule ring has 6 bonds");
+            int doubleCount = 0;
+            for (BondId bid : rings[0].bonds) {
+                if (m.bondOrder(bid) == 2) ++doubleCount;
+            }
+            CHECK(doubleCount == 3, "exactly 3 of the ring's bonds are double bonds");
+        }
+    }
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -1039,6 +1105,7 @@ int main() {
     test_insertStructure();
     test_graftAtomOnto();
     test_renderSupportStorageDefaults();
+    test_ringAndNeighborAccessors();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);

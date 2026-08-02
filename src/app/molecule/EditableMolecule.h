@@ -240,6 +240,22 @@ public:
     QString rxnArrowConditionsBelow(RxnArrowId id) const;
     bool rxnArrowCurvature(RxnArrowId id, double& x, double& y) const;
 
+    // Pure read-only Indigo queries -- no mutation. implicitHydrogenCount wraps
+    // indigoCountHydrogens; neighborAtomIds wraps this class's own bond-endpoint
+    // bookkeeping (not a raw Indigo neighbor-iteration call, since AtomId is our own stable id,
+    // not Indigo's raw index).
+    int implicitHydrogenCount(AtomId id) const;
+    QList<AtomId> neighborAtomIds(AtomId id) const;
+
+    // One SSSR ring per entry, atom/bond ids in the ring object's own iteration order.
+    // Confirmed by direct probe: SSSR ring objects support indigoIterateAtoms/indigoIterateBonds
+    // directly, exactly like a real molecule handle -- no atom-pair-to-bond re-derivation needed.
+    struct RingMembership {
+        QList<AtomId> atoms;
+        QList<BondId> bonds;
+    };
+    QList<RingMembership> ringMembership() const;
+
     int addDataSGroup(const QList<AtomId>& atoms, const QString& description, const QString& data);
     int dataSGroupCount() const;
 

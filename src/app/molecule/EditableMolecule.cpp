@@ -981,3 +981,71 @@ bool EditableMolecule::rxnArrowCurvature(RxnArrowId id, double& x, double& y) co
     return true;
 }
 
+int EditableMolecule::implicitHydrogenCount(AtomId id) const {
+    if (m_mol < 0 || !m_atomIdx.contains(id)) return 0;
+    activateSession();
+    int a = indigoGetAtom(m_mol, m_atomIdx.value(id));
+    if (a < 0) return 0;
+    // indigoCountHydrogens takes an out-parameter -- it does NOT return the count
+    // directly (confirmed by the real compile error this produced: "too few
+    // arguments to function 'int indigoCountHydrogens(int, int*)'"). It returns
+    // 0 (not 1) when the count isn't definitely known (e.g. a query atom), in
+    // which case *hydro is left unwritten -- h stays at its 0 initializer.
+    int h = 0;
+    indigoCountHydrogens(a, &h);
+    indigoFree(a);
+    return h > 0 ? h : 0;
+}
+
+QList<AtomId> EditableMolecule::neighborAtomIds(AtomId id) const {
+    QList<AtomId> result;
+    if (m_mol < 0 || !m_atomIdx.contains(id)) return result;
+    for (auto it = m_bondIdx.constBegin(); it != m_bondIdx.constEnd(); ++it) {
+        AtomId ea = -1, eb = -1;
+        if (!bondEndpoints(it.key(), ea, eb)) continue;
+        if (ea == id) result.append(eb);
+        else if (eb == id) result.append(ea);
+    }
+    return result;
+}
+
+QList<EditableMolecule::RingMembership> EditableMolecule::ringMembership() const {
+    QList<RingMembership> result;
+    if (m_mol < 0) return result;
+    activateSession();
+    int sssr = indigoIterateSSSR(m_mol);
+    if (sssr < 0) return result;
+    int ring;
+    while ((ring = indigoNext(sssr)) > 0) {
+        RingMembership rm;
+        int aIter = indigoIterateAtoms(ring);
+        if (aIter >= 0) {
+            int a;
+            while ((a = indigoNext(aIter)) > 0) {
+                int idx = indigoIndex(a);
+                for (auto it = m_atomIdx.constBegin(); it != m_atomIdx.constEnd(); ++it) {
+                    if (it.value() == idx) { rm.atoms.append(it.key()); break; }
+                }
+                indigoFree(a);
+            }
+            indigoFree(aIter);
+        }
+        int bIter = indigoIterateBonds(ring);
+        if (bIter >= 0) {
+            int b;
+            while ((b = indigoNext(bIter)) > 0) {
+                int idx = indigoIndex(b);
+                for (auto it = m_bondIdx.constBegin(); it != m_bondIdx.constEnd(); ++it) {
+                    if (it.value() == idx) { rm.bonds.append(it.key()); break; }
+                }
+                indigoFree(b);
+            }
+            indigoFree(bIter);
+        }
+        indigoFree(ring);
+        result.append(rm);
+    }
+    indigoFree(sssr);
+    return result;
+}
+
