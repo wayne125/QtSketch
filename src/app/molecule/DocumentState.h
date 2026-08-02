@@ -142,9 +142,26 @@ public:
     void scaleSelectionLive(double factor, double anchorX, double anchorY);
     void commitScale();
 
+    // Generic ring construction, ported from 30-templates.js's addRing +
+    // perceiveRingAlternation. `coords` is a flat [x0,y0, x1,y1, ...] list in
+    // exactly the caller's winding order -- NEVER canonicalized, since the
+    // rendering layer already handles either winding direction
+    // (10-state.js:1171-1177). No-ops on malformed input (odd length or
+    // fewer than 3 points). `aromatic` is a plain bool, not a tri-state type:
+    // the only reachable path into this method (V8Process::addRing) always
+    // passes a real bool, so the JS's unreachable `undefined` case needs no
+    // representation here.
+    void addRing(const QList<double>& coords, bool aromatic = true);
+
 private:
     enum class DiscreteTransform { RotateCW, RotateCCW, FlipH, FlipV };
     void applyDiscreteTransform(DiscreteTransform mode);
+
+    // Shared by addRing's alternation step: one bond as it stood BEFORE this
+    // operation began, keyed by its endpoint pair. Presence of a pair here
+    // identifies a fusion seam.
+    struct OldBondType { AtomId a, b; int order; };
+    void applyRingAlternation(const QList<AtomId>& ringAtoms, const QList<OldBondType>& oldBonds, bool aromatic);
 
     // Page bounds, copied verbatim from 10-state.js:238-239.
     static constexpr double kPageMinX = -30.0, kPageMaxX = 30.0;

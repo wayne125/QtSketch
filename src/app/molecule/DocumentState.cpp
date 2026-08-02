@@ -698,3 +698,112 @@ void DocumentState::resetAllDragState() {
     m_scaleTotalFactor = 1.0;
 }
 
+void DocumentState::applyRingAlternation(const QList<AtomId>& ringAtoms, const QList<OldBondType>& oldBonds, bool aromatic) {
+    int n = ringAtoms.size();
+    if (n < 3) return;
+    EditableMolecule& mol = m_molecule;
+
+    auto findOldOrder = [&oldBonds](AtomId a, AtomId b) -> int {
+        for (const OldBondType& ob : oldBonds) {
+            if ((ob.a == a && ob.b == b) || (ob.a == b && ob.b == a)) return ob.order;
+        }
+        return -1;
+    };
+
+    QList<BondId> edgeBondIds;
+    QList<int> edgeAnchorType;
+    int anchorIdx = -1;
+    for (int k = 0; k < n; ++k) {
+        AtomId a1 = ringAtoms[k], a2 = ringAtoms[(k + 1) % n];
+        edgeBondIds.append(mol.findBond(a1, a2));
+        int anchorType = findOldOrder(a1, a2);
+        edgeAnchorType.append(anchorType);
+        if (anchorType != -1 && anchorIdx == -1) anchorIdx = k;
+    }
+
+    if (anchorIdx == -1) {
+        // Freestanding ring: no fusion seam.
+        if (!aromatic) return;
+        if (n != 6) return;
+        for (int k = 0; k < n; ++k) {
+            if (edgeBondIds[k] >= 0) mol.setBondOrderValue(edgeBondIds[k], (k % 2 == 0) ? 2 : 1);
+        }
+        return;
+    }
+
+    // Fused, but explicitly non-aromatic: every new edge was already created
+    // single, and the anchor edge keeps its own pre-existing type untouched
+    // below -- nothing to alternate.
+    if (!aromatic) return;
+
+    // Only a clean single-seam alternation is handled; odd-sized fused rings
+    // keep whichever pre-existing bonds they already had.
+    if (n % 2 != 0) return;
+
+    for (int step = 1; step < n; ++step) {
+        int k = (anchorIdx + step) % n;
+        if (edgeAnchorType[k] != -1) continue;   // another pre-existing edge: leave untouched
+        if (edgeBondIds[k] < 0) continue;
+        mol.setBondOrderValue(edgeBondIds[k], (step % 2 == 1) ? 1 : 2);
+    }
+}
+
+void DocumentState::addRing(const QList<double>& coords, bool aromatic) {
+    if (coords.size() < 6 || coords.size() % 2 != 0) return;   // need >= 3 points, even length
+
+    EditableMolecule& mol = m_molecule;
+    auto createdAtoms = std::make_shared<QList<AtomId>>();
+    auto createdBonds = std::make_shared<QList<BondId>>();
+
+    EditCommand cmd;
+    cmd.execute = [this, &mol, coords, aromatic, createdAtoms, createdBonds]() {
+        createdAtoms->clear();
+        createdBonds->clear();
+
+        // Bond types the ring might fuse onto, captured from the structure
+        // as it stood BEFORE this ring is added.
+        QList<OldBondType> oldBonds;
+        for (BondId bid : mol.bondIds()) {
+            AtomId a = -1, b = -1;
+            if (mol.bondEndpoints(bid, a, b)) oldBonds.append({a, b, mol.bondOrder(bid)});
+        }
+
+        int n = coords.size() / 2;
+        QList<AtomId> ringAtoms;
+        for (int i = 0; i < n; ++i) {
+            AtomId aid = mol.addAtom(QStringLiteral("C"), coords[i * 2], coords[i * 2 + 1]);
+            ringAtoms.append(aid);
+            createdAtoms->append(aid);
+        }
+        // All ring bonds start single; correct alternation is derived after
+        // fusion, once we know whether any edge coincides with a pre-existing
+        // bond.
+        for (int i = 0; i < n; ++i) {
+            BondId bid = mol.addBond(ringAtoms[i], ringAtoms[(i + 1) % n], 1);
+            if (bid >= 0) createdBonds->append(bid);
+        }
+
+        EditableMolecule::MergeResult mergeResult = mol.mergeOverlappingAtoms();
+        QList<AtomId> survivors;
+        for (AtomId a : *createdAtoms) {
+            if (!mergeResult.mergedAway.contains(a)) survivors.append(a);
+        }
+        *createdAtoms = survivors;
+        for (BondId b : mergeResult.createdBonds) createdBonds->append(b);
+
+        QList<AtomId> finalRingAtoms;
+        for (AtomId a : ringAtoms) finalRingAtoms.append(mergeResult.mergedAway.value(a, a));
+
+        applyRingAlternation(finalRingAtoms, oldBonds, aromatic);
+    };
+    cmd.invert = [&mol, createdAtoms, createdBonds]() {
+        // Bonds first, then atoms -- avoids depending on removal cascade
+        // ordering. Stale ids here (already gone via a cascade during
+        // execute) fail cleanly and harmlessly, per every EditableMolecule
+        // accessor's established contract.
+        for (BondId b : *createdBonds) mol.removeBond(b);
+        for (AtomId a : *createdAtoms) mol.removeAtom(a);
+    };
+    executeCommand(std::move(cmd));
+}
+

@@ -640,6 +640,140 @@ static void test_dragStateResetOnUndoRedo() {
     }
 }
 
+static void test_addRing() {
+    std::printf("--- Test 12: addRing (fusion-aware alternation) ---\n");
+    const double kPi = 3.14159265358979323846;
+
+    // Freestanding aromatic 6-ring: alternates 2/1/2/1/2/1.
+    {
+        DocumentState doc;
+        QList<double> coords;
+        for (int i = 0; i < 6; ++i) {
+            double angle = (kPi / 3.0) * i;
+            coords.append(std::cos(angle));
+            coords.append(std::sin(angle));
+        }
+        CHECK(!doc.canUndo(), "history starts empty");
+        doc.addRing(coords, true);
+        CHECK(doc.canUndo(), "addRing pushes exactly one history entry");
+        CHECK(doc.molecule().atomCount() == 6, "6 atoms created");
+        CHECK(doc.molecule().bondCount() == 6, "6 bonds created");
+        QList<AtomId> ids = doc.molecule().atomIds();
+        for (int i = 0; i < 6; ++i) {
+            BondId bid = doc.molecule().findBond(ids[i], ids[(i + 1) % 6]);
+            CHECK(bid >= 0, "consecutive ring atoms are bonded");
+        }
+        doc.undo();
+        CHECK(doc.molecule().atomCount() == 0, "undo removes every ring atom");
+        CHECK(doc.molecule().bondCount() == 0, "undo removes every ring bond");
+        CHECK(!doc.canUndo(), "history is empty again");
+    }
+
+    // Freestanding NonAromatic 6-ring stays all single.
+    {
+        DocumentState doc;
+        QList<double> coords;
+        for (int i = 0; i < 6; ++i) {
+            double angle = (kPi / 3.0) * i;
+            coords.append(std::cos(angle));
+            coords.append(std::sin(angle));
+        }
+        doc.addRing(coords, false);
+        QList<AtomId> ids = doc.molecule().atomIds();
+        for (int i = 0; i < 6; ++i) {
+            BondId bid = doc.molecule().findBond(ids[i], ids[(i + 1) % 6]);
+            CHECK(doc.molecule().bondOrder(bid) == 1, "every bond stays single when aromatic=false");
+        }
+    }
+
+    // A freestanding 5-ring stays all single even with aromatic=true (the
+    // real code's `if (n !== 6) return` branch).
+    {
+        DocumentState doc;
+        QList<double> coords;
+        for (int i = 0; i < 5; ++i) {
+            double angle = (2.0 * kPi / 5.0) * i;
+            coords.append(std::cos(angle));
+            coords.append(std::sin(angle));
+        }
+        doc.addRing(coords, true);
+        QList<AtomId> ids = doc.molecule().atomIds();
+        for (int i = 0; i < 5; ++i) {
+            BondId bid = doc.molecule().findBond(ids[i], ids[(i + 1) % 5]);
+            CHECK(doc.molecule().bondOrder(bid) == 1, "5-ring stays all single (n != 6 branch)");
+        }
+    }
+
+    // FUSION SEAM REGRESSION (the exact naphthalene bug the real comment
+    // describes): a benzene ring, then a second aromatic 6-ring sharing one
+    // edge with it. The seam bond must keep its committed order, and the
+    // new ring must alternate outward WITHOUT two adjacent double bonds at
+    // the seam.
+    {
+        DocumentState doc;
+        AtomId a0 = doc.molecule().addAtom(QStringLiteral("C"), 0.0, 0.0);
+        AtomId a1 = doc.molecule().addAtom(QStringLiteral("C"), 1.5, 0.0);
+        BondId seam = doc.molecule().addBond(a0, a1, 2);   // pre-existing, committed order 2
+        CHECK(seam > 0, "setup: seam bond created");
+
+        // Second ring shares the (a0,a1) edge: reuse their exact coordinates
+        // for the first two ring vertices so mergeOverlappingAtoms fuses onto
+        // them, then continue the hexagon outward.
+        QList<double> coords;
+        coords << 0.0 << 0.0 << 1.5 << 0.0;             // coincide with a0, a1
+        coords << 2.25 << 1.3 << 1.5 << 2.6 << 0.0 << 2.6 << -0.75 << 1.3;
+        doc.addRing(coords, true);
+
+        // 2 pre-existing (a0,a1) + 6 new ring atoms - 2 fused away (the two
+        // new atoms coinciding with a0/a1) = 6 total.
+        CHECK(doc.molecule().atomCount() == 6, "2 pre-existing + 6 new - 2 fused onto a0/a1 = 6 total");
+        // seam(a0-a1) + 2 replacement bonds (a0-to-new-neighbor,
+        // a1-to-new-neighbor) + 3 untouched inner ring bonds = 6 total.
+        CHECK(doc.molecule().bondCount() == 6, "6 bonds total in the fused bicyclic system");
+        CHECK(doc.molecule().bondOrder(seam) == 2, "the seam bond's committed order is UNCHANGED");
+
+        // Walk the new ring's atoms (everything except a0/a1) and confirm no
+        // two bonds adjacent to the seam are both double (the naphthalene bug).
+        QList<AtomId> allIds = doc.molecule().atomIds();
+        QList<AtomId> newRingAtoms;
+        for (AtomId id : allIds) if (id != a0 && id != a1) newRingAtoms.append(id);
+        // Only 4, not 6: two of the new ring's 6 vertices coincided with
+        // a0/a1 and were fused away, never surviving to this point.
+        CHECK(newRingAtoms.size() == 4, "4 surviving non-seam atoms belong to the new ring");
+        // The two edges leaving the seam (a0-to-new-neighbor and
+        // a1-to-new-neighbor) must both be SINGLE -- alternating outward from
+        // an already-double seam.
+        int singleCount = 0, doubleCount = 0;
+        for (AtomId id : newRingAtoms) {
+            BondId toA0 = doc.molecule().findBond(a0, id);
+            BondId toA1 = doc.molecule().findBond(a1, id);
+            if (toA0 >= 0) { if (doc.molecule().bondOrder(toA0) == 1) ++singleCount; else ++doubleCount; }
+            if (toA1 >= 0) { if (doc.molecule().bondOrder(toA1) == 1) ++singleCount; else ++doubleCount; }
+        }
+        CHECK(singleCount == 2 && doubleCount == 0,
+              "both edges leaving the seam are single -- no adjacent double bonds at the fusion point");
+
+        doc.undo();
+        CHECK(doc.molecule().atomCount() == 2, "undo removes the 4 surviving new-ring atoms, leaving a0/a1");
+        CHECK(doc.molecule().bondCount() == 1, "undo removes exactly the new-ring bonds, leaving the seam");
+        CHECK(doc.molecule().bondOrder(seam) == 2, "the seam bond survives undo with its original order");
+    }
+
+    // Malformed coords no-op cleanly. Each case isolates ONE guard condition
+    // so a bug in either check can't hide behind the other also tripping.
+    {
+        DocumentState doc;
+        // Odd length but >= 6 doubles (7 total: 3.5 "points") -- exercises
+        // the `% 2 != 0` check specifically, independent of the size check.
+        doc.addRing({0.0, 0.0, 1.0, 0.0, 2.0, 0.0, 3.0});
+        CHECK(!doc.canUndo(), "odd-length coords (>=6 doubles): no history entry");
+        // Even length but only 2 points (4 doubles) -- exercises the `< 6`
+        // check specifically, independent of the oddness check.
+        doc.addRing({0.0, 0.0, 1.0, 0.0});
+        CHECK(!doc.canUndo(), "fewer than 3 points (even length): no history entry");
+    }
+}
+
 static void test_documentStateSelection() {
     std::printf("--- Test 4: DocumentState selection ---\n");
     DocumentState doc;
@@ -729,6 +863,7 @@ int main() {
     test_liveDragRotate();
     test_liveDragScale();
     test_dragStateResetOnUndoRedo();
+    test_addRing();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }
