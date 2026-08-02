@@ -90,6 +90,25 @@
 // chem-core.js's transformSelection also swaps wedge stereo (1 <-> 6) for
 // bonds fully inside the selection so the depiction stays chemically
 // consistent; that swap is an explicit, documented gap, not an oversight.
+//
+// Atom-merge mechanics (sub-project 3c design question): spike findings
+// (tests/editable_molecule_test.cpp Test 16): (1) a raw indigoRemove(atom)
+// DOES auto-remove that atom's incident bonds -- bond count dropped from 1
+// to 0 after removing one of the bonded pair, with no separate bond-removal
+// call. (2) In the ordinary (non-seam) case, creating the replacement bond
+// onto the kept atom BEFORE removing the doomed atom succeeds, and the
+// order passed to indigoAddBond is read back unchanged (no surprise there).
+// (3) In the seam case -- kept already bonded to the same target -- creating
+// the would-be duplicate bond is REJECTED ("already have edge between
+// vertices"), exactly 3b's GT-T5 finding, and the pre-existing seam bond's
+// order is left completely unchanged by the attempt or by the subsequent
+// removal of the doomed atom. Consequence: mergeOverlappingAtoms can
+// unconditionally try to create each replacement bond BEFORE removing the
+// doomed atom, treat a negative return as the expected seam-dedupe outcome
+// (not an error), and rely on removeAtom's cascade to clean up whatever of
+// doomed's original bonds remain (either the ones that were never
+// successfully rewired, or the ones that were, since the original bond
+// object is a separate one from the replacement).
 
 #include <QString>
 #include <QHash>

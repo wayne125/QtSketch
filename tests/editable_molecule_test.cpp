@@ -607,6 +607,77 @@ static void test_positionAccessors() {
     CHECK(!m.setImageRect(bad, 0, 0, 1, 1), "invalid id: setImageRect fails cleanly");
 }
 
+static void test_atomMergeMechanicsSpike() {
+    std::printf("--- Test 16: atom-merge mechanics spike (3c design question) ---\n");
+    unsigned long long session = indigoAllocSessionId();
+    indigoSetSessionId(session);
+
+    // Q1: does indigoRemove(atom) auto-remove its incident bonds (raw, not
+    // via our removeAtom wrapper)?
+    {
+        int mol = indigoCreateMolecule();
+        int m = indigoAddAtom(mol, "C");
+        int r = indigoAddAtom(mol, "C");
+        indigoAddBond(m, r, 3);
+        int bondsBefore = indigoCountBonds(mol);
+        indigoRemove(m);
+        int bondsAfter = indigoCountBonds(mol);
+        std::printf("[INFO] spike: indigoRemove(atom) -- bonds before=%d after=%d (incident bond %s)\n",
+                    bondsBefore, bondsAfter, bondsAfter < bondsBefore ? "AUTO-REMOVED" : "SURVIVED");
+        indigoFree(mol);
+    }
+
+    // Q2: create a replacement bond onto the kept atom BEFORE removing the
+    // doomed atom, when kept is NOT already bonded to the target (the
+    // ordinary, non-seam case).
+    {
+        int mol = indigoCreateMolecule();
+        int kept = indigoAddAtom(mol, "C");     // simulates the pre-existing atom
+        int doomed = indigoAddAtom(mol, "C");   // simulates the new ring/chain atom at the same position
+        int target = indigoAddAtom(mol, "C");   // doomed's other neighbor, to be rewired onto kept
+        indigoAddBond(doomed, target, 1);       // the bond that must move from doomed to kept
+
+        int newBond = indigoAddBond(kept, target, 1);
+        std::printf("[INFO] spike: create replacement bond before removal (non-seam case) returned %d%s\n",
+                    newBond, newBond < 0 ? " (REJECTED)" : "");
+        if (newBond >= 0) {
+            std::printf("[INFO] spike: replacement bond order read back = %d (created with order 1)\n",
+                        indigoBondOrder(newBond));
+        }
+        indigoRemove(doomed);
+        std::printf("[INFO] spike: atom count after removing doomed = %d (expect 2: kept + target)\n",
+                    indigoCountAtoms(mol));
+        indigoFree(mol);
+    }
+
+    // Q3: the seam case -- kept is ALREADY bonded to target (a fusion seam).
+    // Creating an equivalent doomed->target bond onto kept should be
+    // REJECTED as a parallel edge (3b's GT-T5 finding), which is the
+    // CORRECT outcome: the pre-existing kept-target bond must survive
+    // untouched, not be duplicated.
+    {
+        int mol = indigoCreateMolecule();
+        int kept = indigoAddAtom(mol, "C");
+        int doomed = indigoAddAtom(mol, "C");
+        int target = indigoAddAtom(mol, "C");
+        int preExisting = indigoAddBond(kept, target, 2);   // the committed seam bond, order 2
+        indigoAddBond(doomed, target, 1);                   // doomed's duplicate edge to the same target
+
+        int dupBond = indigoAddBond(kept, target, 1);
+        std::printf("[INFO] spike: create replacement bond in the SEAM case (kept already bonded to target) returned %d%s\n",
+                    dupBond, dupBond < 0 ? " (REJECTED, as expected)" : " (UNEXPECTEDLY ACCEPTED)");
+        if (dupBond < 0) std::printf("[INFO] spike: rejection error: %s\n", indigoGetLastError());
+
+        indigoRemove(doomed);
+        std::printf("[INFO] spike: pre-existing seam bond order after doomed removal = %d (expect unchanged: 2)\n",
+                    indigoBondOrder(preExisting));
+        indigoFree(mol);
+    }
+
+    CHECK(true, "spike: atom-merge mechanics investigation completed (see [INFO] lines above)");
+    indigoReleaseSessionId(session);
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -627,6 +698,7 @@ int main() {
     test_atomQueryList();
     test_bondStereoInvertSpike();
     test_positionAccessors();
+    test_atomMergeMechanicsSpike();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
