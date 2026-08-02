@@ -87,3 +87,10 @@ int TemplateLibrary::saltOrSolvent(const QString& name) const {
     return m_saltsStructs.value(name, -1);
 }
 int TemplateLibrary::libraryTemplateFusionBondIdx(const QString& name) const { return m_libraryBondIdx.value(name, -1); }
+
+QString TemplateLibrary::molfileText(int handle) const {
+    if (handle < 0) return QString();
+    activateSession();
+    const char* mf = indigoMolfile(handle);
+    return mf ? QString::fromUtf8(mf) : QString();
+}

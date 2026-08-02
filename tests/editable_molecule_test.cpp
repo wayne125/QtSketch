@@ -790,6 +790,26 @@ static void test_templateLibraryLoading() {
         CHECK(indigoCountSuperatoms(ac) == 1, "\"Ac\" has 1 superatom group");
     }
 
+    // molfileText is the safe cross-session handoff: TemplateLibrary owns its
+    // own Indigo session, so a raw handle like `ac` is only valid while that
+    // session is active. Switch to a DIFFERENT session (as any EditableMolecule
+    // does before its own calls) and confirm the handle can no longer be read
+    // directly, but the Molfile text -- captured before switching -- reloads
+    // correctly in the new session with the superatom intact.
+    QString acMolfile = lib.molfileText(ac);
+    CHECK(!acMolfile.isEmpty(), "molfileText(\"Ac\") returns non-empty text");
+    unsigned long long otherSession = indigoAllocSessionId();
+    indigoSetSessionId(otherSession);
+    CHECK(indigoCountAtoms(ac) < 0, "the raw handle is not usable from a different session");
+    int reloadedAc = indigoLoadMoleculeFromString(acMolfile.toUtf8().constData());
+    CHECK(reloadedAc >= 0, "molfileText's output reparses cleanly in a different session");
+    if (reloadedAc >= 0) {
+        CHECK(indigoCountAtoms(reloadedAc) == 3, "reparsed \"Ac\" still has 3 atoms");
+        CHECK(indigoCountSuperatoms(reloadedAc) == 1, "reparsed \"Ac\" still has its superatom group");
+        indigoFree(reloadedAc);
+    }
+    indigoReleaseSessionId(otherSession);
+
     // "Indole" is a real library.sdf entry: 9 atoms, 10 bonds, bondIdx=6
     // (confirmed by direct file read: the aromatic N-C bond at the
     // pyrrole/benzene fusion seam). library.sdf entries have no G-line and no

@@ -49,6 +49,18 @@ public:
     int saltOrSolvent(const QString& name) const;
     int libraryTemplateFusionBondIdx(const QString& name) const;   // -1 if the template has no fusion metadata
 
+    // Serializes a handle returned by this class (from ITS OWN session) to
+    // Molfile text -- the only safe way for a caller in a DIFFERENT Indigo
+    // session (e.g. an EditableMolecule, which activates its own session
+    // before every call) to consume this structure. Confirmed by direct
+    // probe: a raw handle cannot cross sessions -- reusing its integer id in
+    // a foreign session either fails or, worse, silently aliases a different
+    // object there -- while a Molfile round-trip (indigoMolfile here,
+    // indigoLoadMoleculeFromString on the other side) preserves atoms,
+    // bonds, coordinates, and SUP sgroups with their attachment points
+    // correctly. Empty string if the handle is invalid.
+    QString molfileText(int handle) const;
+
 private:
     // Indigo molecule handles are small integers scoped to the session active
     // when they were created -- switching sessions (as every EditableMolecule
