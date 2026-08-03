@@ -111,6 +111,11 @@ public:
     void moveImage(ImageId id, double dx, double dy);
     void resizeImage(ImageId id, double scaleFactor);
 
+    // Image lifecycle (50-reactions.js: addImage/deleteImage). addImage no-ops (returns -1) on
+    // empty image data, matching the real `if (!base64DataUri) return`.
+    ImageId addImage(const QByteArray& pngData, double cx, double cy, double halfW, double halfH);
+    void deleteImage(ImageId id);
+
     // Rxn-arrow lifecycle (50-reactions.js: addRxnArrow/addCurvedArrow/setRxnArrowMode/
     // setRxnArrowConditions/deleteRxnArrow). addRxnArrow computes its default second endpoint
     // the same way the real JS does (2.5 bond-lengths to the right). deleteRxnArrow's undo

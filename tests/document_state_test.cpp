@@ -1270,6 +1270,34 @@ static void test_addBracketSelection() {
     CHECK(maxX == 4 + 0.8, "bond's far endpoint contributes to the bbox");
 }
 
+static void test_imageCommands() {
+    std::printf("--- Test 22: image add/delete ---\n");
+    DocumentState doc;
+
+    ImageId img1 = doc.addImage(QByteArray("fakepng"), 1, 2, 4, 3);
+    double x = 0, y = 0, w = 0, h = 0; QByteArray png;
+    CHECK(doc.molecule().imageData(img1, x, y, w, h, png), "addImage creates a real image");
+    CHECK(x == 1 && y == 2 && w == 4 && h == 3, "center/half-extents match the arguments");
+    CHECK(png == QByteArray("fakepng"), "image data round-trips");
+    doc.undo();
+    CHECK(doc.molecule().imageIds().isEmpty(), "undo removes the created image");
+
+    CHECK(doc.addImage(QByteArray(), 0, 0, 1, 1) == -1, "addImage with empty data returns -1 (no-op)");
+    CHECK(!doc.canUndo(), "the no-op addImage call pushed no history entry");
+
+    ImageId img2 = doc.addImage(QByteArray("otherpng"), 0, 0, 1, 1);
+    doc.deleteImage(img2);
+    CHECK(doc.molecule().imageIds().isEmpty(), "deleteImage removes the image");
+    doc.undo();
+    CHECK(doc.molecule().imageIds().size() == 1, "undo recreates it (fresh id)");
+    ImageId restored = doc.molecule().imageIds().first();
+    CHECK(doc.molecule().imageData(restored, x, y, w, h, png) && png == QByteArray("otherpng"),
+          "restored image keeps its original data/geometry");
+
+    doc.deleteImage(9999);
+    CHECK(!doc.canUndo() || doc.molecule().imageIds().size() == 1, "deleteImage on an unknown id is a no-op");
+}
+
 int main() {
     test_selectionStateBasics();
     test_editCommandBasics();
@@ -1293,6 +1321,7 @@ int main() {
     test_rgroupCommands();
     test_textCommands();
     test_addBracketSelection();
+    test_imageCommands();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

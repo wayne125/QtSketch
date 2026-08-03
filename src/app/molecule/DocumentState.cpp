@@ -398,6 +398,31 @@ void DocumentState::resizeImage(ImageId id, double scaleFactor) {
     executeCommand(std::move(cmd));
 }
 
+ImageId DocumentState::addImage(const QByteArray& pngData, double cx, double cy, double halfW, double halfH) {
+    if (pngData.isEmpty()) return -1;
+
+    auto idBox = std::make_shared<ImageId>(-1);
+    EditableMolecule& mol = m_molecule;
+    EditCommand cmd;
+    cmd.execute = [&mol, idBox, pngData, cx, cy, halfW, halfH]() {
+        *idBox = mol.addImage(cx, cy, halfW, halfH, pngData);
+    };
+    cmd.invert = [&mol, idBox]() { mol.removeImage(*idBox); };
+    executeCommand(std::move(cmd));
+    return *idBox;
+}
+
+void DocumentState::deleteImage(ImageId id) {
+    EditableMolecule& mol = m_molecule;
+    double x = 0, y = 0, w = 0, h = 0; QByteArray png;
+    if (!mol.imageData(id, x, y, w, h, png)) return;
+
+    EditCommand cmd;
+    cmd.execute = [&mol, id]() { mol.removeImage(id); };
+    cmd.invert = [&mol, x, y, w, h, png]() { mol.addImage(x, y, w, h, png); };
+    executeCommand(std::move(cmd));
+}
+
 RxnArrowId DocumentState::addRxnArrow(double cx, double cy, const QString& mode) {
     auto idBox = std::make_shared<RxnArrowId>(-1);
     EditableMolecule& mol = m_molecule;
