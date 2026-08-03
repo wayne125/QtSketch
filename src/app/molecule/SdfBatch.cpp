@@ -156,6 +156,19 @@ bool SdfBatch::loadFromSdfText(const QString& sdfText) {
     return true;
 }
 
+bool SdfBatch::realign(const QStringList& alignedMolfiles) {
+    if (alignedMolfiles.size() != m_records.size()) return false;
+    activateSession();
+
+    QList<BatchRecord> result;
+    for (int i = 0; i < alignedMolfiles.size(); ++i) {
+        std::optional<BatchRecord> rec = ingestFromText(alignedMolfiles.at(i), i, i < 500);
+        result.append(rec ? *rec : m_records.at(i));
+    }
+    m_records = result;
+    return true;
+}
+
 int SdfBatch::recordCount() const { return m_records.size(); }
 
 QString SdfBatch::molfileAt(int index) const {

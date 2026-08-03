@@ -49,6 +49,13 @@ public:
     // batch, if sdfText is empty/whitespace-only.
     bool loadFromSdfText(const QString& sdfText);
 
+    // 40-serialize.js's realignSdfBatch: requires the SAME length as the current recordCount()
+    // (no-op, returns false, no mutation at all, otherwise) -- matching the real
+    // `molfiles.length !== _sdfBatchRecords.length` guard exactly. An entry whose replacement
+    // text fails to parse keeps its OLD BatchRecord entirely (text, label, props, thumbnail),
+    // matching the real `struct || _sdfBatchRecords[i].struct` fallback.
+    bool realign(const QStringList& alignedMolfiles);
+
     int recordCount() const;
     QString molfileAt(int index) const;
     QString labelAt(int index) const;

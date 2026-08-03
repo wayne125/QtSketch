@@ -145,6 +145,37 @@ static void test_thumbnailCapAppliesToThumbnailsOnly() {
     CHECK(!batch.molfileAt(500).isEmpty(), "but its molfile text is still stored -- only the thumbnail is skipped");
 }
 
+static void test_realign() {
+    std::printf("--- Test 9: realign ---\n");
+    SdfBatch batch;
+    QStringList mols;
+    mols << QStringLiteral("CCO") << QStringLiteral("N") << QStringLiteral("O");
+    batch.loadFromMolfileList(mols);
+    QString origMolfile1 = batch.molfileAt(1);
+    QString origLabel1 = batch.labelAt(1);
+
+    QStringList wrongLength;
+    wrongLength << QStringLiteral("C");
+    CHECK(!batch.realign(wrongLength), "realign with the wrong length returns false");
+    CHECK(batch.recordCount() == 3, "wrong-length realign leaves the batch completely unchanged");
+    CHECK(batch.molfileAt(1) == origMolfile1, "unchanged record 1 after a rejected realign");
+
+    QStringList realigned;
+    realigned << QStringLiteral("CC") << QStringLiteral("not valid at all $$$") << QStringLiteral("F");
+    CHECK(batch.realign(realigned), "realign with matching length succeeds");
+    CHECK(batch.recordCount() == 3, "record count unchanged after realign");
+    CHECK(batch.molfileAt(1) == origMolfile1, "the entry whose replacement failed to parse keeps its OLD text");
+    CHECK(batch.labelAt(1) == origLabel1, "the entry whose replacement failed to parse keeps its OLD label too");
+    CHECK(batch.molfileAt(0) != origMolfile1, "entry 0 (a genuinely different molecule) was updated");
+}
+
+static void test_realignEmptyVsEmpty() {
+    std::printf("--- Test 10: realign on an empty batch with an empty list ---\n");
+    SdfBatch batch;
+    CHECK(batch.realign(QStringList()), "realigning an empty batch with an empty list trivially succeeds (matching lengths, 0==0)");
+    CHECK(batch.recordCount() == 0, "still empty");
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -157,6 +188,8 @@ int main() {
     test_loadFromSdfTextEmpty();
     test_loadFromSdfTextSkipsInvalid();
     test_thumbnailCapAppliesToThumbnailsOnly();
+    test_realign();
+    test_realignEmptyVsEmpty();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
