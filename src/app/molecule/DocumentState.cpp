@@ -467,6 +467,22 @@ void DocumentState::loadBenzene() {
     markClean();
 }
 
+void DocumentState::buildBioSequenceView(const QString& sequenceText, const QString& seqType) {
+    m_bioView.buildSequenceView(sequenceText, seqType);
+}
+
+void DocumentState::addBioMonomer(const QString& symbol, const QString& seqType) {
+    m_bioView.addMonomer(symbol, seqType);
+}
+
+void DocumentState::deleteBioMonomer(int id) {
+    m_bioView.deleteMonomer(id);
+}
+
+QList<BioMonomer> DocumentState::bioMonomers() const { return m_bioView.monomers(); }
+QList<BioBond> DocumentState::bioBonds() const { return m_bioView.bonds(); }
+QString DocumentState::bioSeqType() const { return m_bioView.seqType(); }
+
 void DocumentState::changeAtomLabel(AtomId id, const QString& newLabel) {
     EditableMolecule& mol = m_molecule;
     QString oldLabel = mol.atomSymbol(id);

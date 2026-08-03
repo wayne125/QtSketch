@@ -1448,6 +1448,28 @@ static void test_loadBenzene() {
     CHECK(!doc.isDirty(), "a freshly-loaded benzene document is NOT dirty");
 }
 
+static void test_documentStateBioSequenceViewForwarding() {
+    std::printf("--- Test: DocumentState biopolymer sequence view forwarding ---\n");
+    DocumentState doc;
+    bool undoBefore = doc.canUndo();
+    bool dirtyBefore = doc.isDirty();
+
+    doc.buildBioSequenceView(QStringLiteral("ACDE"), QStringLiteral("PEPTIDE"));
+    CHECK(doc.bioMonomers().size() == 4, "buildBioSequenceView forwards correctly");
+    CHECK(doc.bioSeqType() == QStringLiteral("PEPTIDE"), "bioSeqType forwards correctly");
+
+    doc.addBioMonomer(QStringLiteral("F"));
+    CHECK(doc.bioMonomers().size() == 5, "addBioMonomer forwards correctly");
+    CHECK(doc.bioBonds().size() == 4, "bioBonds forwards correctly");
+
+    int lastId = doc.bioMonomers().last().id;
+    doc.deleteBioMonomer(lastId);
+    CHECK(doc.bioMonomers().size() == 4, "deleteBioMonomer forwards correctly");
+
+    CHECK(doc.canUndo() == undoBefore, "none of these calls pushed a history entry");
+    CHECK(doc.isDirty() == dirtyBefore, "none of these calls changed dirty state");
+}
+
 static void test_setMoleculeName() {
     std::printf("--- Test 26: setMoleculeName ---\n");
     DocumentState doc;
@@ -1905,6 +1927,7 @@ int main() {
     test_deserializeMol();
     test_clearCanvas();
     test_loadBenzene();
+    test_documentStateBioSequenceViewForwarding();
     test_setMoleculeName();
     test_copySelection();
     test_insertStructureAt();

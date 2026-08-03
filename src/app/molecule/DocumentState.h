@@ -15,6 +15,7 @@
 // undo/redo.
 
 #include "EditableMolecule.h"
+#include "BiopolymerSequenceView.h"
 #include "TemplateLibrary.h"
 #include "EditCommand.h"
 #include "SelectionState.h"
@@ -108,6 +109,16 @@ public:
     // appends to or truncates history, never clears it wholesale). See
     // docs/superpowers/specs/2026-08-04-clear-canvas-load-benzene-cpp-design.md.
     void loadBenzene();
+
+    // src/worker/70-biopolymer.js's 4 functions, ported via BiopolymerSequenceView (sub-project
+    // 6d). None are undoable -- the real functions have no makeCmd/executeCommand either. See
+    // docs/superpowers/specs/2026-08-04-biopolymer-sequence-view-cpp-design.md.
+    void buildBioSequenceView(const QString& sequenceText, const QString& seqType);
+    void addBioMonomer(const QString& symbol, const QString& seqType = QString());
+    void deleteBioMonomer(int id);
+    QList<BioMonomer> bioMonomers() const;
+    QList<BioBond> bioBonds() const;
+    QString bioSeqType() const;
 
     AtomId addAtom(const QString& symbol, double x, double y);
     BondId addBond(AtomId a, AtomId b, int order);
@@ -391,6 +402,7 @@ private:
                            double cursorX, double cursorY) const;
 
     EditableMolecule m_molecule;
+    BiopolymerSequenceView m_bioView;
     std::vector<EditCommand> m_history;
     int m_historyPointer = -1;
     bool m_dirty = false;
