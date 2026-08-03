@@ -1391,6 +1391,40 @@ static void test_deserializeMol() {
     CHECK(doc.molecule().atomCount() == 6, "a parse failure leaves the current document completely unchanged");
 }
 
+static void test_clearCanvas() {
+    std::printf("--- Test: clearCanvas ---\n");
+    DocumentState doc;
+    AtomId a1 = doc.addAtom(QStringLiteral("C"), 0, 0);
+    AtomId a2 = doc.addAtom(QStringLiteral("N"), 1, 0);
+    doc.addBond(a1, a2, 1);
+    doc.selectAtom(a1);
+    EditableMolecule& mol = doc.molecule();
+    CHECK(mol.atomCount() == 2, "setup: 2 atoms before clearCanvas");
+    CHECK(!doc.selection().atoms.isEmpty(), "setup: something selected before clearCanvas");
+
+    doc.clearCanvas();
+
+    CHECK(mol.atomCount() == 0, "document is empty after clearCanvas");
+    CHECK(doc.selection().isEmpty(), "selection cleared after clearCanvas");
+    CHECK(doc.isDirty(), "document is dirty after clearCanvas (an executed command, not markClean)");
+    CHECK(doc.canUndo(), "undo available");
+
+    doc.undo();
+    CHECK(mol.atomCount() == 2, "undo restores the original 2 atoms");
+    QString sym1, sym2;
+    for (AtomId id : mol.atomIds()) {
+        if (sym1.isEmpty()) sym1 = mol.atomSymbol(id); else sym2 = mol.atomSymbol(id);
+    }
+    CHECK((sym1 == QStringLiteral("C") && sym2 == QStringLiteral("N")) ||
+          (sym1 == QStringLiteral("N") && sym2 == QStringLiteral("C")),
+          "restored atoms have their original symbols");
+    CHECK(mol.bondCount() == 1, "restored bond too");
+    CHECK(doc.selection().isEmpty(),
+          "selection is EMPTY after undo, NOT restored -- undo()'s own generic post-invert "
+          "clear always wins, matching the real JS's clearCanvas (its own selection-restore "
+          "is dead code there for the identical reason)");
+}
+
 static void test_setMoleculeName() {
     std::printf("--- Test 26: setMoleculeName ---\n");
     DocumentState doc;
@@ -1846,6 +1880,7 @@ int main() {
     test_addBracketSelection();
     test_imageCommands();
     test_deserializeMol();
+    test_clearCanvas();
     test_setMoleculeName();
     test_copySelection();
     test_insertStructureAt();

@@ -97,6 +97,12 @@ public:
     // checkWarning fields. NOT undoable, same reasoning as setStereoDescriptors above.
     void setCheckIssues(const QString& jsonMap);
 
+    // 30-templates.js's clearCanvas: replaces the document with a blank one, undoable.
+    // Delegates to deserializeMol -- verified equivalent (indigoLoadMoleculeFromString("")
+    // succeeds; deserializeMol has no zero-atom guard). See
+    // docs/superpowers/specs/2026-08-04-clear-canvas-load-benzene-cpp-design.md.
+    void clearCanvas();
+
     AtomId addAtom(const QString& symbol, double x, double y);
     BondId addBond(AtomId a, AtomId b, int order);
     void deleteAtom(AtomId id);   // plain-atom-and-incident-bonds case only; see the

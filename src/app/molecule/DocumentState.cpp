@@ -453,6 +453,10 @@ void DocumentState::setCheckIssues(const QString& jsonMap) {
     }
 }
 
+void DocumentState::clearCanvas() {
+    deserializeMol(QString());
+}
+
 void DocumentState::changeAtomLabel(AtomId id, const QString& newLabel) {
     EditableMolecule& mol = m_molecule;
     QString oldLabel = mol.atomSymbol(id);
