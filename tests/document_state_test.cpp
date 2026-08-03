@@ -1364,6 +1364,32 @@ static void test_imageCommands() {
     CHECK(!doc.canUndo() || doc.molecule().imageIds().size() == 1, "deleteImage on an unknown id is a no-op");
 }
 
+static void test_deserializeMol() {
+    std::printf("--- Test 25: deserializeMol ---\n");
+    DocumentState doc;
+    AtomId a1 = doc.addAtom(QStringLiteral("C"), 0, 0);
+    doc.molecule().setName(QStringLiteral("original"));
+    doc.selectAtom(a1);
+    CHECK(!doc.selection().atoms.isEmpty(), "setup: something is selected before deserializeMol");
+
+    doc.deserializeMol(QStringLiteral("c1ccccc1"));
+    CHECK(doc.molecule().atomCount() == 6, "deserializeMol replaces the document with benzene's 6 atoms");
+    CHECK(doc.molecule().name().isEmpty(), "the old name is gone (extension data wiped, matching the real JS)");
+    CHECK(doc.selection().atoms.isEmpty(), "selection is cleared by deserializeMol itself, not just by a later undo/redo");
+
+    doc.undo();
+    CHECK(doc.molecule().atomCount() == 1, "undo restores the original 1-atom document");
+    CHECK(doc.molecule().name() == QStringLiteral("original"), "undo restores the original name too");
+
+    doc.redo();
+    CHECK(doc.molecule().atomCount() == 6, "redo re-applies the load");
+
+    bool canUndoBefore = doc.canUndo();
+    doc.deserializeMol(QStringLiteral("not a valid molecule at all $$$"));
+    CHECK(doc.canUndo() == canUndoBefore, "a parse failure pushes no history entry (no-op)");
+    CHECK(doc.molecule().atomCount() == 6, "a parse failure leaves the current document completely unchanged");
+}
+
 int main() {
     test_selectionStateBasics();
     test_editCommandBasics();
@@ -1390,6 +1416,7 @@ int main() {
     test_textCommands();
     test_addBracketSelection();
     test_imageCommands();
+    test_deserializeMol();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

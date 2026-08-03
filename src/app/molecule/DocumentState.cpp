@@ -1572,4 +1572,15 @@ void DocumentState::toggleSgroupExpanded(SGroupId id) {
     executeCommand(std::move(cmd));
 }
 
+void DocumentState::deserializeMol(const QString& data) {
+    EditableMolecule& mol = m_molecule;
+    auto before = std::make_shared<MoleculeSnapshot>(mol.snapshot());
+    if (!mol.loadFrom(data)) return;
+
+    EditCommand cmd;
+    cmd.execute = [this, &mol, data]() { mol.loadFrom(data); m_selection.clear(); };
+    cmd.invert = [&mol, before]() { mol.restore(*before); };
+    executeCommand(std::move(cmd));
+}
+
 

@@ -168,6 +168,12 @@ public:
     // no id needed).
     void addBracketSelection();
 
+    // Whole-document replace from a MOL-format string (50-reactions.js's sibling in
+    // 40-serialize.js: deserializeMol via _applyLoadedStruct). No-ops (no history entry) on a
+    // parse failure. Extension data (name, texts, rxnArrows, etc.) is wiped on success, matching
+    // the real JS exactly -- it never carries anything across a document replace.
+    void deserializeMol(const QString& data);
+
     // ---- Live-drag gestures ------------------------------------------------
     // Repeated *Live calls during a UI drag mutate positions directly and push
     // NOTHING onto the undo history; the matching commit* call at gesture end
