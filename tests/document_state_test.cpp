@@ -1732,6 +1732,93 @@ static void test_setStereoDescriptorsOutOfRangeIndexSkipped() {
           "the valid entry still applies even though the payload also has an out-of-range one");
 }
 
+static void test_setCheckIssuesValid() {
+    std::printf("--- Test: setCheckIssues applies atom- and bond-target issues ---\n");
+    DocumentState doc;
+    EditableMolecule& mol = doc.molecule();
+    AtomId a1 = doc.addAtom(QStringLiteral("C"), 0, 0);
+    AtomId a2 = doc.addAtom(QStringLiteral("C"), 1, 0);
+    BondId bond = doc.addBond(a1, a2, 1);
+
+    QList<AtomId> atomOrder = mol.atomIdsInIndigoOrder();
+    QList<BondId> bondOrder = mol.bondIdsInIndigoOrder();
+    int atomIdx = atomOrder.indexOf(a1);
+    int bondIdx = bondOrder.indexOf(bond);
+
+    bool historyBefore = doc.canUndo();
+    QString json = QString(
+        "{\"issues\":["
+        "{\"target\":\"atom\",\"type\":\"valence\",\"ids\":[%1]},"
+        "{\"target\":\"bond\",\"type\":\"overlap_atom\",\"ids\":[%2]}"
+        "]}"
+    ).arg(atomIdx).arg(bondIdx);
+    doc.setCheckIssues(json);
+
+    CHECK(mol.atomCheckWarningText(a1) == QStringLiteral("valence"), "atom checkWarning applied");
+    CHECK(mol.atomCheckWarningText(a2).isEmpty(), "the OTHER atom is untouched");
+    CHECK(mol.bondCheckWarningText(bond) == QStringLiteral("overlap_atom"), "bond checkWarning applied");
+    CHECK(doc.canUndo() == historyBefore, "no history entry pushed");
+}
+
+static void test_setCheckIssuesDefaultTargetIsAtom() {
+    std::printf("--- Test: setCheckIssues defaults missing/unrecognized target to atom ---\n");
+    DocumentState doc;
+    EditableMolecule& mol = doc.molecule();
+    AtomId a1 = doc.addAtom(QStringLiteral("C"), 0, 0);
+    int idx = mol.atomIdsInIndigoOrder().indexOf(a1);
+
+    doc.setCheckIssues(QString("{\"issues\":[{\"type\":\"radical\",\"ids\":[%1]}]}").arg(idx));
+    CHECK(mol.atomCheckWarningText(a1) == QStringLiteral("radical"),
+          "an issue with no target field applies to the atom, matching the real JS's || \"atom\" default");
+}
+
+static void test_setCheckIssuesResetsOnEachCall() {
+    std::printf("--- Test: setCheckIssues replaces, does not accumulate ---\n");
+    DocumentState doc;
+    EditableMolecule& mol = doc.molecule();
+    AtomId a1 = doc.addAtom(QStringLiteral("C"), 0, 0);
+    int idx = mol.atomIdsInIndigoOrder().indexOf(a1);
+
+    doc.setCheckIssues(QString("{\"issues\":[{\"target\":\"atom\",\"type\":\"valence\",\"ids\":[%1]}]}").arg(idx));
+    CHECK(mol.atomCheckWarningText(a1) == QStringLiteral("valence"), "first call applies");
+
+    doc.setCheckIssues(QStringLiteral("{\"issues\":[]}"));
+    CHECK(mol.atomCheckWarningText(a1).isEmpty(), "second call with no issues clears it (reset ran)");
+}
+
+static void test_setCheckIssuesMalformedJsonIsNoOp() {
+    std::printf("--- Test: setCheckIssues ignores malformed JSON ---\n");
+    DocumentState doc;
+    EditableMolecule& mol = doc.molecule();
+    AtomId a1 = doc.addAtom(QStringLiteral("C"), 0, 0);
+    int idx = mol.atomIdsInIndigoOrder().indexOf(a1);
+    doc.setCheckIssues(QString("{\"issues\":[{\"target\":\"atom\",\"type\":\"valence\",\"ids\":[%1]}]}").arg(idx));
+    CHECK(mol.atomCheckWarningText(a1) == QStringLiteral("valence"), "setup: applied");
+
+    doc.setCheckIssues(QStringLiteral("{not json"));
+    CHECK(mol.atomCheckWarningText(a1) == QStringLiteral("valence"), "malformed JSON leaves prior data unchanged");
+}
+
+static void test_setCheckIssuesReuseOrderRegression() {
+    std::printf("--- Test: setCheckIssues resolves correctly after a bond index-reuse edit ---\n");
+    DocumentState doc;
+    EditableMolecule& mol = doc.molecule();
+    AtomId a1 = doc.addAtom(QStringLiteral("C"), 0, 0);
+    AtomId a2 = doc.addAtom(QStringLiteral("C"), 1, 0);
+    AtomId a3 = doc.addAtom(QStringLiteral("C"), 2, 0);
+    BondId b1 = doc.addBond(a1, a2, 1);
+    doc.addBond(a2, a3, 1);
+    mol.removeBond(b1);
+    BondId b3 = doc.addBond(a1, a3, 2);
+
+    QList<BondId> order = mol.bondIdsInIndigoOrder();
+    int idx = order.indexOf(b3);
+    doc.setCheckIssues(QString("{\"issues\":[{\"target\":\"bond\",\"type\":\"overlap_atom\",\"ids\":[%1]}]}").arg(idx));
+
+    CHECK(mol.bondCheckWarningText(b3) == QStringLiteral("overlap_atom"),
+          "the bond that reused the freed index gets the warning");
+}
+
 int main() {
     test_selectionStateBasics();
     test_editCommandBasics();
@@ -1774,6 +1861,11 @@ int main() {
     test_setStereoDescriptorsResetsOnEachCall();
     test_setStereoDescriptorsMalformedJsonIsNoOp();
     test_setStereoDescriptorsOutOfRangeIndexSkipped();
+    test_setCheckIssuesValid();
+    test_setCheckIssuesDefaultTargetIsAtom();
+    test_setCheckIssuesResetsOnEachCall();
+    test_setCheckIssuesMalformedJsonIsNoOp();
+    test_setCheckIssuesReuseOrderRegression();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

@@ -416,6 +416,43 @@ void DocumentState::setStereoDescriptors(const QString& jsonMap) {
     }
 }
 
+void DocumentState::setCheckIssues(const QString& jsonMap) {
+    QJsonParseError err;
+    QJsonDocument doc = QJsonDocument::fromJson(jsonMap.toUtf8(), &err);
+    if (err.error != QJsonParseError::NoError || !doc.isObject()) return;
+    QJsonObject root = doc.object();
+
+    EditableMolecule& mol = m_molecule;
+
+    for (AtomId id : mol.atomIds()) mol.setAtomCheckWarningText(id, QString());
+    for (BondId id : mol.bondIds()) mol.setBondCheckWarningText(id, QString());
+
+    QJsonArray issues = root.value(QStringLiteral("issues")).toArray();
+    for (const QJsonValue& issueVal : issues) {
+        QJsonObject issue = issueVal.toObject();
+        QString target = issue.value(QStringLiteral("target")).toString();
+        if (target.isEmpty()) target = QStringLiteral("atom");
+        QString type = issue.value(QStringLiteral("type")).toString();
+        QJsonArray idsArr = issue.value(QStringLiteral("ids")).toArray();
+
+        if (target == QStringLiteral("atom")) {
+            QList<AtomId> atomOrder = mol.atomIdsInIndigoOrder();
+            for (const QJsonValue& idVal : idsArr) {
+                int idx = idVal.toInt(-1);
+                if (idx < 0 || idx >= atomOrder.size()) continue;
+                mol.setAtomCheckWarningText(atomOrder[idx], type);
+            }
+        } else {
+            QList<BondId> bondOrder = mol.bondIdsInIndigoOrder();
+            for (const QJsonValue& idVal : idsArr) {
+                int idx = idVal.toInt(-1);
+                if (idx < 0 || idx >= bondOrder.size()) continue;
+                mol.setBondCheckWarningText(bondOrder[idx], type);
+            }
+        }
+    }
+}
+
 void DocumentState::changeAtomLabel(AtomId id, const QString& newLabel) {
     EditableMolecule& mol = m_molecule;
     QString oldLabel = mol.atomSymbol(id);

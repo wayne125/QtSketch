@@ -93,6 +93,10 @@ public:
     // especially why positional indices resolve through atomIdsInIndigoOrder(), not atomIds().
     void setStereoDescriptors(const QString& jsonMap);
 
+    // 60-analysis.js's setCheckIssues: applies external structure-check results onto stored
+    // checkWarning fields. NOT undoable, same reasoning as setStereoDescriptors above.
+    void setCheckIssues(const QString& jsonMap);
+
     AtomId addAtom(const QString& symbol, double x, double y);
     BondId addBond(AtomId a, AtomId b, int order);
     void deleteAtom(AtomId id);   // plain-atom-and-incident-bonds case only; see the
