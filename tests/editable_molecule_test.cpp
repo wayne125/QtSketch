@@ -1341,6 +1341,83 @@ static void test_loadFrom() {
     CHECK(m.toMolfile().value == before, "failed loadFrom left the object's content completely unchanged");
 }
 
+static void test_submoleculeMolfile() {
+    std::printf("--- Test 32: submoleculeMolfile ---\n");
+
+    // Full-selection extraction of the "Ac" superatom fixture (3 atoms, 1 sgroup) -- same
+    // fixture used throughout this codebase's own tests.
+    QString acMolfile = QStringLiteral(
+        "Ac\n"
+        "  Ketcher\n\n"
+        "  3  2  0  0  0  0  0  0  0  0999 V2000\n"
+        "    3.3951   -3.5754    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "    2.6785   -3.9891    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "    3.3951   -2.7480    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "  2  1  1  0  0  0  0\n"
+        "  1  3  2  0  0  0  0\n"
+        "M  STY  1   1 SUP\n"
+        "M  SLB  1   1   1\n"
+        "M  SAL   1  3   1   2   3\n"
+        "M  SAP   1  1   1   0\n"
+        "M  SMT   1 Ac\n"
+        "M  END\n");
+    EditableMolecule m;
+    EditableMolecule::InsertResult r = m.insertStructure(acMolfile, [](double x, double y) { return QPointF(x, y); });
+    CHECK(r.createdAtoms.size() == 3, "setup: 3 atoms inserted");
+    CHECK(r.createdSGroups.size() == 1, "setup: 1 sgroup inserted");
+
+    StringResult full = m.submoleculeMolfile(r.createdAtoms, r.createdBonds);
+    CHECK(full.success, "full-selection extraction succeeds");
+    int reparsedFull = indigoLoadMoleculeFromString(full.value.toUtf8().constData());
+    CHECK(reparsedFull >= 0, "full-selection molfile reparses cleanly");
+    if (reparsedFull >= 0) {
+        CHECK(indigoCountAtoms(reparsedFull) == 3, "full-selection has all 3 atoms");
+        CHECK(indigoCountSuperatoms(reparsedFull) == 1, "full-selection preserves the sgroup");
+        indigoFree(reparsedFull);
+    }
+
+    // Partial selection: only 2 of the 3 atoms + 1 bond -- confirms the sgroup survives with a
+    // trimmed member list, matching the direct probe finding from this sub-project's own spec.
+    QList<AtomId> partialAtoms = { r.createdAtoms[0], r.createdAtoms[1] };
+    QList<BondId> partialBonds = { r.createdBonds[0] };
+    StringResult partial = m.submoleculeMolfile(partialAtoms, partialBonds);
+    CHECK(partial.success, "partial-selection extraction succeeds");
+    int reparsedPartial = indigoLoadMoleculeFromString(partial.value.toUtf8().constData());
+    CHECK(reparsedPartial >= 0, "partial-selection molfile reparses cleanly");
+    if (reparsedPartial >= 0) {
+        CHECK(indigoCountAtoms(reparsedPartial) == 2, "partial-selection has only the 2 selected atoms");
+        CHECK(indigoCountSuperatoms(reparsedPartial) == 1, "partial-selection STILL preserves the sgroup (trimmed member list)");
+        indigoFree(reparsedPartial);
+    }
+
+    // Unknown id -- error result.
+    StringResult bad = m.submoleculeMolfile({9999}, {});
+    CHECK(!bad.success, "unknown AtomId returns a failure StringResult");
+}
+
+static void test_submoleculeMolfileInconsistentSelection() {
+    std::printf("--- Test 33: submoleculeMolfile with an inconsistent selection ---\n");
+    // 3-atom chain: only atom 0 is "selected" in atomIds, but the atom-0-to-atom-1 bond IS
+    // selected in bondIds -- atom 1 is NOT in atomIds. Confirmed by direct probe against the
+    // real indigo.dll that indigoCreateEdgeSubmolecule FAILS OUTRIGHT on this input unless the
+    // vertex set is defensively expanded first.
+    EditableMolecule m(QStringLiteral("CCC"));
+    QList<AtomId> ids = m.atomIds();
+    std::sort(ids.begin(), ids.end());
+    AtomId a0 = ids[0], a1 = ids[1];
+    BondId bond01 = m.findBond(a0, a1);
+    CHECK(bond01 >= 0, "setup: bond between atom 0 and atom 1 exists");
+
+    StringResult result = m.submoleculeMolfile({a0}, {bond01});
+    CHECK(result.success, "inconsistent selection (bond without both endpoints) still succeeds");
+    int reparsed = indigoLoadMoleculeFromString(result.value.toUtf8().constData());
+    CHECK(reparsed >= 0, "result reparses cleanly");
+    if (reparsed >= 0) {
+        CHECK(indigoCountAtoms(reparsed) == 2, "the bond's other endpoint (atom 1) was defensively included, not dropped or failed");
+        indigoFree(reparsed);
+    }
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -1377,6 +1454,8 @@ int main() {
     test_textBoldItalic();
     test_bracketStack();
     test_loadFrom();
+    test_submoleculeMolfile();
+    test_submoleculeMolfileInconsistentSelection();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);

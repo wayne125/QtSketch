@@ -104,6 +104,47 @@ StringResult EditableMolecule::toMolfile() const {
     return r;
 }
 
+StringResult EditableMolecule::submoleculeMolfile(const QList<AtomId>& atomIds, const QList<BondId>& bondIds) const {
+    StringResult r;
+    if (m_mol < 0) { r.error = QStringLiteral("invalid molecule"); return r; }
+    activateSession();
+
+    QSet<AtomId> effectiveAtoms(atomIds.begin(), atomIds.end());
+    for (BondId bid : bondIds) {
+        AtomId a = -1, b = -1;
+        if (!bondEndpoints(bid, a, b)) { r.error = QStringLiteral("unknown bond id"); return r; }
+        effectiveAtoms.insert(a);
+        effectiveAtoms.insert(b);
+    }
+
+    QList<int> vertexIdx;
+    for (AtomId aid : effectiveAtoms) {
+        if (!m_atomIdx.contains(aid)) { r.error = QStringLiteral("unknown atom id"); return r; }
+        vertexIdx.append(m_atomIdx.value(aid));
+    }
+    QList<int> edgeIdx;
+    for (BondId bid : bondIds) {
+        if (!m_bondIdx.contains(bid)) { r.error = QStringLiteral("unknown bond id"); return r; }
+        edgeIdx.append(m_bondIdx.value(bid));
+    }
+
+    if (vertexIdx.isEmpty()) { r.error = QStringLiteral("empty selection"); return r; }
+
+    int sub = indigoCreateEdgeSubmolecule(m_mol, vertexIdx.size(), vertexIdx.data(), edgeIdx.size(), edgeIdx.data());
+    if (sub < 0) { r.error = QString::fromUtf8(indigoGetLastError()); return r; }
+
+    const char* mf = indigoMolfile(sub);
+    if (!mf) {
+        r.error = QString::fromUtf8(indigoGetLastError());
+        indigoFree(sub);
+        return r;
+    }
+    r.success = true;
+    r.value = QString::fromUtf8(mf);
+    indigoFree(sub);
+    return r;
+}
+
 AtomId EditableMolecule::addAtom(const QString& symbol, double x, double y) {
     if (m_mol < 0) return -1;
     activateSession();

@@ -145,6 +145,18 @@ public:
     int bondCount() const;
     StringResult toMolfile() const;
 
+    // Extracts an explicit atom+bond selection as standalone MOL-format text -- the C++
+    // equivalent of chem-core.js's Struct.clone(atomSet, bondSet), used by copySelection.
+    // Preserves any sgroup whose member atoms fall (fully or partially) within the selection,
+    // with a correctly trimmed member list under partial selection (confirmed by direct probe
+    // against the real indigo.dll). Defensively expands the effective atom set to include both
+    // endpoints of every bond in bondIds before extraction -- confirmed by direct probe that
+    // indigoCreateEdgeSubmolecule fails outright on an inconsistent selection (a bond without
+    // both its endpoint atoms present) otherwise; this expansion eliminates that failure case
+    // entirely rather than surfacing it to the caller. Error StringResult if any id is unknown
+    // or the resulting submolecule has zero atoms.
+    StringResult submoleculeMolfile(const QList<AtomId>& atomIds, const QList<BondId>& bondIds) const;
+
     // Replaces this object's content IN PLACE, in its OWN existing Indigo session (never
     // touches m_session) -- this is what keeps snapshot()/restore() undo-compatible across a
     // document replace. Clears m_atomIdx/m_bondIdx/m_sgroupIdx/m_sgroupExpanded and resets m_ext
