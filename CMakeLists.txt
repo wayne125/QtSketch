@@ -250,6 +250,8 @@ add_library(molecule_model STATIC
     src/app/molecule/RenderPrimitives.cpp
     src/app/molecule/SdfBatch.h
     src/app/molecule/SdfBatch.cpp
+    src/app/molecule/ClipboardPreview.h
+    src/app/molecule/ClipboardPreview.cpp
 )
 target_include_directories(molecule_model PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -281,4 +283,9 @@ qt_add_executable(sdf_batch_test tests/sdf_batch_test.cpp)
 target_link_libraries(sdf_batch_test PRIVATE molecule_model)
 target_compile_definitions(sdf_batch_test PRIVATE SKETCH_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 add_test(NAME sdf_batch_test COMMAND sdf_batch_test)
+
+qt_add_executable(clipboard_preview_test tests/clipboard_preview_test.cpp)
+target_link_libraries(clipboard_preview_test PRIVATE molecule_model)
+target_compile_definitions(clipboard_preview_test PRIVATE SKETCH_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_test(NAME clipboard_preview_test COMMAND clipboard_preview_test)
 
