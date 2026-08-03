@@ -248,6 +248,8 @@ add_library(molecule_model STATIC
     src/app/molecule/ElementData.h
     src/app/molecule/RenderPrimitives.h
     src/app/molecule/RenderPrimitives.cpp
+    src/app/molecule/SdfBatch.h
+    src/app/molecule/SdfBatch.cpp
 )
 target_include_directories(molecule_model PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -274,4 +276,9 @@ qt_add_executable(render_primitives_test tests/render_primitives_test.cpp)
 target_link_libraries(render_primitives_test PRIVATE molecule_model)
 target_compile_definitions(render_primitives_test PRIVATE SKETCH_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 add_test(NAME render_primitives_test COMMAND render_primitives_test)
+
+qt_add_executable(sdf_batch_test tests/sdf_batch_test.cpp)
+target_link_libraries(sdf_batch_test PRIVATE molecule_model)
+target_compile_definitions(sdf_batch_test PRIVATE SKETCH_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_test(NAME sdf_batch_test COMMAND sdf_batch_test)
 
