@@ -127,6 +127,10 @@ public:
     void setRxnArrowConditions(RxnArrowId id, const QString& above, const QString& below);
     void deleteRxnArrow(RxnArrowId id);
 
+    // Rxn-plus lifecycle (50-reactions.js: addRxnPlus/deleteRxnPlus).
+    RxnPlusId addRxnPlus(double cx, double cy);
+    void deleteRxnPlus(RxnPlusId id);
+
     // Document-level stereo-display toggle (50-reactions.js's setStereoFlags). Defaults type to
     // "abs" and groupId to 0 exactly like the real function's `type || 'abs', groupId || 0`.
     void setStereoFlags(const QString& type, int groupId);

@@ -1121,6 +1121,28 @@ static void test_rxnArrowLifecycle() {
     CHECK(!doc.canUndo() || doc.molecule().rxnArrowIds().size() == 2, "deleteRxnArrow on an unknown id is a no-op");
 }
 
+static void test_rxnPlusCommands() {
+    std::printf("--- Test 23: rxn-plus add/delete ---\n");
+    DocumentState doc;
+
+    RxnPlusId p1 = doc.addRxnPlus(2, 3);
+    double x = 0, y = 0;
+    CHECK(doc.molecule().rxnPlusPos(p1, x, y) && x == 2 && y == 3, "addRxnPlus creates a real rxn-plus at the given position");
+    doc.undo();
+    CHECK(doc.molecule().rxnPlusIds().isEmpty(), "undo removes the created rxn-plus");
+
+    RxnPlusId p2 = doc.addRxnPlus(5, 5);
+    doc.deleteRxnPlus(p2);
+    CHECK(doc.molecule().rxnPlusIds().isEmpty(), "deleteRxnPlus removes it");
+    doc.undo();
+    CHECK(doc.molecule().rxnPlusIds().size() == 1, "undo recreates it (fresh id)");
+    RxnPlusId restored = doc.molecule().rxnPlusIds().first();
+    CHECK(doc.molecule().rxnPlusPos(restored, x, y) && x == 5 && y == 5, "restored rxn-plus keeps its original position");
+
+    doc.deleteRxnPlus(9999);
+    CHECK(!doc.canUndo() || doc.molecule().rxnPlusIds().size() == 1, "deleteRxnPlus on an unknown id is a no-op");
+}
+
 static void test_setStereoFlags() {
     std::printf("--- Test 18: setStereoFlags ---\n");
     DocumentState doc;
@@ -1317,6 +1339,7 @@ int main() {
     test_insertLibraryTemplateFused();
     test_toggleSgroupExpanded();
     test_rxnArrowLifecycle();
+    test_rxnPlusCommands();
     test_setStereoFlags();
     test_rgroupCommands();
     test_textCommands();

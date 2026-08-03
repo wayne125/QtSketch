@@ -499,6 +499,27 @@ void DocumentState::deleteRxnArrow(RxnArrowId id) {
     executeCommand(std::move(cmd));
 }
 
+RxnPlusId DocumentState::addRxnPlus(double cx, double cy) {
+    auto idBox = std::make_shared<RxnPlusId>(-1);
+    EditableMolecule& mol = m_molecule;
+    EditCommand cmd;
+    cmd.execute = [&mol, idBox, cx, cy]() { *idBox = mol.addRxnPlus(cx, cy); };
+    cmd.invert = [&mol, idBox]() { mol.removeRxnPlus(*idBox); };
+    executeCommand(std::move(cmd));
+    return *idBox;
+}
+
+void DocumentState::deleteRxnPlus(RxnPlusId id) {
+    EditableMolecule& mol = m_molecule;
+    double x = 0, y = 0;
+    if (!mol.rxnPlusPos(id, x, y)) return;
+
+    EditCommand cmd;
+    cmd.execute = [&mol, id]() { mol.removeRxnPlus(id); };
+    cmd.invert = [&mol, x, y]() { mol.addRxnPlus(x, y); };
+    executeCommand(std::move(cmd));
+}
+
 void DocumentState::setStereoFlags(const QString& type, int groupId) {
     EditableMolecule& mol = m_molecule;
     QString newType = type.isEmpty() ? QStringLiteral("abs") : type;
