@@ -1143,6 +1143,50 @@ static void test_rxnPlusCommands() {
     CHECK(!doc.canUndo() || doc.molecule().rxnPlusIds().size() == 1, "deleteRxnPlus on an unknown id is a no-op");
 }
 
+static void test_multitailArrowCommands() {
+    std::printf("--- Test 24: multitail arrow add/delete/add-tail ---\n");
+    DocumentState doc;
+
+    MultitailArrowId id = doc.addMultitailArrow(0, 0);
+    QList<double> pts = doc.molecule().multitailArrowPoints(id);
+    CHECK(pts.size() == 2, "addMultitailArrow starts with head only, zero tails -- matches the real tailsYOffset=[]");
+    double headX = pts[0], headY = pts[1];
+    CHECK(headX == 2.0 * 1.5 && headY == 0.0, "head is offset (2*bondLength, 0) from the creation point");
+    doc.undo();
+    CHECK(doc.molecule().multitailArrowIds().isEmpty(), "undo removes the created arrow");
+
+    MultitailArrowId id2 = doc.addMultitailArrow(0, 0);
+    doc.addMultitailArrowTail(id2);
+    QList<double> pts1 = doc.molecule().multitailArrowPoints(id2);
+    CHECK(pts1.size() == 4, "one addMultitailArrowTail call adds exactly one tail (2 more numbers)");
+    double firstTailY = pts1[3];
+    CHECK(firstTailY == (0.0 + 3.0 * 1.5) / 2.0, "first tail is centered at the midpoint of the full spine (widest gap)");
+    doc.undo();
+    CHECK(doc.molecule().multitailArrowPoints(id2).size() == 2, "undo removes the added tail");
+
+    doc.addMultitailArrowTail(id2);
+    doc.addMultitailArrowTail(id2);
+    QList<double> pts2 = doc.molecule().multitailArrowPoints(id2);
+    CHECK(pts2.size() == 6, "two addMultitailArrowTail calls produce two tails");
+    CHECK(pts2[3] != pts2[5], "the two tails land at different Y positions (widest-gap search, not a fixed spot)");
+    doc.undo();
+    CHECK(doc.molecule().multitailArrowPoints(id2).size() == 4, "undo removes only the SECOND tail");
+
+    doc.addMultitailArrowTail(9999);
+    CHECK(!doc.canUndo() || doc.molecule().multitailArrowPoints(id2).size() == 4,
+          "addMultitailArrowTail on an unknown id is a no-op");
+
+    doc.deleteMultitailArrow(id2);
+    CHECK(doc.molecule().multitailArrowIds().isEmpty(), "deleteMultitailArrow removes it");
+    doc.undo();
+    CHECK(doc.molecule().multitailArrowIds().size() == 1, "undo recreates it (fresh id) with the same points");
+    MultitailArrowId restored = doc.molecule().multitailArrowIds().first();
+    CHECK(doc.molecule().multitailArrowPoints(restored).size() == 4, "restored arrow keeps its one tail");
+
+    doc.deleteMultitailArrow(9999);
+    CHECK(!doc.canUndo() || doc.molecule().multitailArrowIds().size() == 1, "deleteMultitailArrow on an unknown id is a no-op");
+}
+
 static void test_setStereoFlags() {
     std::printf("--- Test 18: setStereoFlags ---\n");
     DocumentState doc;
@@ -1340,6 +1384,7 @@ int main() {
     test_toggleSgroupExpanded();
     test_rxnArrowLifecycle();
     test_rxnPlusCommands();
+    test_multitailArrowCommands();
     test_setStereoFlags();
     test_rgroupCommands();
     test_textCommands();

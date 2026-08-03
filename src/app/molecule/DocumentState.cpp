@@ -520,6 +520,61 @@ void DocumentState::deleteRxnPlus(RxnPlusId id) {
     executeCommand(std::move(cmd));
 }
 
+MultitailArrowId DocumentState::addMultitailArrow(double cx, double cy) {
+    double headX = cx + kMultitailHeadOffsetX;
+    double headY = cy;
+
+    auto idBox = std::make_shared<MultitailArrowId>(-1);
+    EditableMolecule& mol = m_molecule;
+    EditCommand cmd;
+    cmd.execute = [&mol, idBox, headX, headY]() {
+        *idBox = mol.addMultitailArrow(QList<double>{headX, headY});
+    };
+    cmd.invert = [&mol, idBox]() { mol.removeMultitailArrow(*idBox); };
+    executeCommand(std::move(cmd));
+    return *idBox;
+}
+
+void DocumentState::deleteMultitailArrow(MultitailArrowId id) {
+    EditableMolecule& mol = m_molecule;
+    QList<double> pts = mol.multitailArrowPoints(id);
+    if (pts.isEmpty()) return;
+
+    EditCommand cmd;
+    cmd.execute = [&mol, id]() { mol.removeMultitailArrow(id); };
+    cmd.invert = [&mol, pts]() { mol.addMultitailArrow(pts); };
+    executeCommand(std::move(cmd));
+}
+
+void DocumentState::addMultitailArrowTail(MultitailArrowId id) {
+    EditableMolecule& mol = m_molecule;
+    QList<double> pts = mol.multitailArrowPoints(id);
+    if (pts.size() < 2) return;
+
+    double headX = pts[0], headY = pts[1];
+    QList<double> allY;
+    allY.append(headY);
+    allY.append(headY + kMultitailHeight);
+    for (int i = 3; i < pts.size(); i += 2) allY.append(pts[i]);
+    std::sort(allY.begin(), allY.end());
+
+    double maxGap = 0.0, gapY = allY.first();
+    for (int i = 1; i < allY.size(); ++i) {
+        double gap = allY[i] - allY[i - 1];
+        if (gap > maxGap) { maxGap = gap; gapY = (allY[i] + allY[i - 1]) / 2.0; }
+    }
+
+    double tailX = headX - kMultitailTailInset;
+    QList<double> newPts = pts;
+    newPts.append(tailX);
+    newPts.append(gapY);
+
+    EditCommand cmd;
+    cmd.execute = [&mol, id, newPts]() { mol.setMultitailArrowPoints(id, newPts); };
+    cmd.invert = [&mol, id, pts]() { mol.setMultitailArrowPoints(id, pts); };
+    executeCommand(std::move(cmd));
+}
+
 void DocumentState::setStereoFlags(const QString& type, int groupId) {
     EditableMolecule& mol = m_molecule;
     QString newType = type.isEmpty() ? QStringLiteral("abs") : type;

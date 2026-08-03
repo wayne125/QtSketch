@@ -131,6 +131,16 @@ public:
     RxnPlusId addRxnPlus(double cx, double cy);
     void deleteRxnPlus(RxnPlusId id);
 
+    // Multitail-arrow lifecycle (50-reactions.js: addMultitailArrow/deleteMultitailArrow/
+    // addMultitailArrowTail). addMultitailArrow starts with ZERO tails, matching the real
+    // tailsYOffset=[] -- storing just the head point is already a valid state per
+    // RenderPrimitives.cpp's own `if (pts.size() < 2) continue` guard. addMultitailArrowTail
+    // ports the real widest-gap insertion algorithm, adapted to this port's flat, absolute-
+    // coordinate storage (no separate height/tailsYOffset fields exist here).
+    MultitailArrowId addMultitailArrow(double cx, double cy);
+    void deleteMultitailArrow(MultitailArrowId id);
+    void addMultitailArrowTail(MultitailArrowId id);
+
     // Document-level stereo-display toggle (50-reactions.js's setStereoFlags). Defaults type to
     // "abs" and groupId to 0 exactly like the real function's `type || 'abs', groupId || 0`.
     void setStereoFlags(const QString& type, int groupId);
@@ -242,6 +252,14 @@ private:
     void applyDiscreteTransform(DiscreteTransform mode);
 
     static constexpr double kBondLength = 1.5;   // chem-core's StandardBondLength
+
+    // Multitail-arrow creation-time constants, immutable for the arrow's lifetime (the real JS
+    // never changes them after _makeMultitailArrow either). Derived exactly as the real defaults:
+    // headOffset = (2*bondLength, 0), height = 3*bondLength, tailLength = 2*bondLength, so
+    // tailX = (headX - headOffsetX) - tailLength = headX - 4*bondLength.
+    static constexpr double kMultitailHeadOffsetX = 2.0 * kBondLength;
+    static constexpr double kMultitailHeight = 3.0 * kBondLength;
+    static constexpr double kMultitailTailInset = 4.0 * kBondLength;
 
     // Shared by addRing's alternation step: one bond as it stood BEFORE this
     // operation began, keyed by its endpoint pair. Presence of a pair here
