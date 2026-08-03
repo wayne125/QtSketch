@@ -61,6 +61,11 @@ struct ExtensionData {
     int stereoFlagsGroupId = 0;                        // NOT the same concept as the stereoFlags QHash above
     QHash<int, QString> atomCheckWarningTexts;         // AtomId -> real string warning type (see below)
     QHash<int, QString> bondCheckWarningTexts;         // BondId -> real string warning type
+    QHash<int, QString> atomStereoCipLabels;   // AtomId -> external CIP-perception cipLabel (R/S/r/s),
+                                                // DISTINCT from the live atomCipDescriptor accessor
+    QHash<int, int> atomStereoTypes;           // AtomId -> external stereoType (INDIGO_ABS/OR/AND/EITHER)
+    QHash<int, int> atomStereoGroups;          // AtomId -> external stereoGroup number
+    QHash<int, QString> bondStereoCipLabels;   // BondId -> external CIP-perception cipLabel (E/Z)
     QHash<int, AtomQueryList> atomQueryLists;  // AtomId -> query list (keyed directly by the already-stable AtomId, no separate counter needed)
     QHash<int, RGroupEntry> rgroups;       // keyed by R-group NUMBER (e.g. 1 for R1), not a counter
     QList<BracketBox> brackets;            // push/pop-only stack, no id (matches _struct.brackets.push/.pop)

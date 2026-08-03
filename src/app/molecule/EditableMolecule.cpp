@@ -1110,6 +1110,44 @@ QString EditableMolecule::bondCheckWarningText(BondId id) const {
     return m_ext.bondCheckWarningTexts.value(id, QString());
 }
 
+void EditableMolecule::setAtomStereoDescriptor(AtomId id, const QString& cipLabel, int type, int group) {
+    if (!m_atomIdx.contains(id)) return;
+    m_ext.atomStereoCipLabels[id] = cipLabel;
+    m_ext.atomStereoTypes[id] = type;
+    m_ext.atomStereoGroups[id] = group;
+}
+
+QString EditableMolecule::atomStoredCipLabel(AtomId id) const {
+    return m_ext.atomStereoCipLabels.value(id);
+}
+
+int EditableMolecule::atomStoredStereoType(AtomId id) const {
+    return m_ext.atomStereoTypes.value(id);
+}
+
+int EditableMolecule::atomStoredStereoGroup(AtomId id) const {
+    return m_ext.atomStereoGroups.value(id);
+}
+
+void EditableMolecule::setBondStereoCipLabel(BondId id, const QString& cipLabel) {
+    if (!m_bondIdx.contains(id)) return;
+    m_ext.bondStereoCipLabels[id] = cipLabel;
+}
+
+QString EditableMolecule::bondStoredCipLabel(BondId id) const {
+    return m_ext.bondStereoCipLabels.value(id);
+}
+
+void EditableMolecule::setAtomCheckWarningText(AtomId id, const QString& text) {
+    if (!m_atomIdx.contains(id)) return;
+    m_ext.atomCheckWarningTexts[id] = text;
+}
+
+void EditableMolecule::setBondCheckWarningText(BondId id, const QString& text) {
+    if (!m_bondIdx.contains(id)) return;
+    m_ext.bondCheckWarningTexts[id] = text;
+}
+
 QString EditableMolecule::rxnArrowMode(RxnArrowId id) const {
     return m_ext.rxnArrows.value(id).mode;
 }

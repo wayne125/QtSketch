@@ -261,6 +261,19 @@ public:
     QString atomCheckWarningText(AtomId id) const;
     QString bondCheckWarningText(BondId id) const;
 
+    // External CIP-perception / structure-check RESULT APPLICATION (60-analysis.js's
+    // setStereoDescriptors/setCheckIssues) -- distinct from the live atomCipDescriptor/
+    // stereocenterType/stereocenterGroup accessors above. No-op if id is unknown; getters
+    // default to QString()/0 for an unknown id or one with no entry yet.
+    void setAtomStereoDescriptor(AtomId id, const QString& cipLabel, int type, int group);
+    QString atomStoredCipLabel(AtomId id) const;
+    int atomStoredStereoType(AtomId id) const;
+    int atomStoredStereoGroup(AtomId id) const;
+    void setBondStereoCipLabel(BondId id, const QString& cipLabel);
+    QString bondStoredCipLabel(BondId id) const;
+    void setAtomCheckWarningText(AtomId id, const QString& text);
+    void setBondCheckWarningText(BondId id, const QString& text);
+
     // Reaction-arrow display fields buildRenderPrimitives reads: display mode, above/below
     // condition text, and optional curvature control point.
     QString rxnArrowMode(RxnArrowId id) const;

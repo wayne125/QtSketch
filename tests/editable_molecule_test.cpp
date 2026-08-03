@@ -1331,6 +1331,61 @@ static void test_bondIdsInIndigoOrder() {
           "bondIdsInIndigoOrder's bond-order sequence matches a fresh reparse's own order");
 }
 
+static void test_atomStereoDescriptorStorage() {
+    std::printf("--- Test: setAtomStereoDescriptor / getters ---\n");
+    EditableMolecule mol;
+    AtomId a = mol.addAtom(QStringLiteral("C"), 0, 0);
+
+    CHECK(mol.atomStoredCipLabel(a).isEmpty(), "default cipLabel is empty");
+    CHECK(mol.atomStoredStereoType(a) == 0, "default stereoType is 0");
+    CHECK(mol.atomStoredStereoGroup(a) == 0, "default stereoGroup is 0");
+
+    mol.setAtomStereoDescriptor(a, QStringLiteral("R"), 1, 2);
+    CHECK(mol.atomStoredCipLabel(a) == QStringLiteral("R"), "cipLabel set to R");
+    CHECK(mol.atomStoredStereoType(a) == 1, "stereoType set to 1");
+    CHECK(mol.atomStoredStereoGroup(a) == 2, "stereoGroup set to 2");
+
+    mol.setAtomStereoDescriptor(9999, QStringLiteral("S"), 3, 4);
+    CHECK(mol.atomStoredCipLabel(9999).isEmpty(), "unknown AtomId: setter no-op, getter defaults empty");
+    CHECK(mol.atomStoredStereoType(9999) == 0, "unknown AtomId: getter defaults to 0");
+}
+
+static void test_bondStereoCipLabelStorage() {
+    std::printf("--- Test: setBondStereoCipLabel / getter ---\n");
+    EditableMolecule mol;
+    AtomId a = mol.addAtom(QStringLiteral("C"), 0, 0);
+    AtomId b = mol.addAtom(QStringLiteral("C"), 1, 0);
+    BondId bond = mol.addBond(a, b, 2);
+
+    CHECK(mol.bondStoredCipLabel(bond).isEmpty(), "default bond cipLabel is empty");
+    mol.setBondStereoCipLabel(bond, QStringLiteral("E"));
+    CHECK(mol.bondStoredCipLabel(bond) == QStringLiteral("E"), "bond cipLabel set to E");
+
+    mol.setBondStereoCipLabel(9999, QStringLiteral("Z"));
+    CHECK(mol.bondStoredCipLabel(9999).isEmpty(), "unknown BondId: setter no-op, getter defaults empty");
+}
+
+static void test_checkWarningTextSetters() {
+    std::printf("--- Test: setAtomCheckWarningText / setBondCheckWarningText ---\n");
+    EditableMolecule mol;
+    AtomId a = mol.addAtom(QStringLiteral("C"), 0, 0);
+    AtomId b = mol.addAtom(QStringLiteral("C"), 1, 0);
+    BondId bond = mol.addBond(a, b, 1);
+
+    CHECK(mol.atomCheckWarningText(a).isEmpty(), "default atom checkWarning is empty");
+    mol.setAtomCheckWarningText(a, QStringLiteral("valence"));
+    CHECK(mol.atomCheckWarningText(a) == QStringLiteral("valence"), "atom checkWarning set");
+
+    CHECK(mol.bondCheckWarningText(bond).isEmpty(), "default bond checkWarning is empty");
+    mol.setBondCheckWarningText(bond, QStringLiteral("overlap_atom"));
+    CHECK(mol.bondCheckWarningText(bond) == QStringLiteral("overlap_atom"), "bond checkWarning set");
+
+    mol.setAtomCheckWarningText(9999, QStringLiteral("radical"));
+    CHECK(mol.atomCheckWarningText(9999).isEmpty(), "unknown AtomId: setter no-op");
+    mol.setBondCheckWarningText(9999, QStringLiteral("radical"));
+    CHECK(mol.bondCheckWarningText(9999).isEmpty(), "unknown BondId: setter no-op");
+}
+
 static void test_rxnArrowMutators() {
     std::printf("--- Test 26: rxn-arrow mutators ---\n");
     EditableMolecule m;
@@ -1595,6 +1650,9 @@ int main() {
     test_createSuperatomFromAtoms();
     test_atomIdsInIndigoOrder();
     test_bondIdsInIndigoOrder();
+    test_atomStereoDescriptorStorage();
+    test_bondStereoCipLabelStorage();
+    test_checkWarningTextSetters();
     test_rxnArrowMutators();
     test_stereoFlagsDocumentMutator();
     test_rgroupStorageAndFragmentIndex();
