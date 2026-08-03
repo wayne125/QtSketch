@@ -390,6 +390,16 @@ public:
     QList<SGroupId> sgroupIds() const;
     QList<AtomId> sgroupMemberAtomIds(SGroupId id) const;
 
+    // Indigo's current internal 0..count-1 atom/bond order, reverse-mapped to external
+    // AtomId/BondId via m_atomIdx/m_bondIdx -- NOT the same as atomIds()/bondIds()'s
+    // sorted-by-id order, which does not survive a remove-then-add sequence (confirmed by
+    // direct probe: a newly-added atom/bond can reuse a just-freed internal index instead of
+    // being appended at the end). Needed to resolve a positional index from an externally
+    // reparsed molfile's own numbering (e.g. an analysis-tool JSON payload) back to the
+    // correct external id.
+    QList<AtomId> atomIdsInIndigoOrder() const;
+    QList<BondId> bondIdsInIndigoOrder() const;
+
     // Removes ONLY the sgroup grouping (indigoRemove on the superatom handle) -- member
     // atoms are left completely untouched. Confirmed by direct probe against the real
     // indigo.dll. Used for "the whole collapsed pill was selected directly" deletion.

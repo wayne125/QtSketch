@@ -1274,6 +1274,63 @@ static void test_createSuperatomFromAtoms() {
           "member set matches exactly what was passed in");
 }
 
+static void test_atomIdsInIndigoOrder() {
+    std::printf("--- Test: atomIdsInIndigoOrder survives a remove-then-add index reuse ---\n");
+    EditableMolecule mol;
+    AtomId a1 = mol.addAtom(QStringLiteral("C"), 0, 0);
+    AtomId a2 = mol.addAtom(QStringLiteral("N"), 1, 0);
+    AtomId a3 = mol.addAtom(QStringLiteral("O"), 2, 0);
+    AtomId a4 = mol.addAtom(QStringLiteral("F"), 3, 0);
+    mol.removeAtom(a2);
+    AtomId a5 = mol.addAtom(QStringLiteral("Cl"), 4, 0);
+    (void)a1; (void)a3; (void)a4;
+
+    QList<AtomId> order = mol.atomIdsInIndigoOrder();
+    CHECK(order.size() == 4, "4 atoms after remove+add");
+
+    QString symbols;
+    for (AtomId id : order) symbols += mol.atomSymbol(id);
+    CHECK(symbols == QStringLiteral("CClOF"),
+          "order matches Indigo's own internal index order (C, Cl-in-freed-slot, O, F), "
+          "NOT sorted-by-AtomId order (which would give C,O,F,Cl)");
+
+    StringResult mf = mol.toMolfile();
+    CHECK(mf.success, "toMolfile succeeds");
+    EditableMolecule reparsed(mf.value);
+    QString reparsedSymbols;
+    for (AtomId id : reparsed.atomIds()) reparsedSymbols += reparsed.atomSymbol(id);
+    CHECK(reparsedSymbols == symbols,
+          "atomIdsInIndigoOrder matches what a fresh reparse would number these atoms as");
+}
+
+static void test_bondIdsInIndigoOrder() {
+    std::printf("--- Test: bondIdsInIndigoOrder survives a remove-then-add index reuse ---\n");
+    EditableMolecule mol;
+    AtomId a1 = mol.addAtom(QStringLiteral("C"), 0, 0);
+    AtomId a2 = mol.addAtom(QStringLiteral("C"), 1, 0);
+    AtomId a3 = mol.addAtom(QStringLiteral("C"), 2, 0);
+    AtomId a4 = mol.addAtom(QStringLiteral("C"), 3, 0);
+    BondId b1 = mol.addBond(a1, a2, 1);
+    mol.addBond(a2, a3, 2);
+    mol.addBond(a3, a4, 3);
+    mol.removeBond(b1);
+    BondId b4 = mol.addBond(a1, a4, 1);
+
+    QList<BondId> order = mol.bondIdsInIndigoOrder();
+    CHECK(order.size() == 3, "3 bonds after remove+add");
+    CHECK(order.contains(b4), "the newly-added bond is present in the order list");
+
+    StringResult mf = mol.toMolfile();
+    CHECK(mf.success, "toMolfile succeeds");
+    EditableMolecule reparsed(mf.value);
+    CHECK(reparsed.bondCount() == 3, "reparsed molecule has the same 3 bonds");
+    QList<int> orders1, orders2;
+    for (BondId id : order) orders1.append(mol.bondOrder(id));
+    for (BondId id : reparsed.bondIds()) orders2.append(reparsed.bondOrder(id));
+    CHECK(orders1 == orders2,
+          "bondIdsInIndigoOrder's bond-order sequence matches a fresh reparse's own order");
+}
+
 static void test_rxnArrowMutators() {
     std::printf("--- Test 26: rxn-arrow mutators ---\n");
     EditableMolecule m;
@@ -1536,6 +1593,8 @@ int main() {
     test_rebuildIndexTablesPrunesAutoRemovedSgroup();
     test_removeSuperatomOnly();
     test_createSuperatomFromAtoms();
+    test_atomIdsInIndigoOrder();
+    test_bondIdsInIndigoOrder();
     test_rxnArrowMutators();
     test_stereoFlagsDocumentMutator();
     test_rgroupStorageAndFragmentIndex();

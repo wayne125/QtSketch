@@ -1307,6 +1307,44 @@ QList<AtomId> EditableMolecule::sgroupMemberAtomIds(SGroupId id) const {
     return result;
 }
 
+QList<AtomId> EditableMolecule::atomIdsInIndigoOrder() const {
+    QList<AtomId> result;
+    if (m_mol < 0) return result;
+    activateSession();
+    int iter = indigoIterateAtoms(m_mol);
+    if (iter >= 0) {
+        int a;
+        while ((a = indigoNext(iter)) > 0) {
+            int idx = indigoIndex(a);
+            for (auto it = m_atomIdx.constBegin(); it != m_atomIdx.constEnd(); ++it) {
+                if (it.value() == idx) { result.append(it.key()); break; }
+            }
+            indigoFree(a);
+        }
+        indigoFree(iter);
+    }
+    return result;
+}
+
+QList<BondId> EditableMolecule::bondIdsInIndigoOrder() const {
+    QList<BondId> result;
+    if (m_mol < 0) return result;
+    activateSession();
+    int iter = indigoIterateBonds(m_mol);
+    if (iter >= 0) {
+        int b;
+        while ((b = indigoNext(iter)) > 0) {
+            int idx = indigoIndex(b);
+            for (auto it = m_bondIdx.constBegin(); it != m_bondIdx.constEnd(); ++it) {
+                if (it.value() == idx) { result.append(it.key()); break; }
+            }
+            indigoFree(b);
+        }
+        indigoFree(iter);
+    }
+    return result;
+}
+
 bool EditableMolecule::removeSuperatomOnly(SGroupId id) {
     if (m_mol < 0 || !m_sgroupIdx.contains(id)) return false;
     activateSession();
