@@ -4,6 +4,7 @@
 #include "RenderPrimitives.h"
 #include "indigo.h"
 #include <algorithm>
+#include <QRegularExpression>
 
 SdfBatch::SdfBatch() {
     m_session = indigoAllocSessionId();
@@ -84,6 +85,10 @@ std::optional<SdfBatch::BatchRecord> SdfBatch::ingestFromText(const QString& tex
     int handle = indigoLoadMoleculeFromString(text.toUtf8().constData());
     if (handle < 0) return std::nullopt;
     BatchRecord rec = ingestFromHandle(handle, indexForLabel, /*withProps=*/false, computeThumbnail);
+    // ingestFromHandle's thumbnail step may have silently stolen the active session (see
+    // loadFromSdfText's loop comment for the full explanation) -- re-activate before freeing
+    // `handle`, which belongs to m_session, not whatever session is active now.
+    activateSession();
     indigoFree(handle);
     return rec;
 }
@@ -98,6 +103,55 @@ bool SdfBatch::loadFromMolfileList(const QStringList& molfiles) {
         std::optional<BatchRecord> rec = ingestFromText(text, index, index < 500);
         if (rec) { parsed.append(*rec); ++index; }
     }
+    m_records = parsed;
+    return true;
+}
+
+bool SdfBatch::loadFromSdfText(const QString& sdfText) {
+    if (sdfText.trimmed().isEmpty()) return false;
+    activateSession();
+
+    static const QRegularExpression kGLine(QStringLiteral("^G\\s+\\d+\\s+\\d+\\s*$"),
+                                            QRegularExpression::MultilineOption);
+
+    QByteArray utf8 = sdfText.toUtf8();   // must stay alive for the whole loop below --
+                                           // indigoReadBuffer does not copy the buffer
+    int reader = indigoReadBuffer(utf8.constData(), utf8.size());
+    if (reader < 0) return false;
+    int iter = indigoIterateSDF(reader);
+    if (iter < 0) { indigoFree(reader); return false; }
+
+    QList<BatchRecord> parsed;
+    int index = 0;
+    int item;
+    while ((item = indigoNext(iter)) > 0) {
+        int molHandle = item;
+        bool ownsFallbackHandle = false;
+        if (indigoCountAtoms(item) < 0) {
+            const char* raw = indigoRawData(item);
+            QString text = raw ? QString::fromUtf8(raw) : QString();
+            text.remove(kGLine);
+            molHandle = text.isEmpty() ? -1 : indigoLoadMoleculeFromString(text.toUtf8().constData());
+            ownsFallbackHandle = true;
+        }
+        if (molHandle >= 0) {
+            parsed.append(ingestFromHandle(molHandle, index, /*withProps=*/true, index < 500));
+            ++index;
+            // ingestFromHandle's thumbnail step constructs a transient EditableMolecule, whose
+            // constructor allocates and activates ITS OWN Indigo session -- silently stealing the
+            // active session away from this loop's `reader`/`iter` (which belong to m_session).
+            // Re-activate before touching `item`/`iter`/`reader` again, or the next indigoNext(iter)
+            // call operates under the wrong (or no) session. Confirmed by direct probe: without
+            // this, only the first record's thumbnail computation succeeds and subsequent records
+            // are silently lost.
+            activateSession();
+        }
+        if (ownsFallbackHandle && molHandle >= 0) indigoFree(molHandle);
+        indigoFree(item);
+    }
+    indigoFree(iter);
+    indigoFree(reader);
+
     m_records = parsed;
     return true;
 }

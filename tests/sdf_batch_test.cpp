@@ -56,6 +56,95 @@ static void test_thumbnailAt() {
     CHECK(batch.thumbnailAt(99).atoms.isEmpty(), "thumbnailAt on an out-of-range index returns an empty thumbnail");
 }
 
+static void test_loadFromSdfText() {
+    std::printf("--- Test 4: loadFromSdfText ---\n");
+    QString sdf = QStringLiteral(
+        "mol1\n"
+        "  Test\n\n"
+        "  1  0  0  0  0  0  0  0  0  0999 V2000\n"
+        "    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "M  END\n"
+        ">  <PROP1>\n"
+        "value1\n"
+        "\n"
+        "$$$$\n"
+        "mol2\n"
+        "  Test\n\n"
+        "  1  0  0  0  0  0  0  0  0  0999 V2000\n"
+        "    0.0000    0.0000    0.0000 N   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "M  END\n"
+        "$$$$\n");
+
+    SdfBatch batch;
+    CHECK(batch.loadFromSdfText(sdf), "loadFromSdfText succeeds");
+    CHECK(batch.recordCount() == 2, "two records loaded from the SDF text");
+    CHECK(batch.labelAt(0) == QStringLiteral("mol1"), "label 0 comes from the molfile title line");
+    CHECK(batch.labelAt(1) == QStringLiteral("mol2"), "label 1 comes from the molfile title line");
+    QHash<QString, QString> props0 = batch.propsAt(0);
+    CHECK(props0.value(QStringLiteral("PROP1")) == QStringLiteral("value1"), "propsAt reads the real SDF tag value");
+    CHECK(batch.propsAt(1).isEmpty(), "record 2 has no property tags");
+    CHECK(!batch.thumbnailAt(0).atoms.isEmpty(), "thumbnail computed for record 0");
+}
+
+static void test_loadFromSdfTextWithGLine() {
+    std::printf("--- Test 5: loadFromSdfText tolerates a Ketcher G-line ---\n");
+    QString sdf = QStringLiteral(
+        "molG\n"
+        "  Test\n\n"
+        "  1  0  0  0  0  0  0  0  0  0999 V2000\n"
+        "    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "G    1  0\n"
+        "M  END\n"
+        "$$$$\n");
+    SdfBatch batch;
+    CHECK(batch.loadFromSdfText(sdf), "loadFromSdfText succeeds on a record with a G-line");
+    CHECK(batch.recordCount() == 1, "the G-line record is not dropped");
+    CHECK(batch.labelAt(0) == QStringLiteral("molG"), "label still resolves correctly");
+}
+
+static void test_loadFromSdfTextEmpty() {
+    std::printf("--- Test 6: loadFromSdfText on empty input ---\n");
+    SdfBatch batch;
+    CHECK(!batch.loadFromSdfText(QString()), "empty input returns false");
+    CHECK(batch.recordCount() == 0, "batch stays empty");
+}
+
+static void test_loadFromSdfTextSkipsInvalid() {
+    std::printf("--- Test 7: loadFromSdfText skips an unparseable record among valid ones ---\n");
+    QString sdf = QStringLiteral(
+        "good1\n"
+        "  Test\n\n"
+        "  1  0  0  0  0  0  0  0  0  0999 V2000\n"
+        "    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "M  END\n"
+        "$$$$\n"
+        "this is not a valid molfile record at all\n"
+        "$$$$\n"
+        "good2\n"
+        "  Test\n\n"
+        "  1  0  0  0  0  0  0  0  0  0999 V2000\n"
+        "    0.0000    0.0000    0.0000 N   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "M  END\n"
+        "$$$$\n");
+    SdfBatch batch;
+    CHECK(batch.loadFromSdfText(sdf), "loadFromSdfText succeeds overall");
+    CHECK(batch.recordCount() == 2, "the one unparseable record is skipped, not aborting the batch");
+    CHECK(batch.labelAt(0) == QStringLiteral("good1") && batch.labelAt(1) == QStringLiteral("good2"),
+          "the two valid records are the ones that survived, in order");
+}
+
+static void test_thumbnailCapAppliesToThumbnailsOnly() {
+    std::printf("--- Test 8: the 500 cap bounds thumbnails, not record count ---\n");
+    QStringList mols;
+    for (int i = 0; i < 501; ++i) mols << QStringLiteral("C");
+    SdfBatch batch;
+    CHECK(batch.loadFromMolfileList(mols), "loadFromMolfileList succeeds with 501 entries");
+    CHECK(batch.recordCount() == 501, "all 501 records are stored -- record count is NOT capped");
+    CHECK(!batch.thumbnailAt(499).atoms.isEmpty(), "the 500th record (index 499, last one under the cap) has a real thumbnail");
+    CHECK(batch.thumbnailAt(500).atoms.isEmpty(), "the 501st record (index 500, past the cap) has an empty thumbnail");
+    CHECK(!batch.molfileAt(500).isEmpty(), "but its molfile text is still stored -- only the thumbnail is skipped");
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -63,6 +152,11 @@ int main() {
     test_loadFromMolfileList();
     test_loadFromMolfileListSkipsInvalid();
     test_thumbnailAt();
+    test_loadFromSdfText();
+    test_loadFromSdfTextWithGLine();
+    test_loadFromSdfTextEmpty();
+    test_loadFromSdfTextSkipsInvalid();
+    test_thumbnailCapAppliesToThumbnailsOnly();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);

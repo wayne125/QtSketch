@@ -39,6 +39,16 @@ public:
     // itself is empty.
     bool loadFromMolfileList(const QStringList& molfiles);
 
+    // 40-serialize.js's deserializeSdfBatch: raw multi-record SDF text. Each record's SDF-
+    // iterator item is tried directly as a molecule handle first (confirmed by direct probe to
+    // work for well-formed records); a record that fails that falls back to
+    // TemplateLibrary::loadSdf's proven G-line-strip + re-parse recipe. Records that fail even
+    // the fallback are skipped, not aborted. Every successfully-parsed record is stored -- NOT
+    // capped at 500 (see loadFromMolfileList's own doc comment for the same distinction: only
+    // thumbnail computation is capped). Returns false immediately, without touching any existing
+    // batch, if sdfText is empty/whitespace-only.
+    bool loadFromSdfText(const QString& sdfText);
+
     int recordCount() const;
     QString molfileAt(int index) const;
     QString labelAt(int index) const;
