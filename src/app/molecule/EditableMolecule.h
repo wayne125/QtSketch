@@ -268,6 +268,12 @@ public:
     };
     QList<RingMembership> ringMembership() const;
 
+    // Live fragment (connected-component) index for an atom -- wraps indigoComponentIndex.
+    // Confirmed by direct probe against the real indigo.dll: pure read query, 0-based, no
+    // indigoCountComponents prerequisite, no staleness (updates immediately on graph edits).
+    // -1 if id unknown.
+    int atomFragmentIndex(AtomId id) const;
+
     // Read-only queries on whatever stereo info the molecule already carries from load/perception
     // -- no mutation. 0 (not a stereocenter/stereobond) is the invalid-id sentinel too, matching
     // Indigo's own "0 if not a stereocenter" convention for these two calls.
@@ -356,6 +362,17 @@ public:
     // hide every member atom of a collapsed sgroup, not only its attach atom.
     QList<SGroupId> sgroupIds() const;
     QList<AtomId> sgroupMemberAtomIds(SGroupId id) const;
+
+    // R-group (Markush) storage: fragIds/range/resth/ifthen per R-group NUMBER. See
+    // ExtensionData.h's RGroupEntry for field meanings.
+    bool addRGroupEntry(int rgroupNumber);
+    bool removeRGroupEntry(int rgroupNumber);
+    bool setRGroupLogic(int rgroupNumber, const QString& range, bool resth, int ifthen);
+    bool addRGroupFragment(int rgroupNumber, int fragId);
+    bool removeRGroupFragment(int rgroupNumber, int fragId);
+    QList<int> rgroupNumbers() const;
+    bool rgroupLogic(int rgroupNumber, QString& range, bool& resth, int& ifthen) const;
+    QList<int> rgroupFragmentIds(int rgroupNumber) const;
 
 private:
     // One Indigo session per instance, held for the object's lifetime

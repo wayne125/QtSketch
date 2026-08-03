@@ -1092,6 +1092,16 @@ QList<EditableMolecule::RingMembership> EditableMolecule::ringMembership() const
     return result;
 }
 
+int EditableMolecule::atomFragmentIndex(AtomId id) const {
+    if (m_mol < 0 || !m_atomIdx.contains(id)) return -1;
+    activateSession();
+    int a = indigoGetAtom(m_mol, m_atomIdx.value(id));
+    if (a < 0) return -1;
+    int ci = indigoComponentIndex(a);
+    indigoFree(a);
+    return ci;
+}
+
 int EditableMolecule::stereocenterType(AtomId id) const {
     if (m_mol < 0 || !m_atomIdx.contains(id)) return 0;
     activateSession();
@@ -1161,5 +1171,48 @@ QList<AtomId> EditableMolecule::sgroupMemberAtomIds(SGroupId id) const {
     }
     indigoFree(sup);
     return result;
+}
+
+bool EditableMolecule::addRGroupEntry(int rgroupNumber) {
+    if (m_ext.rgroups.contains(rgroupNumber)) return false;
+    m_ext.rgroups.insert(rgroupNumber, RGroupEntry{});
+    return true;
+}
+
+bool EditableMolecule::removeRGroupEntry(int rgroupNumber) {
+    return m_ext.rgroups.remove(rgroupNumber) > 0;
+}
+
+bool EditableMolecule::setRGroupLogic(int rgroupNumber, const QString& range, bool resth, int ifthen) {
+    if (!m_ext.rgroups.contains(rgroupNumber)) return false;
+    RGroupEntry& rg = m_ext.rgroups[rgroupNumber];
+    rg.range = range; rg.resth = resth; rg.ifthen = ifthen;
+    return true;
+}
+
+bool EditableMolecule::addRGroupFragment(int rgroupNumber, int fragId) {
+    if (!m_ext.rgroups.contains(rgroupNumber)) return false;
+    RGroupEntry& rg = m_ext.rgroups[rgroupNumber];
+    if (rg.fragIds.contains(fragId)) return false;
+    rg.fragIds.append(fragId);
+    return true;
+}
+
+bool EditableMolecule::removeRGroupFragment(int rgroupNumber, int fragId) {
+    if (!m_ext.rgroups.contains(rgroupNumber)) return false;
+    return m_ext.rgroups[rgroupNumber].fragIds.removeOne(fragId);
+}
+
+QList<int> EditableMolecule::rgroupNumbers() const { return m_ext.rgroups.keys(); }
+
+bool EditableMolecule::rgroupLogic(int rgroupNumber, QString& range, bool& resth, int& ifthen) const {
+    if (!m_ext.rgroups.contains(rgroupNumber)) return false;
+    const RGroupEntry& rg = m_ext.rgroups.value(rgroupNumber);
+    range = rg.range; resth = rg.resth; ifthen = rg.ifthen;
+    return true;
+}
+
+QList<int> EditableMolecule::rgroupFragmentIds(int rgroupNumber) const {
+    return m_ext.rgroups.value(rgroupNumber).fragIds;
 }
 

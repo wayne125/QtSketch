@@ -487,6 +487,84 @@ void DocumentState::setStereoFlags(const QString& type, int groupId) {
     executeCommand(std::move(cmd));
 }
 
+bool DocumentState::addRGroup(int rgroupNumber) {
+    EditableMolecule& mol = m_molecule;
+    if (mol.rgroupNumbers().contains(rgroupNumber)) return false;
+
+    EditCommand cmd;
+    cmd.execute = [&mol, rgroupNumber]() { mol.addRGroupEntry(rgroupNumber); };
+    cmd.invert = [&mol, rgroupNumber]() { mol.removeRGroupEntry(rgroupNumber); };
+    executeCommand(std::move(cmd));
+    return true;
+}
+
+bool DocumentState::deleteRGroup(int rgroupNumber) {
+    EditableMolecule& mol = m_molecule;
+    if (!mol.rgroupNumbers().contains(rgroupNumber)) return false;
+
+    QString range; bool resth = false; int ifthen = 0;
+    mol.rgroupLogic(rgroupNumber, range, resth, ifthen);
+    QList<int> fragIds = mol.rgroupFragmentIds(rgroupNumber);
+
+    EditCommand cmd;
+    cmd.execute = [&mol, rgroupNumber]() { mol.removeRGroupEntry(rgroupNumber); };
+    cmd.invert = [&mol, rgroupNumber, range, resth, ifthen, fragIds]() {
+        mol.addRGroupEntry(rgroupNumber);
+        mol.setRGroupLogic(rgroupNumber, range, resth, ifthen);
+        for (int fid : fragIds) mol.addRGroupFragment(rgroupNumber, fid);
+    };
+    executeCommand(std::move(cmd));
+    return true;
+}
+
+void DocumentState::setRGroupLogic(int rgroupNumber, const QString& range, bool resth, int ifthen) {
+    EditableMolecule& mol = m_molecule;
+    QString oldRange; bool oldResth = false; int oldIfthen = 0;
+    if (!mol.rgroupLogic(rgroupNumber, oldRange, oldResth, oldIfthen)) return;
+    if (oldRange == range && oldResth == resth && oldIfthen == ifthen) return;
+
+    EditCommand cmd;
+    cmd.execute = [&mol, rgroupNumber, range, resth, ifthen]() { mol.setRGroupLogic(rgroupNumber, range, resth, ifthen); };
+    cmd.invert = [&mol, rgroupNumber, oldRange, oldResth, oldIfthen]() {
+        mol.setRGroupLogic(rgroupNumber, oldRange, oldResth, oldIfthen);
+    };
+    executeCommand(std::move(cmd));
+}
+
+void DocumentState::addRGroupMember(int rgroupNumber) {
+    EditableMolecule& mol = m_molecule;
+    if (!mol.rgroupNumbers().contains(rgroupNumber)) return;
+
+    QList<int> existing = mol.rgroupFragmentIds(rgroupNumber);
+    QList<int> newFragIds;
+    for (AtomId aid : m_selection.atoms) {
+        int fragId = mol.atomFragmentIndex(aid);
+        if (fragId >= 0 && !existing.contains(fragId) && !newFragIds.contains(fragId)) {
+            newFragIds.append(fragId);
+        }
+    }
+    if (newFragIds.isEmpty()) return;
+
+    EditCommand cmd;
+    cmd.execute = [&mol, rgroupNumber, newFragIds]() {
+        for (int fid : newFragIds) mol.addRGroupFragment(rgroupNumber, fid);
+    };
+    cmd.invert = [&mol, rgroupNumber, newFragIds]() {
+        for (int fid : newFragIds) mol.removeRGroupFragment(rgroupNumber, fid);
+    };
+    executeCommand(std::move(cmd));
+}
+
+void DocumentState::removeRGroupMember(int rgroupNumber, int fragId) {
+    EditableMolecule& mol = m_molecule;
+    if (!mol.rgroupFragmentIds(rgroupNumber).contains(fragId)) return;
+
+    EditCommand cmd;
+    cmd.execute = [&mol, rgroupNumber, fragId]() { mol.removeRGroupFragment(rgroupNumber, fragId); };
+    cmd.invert = [&mol, rgroupNumber, fragId]() { mol.addRGroupFragment(rgroupNumber, fragId); };
+    executeCommand(std::move(cmd));
+}
+
 void DocumentState::applyMoveDelta(const QList<AtomId>& atomIds, const QList<RxnArrowId>& arrowIds,
                                    const QList<RxnPlusId>& plusIds, const QList<MultitailArrowId>& mtaIds,
                                    double dx, double dy) {

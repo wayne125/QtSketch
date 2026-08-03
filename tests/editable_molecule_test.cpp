@@ -5,6 +5,7 @@
 // one property the design depends on (indigoClone preserves indices).
 #include <cstdio>
 #include <cstring>
+#include <algorithm>
 #include <QPointF>
 #include <functional>
 #include "app/molecule/EditableMolecule.h"
@@ -1193,6 +1194,53 @@ static void test_stereoFlagsDocumentMutator() {
     CHECK(m.stereoFlagsType() == QStringLiteral("rel"), "document-level type is untouched by the per-fragment setter");
 }
 
+static void test_rgroupStorageAndFragmentIndex() {
+    std::printf("--- Test 28: R-group storage + atomFragmentIndex ---\n");
+
+    // Two disjoint ethane fragments -- SMILES is auto-detected by indigoLoadMoleculeFromString
+    // exactly like the "CCO"/"CC(N)C(=O)O" molecules already used elsewhere in this file, so this
+    // avoids hand-rolling a V2000 molfile. Confirmed by direct probe against the real indigo.dll
+    // (indigoComponentIndex is live, 0-based, no indigoCountComponents prerequisite).
+    EditableMolecule m(QStringLiteral("CC.CC"));
+    QList<AtomId> ids = m.atomIds();
+    CHECK(ids.size() == 4, "setup: loaded 4 atoms across 2 disjoint fragments");
+    std::sort(ids.begin(), ids.end());
+    int frag0a = m.atomFragmentIndex(ids[0]);
+    int frag0b = m.atomFragmentIndex(ids[1]);
+    int frag1a = m.atomFragmentIndex(ids[2]);
+    int frag1b = m.atomFragmentIndex(ids[3]);
+    CHECK(frag0a == frag0b, "atoms 0,1 (bonded pair) share the same fragment index");
+    CHECK(frag1a == frag1b, "atoms 2,3 (bonded pair) share the same fragment index");
+    CHECK(frag0a != frag1a, "the two disjoint fragments have DIFFERENT indices");
+    CHECK(m.atomFragmentIndex(9999) == -1, "atomFragmentIndex returns -1 for an unknown id");
+
+    // R-group storage.
+    CHECK(m.rgroupNumbers().isEmpty(), "no R-groups initially");
+    CHECK(m.addRGroupEntry(1), "addRGroupEntry(1) succeeds");
+    CHECK(!m.addRGroupEntry(1), "addRGroupEntry(1) again fails -- already exists");
+    CHECK(m.rgroupNumbers() == QList<int>{1}, "rgroupNumbers lists the one R-group");
+
+    QString range; bool resth = false; int ifthen = 0;
+    CHECK(m.rgroupLogic(1, range, resth, ifthen), "rgroupLogic reads the fresh entry");
+    CHECK(range.isEmpty() && !resth && ifthen == 0, "fresh R-group entry has empty/false/0 logic fields");
+    CHECK(m.setRGroupLogic(1, QStringLiteral("1,2"), true, 2), "setRGroupLogic succeeds");
+    CHECK(m.rgroupLogic(1, range, resth, ifthen) && range == QStringLiteral("1,2") && resth && ifthen == 2,
+          "setRGroupLogic changed the fields");
+    CHECK(!m.setRGroupLogic(2, QStringLiteral("x"), false, 0), "setRGroupLogic fails for an unknown R-group number");
+
+    CHECK(m.rgroupFragmentIds(1).isEmpty(), "no member fragments yet");
+    CHECK(m.addRGroupFragment(1, frag0a), "addRGroupFragment succeeds");
+    CHECK(!m.addRGroupFragment(1, frag0a), "addRGroupFragment again fails -- already a member");
+    CHECK(m.rgroupFragmentIds(1) == QList<int>{frag0a}, "rgroupFragmentIds lists the one member fragment");
+    CHECK(m.removeRGroupFragment(1, frag0a), "removeRGroupFragment succeeds");
+    CHECK(m.rgroupFragmentIds(1).isEmpty(), "member fragment removed");
+    CHECK(!m.removeRGroupFragment(1, frag0a), "removeRGroupFragment again fails -- not a member");
+
+    CHECK(m.removeRGroupEntry(1), "removeRGroupEntry succeeds");
+    CHECK(!m.removeRGroupEntry(1), "removeRGroupEntry again fails -- already gone");
+    CHECK(m.rgroupNumbers().isEmpty(), "no R-groups remain");
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -1225,6 +1273,7 @@ int main() {
     test_sgroupIntrospectionAccessors();
     test_rxnArrowMutators();
     test_stereoFlagsDocumentMutator();
+    test_rgroupStorageAndFragmentIndex();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);

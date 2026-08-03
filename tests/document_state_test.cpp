@@ -1144,6 +1144,63 @@ static void test_setStereoFlags() {
     CHECK(doc.canUndo() == canUndoBefore, "empty-string type still normalizes to the current abs/0 state -- no-op");
 }
 
+static void test_rgroupCommands() {
+    std::printf("--- Test 19: R-group commands ---\n");
+    DocumentState doc;
+    AtomId a1 = doc.addAtom(QStringLiteral("C"), 0, 0);
+    AtomId a2 = doc.addAtom(QStringLiteral("C"), 5, 5);   // separate fragment (no bond to a1)
+
+    CHECK(doc.addRGroup(1), "addRGroup(1) succeeds");
+    CHECK(!doc.addRGroup(1), "addRGroup(1) again fails");
+    doc.undo();
+    CHECK(doc.molecule().rgroupNumbers().isEmpty(), "undo removes the R-group");
+    doc.redo();
+    CHECK(doc.molecule().rgroupNumbers() == QList<int>{1}, "redo recreates it");
+
+    doc.setRGroupLogic(1, QStringLiteral("1,2"), true, 1);
+    QString range; bool resth = false; int ifthen = 0;
+    doc.molecule().rgroupLogic(1, range, resth, ifthen);
+    CHECK(range == QStringLiteral("1,2") && resth && ifthen == 1, "setRGroupLogic applied");
+    doc.undo();
+    doc.molecule().rgroupLogic(1, range, resth, ifthen);
+    CHECK(range.isEmpty() && !resth && ifthen == 0, "undo restores default logic fields");
+    doc.setRGroupLogic(1, QStringLiteral("1,2"), true, 1); // reapply so the rest of this test has it set
+
+    doc.selectAtom(a1);
+    doc.addAtomToSelection(a2);
+    doc.addRGroupMember(1);
+    QList<int> members = doc.molecule().rgroupFragmentIds(1);
+    CHECK(members.size() == 2, "addRGroupMember registers both selected atoms' (distinct) fragments");
+    doc.undo();
+    CHECK(doc.molecule().rgroupFragmentIds(1).isEmpty(), "undo removes both member fragments");
+    doc.redo();
+    CHECK(doc.molecule().rgroupFragmentIds(1).size() == 2, "redo restores both");
+
+    bool canUndoBefore = doc.canUndo();
+    doc.addRGroupMember(1); // same selection again -- no NEW fragments -- must no-op
+    CHECK(doc.canUndo() == canUndoBefore, "addRGroupMember with nothing new to add pushes no history entry");
+
+    int fragToRemove = members.first();
+    doc.removeRGroupMember(1, fragToRemove);
+    CHECK(doc.molecule().rgroupFragmentIds(1).size() == 1, "removeRGroupMember removes one fragment");
+    doc.undo();
+    CHECK(doc.molecule().rgroupFragmentIds(1).size() == 2, "undo restores it");
+
+    doc.removeRGroupMember(1, 9999);
+    CHECK(!doc.canUndo() || doc.molecule().rgroupFragmentIds(1).size() == 2,
+          "removeRGroupMember with a non-member fragId is a no-op");
+
+    CHECK(doc.deleteRGroup(1), "deleteRGroup succeeds");
+    CHECK(doc.molecule().rgroupNumbers().isEmpty(), "R-group gone");
+    doc.undo();
+    CHECK(doc.molecule().rgroupNumbers() == QList<int>{1}, "undo recreates the R-group");
+    doc.molecule().rgroupLogic(1, range, resth, ifthen);
+    CHECK(range == QStringLiteral("1,2") && resth && ifthen == 1, "undo restores its logic fields too");
+    CHECK(doc.molecule().rgroupFragmentIds(1).size() == 2, "undo restores its member fragments too");
+
+    CHECK(!doc.deleteRGroup(9999), "deleteRGroup fails for an unknown R-group number");
+}
+
 int main() {
     test_selectionStateBasics();
     test_editCommandBasics();
@@ -1164,6 +1221,7 @@ int main() {
     test_toggleSgroupExpanded();
     test_rxnArrowLifecycle();
     test_setStereoFlags();
+    test_rgroupCommands();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

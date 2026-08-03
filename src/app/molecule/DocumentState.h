@@ -126,6 +126,16 @@ public:
     // "abs" and groupId to 0 exactly like the real function's `type || 'abs', groupId || 0`.
     void setStereoFlags(const QString& type, int groupId);
 
+    // R-groups (50-reactions.js: addRGroup/deleteRGroup/setRGroupLogic/addRGroupMember/
+    // removeRGroupMember). addRGroupMember reads the current selection's atoms, maps each to its
+    // live fragment index (EditableMolecule::atomFragmentIndex), and registers only the fragments
+    // not already members -- matching the real function's diff-then-guard exactly.
+    bool addRGroup(int rgroupNumber);
+    bool deleteRGroup(int rgroupNumber);
+    void setRGroupLogic(int rgroupNumber, const QString& range, bool resth, int ifthen);
+    void addRGroupMember(int rgroupNumber);
+    void removeRGroupMember(int rgroupNumber, int fragId);
+
     // ---- Live-drag gestures ------------------------------------------------
     // Repeated *Live calls during a UI drag mutate positions directly and push
     // NOTHING onto the undo history; the matching commit* call at gesture end

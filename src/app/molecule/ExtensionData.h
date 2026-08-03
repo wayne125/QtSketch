@@ -36,6 +36,17 @@ struct MultitailArrow{ QList<double> headAndTails; };                     // _st
 struct ImageRef      { double x = 0, y = 0, w = 0, h = 0; QByteArray pngData; }; // _struct.images
 struct AtomQueryList { QList<int> atomicNumbers; bool notList = false; };  // chem-core.js's atom.atomList sidecar (atom.label becomes the "L#" sentinel); NOT an Indigo concept -- plain molecule handles reject V2000 atom lists (sub-project 1 Test 6 finding)
 
+struct RGroupEntry {   // _struct.rgroups entry (50-reactions.js's _makeRGroupEntry)
+    QList<int> fragIds;     // member fragment indices; ordered, manually deduped (mirrors Pile.add())
+    QString range;
+    bool resth = false;
+    int ifthen = 0;
+    // Deliberately NO `index` field -- the real entry's `index` is always identical to the
+    // `_struct.rgroups` map key it's stored under, pure redundancy, trivially recoverable from
+    // the QHash<int, RGroupEntry> key below whenever sub-project 5 (serialization) needs it.
+};
+struct BracketBox { double minX = 0, minY = 0, maxX = 0, maxY = 0; };   // _struct.brackets entry
+
 struct ExtensionData {
     QString name;                          // _struct.name (user-typed label)
     QHash<TextId, TextAnnotation> texts;
@@ -51,6 +62,8 @@ struct ExtensionData {
     QHash<int, QString> atomCheckWarningTexts;         // AtomId -> real string warning type (see below)
     QHash<int, QString> bondCheckWarningTexts;         // BondId -> real string warning type
     QHash<int, AtomQueryList> atomQueryLists;  // AtomId -> query list (keyed directly by the already-stable AtomId, no separate counter needed)
+    QHash<int, RGroupEntry> rgroups;       // keyed by R-group NUMBER (e.g. 1 for R1), not a counter
+    QList<BracketBox> brackets;            // push/pop-only stack, no id (matches _struct.brackets.push/.pop)
 
     TextId nextTextId = 1;
     RxnArrowId nextRxnArrowId = 1;
