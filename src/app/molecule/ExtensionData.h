@@ -23,7 +23,7 @@ using RxnPlusId = int;
 using MultitailArrowId = int;
 using ImageId = int;
 
-struct TextAnnotation { double x = 0, y = 0; QString content; };          // _struct.texts (plain string; Lexical-JSON conversion is serialization's job, sub-project 5)
+struct TextAnnotation { double x = 0, y = 0; QString content; bool bold = false, italic = false; };   // _struct.texts (plain string; Lexical-JSON conversion is serialization's job, sub-project 5)
 struct RxnArrow {
     double x1 = 0, y1 = 0, x2 = 0, y2 = 0;
     QString mode = QStringLiteral("filled-triangle");   // buildRenderPrimitives' arr.mode || "filled-triangle"

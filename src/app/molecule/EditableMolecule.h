@@ -199,7 +199,8 @@ public:
     QList<MultitailArrowId> multitailArrowIds() const;
     QList<TextId> textAnnotationIds() const;
     QList<ImageId> imageIds() const;
-    bool textAnnotationContent(TextId id, double& x, double& y, QString& content) const;
+    bool textAnnotationContent(TextId id, double& x, double& y, QString& content, bool& bold, bool& italic) const;
+    bool setTextAnnotation(TextId id, const QString& content, bool bold, bool italic);
     bool imageData(ImageId id, double& x, double& y, double& w, double& h, QByteArray& pngData) const;
     bool rxnArrowEndpoints(RxnArrowId id, double& x1, double& y1, double& x2, double& y2) const;
     bool setRxnArrowEndpoints(RxnArrowId id, double x1, double y1, double x2, double y2);

@@ -136,6 +136,13 @@ public:
     void addRGroupMember(int rgroupNumber);
     void removeRGroupMember(int rgroupNumber, int fragId);
 
+    // Text annotations (50-reactions.js: addText/updateText/deleteText). addText no-ops
+    // (returns -1) on an empty or whitespace-only string, matching the real
+    // `if (!plainStr || !String(plainStr).trim()) return`.
+    TextId addText(const QString& plainStr, double x, double y, bool bold, bool italic);
+    void updateText(TextId id, const QString& plainStr, bool bold, bool italic);
+    void deleteText(TextId id);
+
     // ---- Live-drag gestures ------------------------------------------------
     // Repeated *Live calls during a UI drag mutate positions directly and push
     // NOTHING onto the undo history; the matching commit* call at gesture end

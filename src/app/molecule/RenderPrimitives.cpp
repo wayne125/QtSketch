@@ -355,9 +355,9 @@ RenderPrimitives RenderPrimitiveBuilder::build(const EditableMolecule& mol, bool
         result.multitailArrows.append(prim);
     }
     for (int id : mol.textAnnotationIds()) {
-        double x = 0, y = 0; QString content;
-        if (!mol.textAnnotationContent(id, x, y, content)) continue;
-        result.texts.append(TextPrim{id, x, y, content, false, false});
+        double x = 0, y = 0; QString content; bool bold = false, italic = false;
+        if (!mol.textAnnotationContent(id, x, y, content, bold, italic)) continue;
+        result.texts.append(TextPrim{id, x, y, content, bold, italic});
     }
     for (int id : mol.imageIds()) {
         double x = 0, y = 0, w = 0, h = 0; QByteArray png;

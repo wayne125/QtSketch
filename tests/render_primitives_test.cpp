@@ -304,6 +304,7 @@ static void test_ringsBondsAndAuxiliaryPrimitives() {
     {
         EditableMolecule m;
         int textId = m.addTextAnnotation(1.0, 2.0, QStringLiteral("note"));
+        m.setTextAnnotation(textId, QStringLiteral("note"), true, false);
         int imageId = m.addImage(0.0, 0.0, 4.0, 3.0, QByteArray("fakepng"));
         int arrowId = m.addRxnArrow(0.0, 0.0, 5.0, 0.0);
         int plusId = m.addRxnPlus(2.5, 0.0);
@@ -315,6 +316,7 @@ static void test_ringsBondsAndAuxiliaryPrimitives() {
         if (!rp.texts.isEmpty()) {
             CHECK(rp.texts[0].id == textId, "text id round-trips");
             CHECK(rp.texts[0].content == QStringLiteral("note"), "text content round-trips");
+            CHECK(rp.texts[0].bold && !rp.texts[0].italic, "real bold/italic values round-trip (no longer hardcoded false)");
         }
 
         CHECK(rp.images.size() == 1, "one image primitive");

@@ -591,10 +591,17 @@ QList<MultitailArrowId> EditableMolecule::multitailArrowIds() const { return m_e
 QList<TextId> EditableMolecule::textAnnotationIds() const { return m_ext.texts.keys(); }
 QList<ImageId> EditableMolecule::imageIds() const { return m_ext.images.keys(); }
 
-bool EditableMolecule::textAnnotationContent(TextId id, double& x, double& y, QString& content) const {
+bool EditableMolecule::textAnnotationContent(TextId id, double& x, double& y, QString& content, bool& bold, bool& italic) const {
     if (!m_ext.texts.contains(id)) return false;
     const TextAnnotation& t = m_ext.texts.value(id);
-    x = t.x; y = t.y; content = t.content;
+    x = t.x; y = t.y; content = t.content; bold = t.bold; italic = t.italic;
+    return true;
+}
+
+bool EditableMolecule::setTextAnnotation(TextId id, const QString& content, bool bold, bool italic) {
+    if (!m_ext.texts.contains(id)) return false;
+    TextAnnotation& t = m_ext.texts[id];
+    t.content = content; t.bold = bold; t.italic = italic;
     return true;
 }
 

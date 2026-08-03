@@ -1241,6 +1241,25 @@ static void test_rgroupStorageAndFragmentIndex() {
     CHECK(m.rgroupNumbers().isEmpty(), "no R-groups remain");
 }
 
+static void test_textBoldItalic() {
+    std::printf("--- Test 29: text annotation bold/italic ---\n");
+    EditableMolecule m;
+    int id = m.addTextAnnotation(1, 2, QStringLiteral("hello"));
+
+    double x = 0, y = 0; QString content; bool bold = true, italic = true;
+    CHECK(m.textAnnotationContent(id, x, y, content, bold, italic), "textAnnotationContent succeeds");
+    CHECK(!bold && !italic, "new text annotation defaults bold/italic to false");
+    CHECK(content == QStringLiteral("hello"), "content round-trips");
+
+    CHECK(m.setTextAnnotation(id, QStringLiteral("world"), true, true), "setTextAnnotation succeeds");
+    CHECK(m.textAnnotationContent(id, x, y, content, bold, italic), "re-read after mutation");
+    CHECK(content == QStringLiteral("world") && bold && italic, "content/bold/italic all updated");
+    CHECK(x == 1 && y == 2, "position is untouched by setTextAnnotation");
+
+    CHECK(!m.setTextAnnotation(9999, QStringLiteral("x"), false, false), "setTextAnnotation fails for an unknown id");
+    CHECK(!m.textAnnotationContent(9999, x, y, content, bold, italic), "textAnnotationContent fails for an unknown id");
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -1274,6 +1293,7 @@ int main() {
     test_rxnArrowMutators();
     test_stereoFlagsDocumentMutator();
     test_rgroupStorageAndFragmentIndex();
+    test_textBoldItalic();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);

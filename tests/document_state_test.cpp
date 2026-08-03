@@ -1201,6 +1201,43 @@ static void test_rgroupCommands() {
     CHECK(!doc.deleteRGroup(9999), "deleteRGroup fails for an unknown R-group number");
 }
 
+static void test_textCommands() {
+    std::printf("--- Test 20: text commands ---\n");
+    DocumentState doc;
+
+    TextId t1 = doc.addText(QStringLiteral("hello"), 1, 2, false, false);
+    double x = 0, y = 0; QString content; bool bold = false, italic = false;
+    CHECK(doc.molecule().textAnnotationContent(t1, x, y, content, bold, italic), "addText creates a real annotation");
+    CHECK(content == QStringLiteral("hello") && x == 1 && y == 2, "content and position match");
+    doc.undo();
+    CHECK(doc.molecule().textAnnotationIds().isEmpty(), "undo removes the created text");
+
+    // Recreate t1 for real -- the throwaway above only proved undo works; everything below needs
+    // a persistent first annotation to compare counts against.
+    t1 = doc.addText(QStringLiteral("hello"), 1, 2, false, false);
+    bool canUndoBeforeNoOps = doc.canUndo();
+
+    CHECK(doc.addText(QString(), 0, 0, false, false) == -1, "addText on an empty string returns -1 (no-op)");
+    CHECK(doc.addText(QStringLiteral("   "), 0, 0, false, false) == -1, "addText on a whitespace-only string returns -1 (no-op)");
+    CHECK(doc.canUndo() == canUndoBeforeNoOps, "neither no-op addText call pushed a history entry");
+
+    TextId t2 = doc.addText(QStringLiteral("world"), 0, 0, false, false);
+    doc.updateText(t2, QStringLiteral("WORLD"), true, true);
+    CHECK(doc.molecule().textAnnotationContent(t2, x, y, content, bold, italic), "re-read after updateText");
+    CHECK(content == QStringLiteral("WORLD") && bold && italic, "updateText changed content/bold/italic");
+    doc.undo();
+    CHECK(doc.molecule().textAnnotationContent(t2, x, y, content, bold, italic), "re-read after undo");
+    CHECK(content == QStringLiteral("world") && !bold && !italic, "undo restores the original content/bold/italic");
+
+    doc.deleteText(t2);
+    CHECK(doc.molecule().textAnnotationIds().size() == 1, "deleteText removes the annotation");
+    doc.undo();
+    CHECK(doc.molecule().textAnnotationIds().size() == 2, "undo recreates it (fresh id)");
+
+    doc.deleteText(9999);
+    CHECK(!doc.canUndo() || doc.molecule().textAnnotationIds().size() == 2, "deleteText on an unknown id is a no-op");
+}
+
 int main() {
     test_selectionStateBasics();
     test_editCommandBasics();
@@ -1222,6 +1259,7 @@ int main() {
     test_rxnArrowLifecycle();
     test_setStereoFlags();
     test_rgroupCommands();
+    test_textCommands();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

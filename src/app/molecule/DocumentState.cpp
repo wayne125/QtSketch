@@ -565,6 +565,47 @@ void DocumentState::removeRGroupMember(int rgroupNumber, int fragId) {
     executeCommand(std::move(cmd));
 }
 
+TextId DocumentState::addText(const QString& plainStr, double x, double y, bool bold, bool italic) {
+    if (plainStr.trimmed().isEmpty()) return -1;
+
+    auto idBox = std::make_shared<TextId>(-1);
+    EditableMolecule& mol = m_molecule;
+    EditCommand cmd;
+    cmd.execute = [&mol, idBox, plainStr, x, y, bold, italic]() {
+        *idBox = mol.addTextAnnotation(x, y, plainStr);
+        mol.setTextAnnotation(*idBox, plainStr, bold, italic);
+    };
+    cmd.invert = [&mol, idBox]() { mol.removeTextAnnotation(*idBox); };
+    executeCommand(std::move(cmd));
+    return *idBox;
+}
+
+void DocumentState::updateText(TextId id, const QString& plainStr, bool bold, bool italic) {
+    EditableMolecule& mol = m_molecule;
+    double x = 0, y = 0; QString oldContent; bool oldBold = false, oldItalic = false;
+    if (!mol.textAnnotationContent(id, x, y, oldContent, oldBold, oldItalic)) return;
+    if (oldContent == plainStr && oldBold == bold && oldItalic == italic) return;
+
+    EditCommand cmd;
+    cmd.execute = [&mol, id, plainStr, bold, italic]() { mol.setTextAnnotation(id, plainStr, bold, italic); };
+    cmd.invert = [&mol, id, oldContent, oldBold, oldItalic]() { mol.setTextAnnotation(id, oldContent, oldBold, oldItalic); };
+    executeCommand(std::move(cmd));
+}
+
+void DocumentState::deleteText(TextId id) {
+    EditableMolecule& mol = m_molecule;
+    double x = 0, y = 0; QString content; bool bold = false, italic = false;
+    if (!mol.textAnnotationContent(id, x, y, content, bold, italic)) return;
+
+    EditCommand cmd;
+    cmd.execute = [&mol, id]() { mol.removeTextAnnotation(id); };
+    cmd.invert = [&mol, x, y, content, bold, italic]() {
+        int newId = mol.addTextAnnotation(x, y, content);
+        mol.setTextAnnotation(newId, content, bold, italic);
+    };
+    executeCommand(std::move(cmd));
+}
+
 void DocumentState::applyMoveDelta(const QList<AtomId>& atomIds, const QList<RxnArrowId>& arrowIds,
                                    const QList<RxnPlusId>& plusIds, const QList<MultitailArrowId>& mtaIds,
                                    double dx, double dy) {
