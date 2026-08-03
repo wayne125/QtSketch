@@ -1339,6 +1339,50 @@ void DocumentState::insertFunctionalGroup(const TemplateLibrary& lib, const QStr
     executeCommand(std::move(cmd));
 }
 
+void DocumentState::insertStructureAt(const QString& sourceMolfile, double cx, double cy) {
+    cx = std::max(kPageMinX, std::min(kPageMaxX, cx));
+    cy = std::max(kPageMinY, std::min(kPageMaxY, cy));
+
+    EditableMolecule tmp(sourceMolfile);
+    if (!tmp.isValid() || tmp.atomCount() == 0) return;
+
+    double minX = 0, maxX = 0, minY = 0, maxY = 0;
+    bool any = false;
+    for (AtomId id : tmp.atomIds()) {
+        double x = 0, y = 0;
+        if (!tmp.atomPos(id, x, y)) continue;
+        if (!any) { minX = maxX = x; minY = maxY = y; any = true; }
+        else {
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+        }
+    }
+    double dx = cx - (minX + maxX) / 2.0;
+    double dy = cy - (minY + maxY) / 2.0;
+
+    EditableMolecule& mol = m_molecule;
+    auto createdAtoms = std::make_shared<QList<AtomId>>();
+    auto createdBonds = std::make_shared<QList<BondId>>();
+    auto createdSGroups = std::make_shared<QList<SGroupId>>();
+
+    EditCommand cmd;
+    cmd.execute = [&mol, sourceMolfile, dx, dy, createdAtoms, createdBonds, createdSGroups]() {
+        EditableMolecule::InsertResult result = mol.insertStructure(sourceMolfile, [dx, dy](double x, double y) {
+            return QPointF(x + dx, y + dy);
+        });
+        *createdAtoms = result.createdAtoms;
+        *createdBonds = result.createdBonds;
+        *createdSGroups = result.createdSGroups;
+    };
+    cmd.invert = [&mol, createdAtoms, createdBonds]() {
+        for (BondId b : *createdBonds) mol.removeBond(b);
+        for (AtomId a : *createdAtoms) mol.removeAtom(a);
+    };
+    executeCommand(std::move(cmd));
+}
+
 std::function<QPointF(double, double)> DocumentState::makeSimilarityTransform(
         double p1x, double p1y, double p2x, double p2y, double q1x, double q1y, double q2x, double q2y) {
     double dp = std::sqrt((p2x - p1x) * (p2x - p1x) + (p2y - p1y) * (p2y - p1y));

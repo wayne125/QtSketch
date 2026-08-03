@@ -251,6 +251,12 @@ public:
     void insertFunctionalGroup(const TemplateLibrary& lib, const QString& fgName,
                                 double cx, double cy, AtomId targetAtomId = -1, bool fullStructure = true);
 
+    // Shared core for BOTH pasteSelection (source = copySelection()'s output) and
+    // insertRecognizedStructure (source = an externally-recognized molfile string) -- the real
+    // 30-templates.js's _insertStructAt is exactly this shared helper already. Clamps (cx, cy) to
+    // the page bounds first. No-ops (no history entry) on an empty or unparseable sourceMolfile.
+    void insertStructureAt(const QString& sourceMolfile, double cx, double cy);
+
     // Ports 30-templates.js's insertLibraryTemplateFused. Maps the template's
     // designated fusion bond onto targetBondId via a 2-point similarity
     // transform, then reuses the EXISTING mergeOverlappingAtoms +

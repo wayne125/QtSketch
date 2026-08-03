@@ -2,6 +2,7 @@
 // Standalone tests for DocumentState (chem-core.js migration, sub-project 2).
 #include <cstdio>
 #include <cmath>
+#include <algorithm>
 #include "app/molecule/SelectionState.h"
 #include "app/molecule/EditCommand.h"
 #include "app/molecule/DocumentState.h"
@@ -1431,6 +1432,64 @@ static void test_copySelection() {
     CHECK(doc.canUndo() == canUndoBefore, "copySelection is a pure read -- it pushes no history entry");
 }
 
+static void test_insertStructureAt() {
+    std::printf("--- Test 28: insertStructureAt ---\n");
+    DocumentState doc;
+
+    doc.insertStructureAt(QStringLiteral("CCO"), 10, 5);
+    CHECK(doc.molecule().atomCount() == 3, "insertStructureAt merges the source's atoms into the document");
+
+    // Confirm the pasted structure's bbox center landed at (10, 5).
+    double minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+    for (AtomId id : doc.molecule().atomIds()) {
+        double x = 0, y = 0;
+        doc.molecule().atomPos(id, x, y);
+        minX = std::min(minX, x); maxX = std::max(maxX, x);
+        minY = std::min(minY, y); maxY = std::max(maxY, y);
+    }
+    CHECK(std::abs((minX + maxX) / 2.0 - 10.0) < 1e-6, "pasted structure's bbox center X is at cx");
+    CHECK(std::abs((minY + maxY) / 2.0 - 5.0) < 1e-6, "pasted structure's bbox center Y is at cy");
+
+    doc.undo();
+    CHECK(doc.molecule().atomCount() == 0, "undo removes every atom/bond the paste created");
+    doc.redo();
+    CHECK(doc.molecule().atomCount() == 3, "redo re-applies the paste");
+
+    bool canUndoBefore = doc.canUndo();
+    doc.insertStructureAt(QString(), 0, 0);
+    CHECK(doc.canUndo() == canUndoBefore, "empty source is a no-op -- no history entry");
+    doc.insertStructureAt(QStringLiteral("not a valid molecule $$$"), 0, 0);
+    CHECK(doc.canUndo() == canUndoBefore, "unparseable source is a no-op -- no history entry");
+    CHECK(doc.molecule().atomCount() == 3, "document is unchanged by either no-op call");
+}
+
+static void test_insertStructureAtClampsToPageBounds() {
+    std::printf("--- Test 29: insertStructureAt clamps to page bounds ---\n");
+    DocumentState doc;
+    doc.insertStructureAt(QStringLiteral("C"), 9999.0, -9999.0);
+    CHECK(doc.molecule().atomCount() == 1, "structure is still inserted even with wildly out-of-range coordinates");
+    double x = 0, y = 0;
+    doc.molecule().atomPos(doc.molecule().atomIds().first(), x, y);
+    CHECK(x <= 30.0 && y >= -21.0, "resulting position is clamped within the page bounds, not left at the raw input");
+}
+
+static void test_copyPasteRoundTrip() {
+    std::printf("--- Test 30: copySelection -> insertStructureAt round-trip ---\n");
+    DocumentState doc;
+    AtomId a1 = doc.addAtom(QStringLiteral("C"), 0, 0);
+    AtomId a2 = doc.addAtom(QStringLiteral("O"), 1, 0);
+    doc.addBond(a1, a2, 1);
+    doc.selectAtom(a1);
+    doc.addAtomToSelection(a2);
+    doc.addBondToSelection(doc.molecule().bondIds().first());
+
+    QString copied = doc.copySelection();
+    CHECK(!copied.isEmpty(), "setup: copySelection produced real text");
+
+    doc.insertStructureAt(copied, 20, 20);
+    CHECK(doc.molecule().atomCount() == 4, "the document now has both the original and the pasted atoms");
+}
+
 int main() {
     test_selectionStateBasics();
     test_editCommandBasics();
@@ -1460,6 +1519,9 @@ int main() {
     test_deserializeMol();
     test_setMoleculeName();
     test_copySelection();
+    test_insertStructureAt();
+    test_insertStructureAtClampsToPageBounds();
+    test_copyPasteRoundTrip();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }
