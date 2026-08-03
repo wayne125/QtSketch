@@ -252,6 +252,8 @@ add_library(molecule_model STATIC
     src/app/molecule/SdfBatch.cpp
     src/app/molecule/ClipboardPreview.h
     src/app/molecule/ClipboardPreview.cpp
+    src/app/molecule/BiopolymerSequenceView.h
+    src/app/molecule/BiopolymerSequenceView.cpp
 )
 target_include_directories(molecule_model PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -288,4 +290,8 @@ qt_add_executable(clipboard_preview_test tests/clipboard_preview_test.cpp)
 target_link_libraries(clipboard_preview_test PRIVATE molecule_model)
 target_compile_definitions(clipboard_preview_test PRIVATE SKETCH_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 add_test(NAME clipboard_preview_test COMMAND clipboard_preview_test)
+
+qt_add_executable(biopolymer_sequence_view_test tests/biopolymer_sequence_view_test.cpp)
+target_link_libraries(biopolymer_sequence_view_test PRIVATE molecule_model)
+add_test(NAME biopolymer_sequence_view_test COMMAND biopolymer_sequence_view_test)
 
