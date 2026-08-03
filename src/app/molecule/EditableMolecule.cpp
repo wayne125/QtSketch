@@ -712,6 +712,9 @@ MoleculeSnapshot EditableMolecule::snapshot() const {
     s.m_bondIdx = m_bondIdx;
     s.m_nextAtomId = m_nextAtomId;
     s.m_nextBondId = m_nextBondId;
+    s.m_sgroupIdx = m_sgroupIdx;
+    s.m_sgroupExpanded = m_sgroupExpanded;
+    s.m_nextSGroupId = m_nextSGroupId;
     return s;
 }
 
@@ -727,6 +730,9 @@ bool EditableMolecule::restore(const MoleculeSnapshot& snap) {
     m_bondIdx = snap.m_bondIdx;
     if (snap.m_nextAtomId > m_nextAtomId) m_nextAtomId = snap.m_nextAtomId;
     if (snap.m_nextBondId > m_nextBondId) m_nextBondId = snap.m_nextBondId;
+    m_sgroupIdx = snap.m_sgroupIdx;
+    m_sgroupExpanded = snap.m_sgroupExpanded;
+    if (snap.m_nextSGroupId > m_nextSGroupId) m_nextSGroupId = snap.m_nextSGroupId;
     return true;
 }
 
@@ -854,10 +860,19 @@ EditableMolecule::InsertResult EditableMolecule::insertStructure(const QString& 
     QSet<int> bondIdxBefore = QSet<int>(m_bondIdx.begin(), m_bondIdx.end());
     QSet<int> sgroupIdxBefore;
     {
-        int n = indigoCountSuperatoms(m_mol);
-        for (int i = 0; i < n; ++i) {
-            int sup = indigoGetSuperatom(m_mol, i);
-            if (sup >= 0) { sgroupIdxBefore.insert(indigoIndex(sup)); indigoFree(sup); }
+        // indigoGetSuperatom(mol, i) takes an ABSOLUTE sgroup index across every sgroup type,
+        // not a superatom-specific ordinal -- confirmed by direct probe: with a data sgroup at
+        // absolute index 0 and a superatom at absolute index 1, looping i from 0 to
+        // indigoCountSuperatoms()-1 (i.e. i=0 only, since there's 1 superatom) calls
+        // indigoGetSuperatom(mol, 0), which targets the DATA sgroup and fails with "Sgroup with
+        // index 0 is not a Superatom" -- silently swallowed by the `sup >= 0` guard, so the real
+        // superatom at index 1 is never reached. indigoIterateSuperatoms is the correct,
+        // type-safe iterator (mirrors indigoIterateDataSGroups) and has no such index confusion.
+        int iter = indigoIterateSuperatoms(m_mol);
+        if (iter >= 0) {
+            int sup;
+            while ((sup = indigoNext(iter)) > 0) { sgroupIdxBefore.insert(indigoIndex(sup)); indigoFree(sup); }
+            indigoFree(iter);
         }
     }
     // Also record the clone's own atom index -> its position, so after
@@ -928,18 +943,22 @@ EditableMolecule::InsertResult EditableMolecule::insertStructure(const QString& 
 
     // New sgroups: any superatom index not present before the merge. Assign
     // each a fresh stable SGroupId, defaulting expanded=true (chem-core's own
-    // default for sg.data.expanded).
-    int n = indigoCountSuperatoms(m_mol);
-    for (int i = 0; i < n; ++i) {
-        int sup = indigoGetSuperatom(m_mol, i);
-        if (sup < 0) continue;
-        int idx = indigoIndex(sup);
-        indigoFree(sup);
-        if (sgroupIdxBefore.contains(idx)) continue;
-        SGroupId sgId = m_nextSGroupId++;
-        m_sgroupIdx.insert(sgId, idx);
-        m_sgroupExpanded.insert(sgId, true);
-        result.createdSGroups.append(sgId);
+    // default for sg.data.expanded). Uses indigoIterateSuperatoms, NOT an
+    // indigoCountSuperatoms-bounded indigoGetSuperatom(mol, i) loop -- see the
+    // sgroupIdxBefore block above for why that pattern is broken.
+    int supIter = indigoIterateSuperatoms(m_mol);
+    if (supIter >= 0) {
+        int sup;
+        while ((sup = indigoNext(supIter)) > 0) {
+            int idx = indigoIndex(sup);
+            indigoFree(sup);
+            if (sgroupIdxBefore.contains(idx)) continue;
+            SGroupId sgId = m_nextSGroupId++;
+            m_sgroupIdx.insert(sgId, idx);
+            m_sgroupExpanded.insert(sgId, true);
+            result.createdSGroups.append(sgId);
+        }
+        indigoFree(supIter);
     }
 
     return result;

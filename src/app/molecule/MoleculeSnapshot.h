@@ -23,6 +23,9 @@ public:
             m_atomIdx = std::move(other.m_atomIdx);
             m_bondIdx = std::move(other.m_bondIdx);
             m_nextAtomId = other.m_nextAtomId; m_nextBondId = other.m_nextBondId;
+            m_sgroupIdx = std::move(other.m_sgroupIdx);
+            m_sgroupExpanded = std::move(other.m_sgroupExpanded);
+            m_nextSGroupId = other.m_nextSGroupId;
             other.m_clone = -1;
         }
         return *this;
@@ -45,6 +48,9 @@ private:
     QHash<int, int> m_bondIdx;
     int m_nextAtomId = 1;
     int m_nextBondId = 1;
+    QHash<int, int> m_sgroupIdx;
+    QHash<int, bool> m_sgroupExpanded;
+    int m_nextSGroupId = 1;
 };
 
 #endif // MOLECULESNAPSHOT_H

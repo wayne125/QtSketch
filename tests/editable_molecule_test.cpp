@@ -197,6 +197,32 @@ static void test_snapshotRestore() {
     m.setStereoFlag(0, 1);
     m.setAtomCheckWarning(a2, true);
 
+    // Real superatom (SUP) sgroup, tracked via EditableMolecule's own external m_sgroupIdx/
+    // m_sgroupExpanded -- a DIFFERENT mechanism from addDataSGroup above, which lives entirely
+    // inside Indigo's own molecule object and needs no external tracking. This is the exact
+    // "Ac" fixture already used by test_sgroupIntrospectionAccessors.
+    QString acMolfile = QStringLiteral(
+        "Ac\n"
+        "  Ketcher\n\n"
+        "  3  2  0  0  0  0  0  0  0  0999 V2000\n"
+        "    3.3951   -3.5754    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "    2.6785   -3.9891    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "    3.3951   -2.7480    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "  2  1  1  0  0  0  0\n"
+        "  1  3  2  0  0  0  0\n"
+        "M  STY  1   1 SUP\n"
+        "M  SLB  1   1   1\n"
+        "M  SAL   1  3   1   2   3\n"
+        "M  SAP   1  1   1   0\n"
+        "M  SMT   1 Ac\n"
+        "M  END\n");
+    EditableMolecule::InsertResult acResult = m.insertStructure(
+        acMolfile, [](double x, double y) { return QPointF(x, y); });
+    CHECK(acResult.createdSGroups.size() == 1, "setup: \"Ac\" superatom inserted");
+    SGroupId sgId = acResult.createdSGroups[0];
+    m.setSGroupExpanded(sgId, false);   // away from the default (true), so restore is verifiable
+    CHECK(!m.sgroupExpanded(sgId), "setup: sgroup starts collapsed for this test");
+
     MoleculeSnapshot snap = m.snapshot();
 
     AtomId a3 = m.addAtom(QStringLiteral("N"), 2, 0);
@@ -205,11 +231,12 @@ static void test_snapshotRestore() {
     m.setName(QStringLiteral("after"));
     m.setAtomAAM(a2, 9);
     m.addTextAnnotation(0, 2, QStringLiteral("v2"));
-    CHECK(m.atomCount() == 2 && m.name() == QStringLiteral("after"), "mutations applied");
+    m.setSGroupExpanded(sgId, true);   // mutate sgroup state too, AFTER the snapshot
+    CHECK(m.atomCount() == 5 && m.name() == QStringLiteral("after"), "mutations applied");
 
     CHECK(m.restore(snap), "restore succeeds");
-    CHECK(m.atomCount() == 2, "atom count restored");
-    CHECK(m.bondCount() == 1, "bond count restored");
+    CHECK(m.atomCount() == 5, "atom count restored");   // 2 plain + 3 from the Ac superatom
+    CHECK(m.bondCount() == 3, "bond count restored");   // 1 plain + 2 from the Ac superatom
     CHECK(m.name() == QStringLiteral("before"), "name restored");
     CHECK(m.atomAAM(a1) == 3, "AAM restored under the ORIGINAL AtomId");
     CHECK(m.atomSymbol(a1) == QStringLiteral("C"), "original AtomId resolves after restore");
@@ -221,9 +248,15 @@ static void test_snapshotRestore() {
     CHECK(m.stereoFlag(0) == 1, "stereo flag survives restore");
     CHECK(m.atomCheckWarning(a2), "check warning survives restore");
 
+    // The actual fix under test: SUP-superatom tracking (m_sgroupIdx/m_sgroupExpanded), a
+    // SEPARATE mechanism from the data-sgroup check above, must also survive restore().
+    CHECK(m.sgroupIds().contains(sgId), "SUP-sgroup id survives snapshot/restore");
+    CHECK(m.sgroupMemberAtomIds(sgId).size() == 3, "SUP-sgroup member atoms survive snapshot/restore");
+    CHECK(!m.sgroupExpanded(sgId), "SUP-sgroup expanded flag restored to its pre-mutation value (false)");
+
     m.removeAtom(a2);
     CHECK(m.restore(snap), "second restore of the same snapshot succeeds");
-    CHECK(m.atomCount() == 2, "second restore rolls back again");
+    CHECK(m.atomCount() == 5, "second restore rolls back again");
 
     AtomId a4 = m.addAtom(QStringLiteral("S"), 3, 0);
     CHECK(a4 > a3, "ID counter survives restore (no reuse of discarded IDs)");
