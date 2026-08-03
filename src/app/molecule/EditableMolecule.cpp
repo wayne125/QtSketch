@@ -1109,6 +1109,14 @@ int EditableMolecule::atomFragmentIndex(AtomId id) const {
     return ci;
 }
 
+QList<AtomId> EditableMolecule::atomIdsInFragment(int fragIndex) const {
+    QList<AtomId> result;
+    for (AtomId id : atomIds()) {
+        if (atomFragmentIndex(id) == fragIndex) result.append(id);
+    }
+    return result;
+}
+
 int EditableMolecule::stereocenterType(AtomId id) const {
     if (m_mol < 0 || !m_atomIdx.contains(id)) return 0;
     activateSession();

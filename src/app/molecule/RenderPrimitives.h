@@ -11,11 +11,12 @@
 // Deliberately NOT wired into the app yet -- stays standalone and tested, exactly like
 // sub-projects 1-3, until dispatch-layer removal (sub-project 7).
 //
-// Documented gaps, not silently guessed at: r-groups and brackets (no data model exists in any
-// prior sub-project -- AtomPrim::attachmentPoints is always 0, and there are no rgroups/brackets
-// output fields at all), BondPrim::reactingCenterStatus (reaction-specific, always 0, no reaction
-// objects exist in this port yet), BondPrim::cipLabel (always empty -- confirmed by direct probe
-// that no bond-level E/Z CIP path exists through Indigo's public C API).
+// Documented gaps, not silently guessed at: BondPrim::reactingCenterStatus (reaction-specific,
+// always 0, no reaction objects exist in this port yet), BondPrim::cipLabel (always empty --
+// confirmed by direct probe that no bond-level E/Z CIP path exists through Indigo's public C
+// API). R-group and bracket rendering (RGroupPrim/BracketPrim below) were added once sub-project
+// 3e gave R-groups and brackets a real data model -- see 10-state.js:1374-1393 for the source
+// shape these mirror exactly.
 
 #include "EditableMolecule.h"
 #include <QString>
@@ -29,7 +30,7 @@ struct AtomPrim {
     QString label, element, color, atomicTitle, checkWarning;
     QString atomListElements;   // comma-joined symbols, only when isAtomList
     int charge = 0, isotope = 0, radical = 0, explicitValence = -1, aam = 0;
-    int attachmentPoints = 0;   // r-group bitmask -- always 0, deferred with r-groups
+    int attachmentPoints = 0;   // bit N-1 set if this atom is attachment-point order N (V2000 M APO); NOT r-group-specific -- shared by R-group and SUP-template attachment atoms alike, wraps EditableMolecule::atomAttachmentOrder
     int stereoType = 0, stereoGroup = 0, atomicNum = 0, implicitHCount = 0;
     double atomicMass = 0;
     QString stereoLabel, cipLabel;
@@ -81,6 +82,22 @@ struct MultitailArrowPrim {
 
 struct BBox { bool valid = false; double minX = 0, minY = 0, maxX = 0, maxY = 0; };
 
+// Mirrors 10-state.js:1374-1391's rgroups output exactly: one entry per R-group NUMBER (sorted
+// ascending), each carrying its logic fields and every member fragment's full atom-id set (so a
+// renderer can draw a bracket around each alternative substituent and label it "R<number>").
+struct RGroupMemberPrim { int fragId; QList<AtomId> atomIds; };
+struct RGroupPrim {
+    int number;
+    QString range;
+    bool resth = false;
+    int ifthen = 0;
+    QList<RGroupMemberPrim> members;
+};
+
+// Mirrors 10-state.js:1392's brackets output: a flat list of bounding boxes, in the same order
+// EditableMolecule::bracketAt returns them (push order -- the stack's bottom is index 0).
+struct BracketPrim { double minX = 0, minY = 0, maxX = 0, maxY = 0; };
+
 struct RenderPrimitives {
     QList<AtomPrim> atoms;
     QList<BondPrim> bonds;
@@ -91,6 +108,8 @@ struct RenderPrimitives {
     QList<RxnArrowPrim> rxnArrows;
     QList<RxnPlusPrim> rxnPluses;
     QList<MultitailArrowPrim> multitailArrows;
+    QList<RGroupPrim> rgroups;
+    QList<BracketPrim> brackets;
     BBox bbox;
     QString stereoFlagsType;
     int stereoFlagsGroupId = 0;

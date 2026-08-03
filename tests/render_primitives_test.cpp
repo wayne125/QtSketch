@@ -378,6 +378,63 @@ static void test_ringsBondsAndAuxiliaryPrimitives() {
     }
 }
 
+static void test_attachmentPointsAndRGroupBracketPrimitives() {
+    std::printf("--- Test 4: attachmentPoints, R-group, and bracket primitives ---\n");
+
+    // AtomPrim::attachmentPoints -- not r-group-specific, just the atom-level V2000 attachment
+    // point bitmask (see RenderPrimitives.h). Order 1 -> bit 0 (value 1), order 2 -> bit 1 (value 2).
+    {
+        EditableMolecule m;
+        AtomId a1 = m.addAtom(QStringLiteral("C"), 0, 0);
+        AtomId a2 = m.addAtom(QStringLiteral("C"), 1, 0);
+        m.setAtomAttachmentOrder(a1, 1);
+        m.setAtomAttachmentOrder(a2, 2);
+
+        RenderPrimitives rp = RenderPrimitiveBuilder::build(m, false);
+        int found = 0;
+        for (const AtomPrim& a : rp.atoms) {
+            if (a.id == a1) { CHECK(a.attachmentPoints == 1, "order-1 atom gets bitmask 1"); found++; }
+            if (a.id == a2) { CHECK(a.attachmentPoints == 2, "order-2 atom gets bitmask 2"); found++; }
+        }
+        CHECK(found == 2, "both attachment-point atoms were found in the primitive list");
+    }
+
+    // R-group + bracket primitives, mirroring 10-state.js:1374-1393's real output shape.
+    {
+        EditableMolecule m(QStringLiteral("CC.CC"));   // two disjoint fragments, same setup as
+                                                        // sub-project 3e's own atomFragmentIndex test
+        QList<AtomId> ids = m.atomIds();
+        int frag0 = m.atomFragmentIndex(ids[0]);
+        int frag1 = m.atomFragmentIndex(ids[2]);
+
+        m.addRGroupEntry(1);
+        m.setRGroupLogic(1, QStringLiteral("1,2"), true, 2);
+        m.addRGroupFragment(1, frag0);
+        m.addRGroupFragment(1, frag1);
+
+        m.pushBracket(-1, -2, 3, 4);
+
+        RenderPrimitives rp = RenderPrimitiveBuilder::build(m, false);
+
+        CHECK(rp.rgroups.size() == 1, "one R-group primitive");
+        if (!rp.rgroups.isEmpty()) {
+            const RGroupPrim& rg = rp.rgroups[0];
+            CHECK(rg.number == 1, "R-group number round-trips");
+            CHECK(rg.range == QStringLiteral("1,2") && rg.resth && rg.ifthen == 2, "R-group logic fields round-trip");
+            CHECK(rg.members.size() == 2, "both member fragments are present");
+            int totalAtoms = 0;
+            for (const RGroupMemberPrim& mem : rg.members) totalAtoms += mem.atomIds.size();
+            CHECK(totalAtoms == 4, "each member fragment resolves to its real 2-atom set (4 atoms total)");
+        }
+
+        CHECK(rp.brackets.size() == 1, "one bracket primitive");
+        if (!rp.brackets.isEmpty()) {
+            CHECK(rp.brackets[0].minX == -1 && rp.brackets[0].minY == -2 &&
+                  rp.brackets[0].maxX == 3 && rp.brackets[0].maxY == 4, "bracket bbox round-trips");
+        }
+    }
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -385,6 +442,7 @@ int main() {
     test_elementData();
     test_atomPrimitivesAndSgroupContraction();
     test_ringsBondsAndAuxiliaryPrimitives();
+    test_attachmentPointsAndRGroupBracketPrimitives();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);

@@ -6,6 +6,7 @@
 #include <QSet>
 #include <QHash>
 #include <cmath>
+#include <algorithm>
 
 namespace {
 
@@ -177,6 +178,8 @@ RenderPrimitives RenderPrimitiveBuilder::build(const EditableMolecule& mol, bool
         prim.explicitValence = mol.atomExplicitValence(id);
         prim.aam = mol.atomAAM(id);
         prim.checkWarning = mol.atomCheckWarningText(id);
+        int attachOrder = mol.atomAttachmentOrder(id);
+        prim.attachmentPoints = attachOrder > 0 ? (1 << (attachOrder - 1)) : 0;
 
         int stType = mol.stereocenterType(id);
         int stGroup = mol.stereocenterGroup(id);
@@ -363,6 +366,25 @@ RenderPrimitives RenderPrimitiveBuilder::build(const EditableMolecule& mol, bool
         double x = 0, y = 0, w = 0, h = 0; QByteArray png;
         if (!mol.imageData(id, x, y, w, h, png)) continue;
         result.images.append(ImagePrim{id, x, y, w, h, png});
+    }
+
+    QList<int> rgNumbers = mol.rgroupNumbers();
+    std::sort(rgNumbers.begin(), rgNumbers.end());
+    for (int number : rgNumbers) {
+        QString range; bool resth = false; int ifthen = 0;
+        if (!mol.rgroupLogic(number, range, resth, ifthen)) continue;
+        RGroupPrim rg;
+        rg.number = number; rg.range = range; rg.resth = resth; rg.ifthen = ifthen;
+        for (int fragId : mol.rgroupFragmentIds(number)) {
+            rg.members.append(RGroupMemberPrim{fragId, mol.atomIdsInFragment(fragId)});
+        }
+        result.rgroups.append(rg);
+    }
+
+    for (int i = 0; i < mol.bracketCount(); ++i) {
+        double bMinX = 0, bMinY = 0, bMaxX = 0, bMaxY = 0;
+        if (!mol.bracketAt(i, bMinX, bMinY, bMaxX, bMaxY)) continue;
+        result.brackets.append(BracketPrim{bMinX, bMinY, bMaxX, bMaxY});
     }
 
     result.bbox.valid = haveBBox;

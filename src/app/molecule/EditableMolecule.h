@@ -274,6 +274,10 @@ public:
     // indigoCountComponents prerequisite, no staleness (updates immediately on graph edits).
     // -1 if id unknown.
     int atomFragmentIndex(AtomId id) const;
+    // Reverse of atomFragmentIndex: every atom whose fragment index matches. Needed by
+    // RenderPrimitiveBuilder to resolve an R-group member fragment id into the atom set a
+    // renderer draws a bracket around (mirrors 10-state.js's _struct.getFragmentIds(fid)).
+    QList<AtomId> atomIdsInFragment(int fragIndex) const;
 
     // Read-only queries on whatever stereo info the molecule already carries from load/perception
     // -- no mutation. 0 (not a stereocenter/stereobond) is the invalid-id sentinel too, matching
