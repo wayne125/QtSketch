@@ -1189,6 +1189,50 @@ static void test_sgroupIntrospectionAccessors() {
     CHECK(m.sgroupIds().size() == 1, "sgroupIds is unaffected by querying an invalid id");
 }
 
+static void test_rebuildIndexTablesPrunesAutoRemovedSgroup() {
+    std::printf("--- Test: rebuildIndexTables prunes a sgroup Indigo auto-removed ---\n");
+    // Two independent 2-atom SUP groups, mirroring the spec's own probe fixture.
+    const char* molfile =
+        "twoGroups\n"
+        "  Ketcher\n\n"
+        "  4  2  0  0  0  0  0  0  0  0999 V2000\n"
+        "    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "    1.0000    0.0000    0.0000 N   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "    5.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "    6.0000    0.0000    0.0000 F   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "  1  2  1  0  0  0  0\n"
+        "  3  4  1  0  0  0  0\n"
+        "M  STY  2   1 SUP   2 SUP\n"
+        "M  SLB  2   1   1   2   2\n"
+        "M  SAL   1  2   1   2\n"
+        "M  SAL   2  2   3   4\n"
+        "M  SMT   1 GroupA\n"
+        "M  SMT   2 GroupB\n"
+        "M  END\n";
+    EditableMolecule mol(molfile);
+    CHECK(mol.isValid(), "molecule loaded");
+    CHECK(mol.sgroupIds().size() == 2, "2 sgroups after load");
+
+    QList<AtomId> allAtoms = mol.atomIds();
+    CHECK(allAtoms.size() == 4, "4 atoms after load");
+    SGroupId groupAId = -1, groupBId = -1;
+    for (SGroupId sid : mol.sgroupIds()) {
+        QList<AtomId> members = mol.sgroupMemberAtomIds(sid);
+        if (members.contains(allAtoms[0])) groupAId = sid;
+        else groupBId = sid;
+    }
+    CHECK(groupAId != -1 && groupBId != -1, "both sgroups identified by membership");
+
+    QList<AtomId> groupAMembers = mol.sgroupMemberAtomIds(groupAId);
+    CHECK(groupAMembers.size() == 2, "GroupA has 2 members before removal");
+    for (AtomId aid : groupAMembers) mol.removeAtom(aid);
+
+    CHECK(mol.sgroupIds().size() == 1, "only 1 sgroup left after GroupA's members are gone");
+    CHECK(!mol.sgroupIds().contains(groupAId), "GroupA's id no longer reported by sgroupIds()");
+    CHECK(mol.sgroupIds().contains(groupBId), "GroupB's id still reported");
+    CHECK(mol.sgroupMemberAtomIds(groupBId).size() == 2, "GroupB's own members unaffected");
+}
+
 static void test_rxnArrowMutators() {
     std::printf("--- Test 26: rxn-arrow mutators ---\n");
     EditableMolecule m;
@@ -1448,6 +1492,7 @@ int main() {
     test_ringAndNeighborAccessors();
     test_stereoCipAccessors();
     test_sgroupIntrospectionAccessors();
+    test_rebuildIndexTablesPrunesAutoRemovedSgroup();
     test_rxnArrowMutators();
     test_stereoFlagsDocumentMutator();
     test_rgroupStorageAndFragmentIndex();

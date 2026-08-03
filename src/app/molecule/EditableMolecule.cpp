@@ -42,6 +42,27 @@ void EditableMolecule::assignFreshAtomBondIds() {
         }
         indigoFree(iter);
     }
+
+    // Discover any sgroups already present in the loaded content (e.g. a molfile with an
+    // existing SUP superatom). Previously only insertStructure's own merge-diff path ever
+    // registered a sgroup into m_sgroupIdx -- a molecule loaded directly via the constructor
+    // or loadFrom silently lost sgroup tracking entirely (found while writing sub-project 6a's
+    // own tests: sgroupIds() reported 0 for a molfile whose M STY block plainly declares 2).
+    // Uses indigoIterateSuperatoms, not an indigoCountSuperatoms-bounded indexed loop -- see
+    // insertStructure's own sgroupIdxBefore comment for why that pattern breaks with mixed
+    // sgroup types.
+    int supIter = indigoIterateSuperatoms(m_mol);
+    if (supIter >= 0) {
+        int sup;
+        while ((sup = indigoNext(supIter)) > 0) {
+            int idx = indigoIndex(sup);
+            indigoFree(sup);
+            SGroupId sgId = m_nextSGroupId++;
+            m_sgroupIdx.insert(sgId, idx);
+            m_sgroupExpanded.insert(sgId, true);
+        }
+        indigoFree(supIter);
+    }
 }
 
 bool EditableMolecule::loadFrom(const QString& molfileOrSmiles) {
@@ -601,6 +622,23 @@ void EditableMolecule::rebuildIndexTables() {
     }
     if (bIds.size() == bIdx.size())
         for (int i = 0; i < bIds.size(); ++i) m_bondIdx[bIds[i]] = bIdx[i];
+
+    // Sgroup indices do NOT shift/compact on removal (confirmed by direct probe,
+    // both for explicit indigoRemove and indirect indigoRemoveAtoms auto-cleanup paths)
+    // -- unlike atom/bond indices, no reassignment is needed for survivors. But a sgroup
+    // CAN be auto-removed entirely as a side effect of removing all its member atoms, and
+    // nothing else in this class ever re-validates m_sgroupIdx against that. Prune any
+    // entry that no longer resolves.
+    QList<SGroupId> sIds = m_sgroupIdx.keys();
+    for (SGroupId sid : sIds) {
+        int s = indigoGetSuperatom(m_mol, m_sgroupIdx.value(sid));
+        if (s < 0) {
+            m_sgroupIdx.remove(sid);
+            m_sgroupExpanded.remove(sid);
+        } else {
+            indigoFree(s);
+        }
+    }
 }
 
 void EditableMolecule::setName(const QString& n) { m_ext.name = n; }
