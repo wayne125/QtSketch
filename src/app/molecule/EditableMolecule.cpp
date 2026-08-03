@@ -1223,3 +1223,22 @@ QList<int> EditableMolecule::rgroupFragmentIds(int rgroupNumber) const {
     return m_ext.rgroups.value(rgroupNumber).fragIds;
 }
 
+void EditableMolecule::pushBracket(double minX, double minY, double maxX, double maxY) {
+    m_ext.brackets.append(BracketBox{minX, minY, maxX, maxY});
+}
+
+bool EditableMolecule::popBracket() {
+    if (m_ext.brackets.isEmpty()) return false;
+    m_ext.brackets.removeLast();
+    return true;
+}
+
+int EditableMolecule::bracketCount() const { return m_ext.brackets.size(); }
+
+bool EditableMolecule::bracketAt(int index, double& minX, double& minY, double& maxX, double& maxY) const {
+    if (index < 0 || index >= m_ext.brackets.size()) return false;
+    const BracketBox& b = m_ext.brackets.at(index);
+    minX = b.minX; minY = b.minY; maxX = b.maxX; maxY = b.maxY;
+    return true;
+}
+

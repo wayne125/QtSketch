@@ -1238,6 +1238,38 @@ static void test_textCommands() {
     CHECK(!doc.canUndo() || doc.molecule().textAnnotationIds().size() == 2, "deleteText on an unknown id is a no-op");
 }
 
+static void test_addBracketSelection() {
+    std::printf("--- Test 21: addBracketSelection ---\n");
+    DocumentState doc;
+    AtomId a1 = doc.addAtom(QStringLiteral("C"), 0, 0);
+    AtomId a2 = doc.addAtom(QStringLiteral("C"), 4, 3);
+    doc.addBond(a1, a2, 1);
+
+    bool canUndoBeforeEmpty = doc.canUndo();
+    doc.addBracketSelection(); // nothing selected -- no-op
+    CHECK(doc.canUndo() == canUndoBeforeEmpty, "addBracketSelection with an empty selection is a no-op");
+
+    doc.selectAtom(a1);
+    doc.addAtomToSelection(a2);
+    doc.addBracketSelection();
+    CHECK(doc.molecule().bracketCount() == 1, "addBracketSelection pushes one bracket");
+    double minX = 0, minY = 0, maxX = 0, maxY = 0;
+    doc.molecule().bracketAt(0, minX, minY, maxX, maxY);
+    CHECK(minX == 0 - 0.8 && minY == 0 - 0.8 && maxX == 4 + 0.8 && maxY == 3 + 0.8,
+          "bracket bbox covers both atoms padded by 0.8, matching the real function");
+    doc.undo();
+    CHECK(doc.molecule().bracketCount() == 0, "undo pops the bracket");
+
+    // Bond-only selection also contributes both endpoints' positions.
+    doc.clearSelection();
+    BondId b1 = doc.molecule().bondIds().first();
+    doc.addBondToSelection(b1);
+    doc.addBracketSelection();
+    CHECK(doc.molecule().bracketCount() == 1, "a bond-only selection also produces a bracket");
+    doc.molecule().bracketAt(0, minX, minY, maxX, maxY);
+    CHECK(maxX == 4 + 0.8, "bond's far endpoint contributes to the bbox");
+}
+
 int main() {
     test_selectionStateBasics();
     test_editCommandBasics();
@@ -1260,6 +1292,7 @@ int main() {
     test_setStereoFlags();
     test_rgroupCommands();
     test_textCommands();
+    test_addBracketSelection();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

@@ -1260,6 +1260,26 @@ static void test_textBoldItalic() {
     CHECK(!m.textAnnotationContent(9999, x, y, content, bold, italic), "textAnnotationContent fails for an unknown id");
 }
 
+static void test_bracketStack() {
+    std::printf("--- Test 30: bracket push/pop stack ---\n");
+    EditableMolecule m;
+    CHECK(m.bracketCount() == 0, "no brackets initially");
+    CHECK(!m.popBracket(), "popBracket on an empty stack fails");
+
+    m.pushBracket(-1, -2, 3, 4);
+    CHECK(m.bracketCount() == 1, "one bracket after push");
+    double minX = 0, minY = 0, maxX = 0, maxY = 0;
+    CHECK(m.bracketAt(0, minX, minY, maxX, maxY), "bracketAt(0) succeeds");
+    CHECK(minX == -1 && minY == -2 && maxX == 3 && maxY == 4, "bracket bbox round-trips");
+    CHECK(!m.bracketAt(1, minX, minY, maxX, maxY), "bracketAt(1) fails -- out of range");
+
+    m.pushBracket(0, 0, 1, 1);
+    CHECK(m.bracketCount() == 2, "two brackets after a second push");
+    CHECK(m.popBracket(), "popBracket succeeds");
+    CHECK(m.bracketCount() == 1, "one bracket remains after pop");
+    CHECK(m.bracketAt(0, minX, minY, maxX, maxY) && minX == -1, "the REMAINING bracket is the first one pushed (LIFO)");
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -1294,6 +1314,7 @@ int main() {
     test_stereoFlagsDocumentMutator();
     test_rgroupStorageAndFragmentIndex();
     test_textBoldItalic();
+    test_bracketStack();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);

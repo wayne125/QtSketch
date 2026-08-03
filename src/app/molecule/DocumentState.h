@@ -143,6 +143,12 @@ public:
     void updateText(TextId id, const QString& plainStr, bool bold, bool italic);
     void deleteText(TextId id);
 
+    // Bracket selection (50-reactions.js's addBracketSelection): bbox over the current
+    // selection's atoms (and bond endpoints), padded by 0.8, pushed onto EditableMolecule's
+    // bracket stack. No-ops if the selection is empty. Undo pops the bracket (stack semantics,
+    // no id needed).
+    void addBracketSelection();
+
     // ---- Live-drag gestures ------------------------------------------------
     // Repeated *Live calls during a UI drag mutate positions directly and push
     // NOTHING onto the undo history; the matching commit* call at gesture end

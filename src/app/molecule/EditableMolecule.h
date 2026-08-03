@@ -375,6 +375,13 @@ public:
     bool rgroupLogic(int rgroupNumber, QString& range, bool& resth, int& ifthen) const;
     QList<int> rgroupFragmentIds(int rgroupNumber) const;
 
+    // Bracket-selection annotations (50-reactions.js's addBracketSelection): a plain push/pop
+    // stack, no id -- matches the real `_struct.brackets.push(bracket)` / `.pop()` exactly.
+    void pushBracket(double minX, double minY, double maxX, double maxY);
+    bool popBracket();
+    int bracketCount() const;
+    bool bracketAt(int index, double& minX, double& minY, double& maxX, double& maxY) const;
+
 private:
     // One Indigo session per instance, held for the object's lifetime
     // (unlike IndigoService's alloc/release-per-call one-shot pattern).

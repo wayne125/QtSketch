@@ -3,6 +3,7 @@
 #include <memory>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <functional>
 #include <QPointF>
 #include "indigo.h"
@@ -603,6 +604,41 @@ void DocumentState::deleteText(TextId id) {
         int newId = mol.addTextAnnotation(x, y, content);
         mol.setTextAnnotation(newId, content, bold, italic);
     };
+    executeCommand(std::move(cmd));
+}
+
+void DocumentState::addBracketSelection() {
+    if (m_selection.atoms.isEmpty() && m_selection.bonds.isEmpty()) return;
+
+    EditableMolecule& mol = m_molecule;
+    double minX = std::numeric_limits<double>::infinity();
+    double minY = std::numeric_limits<double>::infinity();
+    double maxX = -std::numeric_limits<double>::infinity();
+    double maxY = -std::numeric_limits<double>::infinity();
+    bool has = false;
+
+    auto accumulate = [&](AtomId aid) {
+        double x = 0, y = 0;
+        if (!mol.atomPos(aid, x, y)) return;
+        minX = std::min(minX, x); maxX = std::max(maxX, x);
+        minY = std::min(minY, y); maxY = std::max(maxY, y);
+        has = true;
+    };
+    for (AtomId aid : m_selection.atoms) accumulate(aid);
+    for (BondId bid : m_selection.bonds) {
+        AtomId a = -1, b = -1;
+        if (!mol.bondEndpoints(bid, a, b)) continue;
+        accumulate(a);
+        accumulate(b);
+    }
+    if (!has) return;
+
+    const double pad = 0.8;
+    double bMinX = minX - pad, bMinY = minY - pad, bMaxX = maxX + pad, bMaxY = maxY + pad;
+
+    EditCommand cmd;
+    cmd.execute = [&mol, bMinX, bMinY, bMaxX, bMaxY]() { mol.pushBracket(bMinX, bMinY, bMaxX, bMaxY); };
+    cmd.invert = [&mol]() { mol.popBracket(); };
     executeCommand(std::move(cmd));
 }
 
