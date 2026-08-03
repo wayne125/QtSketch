@@ -20,7 +20,10 @@ EditableMolecule::EditableMolecule(const QString& initialStructure) {
         m_lastError = QString::fromUtf8(indigoGetLastError());
         return;
     }
-    // Assign stable external IDs to whatever the initial structure loaded.
+    assignFreshAtomBondIds();
+}
+
+void EditableMolecule::assignFreshAtomBondIds() {
     int iter = indigoIterateAtoms(m_mol);
     if (iter >= 0) {
         int a;
@@ -39,6 +42,24 @@ EditableMolecule::EditableMolecule(const QString& initialStructure) {
         }
         indigoFree(iter);
     }
+}
+
+bool EditableMolecule::loadFrom(const QString& molfileOrSmiles) {
+    activateSession();
+    int fresh = indigoLoadMoleculeFromString(molfileOrSmiles.toUtf8().constData());
+    if (fresh < 0) {
+        m_lastError = QString::fromUtf8(indigoGetLastError());
+        return false;
+    }
+    if (m_mol >= 0) indigoFree(m_mol);
+    m_mol = fresh;
+    m_atomIdx.clear();
+    m_bondIdx.clear();
+    m_sgroupIdx.clear();
+    m_sgroupExpanded.clear();
+    m_ext = ExtensionData{};
+    assignFreshAtomBondIds();
+    return true;
 }
 
 EditableMolecule::~EditableMolecule() {

@@ -1313,6 +1313,34 @@ static void test_bracketStack() {
     CHECK(m.bracketAt(0, minX, minY, maxX, maxY) && minX == -1, "the REMAINING bracket is the first one pushed (LIFO)");
 }
 
+static void test_loadFrom() {
+    std::printf("--- Test 31: EditableMolecule::loadFrom ---\n");
+    EditableMolecule m(QStringLiteral("CCO"));
+    CHECK(m.atomCount() == 3, "setup: 3 atoms from the initial SMILES");
+    AtomId oldA1 = m.atomIds().first();
+    m.setName(QStringLiteral("ethanol"));
+    m.addTextAnnotation(0, 0, QStringLiteral("note"));
+    AtomId nextIdBefore = m.addAtom(QStringLiteral("N"), 5, 5);   // bumps m_nextAtomId forward
+    m.removeAtom(nextIdBefore);                                   // remove it again -- id is now "used up"
+
+    CHECK(m.loadFrom(QStringLiteral("c1ccccc1")), "loadFrom succeeds on a valid SMILES");
+    CHECK(m.atomCount() == 6, "new document has benzene's 6 atoms, old 3 are gone");
+    // oldA1 was one of {1,2,3}; assignFreshAtomBondIds() resumes from the CURRENT m_nextAtomId
+    // (already at 5 after the earlier add+remove), so the new document's ids are {5..10} --
+    // oldA1 is genuinely gone, not aliased onto a new atom.
+    CHECK(!m.atomIds().contains(oldA1), "old AtomIds do not survive loadFrom -- ids are never reused");
+    CHECK(m.name().isEmpty(), "m_ext reset to defaults -- name is empty again");
+    CHECK(m.textAnnotationCount() == 0, "m_ext reset to defaults -- text annotations gone");
+
+    AtomId newAtomId = m.addAtom(QStringLiteral("F"), 0, 0);
+    CHECK(newAtomId > nextIdBefore, "AtomId counter continues forward, NOT reset to 1 after loadFrom");
+
+    QString before = m.toMolfile().value;
+    CHECK(!m.loadFrom(QStringLiteral("not a valid molecule at all $$$")), "loadFrom fails on garbage input");
+    CHECK(!m.lastError().isEmpty(), "lastError is set on failure");
+    CHECK(m.toMolfile().value == before, "failed loadFrom left the object's content completely unchanged");
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -1348,6 +1376,7 @@ int main() {
     test_rgroupStorageAndFragmentIndex();
     test_textBoldItalic();
     test_bracketStack();
+    test_loadFrom();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);

@@ -145,6 +145,16 @@ public:
     int bondCount() const;
     StringResult toMolfile() const;
 
+    // Replaces this object's content IN PLACE, in its OWN existing Indigo session (never
+    // touches m_session) -- this is what keeps snapshot()/restore() undo-compatible across a
+    // document replace. Clears m_atomIdx/m_bondIdx/m_sgroupIdx/m_sgroupExpanded and resets m_ext
+    // to a fresh ExtensionData{}, matching the real JS's _applyLoadedStruct exactly (it never
+    // carries extension data across a document replace). Deliberately does NOT reset
+    // m_nextAtomId/m_nextBondId/m_nextSGroupId -- ids stay globally unique for the object's
+    // whole lifetime regardless of how many documents are loaded into it. On a parse failure:
+    // sets lastError(), returns false, and leaves the object COMPLETELY untouched.
+    bool loadFrom(const QString& molfileOrSmiles);
+
     // Atom/bond CRUD with stable never-reused external IDs
     AtomId addAtom(const QString& symbol, double x, double y);
     bool removeAtom(AtomId id);
@@ -406,6 +416,7 @@ private:
 
     void activateSession() const; // indigoSetSessionId(m_session)
     void rebuildIndexTables();
+    void assignFreshAtomBondIds();   // extracted from the constructor's own loop, shared with loadFrom
 };
 
 #endif // EDITABLEMOLECULE_H
