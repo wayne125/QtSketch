@@ -1490,6 +1490,152 @@ static void test_copyPasteRoundTrip() {
     CHECK(doc.molecule().atomCount() == 4, "the document now has both the original and the pasted atoms");
 }
 
+static void test_deleteSelectionEntitiesBondedPair() {
+    std::printf("--- Test: deleteSelectionEntities on two bonded, individually-selected atoms ---\n");
+    DocumentState doc;
+    EditableMolecule& mol = doc.molecule();
+    AtomId a = doc.addAtom(QStringLiteral("C"), 0.0, 0.0);
+    AtomId b = doc.addAtom(QStringLiteral("N"), 1.0, 0.0);
+    BondId bond = doc.addBond(a, b, 1);
+    CHECK(mol.atomCount() == 2 && mol.bondCount() == 1, "setup: 2 atoms, 1 bond");
+
+    doc.selectAtom(a);
+    doc.addAtomToSelection(b);
+    doc.deleteSelectionEntities();
+
+    CHECK(mol.atomCount() == 0, "both atoms gone");
+    CHECK(mol.bondCount() == 0, "bond gone (cascade)");
+    CHECK(doc.canUndo(), "undo available");
+
+    doc.undo();
+    CHECK(mol.atomCount() == 2, "both atoms restored (fresh ids)");
+    CHECK(mol.bondCount() == 1, "bond restored between the new ids");
+    QList<AtomId> restored = mol.atomIds();
+    CHECK(restored.size() == 2, "exactly 2 atoms after undo");
+    BondId restoredBond = mol.findBond(restored[0], restored[1]);
+    CHECK(restoredBond != -1, "restored bond connects the two restored atoms");
+    (void)bond;
+}
+
+static void test_deleteSelectionEntitiesWholePill() {
+    std::printf("--- Test: deleteSelectionEntities on a whole sgroup pill selected directly ---\n");
+    // Built programmatically, NOT via a molfile constructor: AtomId/SGroupId are independent
+    // counters both starting at 1, so a molfile-loaded sgroup (the FIRST sgroup ever created
+    // for a fresh molecule) always gets SGroupId=1 -- which collides with AtomId=1 (the first
+    // atom) whenever one exists, exactly the numeric-collision hazard this spec's own
+    // deleteSelectionEntities design explicitly guards against. A decoy atom is added and
+    // removed first so SGroupId=1 does NOT alias any real, currently-existing AtomId, letting
+    // this test actually exercise the whole-pill-selection path instead of silently
+    // misclassifying it as "atom 1 selected" (which corrupts sgroup state and crashes on undo).
+    DocumentState doc;
+    EditableMolecule& mol = doc.molecule();
+    AtomId decoy = mol.addAtom(QStringLiteral("Xe"), 100.0, 100.0);
+    mol.removeAtom(decoy);   // frees AtomId 1 so it no longer collides with the sgroup id below
+
+    AtomId a1 = mol.addAtom(QStringLiteral("C"), 0.0, 0.0);
+    AtomId a2 = mol.addAtom(QStringLiteral("C"), 1.0, 0.0);
+    AtomId a3 = mol.addAtom(QStringLiteral("O"), 2.0, 0.0);
+    mol.addBond(a1, a2, 1);
+    mol.addBond(a2, a3, 1);
+    SGroupId sid = mol.createSuperatomFromAtoms({a1, a2, a3});
+    CHECK(sid != -1, "setup: sgroup created");
+    CHECK(mol.sgroupIds().size() == 1, "1 sgroup on setup");
+    CHECK(!mol.atomIds().contains(sid), "setup: sgroup id does not collide with any real atom id");
+
+    doc.selection().atoms.insert(sid);   // whole-pill selection: the SGroupId stands in
+                                          // for its atoms in m_selection.atoms, per spec.
+    doc.deleteSelectionEntities();
+
+    CHECK(mol.sgroupIds().isEmpty(), "sgroup grouping gone");
+    CHECK(mol.atomCount() == 3, "member atoms untouched");
+
+    doc.undo();
+    CHECK(mol.sgroupIds().size() == 1, "sgroup restored on undo");
+    CHECK(mol.atomCount() == 3, "still exactly the original 3 atoms (never removed)");
+}
+
+static void test_deleteSelectionEntitiesPartialMember() {
+    std::printf("--- Test: deleteSelectionEntities on ONE of a sgroup's several members ---\n");
+    const char* molfile =
+        "acFixture\n"
+        "  Ketcher\n\n"
+        "  3  2  0  0  0  0  0  0  0  0999 V2000\n"
+        "    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "    1.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "    2.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "  1  2  1  0  0  0  0\n"
+        "  2  3  1  0  0  0  0\n"
+        "M  STY  1   1 SUP\n"
+        "M  SAL   1  3   1   2   3\n"
+        "M  SMT   1 Ac\n"
+        "M  END\n";
+    DocumentState doc(molfile);
+    EditableMolecule& mol = doc.molecule();
+    QList<AtomId> allAtoms = mol.atomIds();
+    CHECK(allAtoms.size() == 3, "3 atoms on load");
+    AtomId victim = allAtoms.last();   // the terminal O, member of the sgroup
+
+    doc.selectAtom(victim);
+    doc.deleteSelectionEntities();
+
+    CHECK(mol.atomCount() == 2, "1 atom removed");
+    CHECK(mol.sgroupIds().size() == 1, "sgroup survives (trimmed, not fully removed)");
+    SGroupId sid = mol.sgroupIds().first();
+    CHECK(mol.sgroupMemberAtomIds(sid).size() == 2, "sgroup member list trimmed to 2");
+
+    doc.undo();
+    CHECK(mol.atomCount() == 3, "atom restored");
+    CHECK(mol.sgroupIds().size() == 1, "still 1 sgroup after undo");
+    CHECK(mol.sgroupMemberAtomIds(mol.sgroupIds().first()).size() == 3,
+          "sgroup's full original 3-atom member set restored");
+}
+
+static void test_deleteSelectionEntitiesMixedTypes() {
+    std::printf("--- Test: deleteSelectionEntities on a mix of atoms/bonds/rxnArrow/rxnPlus ---\n");
+    DocumentState doc;
+    EditableMolecule& mol = doc.molecule();
+    AtomId a = doc.addAtom(QStringLiteral("C"), 0.0, 0.0);
+    RxnArrowId arrow = doc.addRxnArrow(5.0, 0.0);
+    RxnPlusId plus = doc.addRxnPlus(-5.0, 0.0);
+    CHECK(mol.atomCount() == 1 && mol.rxnArrowCount() == 1 && mol.rxnPlusCount() == 1,
+          "setup: 1 atom, 1 arrow, 1 plus");
+
+    doc.selectAtom(a);
+    doc.addRxnArrowToSelection(arrow);
+    doc.addRxnPlusToSelection(plus);
+    doc.deleteSelectionEntities();
+
+    CHECK(mol.atomCount() == 0, "atom gone");
+    CHECK(mol.rxnArrowCount() == 0, "arrow gone");
+    CHECK(mol.rxnPlusCount() == 0, "plus gone");
+
+    doc.undo();
+    CHECK(mol.atomCount() == 1, "atom restored");
+    CHECK(mol.rxnArrowCount() == 1, "arrow restored");
+    CHECK(mol.rxnPlusCount() == 1, "plus restored");
+}
+
+static void test_cutSelection() {
+    std::printf("--- Test: cutSelection (copy-then-delete round trip) ---\n");
+    DocumentState doc;
+    EditableMolecule& mol = doc.molecule();
+    AtomId a = doc.addAtom(QStringLiteral("C"), 0.0, 0.0);
+    AtomId b = doc.addAtom(QStringLiteral("O"), 1.0, 0.0);
+    doc.addBond(a, b, 1);
+
+    doc.selectAtom(a);
+    doc.addAtomToSelection(b);
+    QString expectedCopy = doc.copySelection();
+    CHECK(!expectedCopy.isEmpty(), "setup: copySelection produces content before cut");
+
+    QString cutResult = doc.cutSelection();
+    CHECK(cutResult == expectedCopy, "cutSelection returns the same text copySelection would have");
+    CHECK(mol.atomCount() == 0, "selected content is gone from the live document");
+
+    doc.undo();
+    CHECK(mol.atomCount() == 2, "single undo restores everything");
+}
+
 int main() {
     test_selectionStateBasics();
     test_editCommandBasics();
@@ -1522,6 +1668,11 @@ int main() {
     test_insertStructureAt();
     test_insertStructureAtClampsToPageBounds();
     test_copyPasteRoundTrip();
+    test_deleteSelectionEntitiesBondedPair();
+    test_deleteSelectionEntitiesWholePill();
+    test_deleteSelectionEntitiesPartialMember();
+    test_deleteSelectionEntitiesMixedTypes();
+    test_cutSelection();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

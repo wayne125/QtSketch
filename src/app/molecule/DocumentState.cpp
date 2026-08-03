@@ -193,6 +193,184 @@ void DocumentState::deleteBond(BondId id) {
     executeCommand(std::move(cmd));
 }
 
+void DocumentState::deleteSelectionEntities() {
+    EditableMolecule& mol = m_molecule;
+
+    // Step 1: disambiguate m_selection.atoms into real atoms vs. whole-pill sgroup ids.
+    // Atom-existence is the gate, sgroup membership is the fallback -- AtomId/SGroupId are
+    // independent, colliding counters, so checking sgroupIds() first would be unsafe.
+    QSet<AtomId> realAtoms;
+    QSet<SGroupId> wholePillSgroups;
+    // Each call to atomIds()/sgroupIds() returns a FRESH QList -- capture into a named local
+    // first rather than chaining .begin()/.end() off two separate temporaries (that mixes
+    // iterators from two different QList instances, which is undefined behavior and crashed
+    // reproducibly under gdb: SIGSEGV inside QSet's range constructor).
+    QList<AtomId> allAtomIds = mol.atomIds();
+    QList<SGroupId> allSgroupIds = mol.sgroupIds();
+    QSet<AtomId> atomIdSet(allAtomIds.begin(), allAtomIds.end());
+    QSet<SGroupId> sgroupIdSet(allSgroupIds.begin(), allSgroupIds.end());
+    for (AtomId id : m_selection.atoms) {
+        if (atomIdSet.contains(id)) {
+            realAtoms.insert(id);
+        } else if (sgroupIdSet.contains(id)) {
+            wholePillSgroups.insert(static_cast<SGroupId>(id));
+        }
+        // else: stale/invalid id, silently skipped.
+    }
+    // Whole-pill selections expand to their member atoms too (deletion cascades to the
+    // atoms in the general case, but whole-pill sgroups are handled separately below and
+    // must NOT also appear in the resolved-atom set).
+    QSet<AtomId> resolvedAtoms = realAtoms;
+
+    // Step 2 covered by wholePillSgroups above.
+
+    // Step 4: cascading incident-bond deletion.
+    QSet<BondId> resolvedBonds = m_selection.bonds;
+    for (BondId bid : mol.bondIds()) {
+        if (resolvedBonds.contains(bid)) continue;
+        AtomId ea = -1, eb = -1;
+        if (!mol.bondEndpoints(bid, ea, eb)) continue;
+        if (resolvedAtoms.contains(ea) || resolvedAtoms.contains(eb)) resolvedBonds.insert(bid);
+    }
+
+    // Step 5: for every resolved atom that is an individual member of some sgroup NOT
+    // already covered by a whole-pill deletion, capture that sgroup's CURRENT full member
+    // list (for undo's createSuperatomFromAtoms call).
+    QHash<SGroupId, QList<AtomId>> affectedSgroupMembers;
+    for (SGroupId sid : mol.sgroupIds()) {
+        if (wholePillSgroups.contains(sid)) continue;
+        QList<AtomId> members = mol.sgroupMemberAtomIds(sid);
+        bool anyMemberDeleted = false;
+        for (AtomId m : members) if (resolvedAtoms.contains(m)) { anyMemberDeleted = true; break; }
+        if (anyMemberDeleted) affectedSgroupMembers.insert(sid, members);
+    }
+
+    // Capture bond data BEFORE deletion (endpoints + order), for undo.
+    struct SavedBond { AtomId a, b; int order; };
+    QList<SavedBond> savedBonds;
+    for (BondId bid : resolvedBonds) {
+        AtomId a = -1, b = -1;
+        if (!mol.bondEndpoints(bid, a, b)) continue;
+        savedBonds.append({a, b, mol.bondOrder(bid)});
+    }
+
+    // Capture atom data BEFORE deletion (label + position), for undo.
+    struct SavedAtom { AtomId id; QString label; double x, y; };
+    QList<SavedAtom> savedAtoms;
+    for (AtomId aid : resolvedAtoms) {
+        double x = 0, y = 0;
+        mol.atomPos(aid, x, y);
+        savedAtoms.append({aid, mol.atomSymbol(aid), x, y});
+    }
+
+    // Whole-pill sgroups: capture member atoms (all survive; no id translation needed).
+    QHash<SGroupId, QList<AtomId>> wholePillMembers;
+    for (SGroupId sid : wholePillSgroups) wholePillMembers.insert(sid, mol.sgroupMemberAtomIds(sid));
+
+    // Step 6: capture selected rxnArrows/rxnPluses/multitailArrows (same accessors
+    // deleteRxnArrow/deleteRxnPlus/deleteMultitailArrow already use).
+    struct SavedArrow { RxnArrowId id; double x1, y1, x2, y2; QString mode, above, below; bool hasCurvature; double cx, cy; };
+    QList<SavedArrow> savedArrows;
+    for (RxnArrowId id : m_selection.rxnArrows) {
+        SavedArrow sa; sa.id = id;
+        if (!mol.rxnArrowEndpoints(id, sa.x1, sa.y1, sa.x2, sa.y2)) continue;
+        sa.mode = mol.rxnArrowMode(id);
+        sa.above = mol.rxnArrowConditionsAbove(id);
+        sa.below = mol.rxnArrowConditionsBelow(id);
+        sa.hasCurvature = mol.rxnArrowCurvature(id, sa.cx, sa.cy);
+        savedArrows.append(sa);
+    }
+    struct SavedPlus { double x, y; };
+    QList<SavedPlus> savedPluses;
+    for (RxnPlusId id : m_selection.rxnPluses) {
+        SavedPlus sp;
+        if (!mol.rxnPlusPos(id, sp.x, sp.y)) continue;
+        savedPluses.append(sp);
+    }
+    struct SavedMta { QList<double> pts; };
+    QList<SavedMta> savedMtas;
+    for (MultitailArrowId id : m_selection.multitailArrows) {
+        QList<double> pts = mol.multitailArrowPoints(id);
+        if (pts.isEmpty()) continue;
+        savedMtas.append({pts});
+    }
+
+    QList<BondId> bondsToRemove = resolvedBonds.values();
+    QList<AtomId> atomsToRemove = resolvedAtoms.values();
+    QList<SGroupId> pillsToRemove = wholePillSgroups.values();
+    QList<RxnArrowId> arrowsToRemove(m_selection.rxnArrows.begin(), m_selection.rxnArrows.end());
+    QList<RxnPlusId> plusesToRemove(m_selection.rxnPluses.begin(), m_selection.rxnPluses.end());
+    QList<MultitailArrowId> mtasToRemove(m_selection.multitailArrows.begin(), m_selection.multitailArrows.end());
+
+    EditCommand cmd;
+    cmd.execute = [&mol, bondsToRemove, atomsToRemove, pillsToRemove,
+                   arrowsToRemove, plusesToRemove, mtasToRemove]() {
+        // Order-independent per direct probe finding (Indigo auto-trims/auto-removes
+        // affected sgroups correctly regardless of removal order) -- kept fixed for
+        // readability: bonds, then atoms, then whole-pill sgroups, then non-molecular.
+        for (BondId b : bondsToRemove) mol.removeBond(b);
+        for (AtomId a : atomsToRemove) mol.removeAtom(a);
+        for (SGroupId s : pillsToRemove) mol.removeSuperatomOnly(s);
+        for (RxnArrowId a : arrowsToRemove) mol.removeRxnArrow(a);
+        for (RxnPlusId p : plusesToRemove) mol.removeRxnPlus(p);
+        for (MultitailArrowId m : mtasToRemove) mol.removeMultitailArrow(m);
+    };
+    cmd.invert = [&mol, savedAtoms, savedBonds, affectedSgroupMembers, wholePillMembers,
+                  savedArrows, savedPluses, savedMtas]() {
+        // Step 1: recreate atoms fresh, building old-id -> new-id map.
+        QHash<AtomId, AtomId> idMap;
+        for (const SavedAtom& sa : savedAtoms) idMap.insert(sa.id, mol.addAtom(sa.label, sa.x, sa.y));
+
+        // Step 2: recreate bonds via the mapped ids.
+        for (const SavedBond& sb : savedBonds) {
+            AtomId newA = idMap.value(sb.a, sb.a);
+            AtomId newB = idMap.value(sb.b, sb.b);
+            mol.addBond(newA, newB, sb.order);
+        }
+
+        // Step 3: an individually-trimmed sgroup was NEVER removed by forward execute --
+        // Indigo only auto-trimmed its member list (confirmed by probe), so the sgroup
+        // (now holding fewer members) is still alive under its ORIGINAL captured id. Remove
+        // that now-outdated survivor first, THEN recreate fresh with the full restored
+        // member list -- creating the replacement without removing the survivor first would
+        // leave TWO sgroups covering overlapping atoms (found via gdb: this exact omission
+        // corrupted Indigo's sgroup state badly enough to crash on a later operation).
+        // Remap each captured member id through idMap if it was deleted+recreated, or use it
+        // directly if it survived untouched.
+        for (auto it = affectedSgroupMembers.constBegin(); it != affectedSgroupMembers.constEnd(); ++it) {
+            mol.removeSuperatomOnly(it.key());
+            QList<AtomId> rebuiltMembers;
+            for (AtomId originalId : it.value()) {
+                rebuiltMembers.append(idMap.contains(originalId) ? idMap.value(originalId) : originalId);
+            }
+            mol.createSuperatomFromAtoms(rebuiltMembers);
+        }
+
+        // Step 4: recreate whole-pill sgroups -- member atoms all survived untouched, no
+        // id translation needed.
+        for (auto it = wholePillMembers.constBegin(); it != wholePillMembers.constEnd(); ++it) {
+            mol.createSuperatomFromAtoms(it.value());
+        }
+
+        // Step 5: recreate rxnArrows/rxnPluses/multitailArrows.
+        for (const SavedArrow& sa : savedArrows) {
+            int newId = mol.addRxnArrow(sa.x1, sa.y1, sa.x2, sa.y2);
+            mol.setRxnArrowMode(newId, sa.mode);
+            mol.setRxnArrowConditions(newId, sa.above, sa.below);
+            if (sa.hasCurvature) mol.setRxnArrowCurvature(newId, sa.cx, sa.cy);
+        }
+        for (const SavedPlus& sp : savedPluses) mol.addRxnPlus(sp.x, sp.y);
+        for (const SavedMta& sm : savedMtas) mol.addMultitailArrow(sm.pts);
+    };
+    executeCommand(std::move(cmd));
+}
+
+QString DocumentState::cutSelection() {
+    QString copied = copySelection();
+    if (!copied.isEmpty()) deleteSelectionEntities();
+    return copied;
+}
+
 void DocumentState::changeAtomLabel(AtomId id, const QString& newLabel) {
     EditableMolecule& mol = m_molecule;
     QString oldLabel = mol.atomSymbol(id);

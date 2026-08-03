@@ -74,6 +74,18 @@ public:
     // _struct.clone(atomSet, bondSet) never touches those entity types either.
     QString copySelection() const;
 
+    // 10-state.js's deleteSelection (862-961) / this migration's own sgroup-aware-deletion
+    // gap, deferred since sub-project 3a and explicitly assigned here. Deliberately has NO
+    // "empty selection = no-op" guard -- matches the real function's own actual behavior
+    // (an empty selection is a harmless no-op command, not skipped entirely). See
+    // docs/superpowers/specs/2026-08-03-delete-selection-cpp-design.md for the full design.
+    void deleteSelectionEntities();
+
+    // 40-serialize.js's cutSelection (96-102): copySelection() then delete the selection if
+    // the copy produced real content. The delete itself is what pushes the undo entry --
+    // copySelection is a pure read with no history entry, per its own established contract.
+    QString cutSelection();
+
     AtomId addAtom(const QString& symbol, double x, double y);
     BondId addBond(AtomId a, AtomId b, int order);
     void deleteAtom(AtomId id);   // plain-atom-and-incident-bonds case only; see the
