@@ -6,6 +6,9 @@
 #include <limits>
 #include <functional>
 #include <QPointF>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
 #include "indigo.h"
 
 DocumentState::DocumentState(const QString& initialStructure)
@@ -369,6 +372,48 @@ QString DocumentState::cutSelection() {
     QString copied = copySelection();
     if (!copied.isEmpty()) deleteSelectionEntities();
     return copied;
+}
+
+void DocumentState::setStereoDescriptors(const QString& jsonMap) {
+    QJsonParseError err;
+    QJsonDocument doc = QJsonDocument::fromJson(jsonMap.toUtf8(), &err);
+    if (err.error != QJsonParseError::NoError || !doc.isObject()) return;
+    QJsonObject root = doc.object();
+
+    EditableMolecule& mol = m_molecule;
+    QList<AtomId> allAtomIds = mol.atomIdsInIndigoOrder();
+
+    for (AtomId id : mol.atomIds()) mol.setAtomStereoDescriptor(id, QString(), 0, 0);
+    for (BondId id : mol.bondIds()) mol.setBondStereoCipLabel(id, QString());
+
+    QJsonObject atomsObj = root.value(QStringLiteral("atoms")).toObject();
+    for (auto it = atomsObj.constBegin(); it != atomsObj.constEnd(); ++it) {
+        bool ok = false;
+        int idx = it.key().toInt(&ok);
+        if (!ok || idx < 0 || idx >= allAtomIds.size()) continue;
+        AtomId atomId = allAtomIds[idx];
+        QJsonObject entry = it.value().toObject();
+        QString cipLabel = entry.value(QStringLiteral("cipLabel")).toString();
+        int type = entry.value(QStringLiteral("type")).toInt(0);
+        int group = entry.value(QStringLiteral("group")).toInt(0);
+        mol.setAtomStereoDescriptor(atomId, cipLabel, type, group);
+    }
+
+    QJsonObject bondsObj = root.value(QStringLiteral("bonds")).toObject();
+    for (auto it = bondsObj.constBegin(); it != bondsObj.constEnd(); ++it) {
+        QStringList parts = it.key().split(QLatin1Char('-'));
+        if (parts.size() != 2) continue;
+        bool ok1 = false, ok2 = false;
+        int idx1 = parts[0].toInt(&ok1);
+        int idx2 = parts[1].toInt(&ok2);
+        if (!ok1 || !ok2 || idx1 < 0 || idx1 >= allAtomIds.size() || idx2 < 0 || idx2 >= allAtomIds.size()) continue;
+        AtomId atomId1 = allAtomIds[idx1];
+        AtomId atomId2 = allAtomIds[idx2];
+        BondId bondId = mol.findBond(atomId1, atomId2);
+        if (bondId == -1) continue;
+        QJsonObject entry = it.value().toObject();
+        mol.setBondStereoCipLabel(bondId, entry.value(QStringLiteral("cipLabel")).toString());
+    }
 }
 
 void DocumentState::changeAtomLabel(AtomId id, const QString& newLabel) {

@@ -1636,6 +1636,102 @@ static void test_cutSelection() {
     CHECK(mol.atomCount() == 2, "single undo restores everything");
 }
 
+static void test_setStereoDescriptorsValid() {
+    std::printf("--- Test: setStereoDescriptors applies valid JSON ---\n");
+    DocumentState doc;
+    AtomId a1 = doc.addAtom(QStringLiteral("C"), 0, 0);
+    AtomId a2 = doc.addAtom(QStringLiteral("C"), 1, 0);
+    doc.addBond(a1, a2, 1);
+    EditableMolecule& mol = doc.molecule();
+
+    QList<AtomId> order = mol.atomIdsInIndigoOrder();
+    CHECK(order.size() == 2, "setup: 2 atoms");
+    int idx0 = order.indexOf(a1), idx1 = order.indexOf(a2);
+
+    QString json = QString(
+        "{\"atoms\":{\"%1\":{\"cipLabel\":\"R\",\"type\":1,\"group\":2}},"
+        "\"bonds\":{\"%2-%3\":{\"cipLabel\":\"E\"}}}"
+    ).arg(idx0).arg(qMin(idx0, idx1)).arg(qMax(idx0, idx1));
+
+    bool historyBefore = doc.canUndo();
+    doc.setStereoDescriptors(json);
+
+    CHECK(mol.atomStoredCipLabel(a1) == QStringLiteral("R"), "atom cipLabel applied");
+    CHECK(mol.atomStoredStereoType(a1) == 1, "atom stereoType applied");
+    CHECK(mol.atomStoredStereoGroup(a1) == 2, "atom stereoGroup applied");
+    CHECK(mol.atomStoredCipLabel(a2).isEmpty(), "the OTHER atom is untouched");
+    BondId bond = mol.findBond(a1, a2);
+    CHECK(mol.bondStoredCipLabel(bond) == QStringLiteral("E"), "bond cipLabel applied");
+    CHECK(doc.canUndo() == historyBefore, "no history entry pushed");
+}
+
+static void test_setStereoDescriptorsReuseOrderRegression() {
+    std::printf("--- Test: setStereoDescriptors resolves correctly after an index-reuse edit ---\n");
+    DocumentState doc;
+    EditableMolecule& mol = doc.molecule();
+    AtomId a1 = doc.addAtom(QStringLiteral("C"), 0, 0);
+    AtomId a2 = doc.addAtom(QStringLiteral("N"), 1, 0);
+    AtomId a3 = doc.addAtom(QStringLiteral("O"), 2, 0);
+    mol.removeAtom(a2);
+    AtomId a4 = doc.addAtom(QStringLiteral("Cl"), 3, 0);
+
+    QList<AtomId> order = mol.atomIdsInIndigoOrder();
+    int idxOfA4 = order.indexOf(a4);
+    QString json = QString("{\"atoms\":{\"%1\":{\"cipLabel\":\"S\",\"type\":1,\"group\":0}},\"bonds\":{}}")
+                       .arg(idxOfA4);
+
+    doc.setStereoDescriptors(json);
+
+    CHECK(mol.atomStoredCipLabel(a4) == QStringLiteral("S"),
+          "the atom that reused the freed index gets the label -- NOT a1/a3");
+    CHECK(mol.atomStoredCipLabel(a1).isEmpty(), "a1 untouched");
+    CHECK(mol.atomStoredCipLabel(a3).isEmpty(), "a3 untouched");
+}
+
+static void test_setStereoDescriptorsResetsOnEachCall() {
+    std::printf("--- Test: setStereoDescriptors replaces, does not accumulate ---\n");
+    DocumentState doc;
+    EditableMolecule& mol = doc.molecule();
+    AtomId a1 = doc.addAtom(QStringLiteral("C"), 0, 0);
+    int idx0 = mol.atomIdsInIndigoOrder().indexOf(a1);
+
+    doc.setStereoDescriptors(QString("{\"atoms\":{\"%1\":{\"cipLabel\":\"R\",\"type\":1,\"group\":0}},\"bonds\":{}}").arg(idx0));
+    CHECK(mol.atomStoredCipLabel(a1) == QStringLiteral("R"), "first call applies R");
+
+    doc.setStereoDescriptors(QString("{\"atoms\":{},\"bonds\":{}}"));
+    CHECK(mol.atomStoredCipLabel(a1).isEmpty(), "second call with empty payload clears it (reset ran)");
+}
+
+static void test_setStereoDescriptorsMalformedJsonIsNoOp() {
+    std::printf("--- Test: setStereoDescriptors ignores malformed JSON ---\n");
+    DocumentState doc;
+    EditableMolecule& mol = doc.molecule();
+    AtomId a1 = doc.addAtom(QStringLiteral("C"), 0, 0);
+    int idx0 = mol.atomIdsInIndigoOrder().indexOf(a1);
+    doc.setStereoDescriptors(QString("{\"atoms\":{\"%1\":{\"cipLabel\":\"R\",\"type\":1,\"group\":0}},\"bonds\":{}}").arg(idx0));
+    CHECK(mol.atomStoredCipLabel(a1) == QStringLiteral("R"), "setup: R applied");
+
+    doc.setStereoDescriptors(QStringLiteral("not valid json{{{"));
+    CHECK(mol.atomStoredCipLabel(a1) == QStringLiteral("R"), "malformed JSON leaves prior data unchanged");
+}
+
+static void test_setStereoDescriptorsOutOfRangeIndexSkipped() {
+    std::printf("--- Test: setStereoDescriptors skips an out-of-range index safely ---\n");
+    DocumentState doc;
+    EditableMolecule& mol = doc.molecule();
+    AtomId a1 = doc.addAtom(QStringLiteral("C"), 0, 0);
+    int idx0 = mol.atomIdsInIndigoOrder().indexOf(a1);
+
+    QString json = QString(
+        "{\"atoms\":{\"%1\":{\"cipLabel\":\"R\",\"type\":1,\"group\":0},"
+        "\"99\":{\"cipLabel\":\"S\",\"type\":1,\"group\":0}},\"bonds\":{}}"
+    ).arg(idx0);
+    doc.setStereoDescriptors(json);
+
+    CHECK(mol.atomStoredCipLabel(a1) == QStringLiteral("R"),
+          "the valid entry still applies even though the payload also has an out-of-range one");
+}
+
 int main() {
     test_selectionStateBasics();
     test_editCommandBasics();
@@ -1673,6 +1769,11 @@ int main() {
     test_deleteSelectionEntitiesPartialMember();
     test_deleteSelectionEntitiesMixedTypes();
     test_cutSelection();
+    test_setStereoDescriptorsValid();
+    test_setStereoDescriptorsReuseOrderRegression();
+    test_setStereoDescriptorsResetsOnEachCall();
+    test_setStereoDescriptorsMalformedJsonIsNoOp();
+    test_setStereoDescriptorsOutOfRangeIndexSkipped();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

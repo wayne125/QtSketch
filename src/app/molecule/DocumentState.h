@@ -86,6 +86,13 @@ public:
     // copySelection is a pure read with no history entry, per its own established contract.
     QString cutSelection();
 
+    // 60-analysis.js's setStereoDescriptors: applies an external CIP-perception result onto
+    // stored fields. NOT undoable (no makeCmd in the real function either) -- this applies an
+    // analysis result, not a user edit. See
+    // docs/superpowers/specs/2026-08-03-analysis-results-cpp-design.md for the full design,
+    // especially why positional indices resolve through atomIdsInIndigoOrder(), not atomIds().
+    void setStereoDescriptors(const QString& jsonMap);
+
     AtomId addAtom(const QString& symbol, double x, double y);
     BondId addBond(AtomId a, AtomId b, int order);
     void deleteAtom(AtomId id);   // plain-atom-and-incident-bonds case only; see the
