@@ -390,6 +390,20 @@ public:
     QList<SGroupId> sgroupIds() const;
     QList<AtomId> sgroupMemberAtomIds(SGroupId id) const;
 
+    // Removes ONLY the sgroup grouping (indigoRemove on the superatom handle) -- member
+    // atoms are left completely untouched. Confirmed by direct probe against the real
+    // indigo.dll. Used for "the whole collapsed pill was selected directly" deletion.
+    bool removeSuperatomOnly(SGroupId id);
+
+    // Builds a new sgroup from a bare atom list -- needed purely so undo can recreate a
+    // deleted sgroup. No `name`/label parameter: confirmed by direct probe that neither
+    // indigoDescription nor indigoName recovers a superatom's original display label, so
+    // there is nothing to pass through even if this method took one (see
+    // RenderPrimitives.cpp:86-89's pre-existing sub-project-4 gap). Assigns a fresh
+    // SGroupId via m_nextSGroupId, same counter insertStructure's own sgroup discovery
+    // uses. Returns -1 if memberAtoms is empty or any id is unknown.
+    SGroupId createSuperatomFromAtoms(const QList<AtomId>& memberAtoms);
+
     // R-group (Markush) storage: fragIds/range/resth/ifthen per R-group NUMBER. See
     // ExtensionData.h's RGroupEntry for field meanings.
     bool addRGroupEntry(int rgroupNumber);

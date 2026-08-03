@@ -1233,6 +1233,47 @@ static void test_rebuildIndexTablesPrunesAutoRemovedSgroup() {
     CHECK(mol.sgroupMemberAtomIds(groupBId).size() == 2, "GroupB's own members unaffected");
 }
 
+static void test_removeSuperatomOnly() {
+    std::printf("--- Test: removeSuperatomOnly ---\n");
+    const char* molfile =
+        "acFixture\n"
+        "  Ketcher\n\n"
+        "  3  2  0  0  0  0  0  0  0  0999 V2000\n"
+        "    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "    1.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "    2.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "  1  2  1  0  0  0  0\n"
+        "  2  3  1  0  0  0  0\n"
+        "M  STY  1   1 SUP\n"
+        "M  SAL   1  3   1   2   3\n"
+        "M  SMT   1 Ac\n"
+        "M  END\n";
+    EditableMolecule mol(molfile);
+    CHECK(mol.isValid(), "Ac molecule loaded");
+    CHECK(mol.sgroupIds().size() == 1, "1 sgroup before removal");
+    SGroupId sid = mol.sgroupIds().first();
+
+    CHECK(mol.removeSuperatomOnly(sid), "removeSuperatomOnly succeeds");
+    CHECK(mol.sgroupIds().isEmpty(), "sgroupIds() empty after removal");
+    CHECK(mol.atomCount() == 3, "all 3 atoms still exist");
+}
+
+static void test_createSuperatomFromAtoms() {
+    std::printf("--- Test: createSuperatomFromAtoms ---\n");
+    EditableMolecule mol;
+    AtomId a1 = mol.addAtom(QStringLiteral("C"), 0.0, 0.0);
+    AtomId a2 = mol.addAtom(QStringLiteral("N"), 1.0, 0.0);
+    CHECK(mol.sgroupIds().isEmpty(), "no sgroups on a bare molecule");
+
+    SGroupId sid = mol.createSuperatomFromAtoms({a1, a2});
+    CHECK(sid != -1, "createSuperatomFromAtoms returns a valid id");
+    CHECK(mol.sgroupIds().size() == 1, "1 sgroup after creation");
+    CHECK(mol.sgroupIds().contains(sid), "sgroupIds() reports the new id");
+    QList<AtomId> members = mol.sgroupMemberAtomIds(sid);
+    CHECK(members.size() == 2 && members.contains(a1) && members.contains(a2),
+          "member set matches exactly what was passed in");
+}
+
 static void test_rxnArrowMutators() {
     std::printf("--- Test 26: rxn-arrow mutators ---\n");
     EditableMolecule m;
@@ -1493,6 +1534,8 @@ int main() {
     test_stereoCipAccessors();
     test_sgroupIntrospectionAccessors();
     test_rebuildIndexTablesPrunesAutoRemovedSgroup();
+    test_removeSuperatomOnly();
+    test_createSuperatomFromAtoms();
     test_rxnArrowMutators();
     test_stereoFlagsDocumentMutator();
     test_rgroupStorageAndFragmentIndex();

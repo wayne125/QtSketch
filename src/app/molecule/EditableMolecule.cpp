@@ -1307,6 +1307,50 @@ QList<AtomId> EditableMolecule::sgroupMemberAtomIds(SGroupId id) const {
     return result;
 }
 
+bool EditableMolecule::removeSuperatomOnly(SGroupId id) {
+    if (m_mol < 0 || !m_sgroupIdx.contains(id)) return false;
+    activateSession();
+    int sup = indigoGetSuperatom(m_mol, m_sgroupIdx.value(id));
+    if (sup < 0) return false;
+    bool ok = indigoRemove(sup) >= 0;
+    if (!ok) m_lastError = QString::fromUtf8(indigoGetLastError());
+    indigoFree(sup);
+    if (ok) {
+        m_sgroupIdx.remove(id);
+        m_sgroupExpanded.remove(id);
+    }
+    return ok;
+}
+
+SGroupId EditableMolecule::createSuperatomFromAtoms(const QList<AtomId>& memberAtoms) {
+    if (m_mol < 0 || memberAtoms.isEmpty()) return -1;
+    activateSession();
+    QList<int> indices;
+    indices.reserve(memberAtoms.size());
+    for (AtomId aid : memberAtoms) {
+        if (!m_atomIdx.contains(aid)) return -1;
+        indices.append(m_atomIdx.value(aid));
+    }
+    // indigoAddSuperatom's atoms[] array takes internal molecule atom INDICES, matching
+    // indigoCreateEdgeSubmolecule's convention -- NOT literal handles. Confirmed by direct
+    // probe: passing handles obtained via indigoGetAtom silently corrupted the sgroup's
+    // internal member list (iteration + indigoIndex() on the corrupted members echoed the
+    // stale handle numbers back without erroring immediately, masking the bug -- it only
+    // surfaced when indigoMolfile tried to actually resolve them: "array: invalid index 4
+    // (size=2)"). This corrects an earlier probe in this sub-project's own spec that
+    // concluded the opposite from an incomplete check (member iteration COUNT looked right
+    // even with corrupted indices; only serialization exposes the corruption).
+    int sup = indigoAddSuperatom(m_mol, indices.size(), indices.data(), "");
+    if (sup < 0) { m_lastError = QString::fromUtf8(indigoGetLastError()); return -1; }
+    int idx = indigoIndex(sup);
+    indigoFree(sup);
+
+    SGroupId sgId = m_nextSGroupId++;
+    m_sgroupIdx.insert(sgId, idx);
+    m_sgroupExpanded.insert(sgId, true);
+    return sgId;
+}
+
 bool EditableMolecule::addRGroupEntry(int rgroupNumber) {
     if (m_ext.rgroups.contains(rgroupNumber)) return false;
     m_ext.rgroups.insert(rgroupNumber, RGroupEntry{});
