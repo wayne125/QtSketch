@@ -1425,6 +1425,29 @@ static void test_clearCanvas() {
           "is dead code there for the identical reason)");
 }
 
+static void test_loadBenzene() {
+    std::printf("--- Test: loadBenzene ---\n");
+    DocumentState doc;
+    AtomId a1 = doc.addAtom(QStringLiteral("C"), 0, 0);
+    (void)a1;
+    EditableMolecule& mol = doc.molecule();
+    CHECK(doc.canUndo(), "setup: history has an entry before loadBenzene");
+    CHECK(doc.isDirty(), "setup: document is dirty before loadBenzene");
+
+    doc.loadBenzene();
+
+    CHECK(mol.atomCount() == 6, "6 atoms after loadBenzene");
+    int carbonCount = 0;
+    for (AtomId id : mol.atomIds()) if (mol.atomSymbol(id) == QStringLiteral("C")) ++carbonCount;
+    CHECK(carbonCount == 6, "all 6 atoms are carbon");
+    CHECK(mol.bondCount() == 6, "6 bonds (a ring)");
+    CHECK(doc.selection().isEmpty(), "selection is empty after loadBenzene");
+
+    CHECK(!doc.canUndo(), "history wiped -- cannot undo past loadBenzene");
+    CHECK(!doc.canRedo(), "history wiped -- nothing to redo either");
+    CHECK(!doc.isDirty(), "a freshly-loaded benzene document is NOT dirty");
+}
+
 static void test_setMoleculeName() {
     std::printf("--- Test 26: setMoleculeName ---\n");
     DocumentState doc;
@@ -1881,6 +1904,7 @@ int main() {
     test_imageCommands();
     test_deserializeMol();
     test_clearCanvas();
+    test_loadBenzene();
     test_setMoleculeName();
     test_copySelection();
     test_insertStructureAt();

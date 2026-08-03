@@ -457,6 +457,16 @@ void DocumentState::clearCanvas() {
     deserializeMol(QString());
 }
 
+void DocumentState::loadBenzene() {
+    m_molecule.loadFrom(QString());
+    m_selection.clear();
+    m_history.clear();
+    m_historyPointer = -1;
+    resetAllDragState();
+    m_molecule.addBenzeneRing(4.0, 4.0);
+    markClean();
+}
+
 void DocumentState::changeAtomLabel(AtomId id, const QString& newLabel) {
     EditableMolecule& mol = m_molecule;
     QString oldLabel = mol.atomSymbol(id);

@@ -103,6 +103,12 @@ public:
     // docs/superpowers/specs/2026-08-04-clear-canvas-load-benzene-cpp-design.md.
     void clearCanvas();
 
+    // 30-templates.js's loadBenzene: init() + addBenzeneRing(4,4) + _dirty=false. NOT undoable
+    // -- wipes the entire undo/redo history (a first for this port; every other command only
+    // appends to or truncates history, never clears it wholesale). See
+    // docs/superpowers/specs/2026-08-04-clear-canvas-load-benzene-cpp-design.md.
+    void loadBenzene();
+
     AtomId addAtom(const QString& symbol, double x, double y);
     BondId addBond(AtomId a, AtomId b, int order);
     void deleteAtom(AtomId id);   // plain-atom-and-incident-bonds case only; see the
