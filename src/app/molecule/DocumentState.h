@@ -174,6 +174,11 @@ public:
     // the real JS exactly -- it never carries anything across a document replace.
     void deserializeMol(const QString& data);
 
+    // Document name (40-serialize.js's setMoleculeName). No-op if unchanged, matching the real
+    // JS's `if (oldName === newName) return`. getMoleculeName needs no wrapper -- pure read,
+    // already covered by EditableMolecule::name().
+    void setMoleculeName(const QString& name);
+
     // ---- Live-drag gestures ------------------------------------------------
     // Repeated *Live calls during a UI drag mutate positions directly and push
     // NOTHING onto the undo history; the matching commit* call at gesture end

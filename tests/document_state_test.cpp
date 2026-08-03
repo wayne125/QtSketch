@@ -1390,6 +1390,23 @@ static void test_deserializeMol() {
     CHECK(doc.molecule().atomCount() == 6, "a parse failure leaves the current document completely unchanged");
 }
 
+static void test_setMoleculeName() {
+    std::printf("--- Test 26: setMoleculeName ---\n");
+    DocumentState doc;
+    CHECK(doc.molecule().name().isEmpty(), "default name is empty");
+
+    doc.setMoleculeName(QStringLiteral("Aspirin"));
+    CHECK(doc.molecule().name() == QStringLiteral("Aspirin"), "setMoleculeName sets the name");
+    bool canUndoBefore = doc.canUndo();
+    doc.setMoleculeName(QStringLiteral("Aspirin")); // unchanged -- must no-op
+    CHECK(doc.canUndo() == canUndoBefore, "setMoleculeName to the SAME name pushes no history entry");
+    doc.undo();
+    CHECK(doc.molecule().name().isEmpty(), "undo restores the original (empty) name");
+
+    doc.redo();
+    CHECK(doc.molecule().name() == QStringLiteral("Aspirin"), "redo re-applies the name");
+}
+
 int main() {
     test_selectionStateBasics();
     test_editCommandBasics();
@@ -1417,6 +1434,7 @@ int main() {
     test_addBracketSelection();
     test_imageCommands();
     test_deserializeMol();
+    test_setMoleculeName();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

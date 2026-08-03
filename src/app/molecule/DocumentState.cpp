@@ -1583,4 +1583,15 @@ void DocumentState::deserializeMol(const QString& data) {
     executeCommand(std::move(cmd));
 }
 
+void DocumentState::setMoleculeName(const QString& name) {
+    EditableMolecule& mol = m_molecule;
+    QString oldName = mol.name();
+    if (oldName == name) return;
+
+    EditCommand cmd;
+    cmd.execute = [&mol, name]() { mol.setName(name); };
+    cmd.invert = [&mol, oldName]() { mol.setName(oldName); };
+    executeCommand(std::move(cmd));
+}
+
 
