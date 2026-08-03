@@ -1407,6 +1407,30 @@ static void test_setMoleculeName() {
     CHECK(doc.molecule().name() == QStringLiteral("Aspirin"), "redo re-applies the name");
 }
 
+static void test_copySelection() {
+    std::printf("--- Test 27: copySelection ---\n");
+    DocumentState doc;
+    CHECK(doc.copySelection().isEmpty(), "empty selection returns an empty string");
+
+    AtomId a1 = doc.addAtom(QStringLiteral("C"), 0, 0);
+    AtomId a2 = doc.addAtom(QStringLiteral("O"), 1, 0);
+    BondId b1 = doc.addBond(a1, a2, 1);
+    doc.selectAtom(a1);
+    doc.addAtomToSelection(a2);
+    doc.addBondToSelection(b1);
+
+    bool canUndoBefore = doc.canUndo();
+    QString copied = doc.copySelection();
+    CHECK(!copied.isEmpty(), "copySelection returns real MOL text for a non-empty selection");
+    int reparsed = indigoLoadMoleculeFromString(copied.toUtf8().constData());
+    CHECK(reparsed >= 0, "copied text reparses cleanly");
+    if (reparsed >= 0) {
+        CHECK(indigoCountAtoms(reparsed) == 2 && indigoCountBonds(reparsed) == 1, "copied structure has exactly the selected atoms/bond");
+        indigoFree(reparsed);
+    }
+    CHECK(doc.canUndo() == canUndoBefore, "copySelection is a pure read -- it pushes no history entry");
+}
+
 int main() {
     test_selectionStateBasics();
     test_editCommandBasics();
@@ -1435,6 +1459,7 @@ int main() {
     test_imageCommands();
     test_deserializeMol();
     test_setMoleculeName();
+    test_copySelection();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

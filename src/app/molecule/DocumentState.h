@@ -66,6 +66,14 @@ public:
     void selectAll();
     SelectionState& selection();
 
+    // 40-serialize.js's copySelection: extracts the current selection's atoms+bonds as
+    // MOL-format text. Pure read -- pushes NO history entry (matching the real function, which
+    // performs no mutation). Returns an empty string if the selection has no atoms (matching the
+    // real `if (_selection.atom_ids.length === 0) return null` guard) or if extraction fails.
+    // Deliberately does NOT include any selected rxnArrows/rxnPluses/multitailArrows -- the real
+    // _struct.clone(atomSet, bondSet) never touches those entity types either.
+    QString copySelection() const;
+
     AtomId addAtom(const QString& symbol, double x, double y);
     BondId addBond(AtomId a, AtomId b, int order);
     void deleteAtom(AtomId id);   // plain-atom-and-incident-bonds case only; see the

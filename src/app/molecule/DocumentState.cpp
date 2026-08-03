@@ -115,6 +115,14 @@ SelectionState& DocumentState::selection() {
     return m_selection;
 }
 
+QString DocumentState::copySelection() const {
+    if (m_selection.atoms.isEmpty()) return QString();
+    QList<AtomId> atomIds(m_selection.atoms.begin(), m_selection.atoms.end());
+    QList<BondId> bondIds(m_selection.bonds.begin(), m_selection.bonds.end());
+    StringResult r = m_molecule.submoleculeMolfile(atomIds, bondIds);
+    return r.success ? r.value : QString();
+}
+
 AtomId DocumentState::addAtom(const QString& symbol, double x, double y) {
     auto idBox = std::make_shared<AtomId>(-1);
     EditableMolecule& mol = m_molecule;
