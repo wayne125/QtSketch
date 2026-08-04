@@ -7,6 +7,7 @@
 #include <QtQml/qqml.h>
 #include <memory>
 #include "qjs_engine.h"
+#include "app/molecule/DocumentState.h"
 
 class V8Process : public QObject {
     Q_OBJECT
@@ -17,7 +18,11 @@ class V8Process : public QObject {
     Q_PROPERTY(QVariantMap overlayState READ overlayState WRITE setOverlayState NOTIFY overlayStateChanged)
 
 public:
-    explicit V8Process(QObject *parent = nullptr);
+    // cppEngine=true creates a document that routes the in-scope gestures (see
+    // applyLocalState's own comment) through DocumentState instead of the JS engine, and never
+    // creates m_engine at all. Defaulted so every existing call site (which never passes this
+    // argument) is completely unaffected.
+    explicit V8Process(QObject *parent = nullptr, bool cppEngine = false);
     ~V8Process();
 
     QVariantMap primitives() const { return m_primitives; }
@@ -136,6 +141,16 @@ private:
     // JSON line the worker emits via console.log, whether that line came from
     // QjsEngine's synchronous native_log callback (see qjs_engine.cpp).
     void handleWorkerLine(const QString &line);
+
+    // Turns m_docState's current molecule/selection into the exact QVariantMap shape and
+    // signal set QML already consumes from the JS path -- the single place that makes a
+    // C++-mode document indistinguishable from a JS-mode one at the QML boundary. Always
+    // renders with showExplicitH=false; the setShowExplicitH toggle is out of scope for this
+    // pilot (see the approved spec's Scope section).
+    void applyLocalState();
+
+    bool m_cppEngine = false;
+    std::unique_ptr<DocumentState> m_docState;   // non-null only when m_cppEngine
 
     std::unique_ptr<QjsEngine> m_engine;
     QVariantMap m_primitives;

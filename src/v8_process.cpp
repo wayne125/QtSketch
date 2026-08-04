@@ -9,10 +9,17 @@
 #include <QDir>
 #include <QGuiApplication>
 #include <QClipboard>
+#include "app/molecule/RenderPrimitives.h"
+#include "app/molecule/RenderPrimitivesToVariant.h"
 #define _USE_MATH_DEFINES
 #include <cmath>
 
-V8Process::V8Process(QObject *parent) : QObject(parent) {
+V8Process::V8Process(QObject *parent, bool cppEngine) : QObject(parent), m_cppEngine(cppEngine) {
+    if (m_cppEngine) {
+        m_docState = std::make_unique<DocumentState>();
+        return;
+    }
+
     QString appDir = QCoreApplication::applicationDirPath();
     // Walk up from the binary to find src/v8_worker.js regardless of build layout depth.
     // Same discovery logic as before Node was removed -- the file is now read and
@@ -51,6 +58,16 @@ V8Process::V8Process(QObject *parent) : QObject(parent) {
 
 V8Process::~V8Process() = default;
 
+void V8Process::applyLocalState() {
+    RenderPrimitives prims = RenderPrimitiveBuilder::build(m_docState->molecule(), /*showExplicitH=*/false);
+    m_primitives = renderPrimitivesToVariant(prims);
+    m_selection = selectionStateToVariant(m_docState->selection());
+    emit primitivesChanged();
+    emit selectionChanged();
+    emit stateUpdated(m_primitives, m_selection, m_docState->isDirty(),
+                       m_docState->canUndo(), m_docState->canRedo(), QVariant());
+}
+
 void V8Process::sendCommand(const QString& cmd, const QVariantList& args) {
     if (!m_engine || !m_engine->isValid()) {
         qWarning() << "V8Process is not running!";
@@ -61,16 +78,59 @@ void V8Process::sendCommand(const QString& cmd, const QVariantList& args) {
 
 void V8Process::init() { sendCommand("init"); }
 void V8Process::loadMol(const QString& molfile) { sendCommand("loadMol", {molfile}); }
-void V8Process::addAtom(const QString& label, double x, double y, int charge) { sendCommand("addAtom", {label, x, y, charge}); }
-void V8Process::addBondAndAtom(int beginAtomId, const QString& endAtomLabel, double x, double y, int bondType, int stereo) { sendCommand("addBondAndAtom", {beginAtomId, endAtomLabel, x, y, bondType, stereo}); }
-void V8Process::addBondBetweenCoords(double x1, double y1, double x2, double y2, int type, int stereo) { sendCommand("addBondBetweenCoords", {x1, y1, x2, y2, type, stereo}); }
+void V8Process::addAtom(const QString& label, double x, double y, int charge) {
+    if (m_docState) {
+        AtomId id = m_docState->addAtom(label, x, y);
+        if (charge != 0) m_docState->changeAtomCharge(id, charge);
+        applyLocalState();
+        return;
+    }
+    sendCommand("addAtom", {label, x, y, charge});
+}
+void V8Process::addBondAndAtom(int beginAtomId, const QString& endAtomLabel, double x, double y, int bondType, int stereo) {
+    if (m_docState) {
+        m_docState->addBondAndAtom(beginAtomId, endAtomLabel, x, y, bondType, stereo);
+        applyLocalState();
+        return;
+    }
+    sendCommand("addBondAndAtom", {beginAtomId, endAtomLabel, x, y, bondType, stereo});
+}
+void V8Process::addBondBetweenCoords(double x1, double y1, double x2, double y2, int type, int stereo) {
+    if (m_docState) {
+        m_docState->addBondBetweenCoords(x1, y1, x2, y2, type, stereo);
+        applyLocalState();
+        return;
+    }
+    sendCommand("addBondBetweenCoords", {x1, y1, x2, y2, type, stereo});
+}
 void V8Process::addBond(int beginAtomId, int endAtomId, int bondType, int stereoDir) { sendCommand("addBond", {beginAtomId, endAtomId, bondType, stereoDir}); }
 void V8Process::addRing(const QVariantList& coords, bool aromatic) { QVariantList wrapper; wrapper.append(QVariant(coords)); wrapper.append(aromatic); sendCommand("addRing", wrapper); }
 void V8Process::deleteAtomById(int id) { sendCommand("deleteAtomById", {id}); }
 void V8Process::deleteBondById(int id) { sendCommand("deleteBondById", {id}); }
-void V8Process::deleteSelection() { sendCommand("deleteSelection"); }
-void V8Process::undo() { sendCommand("undo"); }
-void V8Process::redo() { sendCommand("redo"); }
+void V8Process::deleteSelection() {
+    if (m_docState) {
+        m_docState->deleteSelectionEntities();
+        applyLocalState();
+        return;
+    }
+    sendCommand("deleteSelection");
+}
+void V8Process::undo() {
+    if (m_docState) {
+        m_docState->undo();
+        applyLocalState();
+        return;
+    }
+    sendCommand("undo");
+}
+void V8Process::redo() {
+    if (m_docState) {
+        m_docState->redo();
+        applyLocalState();
+        return;
+    }
+    sendCommand("redo");
+}
 void V8Process::copySelection() { sendCommand("copySelection"); }
 void V8Process::cutSelection() { sendCommand("cutSelection"); }
 void V8Process::pasteSelection(double cx, double cy) { sendCommand("pasteSelection", {cx, cy}); }
@@ -88,6 +148,11 @@ void V8Process::requestSerialize(const QString& reqId) {
     requestStructure("mol", reqId);
 }
 QString V8Process::getStructure(const QString& fmt) {
+    if (m_docState) {
+        if (fmt != "mol") return QString(); // only molfile export is in scope for this pilot
+        StringResult r = m_docState->molecule().toMolfile();
+        return r.success ? r.value : QString();
+    }
     static int counter = 0;
     int myId = ++counter;
     QString reqId = "SYNC_" + fmt + "_" + QString::number(myId);
@@ -166,12 +231,38 @@ void V8Process::requestAtomProperties(int id) { sendCommand("getAtomProperties",
 void V8Process::selectByRect(double x1, double y1, double x2, double y2) { sendCommand("selectByRect", {x1, y1, x2, y2}); }
 void V8Process::addSelectionByRect(double x1, double y1, double x2, double y2) { sendCommand("addSelectionByRect", {x1, y1, x2, y2}); }
 void V8Process::selectByLasso(const QVariantList& pointsFlat) { sendCommand("selectByLasso", {QVariant(pointsFlat)}); }
-void V8Process::selectItem(const QVariant& atomId, const QVariant& bondId, const QVariant& rxnArrowId, const QVariant& rxnPlusId, const QVariant& multitailArrowId) { sendCommand("selectItem", {atomId, bondId, rxnArrowId, rxnPlusId, multitailArrowId}); }
+void V8Process::selectItem(const QVariant& atomId, const QVariant& bondId, const QVariant& rxnArrowId, const QVariant& rxnPlusId, const QVariant& multitailArrowId) {
+    if (m_docState) {
+        m_docState->selectSingleItem(
+            atomId.isValid() ? atomId.toInt() : -1,
+            bondId.isValid() ? bondId.toInt() : -1,
+            rxnArrowId.isValid() ? rxnArrowId.toInt() : -1,
+            rxnPlusId.isValid() ? rxnPlusId.toInt() : -1,
+            multitailArrowId.isValid() ? multitailArrowId.toInt() : -1);
+        applyLocalState();
+        return;
+    }
+    sendCommand("selectItem", {atomId, bondId, rxnArrowId, rxnPlusId, multitailArrowId});
+}
 void V8Process::addItemToSelection(const QVariant& atomId, const QVariant& bondId) { sendCommand("addItemToSelection", {atomId, bondId}); }
 void V8Process::removeItemFromSelection(const QVariant& atomId, const QVariant& bondId) { sendCommand("removeItemFromSelection", {atomId, bondId}); }
 void V8Process::selectFragment(const QVariant& atomId, const QVariant& bondId) { sendCommand("selectFragment", {atomId, bondId}); }
-void V8Process::moveSelection(double dx, double dy) { sendCommand("moveSelection", {dx, dy}); }
-void V8Process::commitMove() { sendCommand("commitMove"); }
+void V8Process::moveSelection(double dx, double dy) {
+    if (m_docState) {
+        m_docState->moveSelectionLive(dx, dy);
+        applyLocalState();
+        return;
+    }
+    sendCommand("moveSelection", {dx, dy});
+}
+void V8Process::commitMove() {
+    if (m_docState) {
+        m_docState->commitMove();
+        applyLocalState();
+        return;
+    }
+    sendCommand("commitMove");
+}
 void V8Process::rotateSelectionLive(double angleDelta) { sendCommand("rotateSelectionLive", {angleDelta}); }
 void V8Process::commitRotate() { sendCommand("commitRotate"); }
 void V8Process::scaleSelectionLive(double factor, double anchorX, double anchorY) { sendCommand("scaleSelectionLive", {factor, anchorX, anchorY}); }
