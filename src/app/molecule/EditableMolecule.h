@@ -334,6 +334,15 @@ public:
     // rather than asserting) -- this is a pure read with no order==1 guard of its own.
     Direction bondStereoDirectionEnum(BondId id) const;
 
+    // Same semantic direction as bondStereoDirectionEnum(), re-encoded as the V2000 molfile
+    // stereo flag (0/1/4/6) instead of the Indigo-raw int bondStereoDirection() returns --
+    // what any RENDERER wants (matches what gets written to a saved .mol file and what
+    // MoleculeLayer.qml's stereo===1/4/6 checks expect), as opposed to bondStereoDirection()'s
+    // raw-Indigo contract, which nothing outside bondStereoDirectionEnum() should consume
+    // directly. See the Direction-enum comment above for why these two numberings must never
+    // be conflated.
+    int bondStereoDirectionV2000(BondId id) const;
+
     // Sets or clears a SINGLE bond's wedge/hash/either stereo direction. Indigo exposes no live
     // per-bond wedge setter (confirmed absent from the vendored indigo.h). This works by patching
     // the bond's V2000 stereo flag directly in a fresh toMolfile() serialization and reloading

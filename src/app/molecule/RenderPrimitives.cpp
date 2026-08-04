@@ -288,7 +288,7 @@ RenderPrimitives RenderPrimitiveBuilder::build(const EditableMolecule& mol, bool
         prim.beginIsSgroup = beginSg;
         prim.endIsSgroup = endSg;
         prim.type = mol.bondOrder(bid);
-        prim.stereo = (beginSg || endSg) ? 0 : mol.bondStereoDirection(bid);
+        prim.stereo = (beginSg || endSg) ? 0 : mol.bondStereoDirectionV2000(bid);
         prim.checkWarning = mol.bondCheckWarningText(bid);
         prim.cipLabel = QString();          // always empty -- no bond-level CIP path, see file header
         prim.reactingCenterStatus = 0;       // always 0 -- no reaction objects in this port

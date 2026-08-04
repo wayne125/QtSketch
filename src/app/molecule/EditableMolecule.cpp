@@ -1326,6 +1326,10 @@ EditableMolecule::Direction EditableMolecule::bondStereoDirectionEnum(BondId id)
     return directionFromIndigoBondStereo(bondStereoDirection(id));
 }
 
+int EditableMolecule::bondStereoDirectionV2000(BondId id) const {
+    return directionToV2000Code(bondStereoDirectionEnum(id));
+}
+
 int EditableMolecule::atomCipDescriptor(AtomId id) const {
     if (m_mol < 0 || !m_atomIdx.contains(id)) return 0;
     activateSession();

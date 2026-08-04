@@ -258,6 +258,8 @@ static void test_ringsBondsAndAuxiliaryPrimitives() {
         if (wedgeBond) {
             CHECK(!wedgeBond->invalidStereo,
                   "a well-formed stereocenter (3 real substituents) reads invalidStereo=false");
+            CHECK(wedgeBond->stereo == 1,
+                  "wedge bond reports V2000 code 1 (up), not Indigo's raw INDIGO_UP (5) -- the bug this fix closes");
         }
     }
 
