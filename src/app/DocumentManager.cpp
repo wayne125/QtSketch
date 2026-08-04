@@ -16,10 +16,10 @@ void DocumentManager::setActiveDocId(int docId) {
     emit activeDocIdChanged();
 }
 
-int DocumentManager::addDocument() {
+int DocumentManager::addDocument(bool cppEngine) {
     int docId = m_nextDocId++;
-    auto *proc = new V8Process(this);
-    proc->init();
+    auto *proc = new V8Process(this, cppEngine);
+    proc->init(); // no-op on a C++-mode document: sendCommand's own guard (m_engine is null) warns and returns
     m_documents.insert(docId, proc);
     m_order.append(docId);
     emit docIdsChanged();
