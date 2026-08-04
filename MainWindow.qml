@@ -177,6 +177,9 @@ ApplicationWindow {
     // Per-document file paths + display titles (UI-only state). titleRev bumps
     // force TabButton text bindings to re-evaluate after open/save-as/rename.
     property var docFilePaths: ({})
+    // Which docIds are running in C++-engine mode (sub-project 7b) -- purely a UI-side label
+    // flag, the same "extra per-doc UI state keyed by docId" pattern as docFilePaths above.
+    property var cppEngineDocIds: ({})
     property int titleRev: 0
     property url pendingSaveUrl
     property url pendingRenderUrl
@@ -273,6 +276,11 @@ ApplicationWindow {
     property alias uiSettings: uiSettings
 
     property var docTitles: ({})
+    function addCppEngineDocument() {
+        var newId = DocumentManager.addDocument(true)
+        cppEngineDocIds[newId] = true
+    }
+
     function titleFor(docId) {
         if (docTitles[docId] === undefined) {
             var n = Object.keys(docTitles).length + 1
@@ -939,7 +947,7 @@ ApplicationWindow {
                         id: tabBtn
                         required property int modelData
                         // titleRev forces re-evaluation after open / save-as / rename
-                        text: (window.titleRev, (window.dirtyDocs[modelData] ? "● " : "") + window.titleFor(modelData))
+                        text: (window.titleRev, (window.dirtyDocs[modelData] ? "● " : "") + window.titleFor(modelData) + (window.cppEngineDocIds[modelData] ? " (C++ engine)" : ""))
 
                         // Content-sized and left-aligned, the Fluent tab behaviour.
                         // TabBar stretches its buttons to fill the bar by default,
