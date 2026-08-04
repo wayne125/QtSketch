@@ -155,6 +155,69 @@ static void test_undoReentrancyGuard() {
                           "the reentrant undo() call inside invert() was a no-op");
 }
 
+static void test_selectionReconciliationRemovesFullyStaleId() {
+    std::printf("--- Test: stale sgroup id (no numeric collision) is removed from selection ---\n");
+    DocumentState doc;
+    EditableMolecule& mol = doc.molecule();
+    AtomId a1 = doc.addAtom(QStringLiteral("C"), 0, 0);
+    AtomId a2 = doc.addAtom(QStringLiteral("C"), 1, 0);
+    AtomId a3 = doc.addAtom(QStringLiteral("C"), 2, 0);
+    // Whether this sgroup's id numerically collides with a1/a2/a3 doesn't matter for this test:
+    // once ALL of its members (a1, a2, a3) are deleted, no atom exists with that id either way,
+    // so the assertion below (the id is gone from selection) holds regardless.
+    SGroupId sid = mol.createSuperatomFromAtoms({a1, a2, a3});
+    CHECK(sid != -1, "setup: sgroup created");
+
+    doc.selection().atoms.insert(sid);
+    CHECK(doc.selection().atoms.contains(sid), "setup: sgroup id is selected");
+
+    doc.deleteAtom(a1);
+    doc.deleteAtom(a2);
+    doc.deleteAtom(a3); // last member removed -- Indigo auto-destroys the sgroup here
+
+    CHECK(!doc.selection().atoms.contains(sid),
+          "the now-fully-stale sgroup id was removed from selection after the command that "
+          "destroyed it, even though deleteAtom itself never touches selection directly");
+}
+
+static void test_selectionReconciliationKeepsCollidingRealAtom() {
+    std::printf("--- Test: a real atom's id survives even if a destroyed sgroup once shared it ---\n");
+    DocumentState doc;
+    EditableMolecule& mol = doc.molecule();
+    AtomId a = doc.addAtom(QStringLiteral("C"), 0, 0); // AtomId 1
+    AtomId b = doc.addAtom(QStringLiteral("C"), 1, 0);
+    AtomId c = doc.addAtom(QStringLiteral("C"), 2, 0);
+    AtomId d = doc.addAtom(QStringLiteral("C"), 3, 0);
+    SGroupId sid = mol.createSuperatomFromAtoms({b, c, d}); // first sgroup -> SGroupId 1, colliding with AtomId 1 (atom `a`)
+    CHECK(sid == a, "setup: the sgroup's id naturally collides with atom a's id (both are 1)");
+
+    doc.selection().atoms.insert(a); // representing "atom a is selected"; a's id happens to equal sid
+
+    doc.deleteAtom(b);
+    doc.deleteAtom(c);
+    doc.deleteAtom(d); // destroys the sgroup as a side effect
+
+    CHECK(doc.selection().atoms.contains(a),
+          "atom a's id survives reconciliation -- it's a real, currently-valid atom, "
+          "unaffected by the unrelated sgroup that happened to share its number");
+    CHECK(mol.atomIds().contains(a) && mol.atomSymbol(a) == QStringLiteral("C"),
+          "atom a itself was never touched by deleting the sgroup's own members");
+}
+
+static void test_selectionReconciliationCleansUpAfterDeleteSelectionEntities() {
+    std::printf("--- Test: deleteSelectionEntities's own selected ids are cleaned up afterward ---\n");
+    DocumentState doc;
+    AtomId a = doc.addAtom(QStringLiteral("C"), 0, 0);
+    doc.selectAtom(a);
+    CHECK(!doc.selection().atoms.isEmpty(), "setup: atom is selected");
+
+    doc.deleteSelectionEntities();
+
+    CHECK(doc.selection().atoms.isEmpty(),
+          "selection is empty after deleting the very atom it referenced -- a bonus side effect "
+          "of the same reconciliation, not just the cross-command aliasing scenario above");
+}
+
 static void test_documentStateHistoryCap() {
     std::printf("--- Test 3: DocumentState history cap at 50 ---\n");
     DocumentState doc;
@@ -1957,6 +2020,9 @@ int main() {
     test_documentStateUndoRedo();
     test_executeCommandReentrancyGuard();
     test_undoReentrancyGuard();
+    test_selectionReconciliationRemovesFullyStaleId();
+    test_selectionReconciliationKeepsCollidingRealAtom();
+    test_selectionReconciliationCleansUpAfterDeleteSelectionEntities();
     test_documentStateHistoryCap();
     test_documentStateSelection();
     test_documentStateEditingOperations();

@@ -362,6 +362,7 @@ private:
     // later live call re-apply a transform computed from positions the undo has
     // already invalidated, corrupting coordinates. Called by undo() and redo().
     void resetAllDragState();
+    void reconcileSelectionAfterCommand();
 
     // One snapshotted, transformable point. Shared by the rotate and scale
     // gestures (move does not use it -- it works from raw id lists, exactly

@@ -29,6 +29,7 @@ void DocumentState::executeCommand(EditCommand cmd) {
     m_inCommand = true;
     cmd.execute();
     m_inCommand = false;
+    reconcileSelectionAfterCommand();
     m_history.push_back(std::move(cmd));
     ++m_historyPointer;
     if (static_cast<int>(m_history.size()) > kHistorySize) {
@@ -60,6 +61,19 @@ void DocumentState::redo() {
     m_selection.clear();
     resetAllDragState();
     m_dirty = true;
+}
+
+void DocumentState::reconcileSelectionAfterCommand() {
+    if (m_selection.atoms.isEmpty()) return;
+    QList<AtomId> allAtoms = m_molecule.atomIds();
+    QList<SGroupId> allSgroups = m_molecule.sgroupIds();
+    QSet<AtomId> validAtoms(allAtoms.begin(), allAtoms.end());
+    QSet<SGroupId> validSgroups(allSgroups.begin(), allSgroups.end());
+    QSet<AtomId> kept;
+    for (AtomId id : m_selection.atoms) {
+        if (validAtoms.contains(id) || validSgroups.contains(id)) kept.insert(id);
+    }
+    m_selection.atoms = kept;
 }
 
 bool DocumentState::isDirty() const {
