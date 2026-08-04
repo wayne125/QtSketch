@@ -151,6 +151,9 @@ private:
 
     bool m_cppEngine = false;
     std::unique_ptr<DocumentState> m_docState;   // non-null only when m_cppEngine
+    QString m_docClipboardMol;   // C++-engine-only clipboard cache: set by copySelection/cutSelection,
+                                  // read by pasteSelection. Mirrors the JS worker's module-level
+                                  // _clipboard (90-dispatch.js:133-141, 40-serialize.js:120-123).
 
     std::unique_ptr<QjsEngine> m_engine;
     QVariantMap m_primitives;

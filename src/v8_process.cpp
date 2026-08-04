@@ -76,7 +76,10 @@ void V8Process::sendCommand(const QString& cmd, const QVariantList& args) {
     m_engine->dispatch(cmd, args);
 }
 
-void V8Process::init() { sendCommand("init"); }
+void V8Process::init() {
+    if (m_docState) { applyLocalState(); return; } // m_docState is already a freshly-constructed empty document (see constructor)
+    sendCommand("init");
+}
 void V8Process::loadMol(const QString& molfile) {
     if (m_docState) { m_docState->deserializeMol(molfile); applyLocalState(); return; }
     sendCommand("loadMol", {molfile});
@@ -152,9 +155,23 @@ void V8Process::redo() {
     }
     sendCommand("redo");
 }
-void V8Process::copySelection() { sendCommand("copySelection"); }
-void V8Process::cutSelection() { sendCommand("cutSelection"); }
-void V8Process::pasteSelection(double cx, double cy) { sendCommand("pasteSelection", {cx, cy}); }
+void V8Process::copySelection() {
+    if (m_docState) { m_docClipboardMol = m_docState->copySelection(); return; } // pure read, no applyLocalState() -- nothing mutated
+    sendCommand("copySelection");
+}
+void V8Process::cutSelection() {
+    if (m_docState) { m_docClipboardMol = m_docState->cutSelection(); applyLocalState(); return; }
+    sendCommand("cutSelection");
+}
+void V8Process::pasteSelection(double cx, double cy) {
+    if (m_docState) {
+        if (m_docClipboardMol.isEmpty()) return; // matches the real "if (!_clipboard) return"
+        m_docState->insertStructureAt(m_docClipboardMol, cx, cy);
+        applyLocalState();
+        return;
+    }
+    sendCommand("pasteSelection", {cx, cy});
+}
 void V8Process::selectAll() {
     if (m_docState) { m_docState->selectAll(); applyLocalState(); return; }
     sendCommand("selectAll");
@@ -368,7 +385,10 @@ void V8Process::setAtomMapping(int id, int mapping) {
     if (m_docState) { m_docState->setAtomMapping(id, mapping); applyLocalState(); return; }
     sendCommand("setAtomMapping", {id, mapping});
 }
-void V8Process::changeBondType(int id, int type, int stereo) { sendCommand("changeBondType", {id, type, stereo}); }
+void V8Process::changeBondType(int id, int type, int stereo) {
+    if (m_docState) { m_docState->changeBondTypeAndStereo(id, type, stereo); applyLocalState(); return; }
+    sendCommand("changeBondType", {id, type, stereo});
+}
 void V8Process::changeAtomCharge(int id, int charge) {
     if (m_docState) { m_docState->changeAtomCharge(id, charge); applyLocalState(); return; }
     sendCommand("changeAtomCharge", {id, charge});
@@ -389,7 +409,27 @@ void V8Process::changeAtomValence(int id, int valence) {
     if (m_docState) { m_docState->changeAtomValence(id, valence); applyLocalState(); return; }
     sendCommand("changeAtomValence", {id, valence});
 }
-void V8Process::requestAtomProperties(int id) { sendCommand("getAtomProperties", {id}); }
+void V8Process::requestAtomProperties(int id) {
+    if (m_docState) {
+        // Read-only: emits directly via the same structureReady/reqId convention
+        // requestStructure already established (sub-project 7b), no applyLocalState() call.
+        if (!m_docState->molecule().atomIds().contains(id)) {
+            emit structureReady(QStringLiteral("atom_props"), QStringLiteral("{}")); // matches real "JSON.stringify(props || {})"
+            return;
+        }
+        DocumentState::AtomProperties props = m_docState->atomProperties(id);
+        QJsonObject obj;
+        obj["id"] = id;
+        obj["label"] = props.label;
+        obj["charge"] = props.charge;
+        obj["isotope"] = props.isotope;
+        obj["radical"] = props.radical;
+        obj["explicitValence"] = props.explicitValence;
+        emit structureReady(QStringLiteral("atom_props"), QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)));
+        return;
+    }
+    sendCommand("getAtomProperties", {id});
+}
 void V8Process::selectByRect(double x1, double y1, double x2, double y2) { sendCommand("selectByRect", {x1, y1, x2, y2}); }
 void V8Process::addSelectionByRect(double x1, double y1, double x2, double y2) { sendCommand("addSelectionByRect", {x1, y1, x2, y2}); }
 void V8Process::selectByLasso(const QVariantList& pointsFlat) { sendCommand("selectByLasso", {QVariant(pointsFlat)}); }
