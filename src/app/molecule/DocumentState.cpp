@@ -1707,6 +1707,76 @@ void DocumentState::insertStructureAt(const QString& sourceMolfile, double cx, d
     executeCommand(std::move(cmd));
 }
 
+void DocumentState::addBondAndAtom(AtomId startId, const QString& label, double x, double y, int type, int stereo) {
+    Q_UNUSED(stereo); // documented port-wide no-op -- see this method's own header comment
+    EditableMolecule& mol = m_molecule;
+    if (!mol.atomIds().contains(startId)) return;
+
+    AtomId collisionId = -1;
+    for (AtomId otherId : mol.atomIds()) {
+        if (otherId == startId) continue;
+        double ox = 0, oy = 0;
+        mol.atomPos(otherId, ox, oy);
+        double d = std::sqrt((x - ox) * (x - ox) + (y - oy) * (y - oy));
+        if (d < 0.3) { collisionId = otherId; break; }
+    }
+    if (collisionId != -1) {
+        addBond(startId, collisionId, type);
+        return;
+    }
+
+    double cx = std::max(kPageMinX, std::min(kPageMaxX, x));
+    double cy = std::max(kPageMinY, std::min(kPageMaxY, y));
+
+    auto atomIdBox = std::make_shared<AtomId>(-1);
+    auto bondIdBox = std::make_shared<BondId>(-1);
+    EditCommand cmd;
+    cmd.execute = [&mol, atomIdBox, bondIdBox, label, cx, cy, startId, type]() {
+        *atomIdBox = mol.addAtom(label, cx, cy);
+        *bondIdBox = mol.addBond(startId, *atomIdBox, type);
+    };
+    cmd.invert = [&mol, atomIdBox, bondIdBox]() {
+        mol.removeBond(*bondIdBox);
+        mol.removeAtom(*atomIdBox);
+    };
+    executeCommand(std::move(cmd));
+}
+
+void DocumentState::addBondBetweenCoords(double x1, double y1, double x2, double y2, int type, int stereo) {
+    Q_UNUSED(stereo); // documented port-wide no-op -- see this method's own header comment
+    EditableMolecule& mol = m_molecule;
+    double cx1 = std::max(kPageMinX, std::min(kPageMaxX, x1));
+    double cy1 = std::max(kPageMinY, std::min(kPageMaxY, y1));
+    double cx2 = std::max(kPageMinX, std::min(kPageMaxX, x2));
+    double cy2 = std::max(kPageMinY, std::min(kPageMaxY, y2));
+
+    auto atom1IdBox = std::make_shared<AtomId>(-1);
+    auto atom2IdBox = std::make_shared<AtomId>(-1);
+    auto bondIdBox = std::make_shared<BondId>(-1);
+    EditCommand cmd;
+    cmd.execute = [&mol, atom1IdBox, atom2IdBox, bondIdBox, cx1, cy1, cx2, cy2, type]() {
+        *atom1IdBox = mol.addAtom(QStringLiteral("C"), cx1, cy1);
+        *atom2IdBox = mol.addAtom(QStringLiteral("C"), cx2, cy2);
+        *bondIdBox = mol.addBond(*atom1IdBox, *atom2IdBox, type);
+    };
+    cmd.invert = [&mol, atom1IdBox, atom2IdBox, bondIdBox]() {
+        mol.removeBond(*bondIdBox);
+        mol.removeAtom(*atom2IdBox);
+        mol.removeAtom(*atom1IdBox);
+    };
+    executeCommand(std::move(cmd));
+}
+
+void DocumentState::selectSingleItem(AtomId atomId, BondId bondId, RxnArrowId rxnArrowId,
+                                      RxnPlusId rxnPlusId, MultitailArrowId multitailArrowId) {
+    clearSelection();
+    if (atomId != -1) { selectAtom(atomId); return; }
+    if (bondId != -1) { selectBond(bondId); return; }
+    if (rxnArrowId != -1) { selectRxnArrow(rxnArrowId); return; }
+    if (rxnPlusId != -1) { selectRxnPlus(rxnPlusId); return; }
+    if (multitailArrowId != -1) { selectMultitailArrow(multitailArrowId); return; }
+}
+
 std::function<QPointF(double, double)> DocumentState::makeSimilarityTransform(
         double p1x, double p1y, double p2x, double p2y, double q1x, double q1y, double q2x, double q2y) {
     double dp = std::sqrt((p2x - p1x) * (p2x - p1x) + (p2y - p1y) * (p2y - p1y));

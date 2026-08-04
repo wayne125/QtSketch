@@ -295,6 +295,35 @@ public:
     // endpoints graft onto whatever they overlap, exactly like addRing.
     void addChain(double x1, double y1, double x2, double y2);
 
+    // Ports 20-edit.js's addBondAndAtom (605-669): drag from an existing atom to a new point. If
+    // the target point collides with a DIFFERENT existing atom (within 0.3 units), no atom is
+    // created -- just a single addBond call to that atom. Otherwise creates ONE new atom (clamped
+    // to page bounds) and ONE bond to it, as a single atomic undoable command (following the
+    // insertStructureAt/addAtom idBox pattern already established in this class). `stereo` is
+    // accepted for call-site parity with the real command but is a documented no-op -- this port
+    // has no way to SET bond stereo anywhere except via EditableMolecule::setBondStereo's own
+    // molfile-round-trip mechanism (sub-project 8), which is a different, separate entry point
+    // not reused here. The real JS's short-drag ring-angle/largest-empty-angle auto-placement
+    // (20-edit.js:616-633, triggered when the drag distance is under 0.5 units) is out of scope
+    // -- no equivalent geometry helper exists in this port yet; the caller's raw endpoint is
+    // always used, even for a very short drag.
+    void addBondAndAtom(AtomId startId, const QString& label, double x, double y, int type, int stereo);
+
+    // Ports 20-edit.js's addBondBetweenCoords (671-702): drag between two empty points. No
+    // collision/merge check at all (the real function's own comment: "Creates a bond between two
+    // empty coordinate points"). Always creates two new "C" atoms (each clamped to page bounds
+    // independently) and one bond between them, as a single atomic undoable command. Same
+    // documented bond-stereo no-op as addBondAndAtom above.
+    void addBondBetweenCoords(double x1, double y1, double x2, double y2, int type, int stereo);
+
+    // Ports 10-state.js's selectItem (390-404): replaces the WHOLE selection with at most one
+    // item, priority order atom > bond > rxnArrow > rxnPlus > multitailArrow > none (all unset
+    // clears the selection). Not undoable -- matches the real function (no makeCmd) and this
+    // class's own selectAtom/selectBond etc. -1 is this class's established "unset" sentinel
+    // (matching insertFunctionalGroup's targetAtomId = -1).
+    void selectSingleItem(AtomId atomId = -1, BondId bondId = -1, RxnArrowId rxnArrowId = -1,
+                           RxnPlusId rxnPlusId = -1, MultitailArrowId multitailArrowId = -1);
+
     // Ports 30-templates.js's insertFunctionalGroup. TemplateLibrary is
     // passed explicitly by the caller (this class has no module-level
     // template-registry globals, unlike the real worker). graft = targetAtomId

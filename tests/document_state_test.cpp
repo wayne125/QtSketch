@@ -408,6 +408,96 @@ static void test_documentStateEditingOperations() {
     CHECK(doc.molecule().bondStereoDirectionEnum(dblBond) == EditableMolecule::Direction::None,
           "double bond's stereo remains None -- the attempt was a true no-op");
 
+    // addBondAndAtom: drag from an existing atom to a new point.
+    AtomId abStart = doc.addAtom(QStringLiteral("C"), 20, 20);
+    doc.addBondAndAtom(abStart, QStringLiteral("N"), 21.5, 20, 1, 0);
+    QList<BondId> bondsAfterAb = doc.molecule().bondIds();
+    BondId newBondAb = -1;
+    AtomId newAtomAb = -1;
+    for (BondId bid : bondsAfterAb) {
+        AtomId ba = -1, bb = -1;
+        if (doc.molecule().bondEndpoints(bid, ba, bb) && (ba == abStart || bb == abStart)) {
+            newBondAb = bid;
+            newAtomAb = (ba == abStart) ? bb : ba;
+        }
+    }
+    CHECK(newBondAb != -1 && newAtomAb != -1, "addBondAndAtom created a new bonded atom");
+    CHECK(doc.molecule().atomSymbol(newAtomAb) == QStringLiteral("N"), "the new atom has the requested label");
+    double abX = 0, abY = 0;
+    doc.molecule().atomPos(newAtomAb, abX, abY);
+    CHECK(abX == 21.5 && abY == 20, "the new atom is placed at the requested (clamped) coordinates");
+    doc.undo();
+    CHECK(!doc.molecule().atomIds().contains(newAtomAb), "undo removes the created atom");
+    CHECK(doc.molecule().findBond(abStart, newAtomAb) == -1, "undo removes the created bond");
+    doc.redo();
+    bool foundRecreatedN = false;
+    for (BondId bid : doc.molecule().bondIds()) {
+        AtomId ba = -1, bb = -1;
+        if (doc.molecule().bondEndpoints(bid, ba, bb) && (ba == abStart || bb == abStart)) {
+            AtomId other = (ba == abStart) ? bb : ba;
+            if (doc.molecule().atomSymbol(other) == QStringLiteral("N")) { foundRecreatedN = true; break; }
+        }
+    }
+    CHECK(foundRecreatedN, "redo re-creates the bonded N atom (with a fresh id, per this port's own established convention)");
+
+    // addBondAndAtom: collision-merge case -- dragging onto an EXISTING atom creates only a bond.
+    AtomId mergeStart = doc.addAtom(QStringLiteral("C"), 25, 25);
+    AtomId mergeTarget = doc.addAtom(QStringLiteral("O"), 26, 25);
+    int bondCountBeforeMerge = doc.molecule().bondIds().size();
+    doc.addBondAndAtom(mergeStart, QStringLiteral("C"), 26, 25, 1, 0); // lands within 0.3 of mergeTarget
+    CHECK(doc.molecule().bondIds().size() == bondCountBeforeMerge + 1,
+          "collision case adds exactly one new bond, not a new atom");
+    CHECK(doc.molecule().findBond(mergeStart, mergeTarget) != -1,
+          "the new bond connects to the EXISTING colliding atom");
+
+    // addBondAndAtom: page-bounds clamping.
+    AtomId clampStart = doc.addAtom(QStringLiteral("C"), 29, 20);
+    doc.addBondAndAtom(clampStart, QStringLiteral("C"), 999, 999, 1, 0);
+    QList<AtomId> allAtomsAfterClamp = doc.molecule().atomIds();
+    AtomId clampedAtom = -1;
+    for (AtomId aid : allAtomsAfterClamp) {
+        double px = 0, py = 0;
+        doc.molecule().atomPos(aid, px, py);
+        if (px == 30.0) { clampedAtom = aid; break; } // kPageMaxX
+    }
+    CHECK(clampedAtom != -1, "an out-of-bounds endpoint is clamped to the page's max X (30.0)");
+
+    // addBondAndAtom: invalid startId is a true no-op.
+    bool canUndoBeforeInvalidStart = doc.canUndo();
+    int atomCountBeforeInvalidStart = doc.molecule().atomIds().size();
+    doc.addBondAndAtom(999999, QStringLiteral("C"), 0, 0, 1, 0);
+    CHECK(doc.canUndo() == canUndoBeforeInvalidStart, "invalid startId pushes no history entry");
+    CHECK(doc.molecule().atomIds().size() == atomCountBeforeInvalidStart, "invalid startId creates no atom");
+
+    // addBondBetweenCoords: always creates two new atoms + one bond, as one undoable command.
+    int atomCountBeforeBc = doc.molecule().atomIds().size();
+    int bondCountBeforeBc = doc.molecule().bondIds().size();
+    doc.addBondBetweenCoords(40, 40, 41.5, 40, 1, 0);
+    CHECK(doc.molecule().atomIds().size() == atomCountBeforeBc + 2, "addBondBetweenCoords creates exactly 2 atoms");
+    CHECK(doc.molecule().bondIds().size() == bondCountBeforeBc + 1, "addBondBetweenCoords creates exactly 1 bond");
+    doc.undo();
+    CHECK(doc.molecule().atomIds().size() == atomCountBeforeBc, "undo removes both created atoms");
+    CHECK(doc.molecule().bondIds().size() == bondCountBeforeBc, "undo removes the created bond");
+    doc.redo();
+    CHECK(doc.molecule().atomIds().size() == atomCountBeforeBc + 2, "redo re-creates both atoms");
+    CHECK(doc.molecule().bondIds().size() == bondCountBeforeBc + 1, "redo re-creates the bond");
+
+    // selectSingleItem: priority order and the all-unset-clears case.
+    AtomId selA = doc.addAtom(QStringLiteral("C"), 50, 50);
+    AtomId selB = doc.addAtom(QStringLiteral("C"), 51, 50);
+    BondId selBond = doc.addBond(selA, selB, 1);
+    doc.selectSingleItem(selA, selBond); // atom set AND bond set -> atom wins
+    CHECK(doc.selection().atoms.contains(selA) && doc.selection().atoms.size() == 1,
+          "selectSingleItem: atom wins when both atom and bond are set");
+    CHECK(doc.selection().bonds.isEmpty(), "selectSingleItem: bond NOT selected when atom also set");
+    doc.selectSingleItem(-1, selBond); // bond set, atom unset -> bond wins
+    CHECK(doc.selection().bonds.contains(selBond) && doc.selection().bonds.size() == 1,
+          "selectSingleItem: bond wins when atom is unset");
+    CHECK(doc.selection().atoms.isEmpty(), "selectSingleItem: no atom selected in the bond-only case");
+    doc.selectSingleItem(); // everything unset -> clears
+    CHECK(doc.selection().atoms.isEmpty() && doc.selection().bonds.isEmpty(),
+          "selectSingleItem: all-unset clears the selection");
+
     // setAtomQueryList / clearAtomQueryList.
     doc.setAtomQueryList(a2, QStringLiteral("C,N"), false);
     CHECK(doc.molecule().hasAtomQueryList(a2), "setAtomQueryList sets the query list");
