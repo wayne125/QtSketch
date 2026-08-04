@@ -140,6 +140,15 @@ public:
 
     void changeBondOrder(BondId id, int newOrder);
 
+    // Sets or clears a single bond's wedge/hash/either stereo direction (sub-project 8). See
+    // EditableMolecule::setBondStereo's own header comment for why this works via a molfile
+    // round-trip rather than a live per-bond setter, and for the pre-existing double-bond and
+    // caller-responsibility (at-most-one-wedge-per-stereocenter) limitations that apply here too.
+    // No history entry is pushed if the underlying call would be rejected (unknown bond id, a
+    // non-single bond, or an unchanged value) -- same guard-before-executeCommand convention as
+    // changeAtomCharge/changeBondOrder above.
+    void setBondStereo(BondId id, EditableMolecule::Direction direction);
+
     void setAtomQueryList(AtomId id, const QString& labelsCsv, bool notList);
     // KNOWN LIMITATION: undo after clearAtomQueryList does NOT restore the
     // original query list (EditableMolecule has no set-list-from-numbers

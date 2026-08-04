@@ -339,6 +339,75 @@ static void test_documentStateEditingOperations() {
     doc.undo();
     CHECK(doc.molecule().bondOrder(liveBond) == 1, "undo restores the original order");
 
+    // setBondStereo: guarded (unchanged value no-ops), one EditCommand, undo/redo round-trips
+    // through the semantic Direction enum, never a raw int (sub-project 8's own found-and-fixed
+    // encoding-mismatch bug: Direction::Up is 1 on the V2000 write side, 5 (INDIGO_UP) on the
+    // Indigo read side -- a naive undo that skipped the translation would write an invalid V2000
+    // stereo code).
+    //
+    // NOTE (found by direct testing, not anticipated in the approved spec): liveBond is the
+    // single bond of a bare 2-atom molecule (built earlier in this test for changeBondOrder),
+    // whose begin-atom has only one real substituent -- not a chemically valid wedge origin.
+    // Indigo correctly rejects the reload ("direction of bond #0 makes no sense", the same real
+    // validation found during Task 1's own execution), so setBondStereo silently no-ops. This
+    // test instead builds its own dedicated 4-substituent stereocenter, the same proven shape
+    // used throughout Task 1's tests.
+    AtomId stereoCenter = doc.addAtom(QStringLiteral("C"), 10, 10);
+    AtomId stF = doc.addAtom(QStringLiteral("F"), 10, 11);
+    AtomId stCl = doc.addAtom(QStringLiteral("Cl"), 9, 9.5);
+    AtomId stBr = doc.addAtom(QStringLiteral("Br"), 11, 9.5);
+    doc.addBond(stereoCenter, stF, 1);
+    doc.addBond(stereoCenter, stCl, 1);
+    BondId stereoBond = doc.addBond(stereoCenter, stBr, 1);
+
+    CHECK(doc.molecule().bondStereoDirectionEnum(stereoBond) == EditableMolecule::Direction::None,
+          "stereoBond starts with no stereo");
+
+    doc.setBondStereo(stereoBond, EditableMolecule::Direction::Up);
+    CHECK(doc.molecule().bondStereoDirectionEnum(stereoBond) == EditableMolecule::Direction::Up,
+          "setBondStereo sets Up");
+    CHECK(doc.molecule().bondStereoDirection(stereoBond) == INDIGO_UP,
+          "raw indigoBondStereo reports INDIGO_UP specifically");
+
+    doc.undo();
+    CHECK(doc.molecule().bondStereoDirectionEnum(stereoBond) == EditableMolecule::Direction::None,
+          "undo restores None");
+
+    doc.redo();
+    CHECK(doc.molecule().bondStereoDirection(stereoBond) == INDIGO_UP,
+          "redo restores INDIGO_UP exactly");
+
+    // REQUIRED: the encoding-mismatch regression check. Up -> None -> undo must restore the
+    // EXACT raw value INDIGO_UP (5), not merely a truthy/nonzero value and not the raw V2000
+    // write code (1) -- a test that only checked truthiness would NOT catch this bug class.
+    doc.setBondStereo(stereoBond, EditableMolecule::Direction::None);
+    CHECK(doc.molecule().bondStereoDirectionEnum(stereoBond) == EditableMolecule::Direction::None,
+          "setBondStereo back to None");
+    doc.undo();
+    CHECK(doc.molecule().bondStereoDirection(stereoBond) == INDIGO_UP,
+          "undo of Up->None restores EXACTLY INDIGO_UP (5), not merely truthy/nonzero");
+    StringResult stereoMf = doc.molecule().toMolfile();
+    CHECK(stereoMf.success, "molfile serialization still succeeds after the undo round-trip");
+
+    // Guarded: setting to the SAME current direction (Up, from the undo above) pushes no
+    // history entry.
+    doc.setBondStereo(stereoBond, EditableMolecule::Direction::Up); // same value again -- no-op
+    doc.undo();
+    CHECK(doc.molecule().bondStereoDirectionEnum(stereoBond) == EditableMolecule::Direction::None,
+          "the guarded same-value call pushed nothing -- this undo is the earlier Up->None entry");
+    doc.redo();
+
+    // Attempt on a double bond -> no history entry, no mutation.
+    AtomId dblA1 = doc.addAtom(QStringLiteral("C"), 5, 5);
+    AtomId dblA2 = doc.addAtom(QStringLiteral("O"), 5, 6);
+    BondId dblBond = doc.addBond(dblA1, dblA2, 2);
+    bool canUndoBeforeDoubleAttempt = doc.canUndo();
+    doc.setBondStereo(dblBond, EditableMolecule::Direction::Up);
+    CHECK(doc.canUndo() == canUndoBeforeDoubleAttempt,
+          "setBondStereo on a double bond pushes no history entry");
+    CHECK(doc.molecule().bondStereoDirectionEnum(dblBond) == EditableMolecule::Direction::None,
+          "double bond's stereo remains None -- the attempt was a true no-op");
+
     // setAtomQueryList / clearAtomQueryList.
     doc.setAtomQueryList(a2, QStringLiteral("C,N"), false);
     CHECK(doc.molecule().hasAtomQueryList(a2), "setAtomQueryList sets the query list");

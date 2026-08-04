@@ -605,6 +605,17 @@ void DocumentState::changeBondOrder(BondId id, int newOrder) {
     executeCommand(std::move(cmd));
 }
 
+void DocumentState::setBondStereo(BondId id, EditableMolecule::Direction direction) {
+    EditableMolecule& mol = m_molecule;
+    if (mol.bondOrder(id) != 1) return; // invalid id or non-single bond: no history entry
+    EditableMolecule::Direction oldDirection = mol.bondStereoDirectionEnum(id);
+    if (oldDirection == direction) return; // guarded, matches changeAtomCharge/changeBondOrder
+    EditCommand cmd;
+    cmd.execute = [&mol, id, direction]() { mol.setBondStereo(id, direction); };
+    cmd.invert = [&mol, id, oldDirection]() { mol.setBondStereo(id, oldDirection); };
+    executeCommand(std::move(cmd));
+}
+
 void DocumentState::setAtomQueryList(AtomId id, const QString& labelsCsv, bool notList) {
     EditableMolecule& mol = m_molecule;
     QString oldLabel = mol.atomSymbol(id);
