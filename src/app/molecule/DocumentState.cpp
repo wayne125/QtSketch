@@ -636,6 +636,33 @@ void DocumentState::changeBondOrder(BondId id, int newOrder) {
     executeCommand(std::move(cmd));
 }
 
+void DocumentState::changeBondTypeAndStereo(BondId id, int newOrder, int newStereo) {
+    EditableMolecule& mol = m_molecule;
+    int oldOrder = mol.bondOrder(id);
+    EditableMolecule::Direction oldDirection = mol.bondStereoDirectionEnum(id);
+
+    EditableMolecule::Direction newDirection;
+    switch (newStereo) {
+        case 1: newDirection = EditableMolecule::Direction::Up; break;
+        case 6: newDirection = EditableMolecule::Direction::Down; break;
+        case 4: newDirection = EditableMolecule::Direction::Either; break;
+        default: newDirection = EditableMolecule::Direction::None; break;
+    }
+
+    if (oldOrder == newOrder && oldDirection == newDirection) return; // matches real changeBondType's combined guard
+
+    EditCommand cmd;
+    cmd.execute = [&mol, id, newOrder, newDirection]() {
+        mol.setBondOrderValue(id, newOrder);
+        mol.setBondStereo(id, newDirection); // no-op if newOrder != 1, matching setBondStereo's own guard
+    };
+    cmd.invert = [&mol, id, oldOrder, oldDirection]() {
+        mol.setBondOrderValue(id, oldOrder);
+        mol.setBondStereo(id, oldDirection); // safe: order is set FIRST above, so this succeeds whenever oldOrder == 1
+    };
+    executeCommand(std::move(cmd));
+}
+
 void DocumentState::setBondStereo(BondId id, EditableMolecule::Direction direction) {
     EditableMolecule& mol = m_molecule;
     if (mol.bondOrder(id) != 1) return; // invalid id or non-single bond: no history entry

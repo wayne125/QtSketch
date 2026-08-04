@@ -140,6 +140,17 @@ public:
 
     void changeBondOrder(BondId id, int newOrder);
 
+    // Ports 20-edit.js's changeBondType (586-601): changes bond order AND stereo as ONE
+    // atomic undo step (real JS: a single makeCmd covering both fields). newStereo is the RAW
+    // V2000 code (0/1/4/6, matching the real JS's own b.stereo field convention) -- NOT an
+    // EditableMolecule::Direction -- mapped internally to avoid exposing EditableMolecule's
+    // private V2000<->Indigo conversion helpers to this unrelated class. execute()/invert()
+    // both set order FIRST, then attempt the stereo call: EditableMolecule::setBondStereo's own
+    // guard (bondOrder(id) != 1) makes that a safe no-op whenever the order just became
+    // non-single, so an original wedge on a bond later changed away from order 1 is still
+    // exactly restored on undo (order goes back to 1 first, THEN the stereo call succeeds).
+    void changeBondTypeAndStereo(BondId id, int newOrder, int newStereo);
+
     // Sets or clears a single bond's wedge/hash/either stereo direction (sub-project 8). See
     // EditableMolecule::setBondStereo's own header comment for why this works via a molfile
     // round-trip rather than a live per-bond setter, and for the pre-existing double-bond and

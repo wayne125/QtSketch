@@ -2258,6 +2258,60 @@ static void test_setCheckIssuesReuseOrderRegression() {
           "the bond that reused the freed index gets the warning");
 }
 
+static void test_changeBondTypeAndStereo() {
+    std::printf("--- Test: changeBondTypeAndStereo (atomic order+stereo undo) ---\n");
+    DocumentState doc;
+
+    // Same proven 4-substituent stereocenter shape as test_documentStateEditingOperations'
+    // own setBondStereo test -- a 2-substituent origin is chemically invalid for a wedge and
+    // Indigo silently rejects it (found during sub-project 8's own execution).
+    AtomId center = doc.addAtom(QStringLiteral("C"), 10, 10);
+    AtomId f = doc.addAtom(QStringLiteral("F"), 10, 11);
+    AtomId cl = doc.addAtom(QStringLiteral("Cl"), 9, 9.5);
+    AtomId br = doc.addAtom(QStringLiteral("Br"), 11, 9.5);
+    doc.addBond(center, f, 1);
+    doc.addBond(center, cl, 1);
+    BondId bond = doc.addBond(center, br, 1);
+
+    CHECK(doc.molecule().bondOrder(bond) == 1, "bond starts as a single bond");
+    CHECK(doc.molecule().bondStereoDirectionEnum(bond) == EditableMolecule::Direction::None,
+          "bond starts with no stereo");
+
+    // 1) Setting stereo (order unchanged) sets Direction::Up from the raw V2000 code 1.
+    doc.changeBondTypeAndStereo(bond, 1, 1);
+    CHECK(doc.molecule().bondOrder(bond) == 1, "order unchanged (still 1)");
+    CHECK(doc.molecule().bondStereoDirectionEnum(bond) == EditableMolecule::Direction::Up,
+          "V2000 code 1 maps to Direction::Up");
+
+    // 2) One undo restores BOTH fields in a single step (not two separate undos).
+    doc.undo();
+    CHECK(doc.molecule().bondOrder(bond) == 1, "undo restores order to 1");
+    CHECK(doc.molecule().bondStereoDirectionEnum(bond) == EditableMolecule::Direction::None,
+          "undo restores stereo to None in the SAME undo as the order restore");
+
+    // 3) Redo re-applies both together.
+    doc.redo();
+    CHECK(doc.molecule().bondStereoDirectionEnum(bond) == EditableMolecule::Direction::Up,
+          "redo re-applies Up");
+
+    // 4) Changing ORDER away from 1 (stereo request 0/None) -- setBondStereo's own guard
+    // (bondOrder(id) != 1) makes the stereo-clear call a safe no-op once order is 2, but the
+    // wedge must still be fully restorable on undo (this is the whole reason execute/invert
+    // both always set order FIRST, then attempt stereo -- see this method's own comment).
+    doc.changeBondTypeAndStereo(bond, 2, 0);
+    CHECK(doc.molecule().bondOrder(bond) == 2, "order changed to 2 (double bond)");
+
+    doc.undo();
+    CHECK(doc.molecule().bondOrder(bond) == 1, "undo restores order to 1");
+    CHECK(doc.molecule().bondStereoDirectionEnum(bond) == EditableMolecule::Direction::Up,
+          "undo ALSO restores the original Up wedge, even though order changed away from 1 and back");
+
+    // 5) Guard: calling with identical order+stereo pushes no history entry.
+    bool canUndoBefore = doc.canUndo();
+    doc.changeBondTypeAndStereo(bond, 1, 1); // already order=1, stereo=Up (V2000 code 1) -- no-op
+    CHECK(doc.canUndo() == canUndoBefore, "no-op call (unchanged order and stereo) pushes no history entry");
+}
+
 int main() {
     test_selectionStateBasics();
     test_editCommandBasics();
@@ -2315,6 +2369,7 @@ int main() {
     test_setCheckIssuesResetsOnEachCall();
     test_setCheckIssuesMalformedJsonIsNoOp();
     test_setCheckIssuesReuseOrderRegression();
+    test_changeBondTypeAndStereo();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }
