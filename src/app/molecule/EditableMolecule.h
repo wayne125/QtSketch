@@ -321,6 +321,36 @@ public:
     int stereocenterGroup(AtomId id) const;     // AND/OR group number
     int bondStereoDirection(BondId id) const;   // 0, or INDIGO_UP/DOWN/EITHER/CIS/TRANS
 
+    // Semantic wedge/hash/either direction, independent of BOTH numeric encodings this feature
+    // touches: Indigo's raw indigoBondStereo() value (INDIGO_UP=5, INDIGO_DOWN=6, INDIGO_EITHER=4,
+    // indigo.h:438-441) and the V2000 molfile bond-block stereo flag (Up=1, Down=6, Either=4).
+    // These disagree on Up (5 vs 1) and must never be passed across this boundary as a raw int --
+    // confirmed by a direct probe run for this sub-project: writing V2000 stereo flag 1 and
+    // reading back indigoBondStereo() gave 5 for the same bond.
+    enum class Direction { None, Up, Down, Either };
+
+    // Translates bondStereoDirection()'s raw Indigo-side int into the semantic enum above. Safe
+    // on any input (maps INDIGO_CIS/INDIGO_TRANS or any other unexpected value to Direction::None
+    // rather than asserting) -- this is a pure read with no order==1 guard of its own.
+    Direction bondStereoDirectionEnum(BondId id) const;
+
+    // Sets or clears a SINGLE bond's wedge/hash/either stereo direction. Indigo exposes no live
+    // per-bond wedge setter (confirmed absent from the vendored indigo.h). This works by patching
+    // the bond's V2000 stereo flag directly in a fresh toMolfile() serialization and reloading
+    // through indigoLoadMoleculeFromString, which lets Indigo re-perceive real chirality from the
+    // wedge plus the molecule's existing 2D coordinates, exactly like any MDL-format toolkit.
+    // Returns false, with no mutation and no history entry expected by callers, if `id` isn't a
+    // real bond, if the bond's order isn't exactly 1 (wedge/hash is only meaningful on single
+    // bonds -- double-bond cis/trans is a separate, unrelated mechanism, out of scope here), or
+    // if this molecule's toMolfile() ever emits V3000 instead of V2000 (unconfirmed whether any
+    // molecule this port can construct triggers that -- guarded defensively, not assumed
+    // impossible). Does NOT check whether the bond's atom already has a different bond wedged;
+    // calling this on a second bond of an already-wedged stereocenter is allowed and will not
+    // fail, but is the caller's responsibility to avoid if it matters (a future UI wedge tool
+    // would enforce at-most-one-wedge-per-stereocenter itself, matching how Sketcher does it by
+    // flipping rather than adding a second wedge -- not attempted at this primitive level).
+    bool setBondStereo(BondId id, Direction dir);
+
     // CIP descriptor (R/S/r/s/E/Z, or NONE/UNKNOWN) as Indigo's own CIPDesc enum value, cast to
     // int (molecule_cip_calculator.h: NONE=0, UNKNOWN=1, s=2, r=3, S=4, R=5, E=6, Z=7). Computed
     // via a throwaway clone since indigoAddCIPStereoDescriptors mutates -- this molecule (m_mol)
@@ -465,6 +495,21 @@ private:
 
     void activateSession() const; // indigoSetSessionId(m_session)
     void rebuildIndexTables();
+
+    // Same "Indigo's current 0..count-1 order, reverse-mapped to external SGroupId via
+    // m_sgroupIdx" contract as atomIdsInIndigoOrder()/bondIdsInIndigoOrder() above, but for
+    // sgroups. Private (unlike its atom/bond siblings, which are public for an existing
+    // documented external use case) because nothing outside setBondStereo needs it yet. Needed
+    // to remap m_sgroupIdx after setBondStereo replaces the WHOLE Indigo molecule handle --
+    // rebuildIndexTables()'s own sgroup handling only PRUNES vanished sgroups (its own comment,
+    // EditableMolecule.cpp:626-631, is explicitly about in-place removal on the SAME handle, not
+    // about a full handle replacement) and does not reindex survivors, which setBondStereo needs.
+    QList<SGroupId> sgroupIdsInIndigoOrder() const;
+
+    // The two numeric-encoding conversions Direction exists to keep apart. Both private: nothing
+    // outside setBondStereo/bondStereoDirectionEnum needs raw access to either numbering.
+    static int directionToV2000Code(Direction dir);
+    static Direction directionFromIndigoBondStereo(int indigoValue);
     void assignFreshAtomBondIds();   // extracted from the constructor's own loop, shared with loadFrom
 };
 

@@ -1304,6 +1304,28 @@ int EditableMolecule::bondStereoDirection(BondId id) const {
     return s;
 }
 
+EditableMolecule::Direction EditableMolecule::directionFromIndigoBondStereo(int indigoValue) {
+    switch (indigoValue) {
+        case INDIGO_UP: return Direction::Up;
+        case INDIGO_DOWN: return Direction::Down;
+        case INDIGO_EITHER: return Direction::Either;
+        default: return Direction::None;
+    }
+}
+
+int EditableMolecule::directionToV2000Code(EditableMolecule::Direction dir) {
+    switch (dir) {
+        case Direction::Up: return 1;
+        case Direction::Down: return 6;
+        case Direction::Either: return 4;
+        default: return 0;
+    }
+}
+
+EditableMolecule::Direction EditableMolecule::bondStereoDirectionEnum(BondId id) const {
+    return directionFromIndigoBondStereo(bondStereoDirection(id));
+}
+
 int EditableMolecule::atomCipDescriptor(AtomId id) const {
     if (m_mol < 0 || !m_atomIdx.contains(id)) return 0;
     activateSession();
@@ -1381,6 +1403,98 @@ QList<BondId> EditableMolecule::bondIdsInIndigoOrder() const {
         indigoFree(iter);
     }
     return result;
+}
+
+QList<SGroupId> EditableMolecule::sgroupIdsInIndigoOrder() const {
+    QList<SGroupId> result;
+    if (m_mol < 0) return result;
+    activateSession();
+    int iter = indigoIterateSuperatoms(m_mol);
+    if (iter >= 0) {
+        int s;
+        while ((s = indigoNext(iter)) > 0) {
+            int idx = indigoIndex(s);
+            for (auto it = m_sgroupIdx.constBegin(); it != m_sgroupIdx.constEnd(); ++it) {
+                if (it.value() == idx) { result.append(it.key()); break; }
+            }
+            indigoFree(s);
+        }
+        indigoFree(iter);
+    }
+    return result;
+}
+
+bool EditableMolecule::setBondStereo(BondId id, Direction dir) {
+    if (m_mol < 0 || !m_bondIdx.contains(id)) return false;
+    activateSession();
+    if (bondOrder(id) != 1) return false;
+
+    // Capture pre-mutation order BEFORE touching anything -- this is what makes the
+    // post-reload remap below safe. See this method's own header comment for why these
+    // order-list helpers are used instead of rebuildIndexTables() (sub-project 6b already
+    // proved a sorted-by-id remap unreliable for this exact class of problem).
+    QList<AtomId> oldAtomOrder = atomIdsInIndigoOrder();
+    QList<BondId> oldBondOrder = bondIdsInIndigoOrder();
+    QList<SGroupId> oldSgroupOrder = sgroupIdsInIndigoOrder();
+
+    // Found by direct testing during this sub-project's own execution (not anticipated in the
+    // approved spec): once a molecule has a REAL perceived stereocenter, Indigo's own
+    // toMolfile()/indigoMolfile() switches to V3000 output on every SUBSEQUENT call, because
+    // V2000 cannot represent the "enhanced stereo" (STERAC/STEABS) collection block Indigo
+    // attaches once real chirality exists. Without forcing V2000 back on, the very first
+    // setBondStereo call on a molecule succeeds (toMolfile() is still V2000 at that point), but
+    // EVERY later call -- including undo/redo re-applying a direction, which is this feature's
+    // core promised use case -- would hit the V3000 guard below and silently no-op. This option
+    // forces V2000 output regardless of any enhanced-stereo collection Indigo would otherwise
+    // attach; confirmed by direct probe (indigoSetOption returns 1/success in this vendored
+    // build, and the previously-failing chained Up->Down->Either->None sequence passes with it).
+    indigoSetOption("molfile-saving-mode", "2000");
+
+    StringResult mf = toMolfile();
+    if (!mf.success) return false;
+
+    QStringList lines = mf.value.split(QLatin1Char('\n'));
+    // V3000 guard: this method's line-patching below assumes V2000's fixed-width,
+    // one-line-per-bond layout. Bail with no mutation rather than misinterpret a
+    // differently-structured V3000 "M  V30 ..." block as if it were a V2000 bond line. Kept as a
+    // defensive check even with the option above forcing V2000, in case some future molecule
+    // shape (e.g. one this port can't yet construct) still triggers V3000 despite the option.
+    if (lines.size() < 4 || !lines[3].contains(QStringLiteral("V2000"))) return false;
+
+    int bondLineIndex = 4 + atomCount() + oldBondOrder.indexOf(id);
+    if (bondLineIndex < 0 || bondLineIndex >= lines.size()) return false;
+
+    const QString& line = lines[bondLineIndex];
+    if (line.size() < 12) return false;
+    // Fields are fixed 3-char-wide, right-justified: [0:3)=begin atom, [3:6)=end atom,
+    // [6:9)=bond type, [9:12)=stereo (the one field this method changes). Kept byte-identical
+    // otherwise so every other line -- other bonds, sgroup M blocks, coordinates -- passes
+    // through untouched exactly as Indigo itself emitted it.
+    QString patchedLine = line.left(9) + QStringLiteral("%1").arg(directionToV2000Code(dir), 3) + line.mid(12);
+    lines[bondLineIndex] = patchedLine;
+
+    QString patchedText = lines.join(QLatin1Char('\n'));
+    int newHandle = indigoLoadMoleculeFromString(patchedText.toUtf8().constData());
+    if (newHandle < 0) {
+        m_lastError = QString::fromUtf8(indigoGetLastError());
+        return false;
+    }
+
+    if (m_mol >= 0) indigoFree(m_mol);
+    m_mol = newHandle;
+
+    // Order-preserving re-association, NOT a general rebuildIndexTables()-style fuzzy remap --
+    // valid because this operation never changes atom/bond/sgroup count, so the patched
+    // molfile's atom/bond/sgroup block is the exact same count and order it was captured in
+    // above, and Indigo's fresh sequential index assignment on load reproduces that order.
+    m_atomIdx.clear();
+    for (int i = 0; i < oldAtomOrder.size(); ++i) m_atomIdx.insert(oldAtomOrder[i], i);
+    m_bondIdx.clear();
+    for (int i = 0; i < oldBondOrder.size(); ++i) m_bondIdx.insert(oldBondOrder[i], i);
+    m_sgroupIdx.clear();
+    for (int i = 0; i < oldSgroupOrder.size(); ++i) m_sgroupIdx.insert(oldSgroupOrder[i], i);
+
+    return true;
 }
 
 bool EditableMolecule::removeSuperatomOnly(SGroupId id) {

@@ -1615,6 +1615,189 @@ static void test_submoleculeMolfileInconsistentSelection() {
     }
 }
 
+static void test_setBondStereo() {
+    std::printf("--- Test: setBondStereo (sub-project 8) ---\n");
+
+    // Fresh, coordinate-bearing, no-initial-stereo fixture: a stereocenter carbon with three
+    // distinct substituents (F/Cl/Br) at non-collinear 2D positions, all bonds starting plain
+    // (stereo=0) -- same shape confirmed working end-to-end by this sub-project's own probe.
+    const char* molfile =
+        "probe\n"
+        "  probe\n"
+        "\n"
+        "  4  3  0  0  0  0  0  0  0  0999 V2000\n"
+        "    0.0000    1.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "    0.0000    2.0000    0.0000 F   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "   -0.8660    0.5000    0.0000 Cl  0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "    0.8660    0.5000    0.0000 Br  0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "  1  2  1  0  0  0  0\n"
+        "  1  3  1  0  0  0  0\n"
+        "  1  4  1  0  0  0  0\n"
+        "M  END\n";
+    EditableMolecule m(molfile);
+    CHECK(m.isValid(), "stereocenter fixture loads");
+
+    QList<AtomId> ids = m.atomIdsInIndigoOrder();
+    QList<BondId> bIds = m.bondIdsInIndigoOrder();
+    CHECK(ids.size() == 4 && bIds.size() == 3, "fixture has 4 atoms, 3 bonds");
+    AtomId cAtom = ids[0];
+    BondId targetBond = bIds[2]; // C-Br
+    BondId otherBond1 = bIds[0]; // C-F
+    BondId otherBond2 = bIds[1]; // C-Cl
+
+    CHECK(m.bondStereoDirectionEnum(targetBond) == EditableMolecule::Direction::None,
+          "target bond starts with no stereo");
+
+    CHECK(m.setBondStereo(targetBond, EditableMolecule::Direction::Up),
+          "setBondStereo(Up) succeeds");
+    CHECK(m.bondStereoDirectionEnum(targetBond) == EditableMolecule::Direction::Up,
+          "target bond reports Up");
+    CHECK(m.bondStereoDirection(targetBond) == INDIGO_UP,
+          "raw indigoBondStereo reports INDIGO_UP (5) specifically, not the V2000 write code (1)");
+    CHECK(m.bondStereoDirectionEnum(otherBond1) == EditableMolecule::Direction::None,
+          "other bond (C-F) unaffected");
+    CHECK(m.bondStereoDirectionEnum(otherBond2) == EditableMolecule::Direction::None,
+          "other bond (C-Cl) unaffected");
+    CHECK(m.stereocenterType(cAtom) != 0,
+          "the stereocenter atom is now perceived as a real stereocenter");
+
+    CHECK(m.setBondStereo(targetBond, EditableMolecule::Direction::Down), "setBondStereo(Down) succeeds");
+    CHECK(m.bondStereoDirection(targetBond) == INDIGO_DOWN, "reports INDIGO_DOWN (6)");
+
+    CHECK(m.setBondStereo(targetBond, EditableMolecule::Direction::Either), "setBondStereo(Either) succeeds");
+    CHECK(m.bondStereoDirection(targetBond) == INDIGO_EITHER, "reports INDIGO_EITHER (4)");
+
+    CHECK(m.setBondStereo(targetBond, EditableMolecule::Direction::None), "setBondStereo(None) succeeds");
+    CHECK(m.bondStereoDirectionEnum(targetBond) == EditableMolecule::Direction::None, "reports None again");
+
+    StringResult mfAfter = m.toMolfile();
+    CHECK(mfAfter.success, "toMolfile succeeds after stereo edits");
+
+    CHECK(!m.setBondStereo(999999, EditableMolecule::Direction::Up),
+          "setBondStereo on an invalid BondId fails");
+
+    // Double bond guard.
+    EditableMolecule dbl;
+    AtomId da = dbl.addAtom(QStringLiteral("C"), 0, 0);
+    AtomId db = dbl.addAtom(QStringLiteral("O"), 0, 1);
+    BondId dblBond = dbl.addBond(da, db, 2);
+    CHECK(!dbl.setBondStereo(dblBond, EditableMolecule::Direction::Up),
+          "setBondStereo on a double bond fails");
+    CHECK(dbl.bondStereoDirectionEnum(dblBond) == EditableMolecule::Direction::None,
+          "double bond's stereo remains untouched after the rejected attempt");
+
+    // REQUIRED: nontrivial add/remove history, proving the order-list-vs-serialization-order
+    // assumption holds -- not a single literal string load.
+    EditableMolecule scrambled;
+    AtomId a = scrambled.addAtom(QStringLiteral("C"), 0, 0);
+    AtomId b = scrambled.addAtom(QStringLiteral("N"), 1, 0);
+    AtomId c = scrambled.addAtom(QStringLiteral("O"), 0, 1);
+    AtomId d = scrambled.addAtom(QStringLiteral("F"), -1, 0);
+    BondId ac = scrambled.addBond(a, c, 1);
+    BondId ad = scrambled.addBond(a, d, 1);
+    scrambled.removeAtom(b); // frees an internal Indigo index
+    AtomId b2 = scrambled.addAtom(QStringLiteral("N"), 1, 0); // may reuse the freed index
+    BondId ab2 = scrambled.addBond(a, b2, 1);
+
+    double aX = 0, aY = 0, cX = 0, cY = 0, dX = 0, dY = 0, b2X = 0, b2Y = 0;
+    scrambled.atomPos(a, aX, aY);
+    scrambled.atomPos(c, cX, cY);
+    scrambled.atomPos(d, dX, dY);
+    scrambled.atomPos(b2, b2X, b2Y);
+    QString aSym = scrambled.atomSymbol(a), cSym = scrambled.atomSymbol(c);
+    QString dSym = scrambled.atomSymbol(d), b2Sym = scrambled.atomSymbol(b2);
+
+    CHECK(scrambled.setBondStereo(ab2, EditableMolecule::Direction::Up),
+          "setBondStereo succeeds on the scrambled-history molecule");
+
+    double aX2 = 0, aY2 = 0, cX2 = 0, cY2 = 0, dX2 = 0, dY2 = 0, b2X2 = 0, b2Y2 = 0;
+    scrambled.atomPos(a, aX2, aY2);
+    scrambled.atomPos(c, cX2, cY2);
+    scrambled.atomPos(d, dX2, dY2);
+    scrambled.atomPos(b2, b2X2, b2Y2);
+    CHECK(aX == aX2 && aY == aY2 && scrambled.atomSymbol(a) == aSym,
+          "atom a's identity (position+symbol) is unchanged");
+    CHECK(cX == cX2 && cY == cY2 && scrambled.atomSymbol(c) == cSym,
+          "atom c's identity is unchanged");
+    CHECK(dX == dX2 && dY == dY2 && scrambled.atomSymbol(d) == dSym,
+          "atom d's identity is unchanged");
+    CHECK(b2X == b2X2 && b2Y == b2Y2 && scrambled.atomSymbol(b2) == b2Sym,
+          "atom b2's identity is unchanged -- no atom silently swapped identity");
+    CHECK(scrambled.bondStereoDirectionEnum(ab2) == EditableMolecule::Direction::Up,
+          "the target bond correctly ended up with Up");
+    CHECK(scrambled.bondStereoDirectionEnum(ac) == EditableMolecule::Direction::None, "bond ac unaffected");
+    CHECK(scrambled.bondStereoDirectionEnum(ad) == EditableMolecule::Direction::None, "bond ad unaffected");
+
+    // REQUIRED: sgroup survives a setBondStereo call elsewhere in the same molecule.
+    //
+    // NOTE (found by direct testing, not anticipated in the approved spec): the plain 3-atom
+    // "Ac" fixture used elsewhere in this file (2 carbons + 1 oxygen, one single bond, one
+    // double bond) has NO bond whose begin-atom is a chemically plausible wedge origin -- both
+    // atoms have too few real substituents to be a valid stereocenter, and Indigo correctly
+    // REJECTS the reload with "direction of bond #0 makes no sense" (a real, correct chemistry
+    // validation, not a bug in setBondStereo). This combined fixture instead concatenates the
+    // separately-already-proven-working 4-atom stereocenter fragment (atoms 1-4: C/F/Cl/Br, same
+    // shape as this test's very first fixture above) with the Ac sgroup's 3 atoms as a second,
+    // disconnected fragment (atoms 5-7, atom numbers shifted +4 from the original Ac fixture) --
+    // multi-fragment molecules are completely normal for Indigo. The bond wedged (1-4, C-Br) is
+    // nowhere near the sgroup; this fixture exists purely to prove the sgroup-remap logic doesn't
+    // regress a molecule that happens to also contain one.
+    QString acMolfile = QStringLiteral(
+        "combined\n"
+        "  Ketcher\n\n"
+        "  7  5  0  0  0  0  0  0  0  0999 V2000\n"
+        "    0.0000    1.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "    0.0000    2.0000    0.0000 F   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "   -0.8660    0.5000    0.0000 Cl  0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "    0.8660    0.5000    0.0000 Br  0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "    3.3951   -3.5754    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "    2.6785   -3.9891    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "    3.3951   -2.7480    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "  1  2  1  0  0  0  0\n"
+        "  1  3  1  0  0  0  0\n"
+        "  1  4  1  0  0  0  0\n"
+        "  6  5  1  0  0  0  0\n"
+        "  5  7  2  0  0  0  0\n"
+        "M  STY  1   1 SUP\n"
+        "M  SLB  1   1   1\n"
+        "M  SAL   1  3   5   6   7\n"
+        "M  SAP   1  1   5   0\n"
+        "M  SMT   1 Ac\n"
+        "M  END\n");
+    EditableMolecule acMol(acMolfile);
+    CHECK(acMol.isValid(), "combined stereocenter+sgroup fixture loads");
+    QList<SGroupId> sgIdsBefore = acMol.sgroupIds();
+    CHECK(sgIdsBefore.size() == 1, "exactly one sgroup before the edit");
+    SGroupId sg = sgIdsBefore.first();
+    QList<AtomId> membersBefore = acMol.sgroupMemberAtomIds(sg);
+    std::sort(membersBefore.begin(), membersBefore.end());
+    AtomId attachBefore = -1;
+    acMol.superatomAttachAtom(sg, attachBefore);
+
+    BondId wedgeTarget = -1;
+    for (BondId bid : acMol.bondIds()) {
+        double x1 = 0, y1 = 0;
+        AtomId ba = -1, bb = -1;
+        if (acMol.bondOrder(bid) == 1 && acMol.bondEndpoints(bid, ba, bb) &&
+            acMol.atomSymbol(ba) == QStringLiteral("C") && acMol.atomSymbol(bb) == QStringLiteral("Br")) {
+            wedgeTarget = bid;
+            break;
+        }
+    }
+    CHECK(wedgeTarget != -1, "found the fixture's C-Br bond (the same shape already proven wedgeable)");
+    CHECK(acMol.setBondStereo(wedgeTarget, EditableMolecule::Direction::Up),
+          "setBondStereo succeeds on a bond in an sgroup-bearing molecule");
+
+    QList<SGroupId> sgIdsAfter = acMol.sgroupIds();
+    CHECK(sgIdsAfter.size() == 1 && sgIdsAfter.first() == sg, "the sgroup's own id survives the reload");
+    QList<AtomId> membersAfter = acMol.sgroupMemberAtomIds(sg);
+    std::sort(membersAfter.begin(), membersAfter.end());
+    CHECK(membersAfter == membersBefore, "the sgroup's member-atom set is unchanged");
+    AtomId attachAfter = -1;
+    acMol.superatomAttachAtom(sg, attachAfter);
+    CHECK(attachAfter == attachBefore, "the sgroup's attachment atom is unchanged");
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -1661,6 +1844,7 @@ int main() {
     test_loadFrom();
     test_submoleculeMolfile();
     test_submoleculeMolfileInconsistentSelection();
+    test_setBondStereo();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
