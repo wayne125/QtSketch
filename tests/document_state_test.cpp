@@ -102,6 +102,59 @@ static void test_documentStateUndoRedo() {
     CHECK(!doc.canRedo(), "old redo branch truncated by executing a new command");
 }
 
+static void test_executeCommandReentrancyGuard() {
+    std::printf("--- Test: executeCommand ignores a reentrant call from within its own execute ---\n");
+    DocumentState doc;
+    size_t historyBefore = 0; // tracked via canUndo()/redo() round trips below instead of a direct accessor
+
+    int innerRanCount = 0;
+    EditCommand inner;
+    inner.execute = [&innerRanCount]() { ++innerRanCount; };
+    inner.invert = [&innerRanCount]() { --innerRanCount; };
+
+    int outerRanCount = 0;
+    EditCommand outer;
+    outer.execute = [&doc, &outerRanCount, inner]() mutable {
+        ++outerRanCount;
+        doc.executeCommand(inner); // reentrant -- must be a silent no-op
+    };
+    outer.invert = [&outerRanCount]() { --outerRanCount; };
+
+    doc.executeCommand(outer);
+
+    CHECK(outerRanCount == 1, "outer command's own execute ran exactly once");
+    CHECK(innerRanCount == 0, "inner (reentrant) command's execute never ran -- guard blocked it before cmd.execute()");
+    CHECK(doc.canUndo(), "outer command was still recorded in history");
+
+    doc.undo();
+    CHECK(outerRanCount == 0, "undoing the outer command runs its own invert normally");
+    CHECK(!doc.canUndo(), "history has exactly one entry -- the inner reentrant call was never pushed");
+    (void)historyBefore;
+}
+
+static void test_undoReentrancyGuard() {
+    std::printf("--- Test: undo() ignores a reentrant call from within a command's own invert ---\n");
+    DocumentState doc;
+    AtomId a = doc.addAtom(QStringLiteral("C"), 0, 0);
+    (void)a;
+    CHECK(doc.canUndo(), "setup: one command in history");
+
+    int reentrantInvertCalls = 0;
+    EditCommand reentrantCmd;
+    reentrantCmd.execute = []() {};
+    reentrantCmd.invert = [&doc, &reentrantInvertCalls]() {
+        ++reentrantInvertCalls;
+        doc.undo(); // reentrant -- must be a silent no-op
+    };
+    doc.executeCommand(reentrantCmd);
+    CHECK(doc.canUndo(), "setup: two commands in history now");
+
+    doc.undo(); // undoes reentrantCmd; its own invert tries to call undo() again
+    CHECK(reentrantInvertCalls == 1, "reentrantCmd's invert ran exactly once");
+    CHECK(doc.canUndo(), "history pointer moved back by exactly ONE step, not two -- "
+                          "the reentrant undo() call inside invert() was a no-op");
+}
+
 static void test_documentStateHistoryCap() {
     std::printf("--- Test 3: DocumentState history cap at 50 ---\n");
     DocumentState doc;
@@ -1902,6 +1955,8 @@ int main() {
     test_selectionStateBasics();
     test_editCommandBasics();
     test_documentStateUndoRedo();
+    test_executeCommandReentrancyGuard();
+    test_undoReentrancyGuard();
     test_documentStateHistoryCap();
     test_documentStateSelection();
     test_documentStateEditingOperations();

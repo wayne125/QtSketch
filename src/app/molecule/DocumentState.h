@@ -405,6 +405,7 @@ private:
     BiopolymerSequenceView m_bioView;
     std::vector<EditCommand> m_history;
     int m_historyPointer = -1;
+    bool m_inCommand = false;
     bool m_dirty = false;
     SelectionState m_selection;
     static constexpr int kHistorySize = 50;

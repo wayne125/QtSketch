@@ -20,12 +20,15 @@ EditableMolecule& DocumentState::molecule() {
 }
 
 void DocumentState::executeCommand(EditCommand cmd) {
+    if (m_inCommand) return;
     // Remove any future redo states -- matches executeCommand's
     // `_history.splice(_historyPointer + 1)` exactly.
     if (m_historyPointer + 1 < static_cast<int>(m_history.size())) {
         m_history.resize(m_historyPointer + 1);
     }
+    m_inCommand = true;
     cmd.execute();
+    m_inCommand = false;
     m_history.push_back(std::move(cmd));
     ++m_historyPointer;
     if (static_cast<int>(m_history.size()) > kHistorySize) {
@@ -36,8 +39,11 @@ void DocumentState::executeCommand(EditCommand cmd) {
 }
 
 void DocumentState::undo() {
+    if (m_inCommand) return;
     if (m_historyPointer < 0) return;
+    m_inCommand = true;
     m_history[m_historyPointer].invert();
+    m_inCommand = false;
     --m_historyPointer;
     m_selection.clear();
     resetAllDragState();
@@ -45,9 +51,12 @@ void DocumentState::undo() {
 }
 
 void DocumentState::redo() {
+    if (m_inCommand) return;
     if (m_historyPointer >= static_cast<int>(m_history.size()) - 1) return;
     ++m_historyPointer;
+    m_inCommand = true;
     m_history[m_historyPointer].execute();
+    m_inCommand = false;
     m_selection.clear();
     resetAllDragState();
     m_dirty = true;
