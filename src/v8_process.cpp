@@ -110,7 +110,16 @@ void V8Process::addBond(int beginAtomId, int endAtomId, int bondType, int stereo
     if (m_docState) { m_docState->addBond(beginAtomId, endAtomId, bondType); applyLocalState(); return; } // stereoDir dropped, same documented no-op precedent as addBondAndAtom's stereo param
     sendCommand("addBond", {beginAtomId, endAtomId, bondType, stereoDir});
 }
-void V8Process::addRing(const QVariantList& coords, bool aromatic) { QVariantList wrapper; wrapper.append(QVariant(coords)); wrapper.append(aromatic); sendCommand("addRing", wrapper); }
+void V8Process::addRing(const QVariantList& coords, bool aromatic) {
+    if (m_docState) {
+        QList<double> pts;
+        for (const QVariant& v : coords) pts.append(v.toDouble());
+        m_docState->addRing(pts, aromatic);
+        applyLocalState();
+        return;
+    }
+    QVariantList wrapper; wrapper.append(QVariant(coords)); wrapper.append(aromatic); sendCommand("addRing", wrapper);
+}
 void V8Process::deleteAtomById(int id) {
     if (m_docState) { m_docState->deleteAtom(id); applyLocalState(); return; }
     sendCommand("deleteAtomById", {id});
@@ -266,7 +275,19 @@ void V8Process::setStereoFlags(const QString& type, int groupId) {
     if (m_docState) { m_docState->setStereoFlags(type, groupId); applyLocalState(); return; }
     sendCommand("setStereoFlags", {type, groupId});
 }
-void V8Process::transformSelection(const QString& mode) { sendCommand("transformSelection", {mode}); }
+void V8Process::transformSelection(const QString& mode) {
+    if (m_docState) {
+        // Mode strings confirmed against 20-edit.js:982-990.
+        if (mode == "rotate_cw") m_docState->rotateSelection90CW();
+        else if (mode == "rotate_ccw") m_docState->rotateSelection90CCW();
+        else if (mode == "flip_h") m_docState->flipSelectionHorizontal();
+        else if (mode == "flip_v") m_docState->flipSelectionVertical();
+        else return; // unknown mode: no-op, matches the real function's implicit fallthrough
+        applyLocalState();
+        return;
+    }
+    sendCommand("transformSelection", {mode});
+}
 void V8Process::addChain(double x1, double y1, double x2, double y2) {
     if (m_docState) { m_docState->addChain(x1, y1, x2, y2); applyLocalState(); return; }
     sendCommand("addChain", {x1, y1, x2, y2});
@@ -283,7 +304,18 @@ void V8Process::deleteText(int id) {
     if (m_docState) { m_docState->deleteText(id); applyLocalState(); return; }
     sendCommand("deleteText", {id});
 }
-void V8Process::addImage(const QString& base64DataUri, double cx, double cy, double halfW, double halfH) { sendCommand("addImage", {base64DataUri, cx, cy, halfW, halfH}); }
+void V8Process::addImage(const QString& base64DataUri, double cx, double cy, double halfW, double halfH) {
+    if (m_docState) {
+        // Not a real base64 decode -- ImagePrim::bitmap is round-tripped via
+        // QString::fromUtf8 (RenderPrimitivesToVariant.cpp:122), meaning this port stores the
+        // raw data-URI TEXT as the "image data" everywhere, same as the JS side (50-reactions.js
+        // stores base64DataUri verbatim too). toUtf8() is the correct, exact-match conversion.
+        m_docState->addImage(base64DataUri.toUtf8(), cx, cy, halfW, halfH);
+        applyLocalState();
+        return;
+    }
+    sendCommand("addImage", {base64DataUri, cx, cy, halfW, halfH});
+}
 void V8Process::deleteImage(int id) {
     if (m_docState) { m_docState->deleteImage(id); applyLocalState(); return; }
     sendCommand("deleteImage", {id});
@@ -374,8 +406,26 @@ void V8Process::selectItem(const QVariant& atomId, const QVariant& bondId, const
     }
     sendCommand("selectItem", {atomId, bondId, rxnArrowId, rxnPlusId, multitailArrowId});
 }
-void V8Process::addItemToSelection(const QVariant& atomId, const QVariant& bondId) { sendCommand("addItemToSelection", {atomId, bondId}); }
-void V8Process::removeItemFromSelection(const QVariant& atomId, const QVariant& bondId) { sendCommand("removeItemFromSelection", {atomId, bondId}); }
+void V8Process::addItemToSelection(const QVariant& atomId, const QVariant& bondId) {
+    if (m_docState) {
+        // Atom-priority-over-bond dispatch, confirmed against 10-state.js:406-414.
+        if (atomId.isValid()) m_docState->addAtomToSelection(atomId.toInt());
+        else if (bondId.isValid()) m_docState->addBondToSelection(bondId.toInt());
+        applyLocalState();
+        return;
+    }
+    sendCommand("addItemToSelection", {atomId, bondId});
+}
+void V8Process::removeItemFromSelection(const QVariant& atomId, const QVariant& bondId) {
+    if (m_docState) {
+        // Confirmed against 10-state.js:416-422.
+        if (atomId.isValid()) m_docState->removeAtomFromSelection(atomId.toInt());
+        else if (bondId.isValid()) m_docState->removeBondFromSelection(bondId.toInt());
+        applyLocalState();
+        return;
+    }
+    sendCommand("removeItemFromSelection", {atomId, bondId});
+}
 void V8Process::selectFragment(const QVariant& atomId, const QVariant& bondId) { sendCommand("selectFragment", {atomId, bondId}); }
 void V8Process::moveSelection(double dx, double dy) {
     if (m_docState) {
