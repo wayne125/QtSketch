@@ -144,7 +144,7 @@ qt_add_qml_module(sketch
         icons/search.svg
 )
 
-target_link_libraries(sketch PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Concurrent qjs
+target_link_libraries(sketch PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Concurrent qjs molecule_model
 )
 
 
