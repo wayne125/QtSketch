@@ -321,12 +321,19 @@ void DocumentState::deleteSelectionEntities() {
         savedMtas.append({pts});
     }
 
-    QList<BondId> bondsToRemove = resolvedBonds.values();
-    QList<AtomId> atomsToRemove = resolvedAtoms.values();
-    QList<SGroupId> pillsToRemove = wholePillSgroups.values();
-    QList<RxnArrowId> arrowsToRemove(m_selection.rxnArrows.begin(), m_selection.rxnArrows.end());
-    QList<RxnPlusId> plusesToRemove(m_selection.rxnPluses.begin(), m_selection.rxnPluses.end());
-    QList<MultitailArrowId> mtasToRemove(m_selection.multitailArrows.begin(), m_selection.multitailArrows.end());
+    // Mutable shared state (not plain captured-by-value lists): this port's own established
+    // fresh-id-on-redo convention means every entity invert() recreates gets a BRAND NEW id,
+    // never the original. Without updating these after each invert(), a SECOND execute()
+    // (redo after undo) would try to remove ids that no longer exist -- EditableMolecule's
+    // remove* methods silently return false on an unknown id, so this bug is completely
+    // invisible except as "redo after undo does nothing" (found via live UI testing during
+    // sub-project 7b; no existing test exercised delete -> undo -> redo specifically).
+    auto bondsToRemove = std::make_shared<QList<BondId>>(resolvedBonds.values());
+    auto atomsToRemove = std::make_shared<QList<AtomId>>(resolvedAtoms.values());
+    auto pillsToRemove = std::make_shared<QList<SGroupId>>(wholePillSgroups.values());
+    auto arrowsToRemove = std::make_shared<QList<RxnArrowId>>(m_selection.rxnArrows.begin(), m_selection.rxnArrows.end());
+    auto plusesToRemove = std::make_shared<QList<RxnPlusId>>(m_selection.rxnPluses.begin(), m_selection.rxnPluses.end());
+    auto mtasToRemove = std::make_shared<QList<MultitailArrowId>>(m_selection.multitailArrows.begin(), m_selection.multitailArrows.end());
 
     EditCommand cmd;
     cmd.execute = [&mol, bondsToRemove, atomsToRemove, pillsToRemove,
@@ -334,25 +341,36 @@ void DocumentState::deleteSelectionEntities() {
         // Order-independent per direct probe finding (Indigo auto-trims/auto-removes
         // affected sgroups correctly regardless of removal order) -- kept fixed for
         // readability: bonds, then atoms, then whole-pill sgroups, then non-molecular.
-        for (BondId b : bondsToRemove) mol.removeBond(b);
-        for (AtomId a : atomsToRemove) mol.removeAtom(a);
-        for (SGroupId s : pillsToRemove) mol.removeSuperatomOnly(s);
-        for (RxnArrowId a : arrowsToRemove) mol.removeRxnArrow(a);
-        for (RxnPlusId p : plusesToRemove) mol.removeRxnPlus(p);
-        for (MultitailArrowId m : mtasToRemove) mol.removeMultitailArrow(m);
+        for (BondId b : *bondsToRemove) mol.removeBond(b);
+        for (AtomId a : *atomsToRemove) mol.removeAtom(a);
+        for (SGroupId s : *pillsToRemove) mol.removeSuperatomOnly(s);
+        for (RxnArrowId a : *arrowsToRemove) mol.removeRxnArrow(a);
+        for (RxnPlusId p : *plusesToRemove) mol.removeRxnPlus(p);
+        for (MultitailArrowId m : *mtasToRemove) mol.removeMultitailArrow(m);
     };
     cmd.invert = [&mol, savedAtoms, savedBonds, affectedSgroupMembers, wholePillMembers,
-                  savedArrows, savedPluses, savedMtas]() {
+                  savedArrows, savedPluses, savedMtas,
+                  bondsToRemove, atomsToRemove, pillsToRemove,
+                  arrowsToRemove, plusesToRemove, mtasToRemove]() {
         // Step 1: recreate atoms fresh, building old-id -> new-id map.
         QHash<AtomId, AtomId> idMap;
         for (const SavedAtom& sa : savedAtoms) idMap.insert(sa.id, mol.addAtom(sa.label, sa.x, sa.y));
 
-        // Step 2: recreate bonds via the mapped ids.
+        // Refresh atomsToRemove with the ids just created, in the same order as savedAtoms,
+        // so a subsequent execute() (redo) removes the CURRENT atoms, not the stale originals.
+        QList<AtomId> newAtomsToRemove;
+        for (const SavedAtom& sa : savedAtoms) newAtomsToRemove.append(idMap.value(sa.id));
+        *atomsToRemove = newAtomsToRemove;
+
+        // Step 2: recreate bonds via the mapped ids, capturing each fresh BondId for the
+        // same reason as atomsToRemove above.
+        QList<BondId> newBondsToRemove;
         for (const SavedBond& sb : savedBonds) {
             AtomId newA = idMap.value(sb.a, sb.a);
             AtomId newB = idMap.value(sb.b, sb.b);
-            mol.addBond(newA, newB, sb.order);
+            newBondsToRemove.append(mol.addBond(newA, newB, sb.order));
         }
+        *bondsToRemove = newBondsToRemove;
 
         // Step 3: an individually-trimmed sgroup was NEVER removed by forward execute --
         // Indigo only auto-trimmed its member list (confirmed by probe), so the sgroup
@@ -373,20 +391,33 @@ void DocumentState::deleteSelectionEntities() {
         }
 
         // Step 4: recreate whole-pill sgroups -- member atoms all survived untouched, no
-        // id translation needed.
+        // id translation needed for the MEMBERS, but the sgroup itself gets a fresh SGroupId
+        // that pillsToRemove must be refreshed with (same reason as atomsToRemove above).
+        QList<SGroupId> newPillsToRemove;
         for (auto it = wholePillMembers.constBegin(); it != wholePillMembers.constEnd(); ++it) {
-            mol.createSuperatomFromAtoms(it.value());
+            newPillsToRemove.append(mol.createSuperatomFromAtoms(it.value()));
         }
+        *pillsToRemove = newPillsToRemove;
 
-        // Step 5: recreate rxnArrows/rxnPluses/multitailArrows.
+        // Step 5: recreate rxnArrows/rxnPluses/multitailArrows, refreshing their *ToRemove
+        // lists with the fresh ids for the same reason as atomsToRemove above.
+        QList<RxnArrowId> newArrowsToRemove;
         for (const SavedArrow& sa : savedArrows) {
             int newId = mol.addRxnArrow(sa.x1, sa.y1, sa.x2, sa.y2);
             mol.setRxnArrowMode(newId, sa.mode);
             mol.setRxnArrowConditions(newId, sa.above, sa.below);
             if (sa.hasCurvature) mol.setRxnArrowCurvature(newId, sa.cx, sa.cy);
+            newArrowsToRemove.append(newId);
         }
-        for (const SavedPlus& sp : savedPluses) mol.addRxnPlus(sp.x, sp.y);
-        for (const SavedMta& sm : savedMtas) mol.addMultitailArrow(sm.pts);
+        *arrowsToRemove = newArrowsToRemove;
+
+        QList<RxnPlusId> newPlusesToRemove;
+        for (const SavedPlus& sp : savedPluses) newPlusesToRemove.append(mol.addRxnPlus(sp.x, sp.y));
+        *plusesToRemove = newPlusesToRemove;
+
+        QList<MultitailArrowId> newMtasToRemove;
+        for (const SavedMta& sm : savedMtas) newMtasToRemove.append(mol.addMultitailArrow(sm.pts));
+        *mtasToRemove = newMtasToRemove;
     };
     executeCommand(std::move(cmd));
 }

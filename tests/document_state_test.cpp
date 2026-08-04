@@ -1969,6 +1969,91 @@ static void test_deleteSelectionEntitiesMixedTypes() {
     CHECK(mol.rxnPlusCount() == 1, "plus restored");
 }
 
+static void test_deleteSelectionEntitiesRedoAfterUndo() {
+    std::printf("--- Test: deleteSelectionEntities redo-after-undo (regression) ---\n");
+    // Real bug found via live UI testing during sub-project 7b: execute() captured the
+    // ORIGINAL atom/bond/etc ids by value, but invert() recreates everything with BRAND NEW
+    // ids (this port's own established fresh-id-on-redo convention) -- so a second execute()
+    // (redo after undo) tried to remove ids that no longer existed, and EditableMolecule's
+    // remove* methods silently return false on an unknown id, making the bug invisible except
+    // as "redo after undo does nothing." No prior test exercised delete -> undo -> redo.
+    DocumentState doc;
+    EditableMolecule& mol = doc.molecule();
+    AtomId a = doc.addAtom(QStringLiteral("C"), 0.0, 0.0);
+    AtomId b = doc.addAtom(QStringLiteral("O"), 1.0, 0.0);
+    doc.addBond(a, b, 1);
+    RxnArrowId arrow = doc.addRxnArrow(5.0, 0.0);
+    RxnPlusId plus = doc.addRxnPlus(-5.0, 0.0);
+    MultitailArrowId mta = doc.addMultitailArrow(3.0, 3.0);
+    CHECK(mol.atomCount() == 2 && mol.bondIds().size() == 1 && mol.rxnArrowCount() == 1 &&
+          mol.rxnPlusCount() == 1 && mol.multitailArrowCount() == 1,
+          "setup: 2 atoms, 1 bond, 1 arrow, 1 plus, 1 multitail arrow");
+
+    doc.selectAtom(a);
+    doc.addAtomToSelection(b);
+    doc.addRxnArrowToSelection(arrow);
+    doc.addRxnPlusToSelection(plus);
+    doc.addMultitailArrowToSelection(mta);
+    doc.deleteSelectionEntities();
+    CHECK(mol.atomCount() == 0 && mol.rxnArrowCount() == 0 && mol.rxnPlusCount() == 0 &&
+          mol.multitailArrowCount() == 0, "first delete: everything gone");
+
+    doc.undo();
+    CHECK(mol.atomCount() == 2 && mol.bondIds().size() == 1 && mol.rxnArrowCount() == 1 &&
+          mol.rxnPlusCount() == 1 && mol.multitailArrowCount() == 1,
+          "undo: everything restored (with fresh ids, per this port's own convention)");
+
+    doc.redo();
+    CHECK(mol.atomCount() == 0 && mol.rxnArrowCount() == 0 && mol.rxnPlusCount() == 0 &&
+          mol.multitailArrowCount() == 0,
+          "REQUIRED regression check: redo after undo actually re-deletes everything -- "
+          "previously silently did nothing, since it tried to remove the stale original ids");
+
+    // A second undo/redo cycle must also work, proving the refreshed ids produced by the
+    // FIRST redo's own invert() call are themselves correctly tracked, not just the first.
+    doc.undo();
+    CHECK(mol.atomCount() == 2 && mol.bondIds().size() == 1 && mol.rxnArrowCount() == 1 &&
+          mol.rxnPlusCount() == 1 && mol.multitailArrowCount() == 1,
+          "second undo: everything restored again");
+    doc.redo();
+    CHECK(mol.atomCount() == 0 && mol.rxnArrowCount() == 0 && mol.rxnPlusCount() == 0 &&
+          mol.multitailArrowCount() == 0, "second redo: everything gone again");
+}
+
+static void test_deleteSelectionEntitiesWholePillRedoAfterUndo() {
+    std::printf("--- Test: deleteSelectionEntities whole-pill-sgroup redo-after-undo (regression) ---\n");
+    // Built programmatically, not via a molfile constructor -- same decoy-atom pattern as
+    // test_deleteSelectionEntitiesWholePill above, needed so SGroupId=1 does not collide with
+    // AtomId=1 (independent counters, both start at 1) and get misclassified as "atom 1
+    // selected" instead of a whole-pill selection.
+    DocumentState doc;
+    EditableMolecule& mol = doc.molecule();
+    AtomId decoy = mol.addAtom(QStringLiteral("Xe"), 100.0, 100.0);
+    mol.removeAtom(decoy);
+
+    AtomId a1 = mol.addAtom(QStringLiteral("C"), 0.0, 0.0);
+    AtomId a2 = mol.addAtom(QStringLiteral("C"), 1.0, 0.0);
+    AtomId a3 = mol.addAtom(QStringLiteral("O"), 2.0, 0.0);
+    mol.addBond(a1, a2, 1);
+    mol.addBond(a2, a3, 1);
+    SGroupId sid = mol.createSuperatomFromAtoms({a1, a2, a3});
+    CHECK(sid != -1 && !mol.atomIds().contains(sid), "setup: sgroup created, id does not collide");
+    CHECK(mol.sgroupIds().size() == 1, "1 sgroup on setup");
+
+    doc.selection().atoms.insert(sid);   // whole-pill selection: the SGroupId stands in
+                                          // for its atoms in m_selection.atoms, per spec.
+    doc.deleteSelectionEntities();
+    CHECK(mol.sgroupIds().isEmpty(), "first delete: sgroup gone");
+
+    doc.undo();
+    CHECK(mol.sgroupIds().size() == 1, "undo: sgroup restored (fresh SGroupId)");
+
+    doc.redo();
+    CHECK(mol.sgroupIds().isEmpty(),
+          "REQUIRED regression check: redo after undo removes the RESTORED sgroup's fresh id, "
+          "not the stale original one");
+}
+
 static void test_cutSelection() {
     std::printf("--- Test: cutSelection (copy-then-delete round trip) ---\n");
     DocumentState doc;
@@ -2217,6 +2302,8 @@ int main() {
     test_deleteSelectionEntitiesWholePill();
     test_deleteSelectionEntitiesPartialMember();
     test_deleteSelectionEntitiesMixedTypes();
+    test_deleteSelectionEntitiesRedoAfterUndo();
+    test_deleteSelectionEntitiesWholePillRedoAfterUndo();
     test_cutSelection();
     test_setStereoDescriptorsValid();
     test_setStereoDescriptorsReuseOrderRegression();

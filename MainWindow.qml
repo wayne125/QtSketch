@@ -279,6 +279,14 @@ ApplicationWindow {
     function addCppEngineDocument() {
         var newId = DocumentManager.addDocument(true)
         cppEngineDocIds[newId] = true
+        // Mutating a QML `var` object property does NOT emit a property-changed notification on
+        // its own -- the new tab's TabButton is already instantiated (docIdsChanged fired
+        // synchronously inside addDocument(), before this line even runs) with a text binding
+        // that read cppEngineDocIds[newId] as unset. titleRev is the same explicit re-evaluation
+        // bump setDocFile() already uses for the identical docFilePaths/docTitles pattern above --
+        // every TabButton's text binding depends on it via the comma-operator trick, so
+        // incrementing it forces all of them to re-read the now-correctly-set flag.
+        titleRev++
     }
 
     function titleFor(docId) {
