@@ -69,6 +69,42 @@ void V8Process::applyLocalState() {
 }
 
 void V8Process::sendCommand(const QString& cmd, const QVariantList& args) {
+    if (m_docState) {
+        if (cmd == "getMoleculeName") {
+            // Read-only: emits directly, no applyLocalState() -- nothing mutated. reqId "mol_name"
+            // and raw-string (not JSON) data confirmed against 40-serialize.js:104-106.
+            emit structureReady(QStringLiteral("mol_name"), m_docState->molecule().name());
+            return;
+        }
+        if (cmd == "deleteRxnArrow" && !args.isEmpty()) {
+            m_docState->deleteRxnArrow(args[0].toInt());
+        } else if (cmd == "deleteRxnPlus" && !args.isEmpty()) {
+            m_docState->deleteRxnPlus(args[0].toInt());
+        } else if (cmd == "moveImage" && args.size() >= 3) {
+            m_docState->moveImage(args[0].toInt(), args[1].toDouble(), args[2].toDouble());
+        } else if (cmd == "resizeImage" && args.size() >= 2) {
+            m_docState->resizeImage(args[0].toInt(), args[1].toDouble());
+        } else if (cmd == "toggleSgroupExpanded" && !args.isEmpty()) {
+            m_docState->toggleSgroupExpanded(args[0].toInt());
+        } else if (cmd == "addBracketSelection") {
+            m_docState->addBracketSelection();
+        } else if (cmd == "insertRecognizedStructure" && args.size() >= 3) {
+            m_docState->insertStructureAt(args[0].toString(), args[1].toDouble(), args[2].toDouble());
+        } else if (cmd == "setMoleculeName" && !args.isEmpty()) {
+            m_docState->setMoleculeName(args[0].toString());
+        } else if (cmd == "bioBuildSequenceView" && args.size() >= 2) {
+            m_docState->buildBioSequenceView(args[0].toString(), args[1].toString());
+        } else if (cmd == "bioAddMonomer" && args.size() >= 2) {
+            m_docState->addBioMonomer(args[0].toString(), args[1].toString());
+        } else if (cmd == "bioDeleteMonomer" && !args.isEmpty()) {
+            m_docState->deleteBioMonomer(args[0].toInt());
+        } else {
+            return; // unhandled command name on a C++-engine document: silent no-op,
+                     // matching every other unsupported gesture's existing behavior
+        }
+        applyLocalState();
+        return;
+    }
     if (!m_engine || !m_engine->isValid()) {
         qWarning() << "V8Process is not running!";
         return;
