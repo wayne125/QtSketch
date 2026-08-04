@@ -254,6 +254,8 @@ add_library(molecule_model STATIC
     src/app/molecule/ClipboardPreview.cpp
     src/app/molecule/BiopolymerSequenceView.h
     src/app/molecule/BiopolymerSequenceView.cpp
+    src/app/molecule/RenderPrimitivesToVariant.h
+    src/app/molecule/RenderPrimitivesToVariant.cpp
 )
 target_include_directories(molecule_model PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -294,4 +296,8 @@ add_test(NAME clipboard_preview_test COMMAND clipboard_preview_test)
 qt_add_executable(biopolymer_sequence_view_test tests/biopolymer_sequence_view_test.cpp)
 target_link_libraries(biopolymer_sequence_view_test PRIVATE molecule_model)
 add_test(NAME biopolymer_sequence_view_test COMMAND biopolymer_sequence_view_test)
+
+qt_add_executable(render_primitives_to_variant_test tests/render_primitives_to_variant_test.cpp)
+target_link_libraries(render_primitives_to_variant_test PRIVATE molecule_model)
+add_test(NAME render_primitives_to_variant_test COMMAND render_primitives_to_variant_test)
 
