@@ -139,9 +139,31 @@ void V8Process::clearCanvas() { sendCommand("clearCanvas"); }
 void V8Process::loadBenzene() { sendCommand("loadBenzene"); }
 void V8Process::deserializeMol(const QString& data) { sendCommand("deserializeMol", {data}); }
 void V8Process::requestStructure(const QString& fmt, const QString& reqId) {
+    if (m_docState) {
+        // Real bug found via live UI testing (sub-project 7b): the actual Save UI flow
+        // (MainWindow.qml's saveActive()) calls THIS async, signal-based method -- not the
+        // synchronous getStructure() below -- and listens for structureReady to actually write
+        // the file to disk. Without this branch, sendCommand's own guard (m_engine is null)
+        // silently no-ops and structureReady never fires, so the save UI's own optimistic
+        // bookkeeping (clean flag, recent-files entry) fires while NO file is ever written --
+        // confirmed by directly attempting to reopen the "saved" file and getting "File not
+        // found." Emitting structureReady synchronously here (rather than through the async
+        // JS round-trip) fixes this exactly the way getStructure() itself already works.
+        if (fmt == "mol") {
+            StringResult r = m_docState->molecule().toMolfile();
+            emit structureReady(reqId, r.success ? r.value : QString());
+        } else {
+            emit structureReady(reqId, QString()); // only molfile export is in scope for this pilot
+        }
+        return;
+    }
     sendCommand("getStructure", {fmt, reqId});
 }
 void V8Process::requestSelectionStructure(const QString& reqId) {
+    if (m_docState) {
+        emit structureReady(reqId, QString()); // KET export is out of scope for this pilot
+        return;
+    }
     sendCommand("getSelectionStructure", {reqId});
 }
 void V8Process::requestSerialize(const QString& reqId) {
