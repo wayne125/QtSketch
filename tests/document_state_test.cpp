@@ -2456,6 +2456,189 @@ static void test_selectByRectAndLasso() {
           "addSelectionByRect never touches rxnArrows -- matches the real function exactly (it has no rxnArrow/rxnPlus code path at all)");
 }
 
+static void test_selectFragmentRingChain() {
+    std::printf("--- Test: selectFragment / selectRing / selectChain ---\n");
+
+    // ---- selectFragment: two disconnected fragments ----
+    {
+        DocumentState doc;
+        AtomId a1 = doc.addAtom(QStringLiteral("C"), 0, 0);
+        AtomId a2 = doc.addAtom(QStringLiteral("C"), 1, 0);
+        BondId b1 = doc.addBond(a1, a2, 1);
+        AtomId c1 = doc.addAtom(QStringLiteral("C"), 10, 10);
+        AtomId c2 = doc.addAtom(QStringLiteral("C"), 11, 10);
+        BondId b2 = doc.addBond(c1, c2, 1);
+
+        doc.selectFragment(a1, -1);
+        CHECK(doc.selection().atoms.contains(a1) && doc.selection().atoms.contains(a2),
+              "selectFragment: both atoms of the clicked fragment are selected");
+        CHECK(!doc.selection().atoms.contains(c1) && !doc.selection().atoms.contains(c2),
+              "selectFragment: the OTHER fragment's atoms are not selected");
+        CHECK(doc.selection().bonds.contains(b1) && !doc.selection().bonds.contains(b2),
+              "selectFragment: only the clicked fragment's bond is selected");
+
+        // Resolve from a bond instead of an atom (bond.begin is the resolved atomId).
+        doc.selectFragment(-1, b2);
+        CHECK(doc.selection().atoms.contains(c1) && doc.selection().atoms.contains(c2),
+              "selectFragment(bond-resolved): the OTHER fragment is now selected");
+        CHECK(!doc.selection().atoms.contains(a1),
+              "selectFragment(bond-resolved): the first fragment is no longer selected (REPLACES)");
+    }
+
+    // ---- selectFragment: null/invalid-id edge cases (the exact asymmetry review found) ----
+    {
+        DocumentState doc;
+        AtomId a = doc.addAtom(QStringLiteral("C"), 0, 0);
+        doc.selectAtom(a);
+        CHECK(!doc.selection().isEmpty(), "setup: something is selected");
+
+        doc.selectFragment(-1, 9999); // invalid bondId, atomId null -> CLEARS (not a no-op)
+        CHECK(doc.selection().isEmpty(),
+              "selectFragment(-1, invalid bond id) clears the selection -- atomId stays null "
+              "after the failed bond resolution, landing in the same clear-branch as both-null");
+
+        doc.selectAtom(a);
+        CHECK(!doc.selection().isEmpty(), "setup: something is selected again");
+
+        doc.selectFragment(9999, -1); // atomId given directly but doesn't exist -> NO-OP
+        CHECK(doc.selection().atoms.contains(a),
+              "selectFragment(nonexistent atomId, -1) leaves a pre-existing selection "
+              "untouched -- a DIFFERENT outcome than the invalid-bondId case above, despite "
+              "both inputs being \"nothing findable\"");
+    }
+
+    // ---- selectRing: a 6-ring built by fusing a new hexagon onto a pre-existing bond
+    // (same fixture shape as the existing test_addRing fusion-seam test). Topologically
+    // this is a SINGLE 6-membered ring (6 atoms, 6 bonds -- Euler's formula gives exactly
+    // 1 cycle), not two independent fused rings -- a0's two incident bonds (the original
+    // seam, and its edge into the newly-fused hexagon) both lead to the SAME ring via
+    // shortestRingThroughBond, so this exercises the atom->incident-bonds->shortest-ring
+    // pipeline without needing a genuine multi-ring tie-break (that tie-breaking rule is
+    // a documented "first found wins" simplification per the spec, not independently
+    // asserted here). ----
+    {
+        DocumentState doc;
+        AtomId a0 = doc.molecule().addAtom(QStringLiteral("C"), 0.0, 0.0);
+        AtomId a1 = doc.molecule().addAtom(QStringLiteral("C"), 1.5, 0.0);
+        doc.molecule().addBond(a0, a1, 1);
+        QList<double> coords;
+        coords << 0.0 << 0.0 << 1.5 << 0.0;
+        coords << 2.25 << 1.3 << 1.5 << 2.6 << 0.0 << 2.6 << -0.75 << 1.3;
+        doc.addRing(coords, true); // fuses onto a0/a1, completing the hexagon
+
+        CHECK(doc.molecule().atomCount() == 6, "setup: the fused hexagon has 6 atoms total");
+
+        doc.selectRing(a0, -1);
+        CHECK(doc.selection().atoms.size() == 6,
+              "selectRing from a0 finds the 6-membered ring it belongs to");
+        CHECK(doc.selection().atoms.contains(a0),
+              "selectRing: the clicked atom itself is part of the returned ring");
+    }
+
+    // ---- selectRing: isolated atom (no ring) leaves selection untouched ----
+    {
+        DocumentState doc;
+        AtomId lone = doc.addAtom(QStringLiteral("C"), 0, 0);
+        AtomId other = doc.addAtom(QStringLiteral("C"), 5, 5);
+        doc.selectAtom(other);
+        CHECK(doc.selection().atoms.contains(other), "setup: `other` is selected");
+
+        doc.selectRing(lone, -1);
+        CHECK(doc.selection().atoms.contains(other) && !doc.selection().atoms.contains(lone),
+              "selectRing on an atom with no ring leaves the PRIOR selection untouched -- "
+              "not a clear, matches the real code's early return exactly");
+    }
+
+    // ---- selectRing: both-null clears; invalid bondId also leaves selection untouched ----
+    {
+        DocumentState doc;
+        AtomId a = doc.addAtom(QStringLiteral("C"), 0, 0);
+        doc.selectAtom(a);
+        doc.selectRing(-1, -1);
+        CHECK(doc.selection().isEmpty(), "selectRing(-1, -1) clears the selection");
+
+        doc.selectAtom(a);
+        doc.selectRing(-1, 9999);
+        CHECK(doc.selection().atoms.contains(a),
+              "selectRing(-1, invalid bond id) leaves the selection untouched (NOT a clear -- "
+              "asymmetric with the both-null case, matches selectRing's own early-return path)");
+    }
+
+    // ---- selectChain: substituent chain hanging off a ring ----
+    {
+        DocumentState doc;
+        // Build a benzene-like 6-ring, then a 3-carbon chain off one ring atom.
+        QList<double> ring;
+        const double kPi = 3.14159265358979323846;
+        for (int i = 0; i < 6; ++i) {
+            double angle = (kPi / 3.0) * i;
+            ring.append(std::cos(angle));
+            ring.append(std::sin(angle));
+        }
+        doc.addRing(ring, true);
+        QList<AtomId> ringAtoms = doc.molecule().atomIds();
+        AtomId attachPoint = ringAtoms[0];
+
+        AtomId chain1 = doc.molecule().addAtom(QStringLiteral("C"), 3.0, 0.0);
+        doc.molecule().addBond(attachPoint, chain1, 1);
+        AtomId chain2 = doc.molecule().addAtom(QStringLiteral("C"), 4.0, 0.0);
+        doc.molecule().addBond(chain1, chain2, 1);
+        AtomId chain3 = doc.molecule().addAtom(QStringLiteral("C"), 5.0, 0.0);
+        doc.molecule().addBond(chain2, chain3, 1);
+
+        doc.selectChain(chain3, -1);
+        CHECK(doc.selection().atoms.contains(chain1) && doc.selection().atoms.contains(chain2)
+              && doc.selection().atoms.contains(chain3),
+              "selectChain from the terminal atom selects the whole 3-carbon substituent");
+        CHECK(doc.selection().atoms.contains(attachPoint),
+              "selectChain includes the ring atom it stops at (included but not expanded past)");
+        int ringAtomsSelected = 0;
+        for (AtomId id : ringAtoms) if (doc.selection().atoms.contains(id)) ++ringAtomsSelected;
+        CHECK(ringAtomsSelected == 1,
+              "selectChain does NOT cross into the ring -- only the single attachment atom is "
+              "included, none of the other 5 ring atoms");
+    }
+
+    // ---- selectChain: stops at a branch point (3+ heavy substituents) ----
+    {
+        DocumentState doc;
+        AtomId center = doc.addAtom(QStringLiteral("C"), 0, 0);
+        AtomId branch1 = doc.addAtom(QStringLiteral("C"), 1, 0);
+        AtomId branch2 = doc.addAtom(QStringLiteral("C"), -1, 1);
+        AtomId branch3 = doc.addAtom(QStringLiteral("C"), -1, -1);
+        doc.addBond(center, branch1, 1);
+        doc.addBond(center, branch2, 1);
+        doc.addBond(center, branch3, 1);
+        AtomId beyond = doc.addAtom(QStringLiteral("C"), 2, 0);
+        doc.addBond(branch1, beyond, 1);
+
+        doc.selectChain(beyond, -1);
+        CHECK(doc.selection().atoms.contains(branch1) && doc.selection().atoms.contains(beyond),
+              "selectChain: the terminal atom and its immediate branch-arm neighbor are selected");
+        CHECK(doc.selection().atoms.contains(center),
+              "selectChain: the branch-point atom itself is included (added before the "
+              ">2-heavy-neighbors check stops further expansion)");
+        CHECK(!doc.selection().atoms.contains(branch2) && !doc.selection().atoms.contains(branch3),
+              "selectChain: the OTHER two branches are NOT crossed into -- branch point stops "
+              "expansion unconditionally, even though center is reached (not the seed itself)");
+    }
+
+    // ---- selectChain: both-null clears; invalid bondId leaves selection untouched ----
+    {
+        DocumentState doc;
+        AtomId a = doc.addAtom(QStringLiteral("C"), 0, 0);
+        doc.selectAtom(a);
+        doc.selectChain(-1, -1);
+        CHECK(doc.selection().isEmpty(), "selectChain(-1, -1) clears the selection");
+
+        doc.selectAtom(a);
+        doc.selectChain(-1, 9999);
+        CHECK(doc.selection().atoms.contains(a),
+              "selectChain(-1, invalid bond id) leaves the selection untouched, matching the "
+              "real code's `else { return }` inside the bond-lookup branch");
+    }
+}
+
 int main() {
     test_selectionStateBasics();
     test_editCommandBasics();
@@ -2519,6 +2702,7 @@ int main() {
     test_setCheckIssuesReuseOrderRegression();
     test_changeBondTypeAndStereo();
     test_selectByRectAndLasso();
+    test_selectFragmentRingChain();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }
