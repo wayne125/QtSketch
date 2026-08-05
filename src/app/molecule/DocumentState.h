@@ -67,6 +67,22 @@ public:
     void selectAll();
     SelectionState& selection();
 
+    // Ports 10-state.js's selectByRect (646-733). REPLACES the current selection.
+    // Sgroup contraction not modeled -- see this file's own selectAll() comment above for
+    // why (same already-accepted port-wide simplification).
+    void selectByRect(double x1, double y1, double x2, double y2);
+
+    // Ports 10-state.js's addSelectionByRect (817-860). ADDS to the current selection.
+    // Deliberately asymmetric with selectByRect: bonds need BOTH endpoints inside (no
+    // edge-crossing test), rxnArrows/rxnPluses are not touched at all -- this matches the
+    // real function exactly, not a simplification.
+    void addSelectionByRect(double x1, double y1, double x2, double y2);
+
+    // Ports 10-state.js's selectByLasso (754-815) / the shared _pointInPolygon helper
+    // (735-745). REPLACES the current selection. Clears the selection (no-op) on fewer
+    // than 3 points, matching the real "pointsFlat.length < 6" guard (6 = 3 points x,y each).
+    void selectByLasso(const QList<QPointF>& points);
+
     // 40-serialize.js's copySelection: extracts the current selection's atoms+bonds as
     // MOL-format text. Pure read -- pushes NO history entry (matching the real function, which
     // performs no mutation). Returns an empty string if the selection has no atoms (matching the

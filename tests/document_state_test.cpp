@@ -2312,6 +2312,94 @@ static void test_changeBondTypeAndStereo() {
     CHECK(doc.canUndo() == canUndoBefore, "no-op call (unchanged order and stereo) pushes no history entry");
 }
 
+static void test_selectByRectAndLasso() {
+    std::printf("--- Test: selectByRect / addSelectionByRect / selectByLasso ---\n");
+    DocumentState doc;
+
+    // Chain A-B-C, positioned so a rect covering only A and B still has its B-C bond
+    // edge crossing the rect boundary (B is at x=10, C is at x=20; a rect ending at
+    // x=15 clips the B-C bond segment without containing C).
+    AtomId a = doc.addAtom(QStringLiteral("C"), 0, 0);
+    AtomId b = doc.addAtom(QStringLiteral("C"), 10, 0);
+    AtomId c = doc.addAtom(QStringLiteral("C"), 20, 0);
+    BondId abBond = doc.addBond(a, b, 1);
+    BondId bcBond = doc.addBond(b, c, 1);
+
+    // 1) selectByRect: rect [-5,-5]-[15,5] covers A and B fully; the B-C bond's segment
+    // (10,0)-(20,0) crosses the rect's right edge at x=15 even though C (20,0) is outside.
+    doc.selectByRect(-5, -5, 15, 5);
+    CHECK(doc.selection().atoms.contains(a), "selectByRect: A is inside the rect");
+    CHECK(doc.selection().atoms.contains(b), "selectByRect: B is inside the rect");
+    CHECK(!doc.selection().atoms.contains(c), "selectByRect: C is outside the rect");
+    CHECK(doc.selection().bonds.contains(abBond), "selectByRect: A-B bond selected (both endpoints inside)");
+    CHECK(doc.selection().bonds.contains(bcBond),
+          "selectByRect: B-C bond selected via edge-crossing even though C is outside -- the specific behavior that makes selectByRect different from a naive both-endpoints test");
+
+    // 2) addSelectionByRect: same geometry, but starting from an EMPTY selection --
+    // must NOT select the B-C bond (strict both-endpoints-inside, no edge-crossing test),
+    // proving the two functions are genuinely asymmetric, not a copy-paste bug.
+    DocumentState doc2;
+    AtomId a2 = doc2.addAtom(QStringLiteral("C"), 0, 0);
+    AtomId b2 = doc2.addAtom(QStringLiteral("C"), 10, 0);
+    AtomId c2 = doc2.addAtom(QStringLiteral("C"), 20, 0);
+    BondId ab2 = doc2.addBond(a2, b2, 1);
+    BondId bc2 = doc2.addBond(b2, c2, 1);
+    doc2.addSelectionByRect(-5, -5, 15, 5);
+    CHECK(doc2.selection().atoms.contains(a2), "addSelectionByRect: A is inside the rect");
+    CHECK(doc2.selection().atoms.contains(b2), "addSelectionByRect: B is inside the rect");
+    CHECK(!doc2.selection().atoms.contains(c2), "addSelectionByRect: C is outside the rect");
+    CHECK(ab2 != bc2, "setup sanity: A-B and B-C are different bonds");
+    CHECK(doc2.selection().bonds.contains(ab2), "addSelectionByRect: A-B bond selected (both endpoints inside)");
+    CHECK(!doc2.selection().bonds.contains(bc2),
+          "addSelectionByRect: B-C bond NOT selected -- strict both-endpoints-inside, no edge-crossing fallback (the asymmetry with selectByRect)");
+
+    // 3) addSelectionByRect called twice with overlapping rects must not duplicate ids
+    // (QSet already guarantees this, but confirm the ADDING behavior itself: a second,
+    // non-overlapping rect call should ADD c2 without losing a2/b2).
+    doc2.addSelectionByRect(15, -5, 25, 5);
+    CHECK(doc2.selection().atoms.contains(a2) && doc2.selection().atoms.contains(b2) && doc2.selection().atoms.contains(c2),
+          "addSelectionByRect accumulates across calls instead of replacing");
+
+    // 4) selectByLasso: a triangle enclosing A and B but not C.
+    QList<QPointF> triangle = { QPointF(-5, -5), QPointF(15, -5), QPointF(5, 10) };
+    doc.selectByLasso(triangle);
+    CHECK(doc.selection().atoms.contains(a), "selectByLasso: A is inside the triangle");
+    CHECK(doc.selection().atoms.contains(b), "selectByLasso: B is inside the triangle");
+    CHECK(!doc.selection().atoms.contains(c), "selectByLasso: C is outside the triangle");
+    CHECK(doc.selection().bonds.contains(abBond), "selectByLasso: A-B bond selected (both endpoints inside)");
+    CHECK(!doc.selection().bonds.contains(bcBond),
+          "selectByLasso: B-C bond NOT selected -- lasso requires full enclosure, no edge-crossing fallback (matches ChemDraw semantics, not selectByRect's)");
+
+    // 5) selectByLasso with fewer than 3 points clears the selection and does not crash.
+    doc.selectByLasso({ QPointF(0, 0), QPointF(1, 1) });
+    CHECK(doc.selection().isEmpty(), "selectByLasso with < 3 points clears the selection (matches the real < 6-flat-numbers guard)");
+
+    // 6) rxnArrow/rxnPlus coverage: selectByRect and selectByLasso include them;
+    // addSelectionByRect does not touch them at all.
+    RxnArrowId arrow = doc.addRxnArrow(50, 50);
+    RxnPlusId plus = doc.addRxnPlus(60, 60);
+    doc.selectByRect(45, 45, 65, 65);
+    CHECK(doc.selection().rxnArrows.contains(arrow), "selectByRect includes an rxnArrow fully inside the rect");
+    CHECK(doc.selection().rxnPluses.contains(plus), "selectByRect includes an rxnPlus fully inside the rect");
+
+    // Margin note (found during plan self-review): vertices chosen with comfortable
+    // margin around both the rxnArrow segment ((50,50)-(~53.75,50)) and the rxnPlus point
+    // (60,60) -- an earlier draft placed (60,60) exactly ON a triangle edge, which is
+    // undefined/flaky for ray-casting point-in-polygon (boundary points can go either way
+    // depending on floating-point rounding). At y=60 this triangle spans x=[47.5,72.5],
+    // giving 60 a 12.5-unit margin on both sides.
+    QList<QPointF> bigTriangle = { QPointF(35, 35), QPointF(85, 35), QPointF(60, 85) };
+    doc.selectByLasso(bigTriangle);
+    CHECK(doc.selection().rxnArrows.contains(arrow), "selectByLasso includes an rxnArrow fully inside the polygon");
+    CHECK(doc.selection().rxnPluses.contains(plus), "selectByLasso includes an rxnPlus fully inside the polygon");
+
+    DocumentState doc3;
+    RxnArrowId arrow3 = doc3.addRxnArrow(50, 50);
+    doc3.addSelectionByRect(45, 45, 65, 65);
+    CHECK(!doc3.selection().rxnArrows.contains(arrow3),
+          "addSelectionByRect never touches rxnArrows -- matches the real function exactly (it has no rxnArrow/rxnPlus code path at all)");
+}
+
 int main() {
     test_selectionStateBasics();
     test_editCommandBasics();
@@ -2370,6 +2458,7 @@ int main() {
     test_setCheckIssuesMalformedJsonIsNoOp();
     test_setCheckIssuesReuseOrderRegression();
     test_changeBondTypeAndStereo();
+    test_selectByRectAndLasso();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

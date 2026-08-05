@@ -11,6 +11,60 @@
 #include <QJsonArray>
 #include "indigo.h"
 
+// ---- Pure geometry helpers for selectByRect/addSelectionByRect/selectByLasso ------
+// Plain file-scope functions, not DocumentState members -- matches RenderPrimitives.cpp's
+// own convention for its pure helpers (isCorrectStereoCenter, stereoLabelFor). Nothing
+// outside this file needs them.
+
+// Direct port of chem-core.js:9059-9065's isPointOnSegment. Only ever called from
+// segmentsIntersect's own degenerate (all-four-points-collinear) branch below -- despite
+// the name, this is a bounding-box containment check, not a true collinearity test (the
+// real implementation's own behavior, kept exactly, not "fixed").
+static bool isPointOnSegment(QPointF segA, QPointF segB, QPointF point) {
+    double minX = std::min(segA.x(), segB.x()), maxX = std::max(segA.x(), segB.x());
+    double minY = std::min(segA.y(), segB.y()), maxY = std::max(segA.y(), segB.y());
+    return point.x() >= minX && point.x() <= maxX && point.y() >= minY && point.y() <= maxY;
+}
+
+// Direct port of chem-core.js:9047-9056's Box2Abs.segmentIntersection. Cross-product
+// orientation test; falls back to isPointOnSegment above only in the exact-collinear
+// degenerate case (all four cross products are exactly 0.0).
+static bool segmentsIntersect(QPointF a, QPointF b, QPointF c, QPointF d) {
+    double dc = (a.x() - c.x()) * (b.y() - c.y()) - (a.y() - c.y()) * (b.x() - c.x());
+    double dd = (a.x() - d.x()) * (b.y() - d.y()) - (a.y() - d.y()) * (b.x() - d.x());
+    double da = (c.x() - a.x()) * (d.y() - a.y()) - (c.y() - a.y()) * (d.x() - a.x());
+    double db = (c.x() - b.x()) * (d.y() - b.y()) - (c.y() - b.y()) * (d.x() - b.x());
+    if (dc == 0.0 && dd == 0.0 && da == 0.0 && db == 0.0) {
+        return isPointOnSegment(a, b, c) || isPointOnSegment(a, b, d)
+            || isPointOnSegment(c, d, a) || isPointOnSegment(c, d, b);
+    }
+    return dc * dd < 0 && da * db < 0;
+}
+
+// Direct port of selectByRect's own lineIntersectsRect (10-state.js:690-697): true if
+// either endpoint lies inside the rect, or the segment crosses any of its 4 edges.
+static bool segmentIntersectsRect(QPointF p1, QPointF p2, double minX, double minY, double maxX, double maxY) {
+    if (p1.x() >= minX && p1.x() <= maxX && p1.y() >= minY && p1.y() <= maxY) return true;
+    if (p2.x() >= minX && p2.x() <= maxX && p2.y() >= minY && p2.y() <= maxY) return true;
+    QPointF c1(minX, minY), c2(maxX, minY), c3(maxX, maxY), c4(minX, maxY);
+    return segmentsIntersect(p1, p2, c1, c2) || segmentsIntersect(p1, p2, c2, c3)
+        || segmentsIntersect(p1, p2, c3, c4) || segmentsIntersect(p1, p2, c4, c1);
+}
+
+// Point-in-polygon via ray casting (even-odd rule), direct port of the real
+// _pointInPolygon (10-state.js:735-745). poly is a list of (x,y) vertices.
+static bool pointInPolygon(double px, double py, const QList<QPointF>& poly) {
+    bool inside = false;
+    for (int i = 0, j = poly.size() - 1; i < poly.size(); j = i++) {
+        double xi = poly[i].x(), yi = poly[i].y();
+        double xj = poly[j].x(), yj = poly[j].y();
+        bool intersect = ((yi > py) != (yj > py))
+            && (px < (xj - xi) * (py - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+    }
+    return inside;
+}
+
 DocumentState::DocumentState(const QString& initialStructure)
     : m_molecule(initialStructure) {
 }
@@ -139,6 +193,99 @@ void DocumentState::selectAll() {
 
 SelectionState& DocumentState::selection() {
     return m_selection;
+}
+
+void DocumentState::selectByRect(double x1, double y1, double x2, double y2) {
+    double minX = std::min(x1, x2), maxX = std::max(x1, x2);
+    double minY = std::min(y1, y2), maxY = std::max(y1, y2);
+    m_selection.clear();
+
+    for (AtomId id : m_molecule.atomIds()) {
+        double x = 0, y = 0;
+        if (!m_molecule.atomPos(id, x, y)) continue;
+        if (x >= minX && x <= maxX && y >= minY && y <= maxY) m_selection.atoms.insert(id);
+    }
+    for (BondId id : m_molecule.bondIds()) {
+        AtomId ea = -1, eb = -1;
+        if (!m_molecule.bondEndpoints(id, ea, eb)) continue;
+        if (m_selection.atoms.contains(ea) && m_selection.atoms.contains(eb)) {
+            m_selection.bonds.insert(id);
+            continue;
+        }
+        double x1p = 0, y1p = 0, x2p = 0, y2p = 0;
+        if (m_molecule.atomPos(ea, x1p, y1p) && m_molecule.atomPos(eb, x2p, y2p)
+            && segmentIntersectsRect(QPointF(x1p, y1p), QPointF(x2p, y2p), minX, minY, maxX, maxY)) {
+            m_selection.bonds.insert(id);
+        }
+    }
+    for (RxnArrowId id : m_molecule.rxnArrowIds()) {
+        double x1p = 0, y1p = 0, x2p = 0, y2p = 0;
+        if (!m_molecule.rxnArrowEndpoints(id, x1p, y1p, x2p, y2p)) continue;
+        if (segmentIntersectsRect(QPointF(x1p, y1p), QPointF(x2p, y2p), minX, minY, maxX, maxY)) {
+            m_selection.rxnArrows.insert(id);
+        }
+    }
+    for (RxnPlusId id : m_molecule.rxnPlusIds()) {
+        double x = 0, y = 0;
+        if (!m_molecule.rxnPlusPos(id, x, y)) continue;
+        if (x >= minX && x <= maxX && y >= minY && y <= maxY) m_selection.rxnPluses.insert(id);
+    }
+    // Multitail arrows deliberately excluded -- matches the real code's own comment
+    // ("no rect-intersection hit-test exists for their spine+tails geometry").
+}
+
+void DocumentState::addSelectionByRect(double x1, double y1, double x2, double y2) {
+    double minX = std::min(x1, x2), maxX = std::max(x1, x2);
+    double minY = std::min(y1, y2), maxY = std::max(y1, y2);
+
+    for (AtomId id : m_molecule.atomIds()) {
+        double x = 0, y = 0;
+        if (!m_molecule.atomPos(id, x, y)) continue;
+        if (x >= minX && x <= maxX && y >= minY && y <= maxY) m_selection.atoms.insert(id);
+    }
+    for (BondId id : m_molecule.bondIds()) {
+        AtomId ea = -1, eb = -1;
+        if (!m_molecule.bondEndpoints(id, ea, eb)) continue;
+        double x1p = 0, y1p = 0, x2p = 0, y2p = 0;
+        if (!m_molecule.atomPos(ea, x1p, y1p) || !m_molecule.atomPos(eb, x2p, y2p)) continue;
+        if (x1p >= minX && x1p <= maxX && y1p >= minY && y1p <= maxY
+            && x2p >= minX && x2p <= maxX && y2p >= minY && y2p <= maxY) {
+            m_selection.bonds.insert(id);
+        }
+    }
+    // rxnArrows/rxnPluses/multitailArrows deliberately untouched -- matches the real
+    // addSelectionByRect exactly (it never references them at all).
+}
+
+void DocumentState::selectByLasso(const QList<QPointF>& points) {
+    m_selection.clear();
+    if (points.size() < 3) return;
+
+    for (AtomId id : m_molecule.atomIds()) {
+        double x = 0, y = 0;
+        if (!m_molecule.atomPos(id, x, y)) continue;
+        if (pointInPolygon(x, y, points)) m_selection.atoms.insert(id);
+    }
+    for (BondId id : m_molecule.bondIds()) {
+        AtomId ea = -1, eb = -1;
+        if (!m_molecule.bondEndpoints(id, ea, eb)) continue;
+        if (m_selection.atoms.contains(ea) && m_selection.atoms.contains(eb)) {
+            m_selection.bonds.insert(id);
+        }
+    }
+    for (RxnArrowId id : m_molecule.rxnArrowIds()) {
+        double x1p = 0, y1p = 0, x2p = 0, y2p = 0;
+        if (!m_molecule.rxnArrowEndpoints(id, x1p, y1p, x2p, y2p)) continue;
+        if (pointInPolygon(x1p, y1p, points) && pointInPolygon(x2p, y2p, points)) {
+            m_selection.rxnArrows.insert(id);
+        }
+    }
+    for (RxnPlusId id : m_molecule.rxnPlusIds()) {
+        double x = 0, y = 0;
+        if (!m_molecule.rxnPlusPos(id, x, y)) continue;
+        if (pointInPolygon(x, y, points)) m_selection.rxnPluses.insert(id);
+    }
+    // Multitail arrows deliberately excluded, same reasoning as selectByRect.
 }
 
 QString DocumentState::copySelection() const {
