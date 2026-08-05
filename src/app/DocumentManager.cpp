@@ -1,4 +1,25 @@
 #include "DocumentManager.h"
+#include <QCoreApplication>
+#include <QDir>
+#include <QFile>
+
+namespace {
+// Same "walk up from the binary, up to 5 levels" discovery pattern already proven in
+// V8Process's own constructor for src/v8_worker.js (v8_process.cpp:23-36) -- templates/
+// sits at the repo root, structurally parallel to src/, so the identical loop applies
+// unchanged. Returns the templates/ directory path, or an empty string if not found
+// within 5 levels (harmless either way -- see the comment at its call site below).
+QString findTemplatesDir() {
+    QString appDir = QCoreApplication::applicationDirPath();
+    QDir dir(appDir);
+    for (int i = 0; i < 5; ++i) {
+        QString candidate = dir.filePath(QStringLiteral("templates/fg.sdf"));
+        if (QFile::exists(candidate)) return dir.filePath(QStringLiteral("templates"));
+        if (!dir.cdUp()) break;
+    }
+    return QString();
+}
+}
 
 DocumentManager::DocumentManager(QObject *parent) : QObject(parent) {
     addDocument();
@@ -18,7 +39,20 @@ void DocumentManager::setActiveDocId(int docId) {
 
 int DocumentManager::addDocument(bool cppEngine) {
     int docId = m_nextDocId++;
-    auto *proc = new V8Process(this, cppEngine);
+    if (cppEngine && !m_templateLibrary) {
+        // TemplateLibrary::loadSdf gracefully leaves a hash empty for a missing/
+        // unreadable path (confirmed: TemplateLibrary.cpp:27-33, "missing/unreadable
+        // file: leave target empty") -- constructing with a not-found directory (empty
+        // findTemplatesDir() result, so these paths won't exist either) is safe and
+        // never crashes. No existence check needed here; TemplateLibrary already does
+        // the only check that matters, per file, internally.
+        QString dir = findTemplatesDir();
+        m_templateLibrary = std::make_unique<TemplateLibrary>(
+            dir + QStringLiteral("/fg.sdf"),
+            dir + QStringLiteral("/library.sdf"),
+            dir + QStringLiteral("/salts-and-solvents.sdf"));
+    }
+    auto *proc = new V8Process(this, cppEngine, m_templateLibrary.get());
     proc->init(); // no-op on a C++-mode document: sendCommand's own guard (m_engine is null) warns and returns
     m_documents.insert(docId, proc);
     m_order.append(docId);
