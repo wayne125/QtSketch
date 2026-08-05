@@ -98,6 +98,14 @@ void V8Process::sendCommand(const QString& cmd, const QVariantList& args) {
             m_docState->addBioMonomer(args[0].toString(), args[1].toString());
         } else if (cmd == "bioDeleteMonomer" && !args.isEmpty()) {
             m_docState->deleteBioMonomer(args[0].toInt());
+        } else if (cmd == "selectRing") {
+            m_docState->selectRing(
+                (!args.isEmpty() && args[0].isValid()) ? args[0].toInt() : -1,
+                (args.size() > 1 && args[1].isValid()) ? args[1].toInt() : -1);
+        } else if (cmd == "selectChain") {
+            m_docState->selectChain(
+                (!args.isEmpty() && args[0].isValid()) ? args[0].toInt() : -1,
+                (args.size() > 1 && args[1].isValid()) ? args[1].toInt() : -1);
         } else {
             return; // unhandled command name on a C++-engine document: silent no-op,
                      // matching every other unsupported gesture's existing behavior
@@ -519,7 +527,16 @@ void V8Process::removeItemFromSelection(const QVariant& atomId, const QVariant& 
     }
     sendCommand("removeItemFromSelection", {atomId, bondId});
 }
-void V8Process::selectFragment(const QVariant& atomId, const QVariant& bondId) { sendCommand("selectFragment", {atomId, bondId}); }
+void V8Process::selectFragment(const QVariant& atomId, const QVariant& bondId) {
+    if (m_docState) {
+        m_docState->selectFragment(
+            atomId.isValid() ? atomId.toInt() : -1,
+            bondId.isValid() ? bondId.toInt() : -1);
+        applyLocalState();
+        return;
+    }
+    sendCommand("selectFragment", {atomId, bondId});
+}
 void V8Process::moveSelection(double dx, double dy) {
     if (m_docState) {
         m_docState->moveSelectionLive(dx, dy);
