@@ -65,6 +65,53 @@ static bool pointInPolygon(double px, double py, const QList<QPointF>& poly) {
     return inside;
 }
 
+// Direct port of 10-state.js's shortestRingThroughBond (129-156): BFS over the whole bond
+// graph WITH bondId itself excluded, from that bond's begin atom to its end atom. Returns
+// an empty list if bondId doesn't exist or isn't part of any ring. -1 is used as the BFS
+// "root" sentinel in the prev-map (matches this port's own null-id convention -- no real
+// AtomId is ever -1), mirroring the real JS's `prev[start] = null`.
+//
+// Named bfsShortestRing (not shortestRingThroughBond) to avoid colliding with the
+// PRE-EXISTING private DocumentState::shortestRingThroughBond(int moleculeHandle, int
+// bondIdx) member function declared near the bottom of DocumentState.h (used by
+// insertLibraryTemplateFused) -- that one operates on raw Indigo handles/indices, this one
+// on this port's own EditableMolecule/AtomId/BondId wrapper types. Genuinely different
+// functions serving different callers, not a duplicate to merge.
+static QList<AtomId> bfsShortestRing(const EditableMolecule& mol, BondId bondId) {
+    AtomId start = -1, goal = -1;
+    if (!mol.bondEndpoints(bondId, start, goal)) return {};
+
+    QHash<AtomId, QList<AtomId>> adj;
+    for (BondId bid : mol.bondIds()) {
+        if (bid == bondId) continue;
+        AtomId a = -1, b = -1;
+        if (!mol.bondEndpoints(bid, a, b)) continue;
+        adj[a].append(b);
+        adj[b].append(a);
+    }
+
+    QHash<AtomId, AtomId> prev;
+    prev.insert(start, -1);
+    QList<AtomId> queue;
+    queue.append(start);
+    int head = 0;
+    while (head < queue.size()) {
+        AtomId cur = queue[head++];
+        if (cur == goal) break;
+        for (AtomId nbr : adj.value(cur)) {
+            if (!prev.contains(nbr)) {
+                prev.insert(nbr, cur);
+                queue.append(nbr);
+            }
+        }
+    }
+    if (!prev.contains(goal)) return {};
+
+    QList<AtomId> cycle;
+    for (AtomId a = goal; a != -1; a = prev.value(a, -1)) cycle.append(a);
+    return cycle;
+}
+
 DocumentState::DocumentState(const QString& initialStructure)
     : m_molecule(initialStructure) {
 }
@@ -323,6 +370,158 @@ void DocumentState::selectByLasso(const QList<QPointF>& points) {
         if (pointInPolygon(x, y, points)) m_selection.rxnPluses.insert(id);
     }
     // Multitail arrows deliberately excluded, same reasoning as selectByRect.
+}
+
+void DocumentState::selectFragment(AtomId atomId, BondId bondId) {
+    // If bondId doesn't resolve to a real bond, atomId stays -1 and falls straight into
+    // the clear-branch below -- same outcome as both args being null, matching the real
+    // code's `if (atomId === null) { clear; return }` running AFTER this resolution
+    // attempt (verified during spec review round 2: this is NOT the same as the
+    // non-null-but-invalid no-op case further down).
+    if (atomId == -1 && bondId != -1) {
+        AtomId a = -1, b = -1;
+        if (m_molecule.bondEndpoints(bondId, a, b)) atomId = a;
+    }
+    if (atomId == -1) {
+        clearSelection();
+        return;
+    }
+
+    QList<AtomId> allAtoms = m_molecule.atomIds();
+    QSet<AtomId> validAtoms(allAtoms.begin(), allAtoms.end());
+    if (!validAtoms.contains(atomId)) return; // no-op: not a real atom (sgroup-prim resolution out of scope)
+
+    int fragIdx = m_molecule.atomFragmentIndex(atomId);
+    QList<AtomId> fragAtoms = m_molecule.atomIdsInFragment(fragIdx);
+
+    m_selection.clear();
+    for (AtomId id : fragAtoms) m_selection.atoms.insert(id);
+
+    QSet<AtomId> atomSet(fragAtoms.begin(), fragAtoms.end());
+    for (BondId bid : m_molecule.bondIds()) {
+        AtomId ea = -1, eb = -1;
+        if (!m_molecule.bondEndpoints(bid, ea, eb)) continue;
+        if (atomSet.contains(ea) && atomSet.contains(eb)) m_selection.bonds.insert(bid);
+    }
+}
+
+void DocumentState::selectRing(AtomId atomId, BondId bondId) {
+    if (atomId == -1 && bondId == -1) {
+        clearSelection();
+        return;
+    }
+
+    BondId startBondId = -1;
+    if (bondId != -1) {
+        startBondId = bondId; // bondId takes precedence when both given -- matches the real code
+    } else {
+        int minLen = -1;
+        BondId bestBond = -1;
+        for (BondId bid : m_molecule.bondIds()) {
+            AtomId a = -1, b = -1;
+            if (!m_molecule.bondEndpoints(bid, a, b)) continue;
+            if (a != atomId && b != atomId) continue;
+            QList<AtomId> ring = bfsShortestRing(m_molecule, bid);
+            if (!ring.isEmpty() && (minLen == -1 || ring.size() < minLen)) {
+                minLen = ring.size();
+                bestBond = bid;
+            }
+        }
+        startBondId = bestBond;
+    }
+
+    if (startBondId == -1) return; // no start bond found -- leave selection untouched
+
+    QList<AtomId> ringAtoms = bfsShortestRing(m_molecule, startBondId);
+    if (ringAtoms.isEmpty()) return; // not part of any ring -- leave selection untouched
+
+    QSet<AtomId> atomSet(ringAtoms.begin(), ringAtoms.end());
+    m_selection.clear();
+    for (AtomId id : ringAtoms) m_selection.atoms.insert(id);
+    for (BondId bid : m_molecule.bondIds()) {
+        AtomId ea = -1, eb = -1;
+        if (!m_molecule.bondEndpoints(bid, ea, eb)) continue;
+        if (atomSet.contains(ea) && atomSet.contains(eb)) m_selection.bonds.insert(bid);
+    }
+}
+
+void DocumentState::selectChain(AtomId atomId, BondId bondId) {
+    if (atomId == -1 && bondId == -1) {
+        clearSelection();
+        return;
+    }
+
+    QList<AtomId> queue;
+    QSet<AtomId> visited;
+    AtomId seedA = -1, seedB = -1;
+
+    if (atomId != -1) {
+        // atomId takes precedence when both given -- matches the real code. No existence
+        // check here: a bogus id is still pushed and selected as a lone 1-atom result (see
+        // this method's own header comment for why that's the ported behavior, not a bug).
+        queue.append(atomId);
+        visited.insert(atomId);
+    } else {
+        AtomId a = -1, b = -1;
+        if (!m_molecule.bondEndpoints(bondId, a, b)) return; // invalid bond -- leave selection untouched
+        seedA = a;
+        seedB = b;
+        queue.append(a);
+        queue.append(b);
+        visited.insert(a);
+        visited.insert(b);
+    }
+
+    // Ring-atom membership, computed once up-front over the WHOLE molecule -- matches the
+    // real JS's own precompute exactly (same O(bonds^2) cost, not optimized away: fidelity
+    // over performance for this port).
+    QSet<AtomId> ringAtoms;
+    for (BondId bid : m_molecule.bondIds()) {
+        QList<AtomId> cycle = bfsShortestRing(m_molecule, bid);
+        for (AtomId a : cycle) ringAtoms.insert(a);
+    }
+
+    QList<AtomId> resultAtoms;
+    int head = 0;
+    while (head < queue.size()) {
+        AtomId cur = queue[head++];
+        resultAtoms.append(cur);
+
+        QString symbol = m_molecule.atomSymbol(cur);
+        bool isH = (symbol == QStringLiteral("H"));
+        bool isStart = (atomId != -1 && cur == atomId) || (atomId == -1 && (cur == seedA || cur == seedB));
+
+        if (ringAtoms.contains(cur) && !isH && !isStart) {
+            continue; // ring atom, not the seed: included but don't expand past it
+        }
+
+        QList<AtomId> neighbors = m_molecule.neighborAtomIds(cur);
+        if (!isH) {
+            int heavyCount = 0;
+            for (AtomId n : neighbors) {
+                if (m_molecule.atomSymbol(n) != QStringLiteral("H")) ++heavyCount;
+            }
+            if (heavyCount > 2) continue;             // branch point: unconditional, even at the seed
+            if (heavyCount == 1 && !isStart) continue; // terminal, not the seed
+            if (heavyCount == 0) continue;             // isolated
+        }
+
+        for (AtomId n : neighbors) {
+            if (!visited.contains(n)) {
+                visited.insert(n);
+                queue.append(n);
+            }
+        }
+    }
+
+    QSet<AtomId> atomSet(resultAtoms.begin(), resultAtoms.end());
+    m_selection.clear();
+    for (AtomId id : resultAtoms) m_selection.atoms.insert(id);
+    for (BondId bid : m_molecule.bondIds()) {
+        AtomId ea = -1, eb = -1;
+        if (!m_molecule.bondEndpoints(bid, ea, eb)) continue;
+        if (atomSet.contains(ea) && atomSet.contains(eb)) m_selection.bonds.insert(bid);
+    }
 }
 
 QString DocumentState::copySelection() const {

@@ -83,6 +83,36 @@ public:
     // than 3 points, matching the real "pointsFlat.length < 6" guard (6 = 3 points x,y each).
     void selectByLasso(const QList<QPointF>& points);
 
+    // Ports 10-state.js's selectFragment (424-488): connected-component select via
+    // EditableMolecule::atomFragmentIndex/atomIdsInFragment. REPLACES the current
+    // selection when atomId resolves to a real atom; CLEARS it when atomId is null
+    // (including the "bondId given but doesn't resolve" sub-case -- these produce the
+    // SAME outcome in the real code, see this method's own body comment in the .cpp);
+    // NO-OPs (leaves selection untouched) when a non-null atomId doesn't exist. Pass -1
+    // for "null" (this port's established sentinel). No sgroup-contraction awareness --
+    // same accepted simplification as selectAll()/selectByRect() above.
+    void selectFragment(AtomId atomId, BondId bondId);
+
+    // Ports 10-state.js's selectRing (490-530) / its shortestRingThroughBond helper
+    // (129-156). REPLACES the current selection with the shortest ring through the given
+    // bond (or the shortest ring incident to the given atom, ties won by first-found in
+    // bondIds() order). CLEARS the selection only when BOTH args are null; every other
+    // failure path (no start bond found, or the start bond isn't part of any ring) LEAVES
+    // the selection untouched -- deliberately asymmetric with the both-null case, matches
+    // the real code exactly. Precedence when both args are given: bondId wins (opposite of
+    // selectFragment/selectChain, a genuine inconsistency in the original app, preserved).
+    void selectRing(AtomId atomId, BondId bondId);
+
+    // Ports 10-state.js's selectChain (532-622): heavy-atom BFS chain walk, stopping at
+    // ring atoms (included but not expanded past, unless the seed itself), branch points
+    // (3+ heavy substituents, unconditionally, even at the seed), and terminal atoms
+    // (unless the seed). REPLACES the current selection; CLEARS it only when both args are
+    // null; LEAVES it untouched when a given bondId doesn't resolve to a real bond. No
+    // existence check on a directly-given atomId -- matches the real code exactly (a
+    // bogus id selects just itself and stops, since neighborAtomIds gracefully returns
+    // empty for an unknown atom).
+    void selectChain(AtomId atomId, BondId bondId);
+
     // 40-serialize.js's copySelection: extracts the current selection's atoms+bonds as
     // MOL-format text. Pure read -- pushes NO history entry (matching the real function, which
     // performs no mutation). Returns an empty string if the selection has no atoms (matching the
