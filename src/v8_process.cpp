@@ -466,9 +466,26 @@ void V8Process::requestAtomProperties(int id) {
     }
     sendCommand("getAtomProperties", {id});
 }
-void V8Process::selectByRect(double x1, double y1, double x2, double y2) { sendCommand("selectByRect", {x1, y1, x2, y2}); }
-void V8Process::addSelectionByRect(double x1, double y1, double x2, double y2) { sendCommand("addSelectionByRect", {x1, y1, x2, y2}); }
-void V8Process::selectByLasso(const QVariantList& pointsFlat) { sendCommand("selectByLasso", {QVariant(pointsFlat)}); }
+void V8Process::selectByRect(double x1, double y1, double x2, double y2) {
+    if (m_docState) { m_docState->selectByRect(x1, y1, x2, y2); applyLocalState(); return; }
+    sendCommand("selectByRect", {x1, y1, x2, y2});
+}
+void V8Process::addSelectionByRect(double x1, double y1, double x2, double y2) {
+    if (m_docState) { m_docState->addSelectionByRect(x1, y1, x2, y2); applyLocalState(); return; }
+    sendCommand("addSelectionByRect", {x1, y1, x2, y2});
+}
+void V8Process::selectByLasso(const QVariantList& pointsFlat) {
+    if (m_docState) {
+        QList<QPointF> pts;
+        for (int i = 0; i + 1 < pointsFlat.size(); i += 2) {
+            pts.append(QPointF(pointsFlat[i].toDouble(), pointsFlat[i + 1].toDouble()));
+        }
+        m_docState->selectByLasso(pts);
+        applyLocalState();
+        return;
+    }
+    sendCommand("selectByLasso", {QVariant(pointsFlat)});
+}
 void V8Process::selectItem(const QVariant& atomId, const QVariant& bondId, const QVariant& rxnArrowId, const QVariant& rxnPlusId, const QVariant& multitailArrowId) {
     if (m_docState) {
         m_docState->selectSingleItem(
