@@ -137,7 +137,7 @@ public:
     QString bioSeqType() const;
 
     AtomId addAtom(const QString& symbol, double x, double y);
-    BondId addBond(AtomId a, AtomId b, int order);
+    BondId addBond(AtomId a, AtomId b, int order, int stereo = 0);
     void deleteAtom(AtomId id);   // plain-atom-and-incident-bonds case only; see the
                                   // sgroup-membership spike documented in EditableMolecule.h
                                   // for why the sgroup-aware branch is deferred

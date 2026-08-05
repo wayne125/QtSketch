@@ -306,11 +306,21 @@ AtomId DocumentState::addAtom(const QString& symbol, double x, double y) {
     return *idBox;
 }
 
-BondId DocumentState::addBond(AtomId a, AtomId b, int order) {
+BondId DocumentState::addBond(AtomId a, AtomId b, int order, int stereo) {
     auto idBox = std::make_shared<BondId>(-1);
     EditableMolecule& mol = m_molecule;
+    EditableMolecule::Direction dir;
+    switch (stereo) {
+        case 1: dir = EditableMolecule::Direction::Up; break;
+        case 6: dir = EditableMolecule::Direction::Down; break;
+        case 4: dir = EditableMolecule::Direction::Either; break;
+        default: dir = EditableMolecule::Direction::None; break;
+    }
     EditCommand cmd;
-    cmd.execute = [&mol, idBox, a, b, order]() { *idBox = mol.addBond(a, b, order); };
+    cmd.execute = [&mol, idBox, a, b, order, dir]() {
+        *idBox = mol.addBond(a, b, order);
+        if (dir != EditableMolecule::Direction::None) mol.setBondStereo(*idBox, dir);
+    };
     cmd.invert = [&mol, idBox]() { mol.removeBond(*idBox); };
     executeCommand(std::move(cmd));
     return *idBox;
@@ -567,6 +577,7 @@ void DocumentState::deleteSelectionEntities() {
         *mtasToRemove = newMtasToRemove;
     };
     executeCommand(std::move(cmd));
+    clearSelection(); // matches 10-state.js's deleteSelection resetting _selection after executeCommand
 }
 
 QString DocumentState::cutSelection() {
@@ -1913,7 +1924,6 @@ void DocumentState::insertStructureAt(const QString& sourceMolfile, double cx, d
 }
 
 void DocumentState::addBondAndAtom(AtomId startId, const QString& label, double x, double y, int type, int stereo) {
-    Q_UNUSED(stereo); // documented port-wide no-op -- see this method's own header comment
     EditableMolecule& mol = m_molecule;
     if (!mol.atomIds().contains(startId)) return;
 
@@ -1926,19 +1936,28 @@ void DocumentState::addBondAndAtom(AtomId startId, const QString& label, double 
         if (d < 0.3) { collisionId = otherId; break; }
     }
     if (collisionId != -1) {
-        addBond(startId, collisionId, type);
+        addBond(startId, collisionId, type, stereo);
         return;
     }
 
     double cx = std::max(kPageMinX, std::min(kPageMaxX, x));
     double cy = std::max(kPageMinY, std::min(kPageMaxY, y));
 
+    EditableMolecule::Direction dir;
+    switch (stereo) {
+        case 1: dir = EditableMolecule::Direction::Up; break;
+        case 6: dir = EditableMolecule::Direction::Down; break;
+        case 4: dir = EditableMolecule::Direction::Either; break;
+        default: dir = EditableMolecule::Direction::None; break;
+    }
+
     auto atomIdBox = std::make_shared<AtomId>(-1);
     auto bondIdBox = std::make_shared<BondId>(-1);
     EditCommand cmd;
-    cmd.execute = [&mol, atomIdBox, bondIdBox, label, cx, cy, startId, type]() {
+    cmd.execute = [&mol, atomIdBox, bondIdBox, label, cx, cy, startId, type, dir]() {
         *atomIdBox = mol.addAtom(label, cx, cy);
         *bondIdBox = mol.addBond(startId, *atomIdBox, type);
+        if (dir != EditableMolecule::Direction::None) mol.setBondStereo(*bondIdBox, dir);
     };
     cmd.invert = [&mol, atomIdBox, bondIdBox]() {
         mol.removeBond(*bondIdBox);
@@ -1948,21 +1967,29 @@ void DocumentState::addBondAndAtom(AtomId startId, const QString& label, double 
 }
 
 void DocumentState::addBondBetweenCoords(double x1, double y1, double x2, double y2, int type, int stereo) {
-    Q_UNUSED(stereo); // documented port-wide no-op -- see this method's own header comment
     EditableMolecule& mol = m_molecule;
     double cx1 = std::max(kPageMinX, std::min(kPageMaxX, x1));
     double cy1 = std::max(kPageMinY, std::min(kPageMaxY, y1));
     double cx2 = std::max(kPageMinX, std::min(kPageMaxX, x2));
     double cy2 = std::max(kPageMinY, std::min(kPageMaxY, y2));
 
+    EditableMolecule::Direction dir;
+    switch (stereo) {
+        case 1: dir = EditableMolecule::Direction::Up; break;
+        case 6: dir = EditableMolecule::Direction::Down; break;
+        case 4: dir = EditableMolecule::Direction::Either; break;
+        default: dir = EditableMolecule::Direction::None; break;
+    }
+
     auto atom1IdBox = std::make_shared<AtomId>(-1);
     auto atom2IdBox = std::make_shared<AtomId>(-1);
     auto bondIdBox = std::make_shared<BondId>(-1);
     EditCommand cmd;
-    cmd.execute = [&mol, atom1IdBox, atom2IdBox, bondIdBox, cx1, cy1, cx2, cy2, type]() {
+    cmd.execute = [&mol, atom1IdBox, atom2IdBox, bondIdBox, cx1, cy1, cx2, cy2, type, dir]() {
         *atom1IdBox = mol.addAtom(QStringLiteral("C"), cx1, cy1);
         *atom2IdBox = mol.addAtom(QStringLiteral("C"), cx2, cy2);
         *bondIdBox = mol.addBond(*atom1IdBox, *atom2IdBox, type);
+        if (dir != EditableMolecule::Direction::None) mol.setBondStereo(*bondIdBox, dir);
     };
     cmd.invert = [&mol, atom1IdBox, atom2IdBox, bondIdBox]() {
         mol.removeBond(*bondIdBox);

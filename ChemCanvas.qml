@@ -212,6 +212,7 @@ Item {
             // call threw "not a function" every time Escape was pressed and the
             // overlay was never cleared. Every other call site here is unqualified.
             setOverlayState({ hoverAtomId: null, hoverBondId: null, dragRect: null, bondPreview: null })
+            sketch.selectItem(null, null)
             event.accepted = true
         }
         // Hover-atom element shortcuts: type an element letter while hovering an atom
@@ -1569,6 +1570,9 @@ Item {
                             } else {
                                 sketch.selectItem(null, hitBond)
                             }
+                        } else {
+                            // Short click on truly empty canvas (no atom/bond hit): deselect.
+                            sketch.selectItem(null, null)
                         }
                     }
                 } else if (currentTool.startsWith("BOND_")) {

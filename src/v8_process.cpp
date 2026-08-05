@@ -146,7 +146,7 @@ void V8Process::addBondBetweenCoords(double x1, double y1, double x2, double y2,
     sendCommand("addBondBetweenCoords", {x1, y1, x2, y2, type, stereo});
 }
 void V8Process::addBond(int beginAtomId, int endAtomId, int bondType, int stereoDir) {
-    if (m_docState) { m_docState->addBond(beginAtomId, endAtomId, bondType); applyLocalState(); return; } // stereoDir dropped, same documented no-op precedent as addBondAndAtom's stereo param
+    if (m_docState) { m_docState->addBond(beginAtomId, endAtomId, bondType, stereoDir); applyLocalState(); return; }
     sendCommand("addBond", {beginAtomId, endAtomId, bondType, stereoDir});
 }
 void V8Process::addRing(const QVariantList& coords, bool aromatic) {
