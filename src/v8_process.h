@@ -8,6 +8,7 @@
 #include <memory>
 #include "qjs_engine.h"
 #include "app/molecule/DocumentState.h"
+#include "app/molecule/TemplateLibrary.h"
 
 class V8Process : public QObject {
     Q_OBJECT
@@ -22,7 +23,11 @@ public:
     // applyLocalState's own comment) through DocumentState instead of the JS engine, and never
     // creates m_engine at all. Defaulted so every existing call site (which never passes this
     // argument) is completely unaffected.
-    explicit V8Process(QObject *parent = nullptr, bool cppEngine = false);
+    // templateLibrary is non-owning: DocumentManager owns the real instance and outlives
+    // every V8Process it creates. Defaulted to nullptr so any hypothetical future
+    // construction site that doesn't need template insertion (e.g. a test) still
+    // compiles unchanged.
+    explicit V8Process(QObject *parent = nullptr, bool cppEngine = false, TemplateLibrary* templateLibrary = nullptr);
     ~V8Process();
 
     QVariantMap primitives() const { return m_primitives; }
@@ -151,6 +156,7 @@ private:
 
     bool m_cppEngine = false;
     std::unique_ptr<DocumentState> m_docState;   // non-null only when m_cppEngine
+    TemplateLibrary* m_templateLibrary = nullptr;   // non-owning; null unless passed in at construction
     QString m_docClipboardMol;   // C++-engine-only clipboard cache: set by copySelection/cutSelection,
                                   // read by pasteSelection. Mirrors the JS worker's module-level
                                   // _clipboard (90-dispatch.js:133-141, 40-serialize.js:120-123).

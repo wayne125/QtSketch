@@ -14,7 +14,8 @@
 #define _USE_MATH_DEFINES
 #include <cmath>
 
-V8Process::V8Process(QObject *parent, bool cppEngine) : QObject(parent), m_cppEngine(cppEngine) {
+V8Process::V8Process(QObject *parent, bool cppEngine, TemplateLibrary* templateLibrary)
+    : QObject(parent), m_cppEngine(cppEngine), m_templateLibrary(templateLibrary) {
     if (m_cppEngine) {
         m_docState = std::make_unique<DocumentState>();
         return;
@@ -303,9 +304,19 @@ void V8Process::loadStructure(const QString& format, const QString& data, bool c
     }
 }
 void V8Process::insertFunctionalGroup(const QString& fgName, double cx, double cy, int targetAtomId, bool fullStructure) {
+    if (m_docState && m_templateLibrary) {
+        m_docState->insertFunctionalGroup(*m_templateLibrary, fgName, cx, cy, targetAtomId, fullStructure);
+        applyLocalState();
+        return;
+    }
     sendCommand("insertFunctionalGroup", {fgName, cx, cy, targetAtomId, fullStructure});
 }
 void V8Process::insertLibraryTemplateFused(const QString& fgName, double cx, double cy, int targetBondId) {
+    if (m_docState && m_templateLibrary) {
+        m_docState->insertLibraryTemplateFused(*m_templateLibrary, fgName, cx, cy, targetBondId);
+        applyLocalState();
+        return;
+    }
     sendCommand("insertLibraryTemplateFused", {fgName, cx, cy, targetBondId});
 }
 void V8Process::requestSaltsAndSolventsList() { sendCommand("getSaltsAndSolventsList"); }
