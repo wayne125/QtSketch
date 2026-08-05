@@ -118,16 +118,53 @@ void DocumentState::redo() {
 }
 
 void DocumentState::reconcileSelectionAfterCommand() {
-    if (m_selection.atoms.isEmpty()) return;
-    QList<AtomId> allAtoms = m_molecule.atomIds();
-    QList<SGroupId> allSgroups = m_molecule.sgroupIds();
-    QSet<AtomId> validAtoms(allAtoms.begin(), allAtoms.end());
-    QSet<SGroupId> validSgroups(allSgroups.begin(), allSgroups.end());
-    QSet<AtomId> kept;
-    for (AtomId id : m_selection.atoms) {
-        if (validAtoms.contains(id) || validSgroups.contains(id)) kept.insert(id);
+    if (!m_selection.atoms.isEmpty()) {
+        QList<AtomId> allAtoms = m_molecule.atomIds();
+        QList<SGroupId> allSgroups = m_molecule.sgroupIds();
+        QSet<AtomId> validAtoms(allAtoms.begin(), allAtoms.end());
+        QSet<SGroupId> validSgroups(allSgroups.begin(), allSgroups.end());
+        QSet<AtomId> kept;
+        for (AtomId id : m_selection.atoms) {
+            if (validAtoms.contains(id) || validSgroups.contains(id)) kept.insert(id);
+        }
+        m_selection.atoms = kept;
     }
-    m_selection.atoms = kept;
+    if (!m_selection.bonds.isEmpty()) {
+        QList<BondId> allBonds = m_molecule.bondIds();
+        QSet<BondId> validBonds(allBonds.begin(), allBonds.end());
+        QSet<BondId> kept;
+        for (BondId id : m_selection.bonds) {
+            if (validBonds.contains(id)) kept.insert(id);
+        }
+        m_selection.bonds = kept;
+    }
+    if (!m_selection.rxnArrows.isEmpty()) {
+        QList<RxnArrowId> allArrows = m_molecule.rxnArrowIds();
+        QSet<RxnArrowId> validArrows(allArrows.begin(), allArrows.end());
+        QSet<RxnArrowId> kept;
+        for (RxnArrowId id : m_selection.rxnArrows) {
+            if (validArrows.contains(id)) kept.insert(id);
+        }
+        m_selection.rxnArrows = kept;
+    }
+    if (!m_selection.rxnPluses.isEmpty()) {
+        QList<RxnPlusId> allPluses = m_molecule.rxnPlusIds();
+        QSet<RxnPlusId> validPluses(allPluses.begin(), allPluses.end());
+        QSet<RxnPlusId> kept;
+        for (RxnPlusId id : m_selection.rxnPluses) {
+            if (validPluses.contains(id)) kept.insert(id);
+        }
+        m_selection.rxnPluses = kept;
+    }
+    if (!m_selection.multitailArrows.isEmpty()) {
+        QList<MultitailArrowId> allMtas = m_molecule.multitailArrowIds();
+        QSet<MultitailArrowId> validMtas(allMtas.begin(), allMtas.end());
+        QSet<MultitailArrowId> kept;
+        for (MultitailArrowId id : m_selection.multitailArrows) {
+            if (validMtas.contains(id)) kept.insert(id);
+        }
+        m_selection.multitailArrows = kept;
+    }
 }
 
 bool DocumentState::isDirty() const {

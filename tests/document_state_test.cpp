@@ -218,6 +218,62 @@ static void test_selectionReconciliationCleansUpAfterDeleteSelectionEntities() {
           "of the same reconciliation, not just the cross-command aliasing scenario above");
 }
 
+static void test_selectionReconciliationRemovesStaleBondId() {
+    std::printf("--- Test: stale bond id is removed from selection after a direct deleteBond ---\n");
+    DocumentState doc;
+    AtomId a = doc.addAtom(QStringLiteral("C"), 0, 0);
+    AtomId b = doc.addAtom(QStringLiteral("C"), 1, 0);
+    BondId bond = doc.addBond(a, b, 1);
+    doc.selection().bonds.insert(bond);
+    CHECK(doc.selection().bonds.contains(bond), "setup: bond is selected");
+
+    doc.deleteBond(bond);
+
+    CHECK(!doc.selection().bonds.contains(bond),
+          "the now-stale bond id was removed from selection after the command that deleted "
+          "it, even though deleteBond itself never touches selection directly -- this is "
+          "the exact gap reconcileSelectionAfterCommand had for every entity type except atoms");
+}
+
+static void test_selectionReconciliationRemovesStaleRxnArrowId() {
+    std::printf("--- Test: stale rxnArrow id is removed from selection after a direct deleteRxnArrow ---\n");
+    DocumentState doc;
+    RxnArrowId arrow = doc.addRxnArrow(0, 0);
+    doc.selection().rxnArrows.insert(arrow);
+    CHECK(doc.selection().rxnArrows.contains(arrow), "setup: rxnArrow is selected");
+
+    doc.deleteRxnArrow(arrow);
+
+    CHECK(!doc.selection().rxnArrows.contains(arrow),
+          "the now-stale rxnArrow id was removed from selection after deletion");
+}
+
+static void test_selectionReconciliationRemovesStaleRxnPlusId() {
+    std::printf("--- Test: stale rxnPlus id is removed from selection after a direct deleteRxnPlus ---\n");
+    DocumentState doc;
+    RxnPlusId plus = doc.addRxnPlus(0, 0);
+    doc.selection().rxnPluses.insert(plus);
+    CHECK(doc.selection().rxnPluses.contains(plus), "setup: rxnPlus is selected");
+
+    doc.deleteRxnPlus(plus);
+
+    CHECK(!doc.selection().rxnPluses.contains(plus),
+          "the now-stale rxnPlus id was removed from selection after deletion");
+}
+
+static void test_selectionReconciliationRemovesStaleMultitailArrowId() {
+    std::printf("--- Test: stale multitailArrow id is removed from selection after a direct deleteMultitailArrow ---\n");
+    DocumentState doc;
+    MultitailArrowId mta = doc.addMultitailArrow(0, 0);
+    doc.selection().multitailArrows.insert(mta);
+    CHECK(doc.selection().multitailArrows.contains(mta), "setup: multitailArrow is selected");
+
+    doc.deleteMultitailArrow(mta);
+
+    CHECK(!doc.selection().multitailArrows.contains(mta),
+          "the now-stale multitailArrow id was removed from selection after deletion");
+}
+
 static void test_documentStateHistoryCap() {
     std::printf("--- Test 3: DocumentState history cap at 50 ---\n");
     DocumentState doc;
@@ -2409,6 +2465,10 @@ int main() {
     test_selectionReconciliationRemovesFullyStaleId();
     test_selectionReconciliationKeepsCollidingRealAtom();
     test_selectionReconciliationCleansUpAfterDeleteSelectionEntities();
+    test_selectionReconciliationRemovesStaleBondId();
+    test_selectionReconciliationRemovesStaleRxnArrowId();
+    test_selectionReconciliationRemovesStaleRxnPlusId();
+    test_selectionReconciliationRemovesStaleMultitailArrowId();
     test_documentStateHistoryCap();
     test_documentStateSelection();
     test_documentStateEditingOperations();
