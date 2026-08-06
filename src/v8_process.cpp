@@ -720,8 +720,14 @@ void V8Process::commitScale() {
 void V8Process::centerStructure() { sendCommand("centerStructure"); }
 void V8Process::normalizeStructure() { sendCommand("normalizeStructure"); }
 
-void V8Process::alignAtoms(const QString& direction) { sendCommand("alignAtoms", {direction}); }
-void V8Process::distributeAtoms(const QString& direction) { sendCommand("distributeAtoms", {direction}); }
+void V8Process::alignAtoms(const QString& direction) {
+    if (m_docState) { m_docState->alignAtoms(direction); applyLocalState(); return; }
+    sendCommand("alignAtoms", {direction});
+}
+void V8Process::distributeAtoms(const QString& direction) {
+    if (m_docState) { m_docState->distributeAtoms(direction); applyLocalState(); return; }
+    sendCommand("distributeAtoms", {direction});
+}
 
 void V8Process::setStereoDescriptors(const QString& jsonMap) {
     if (m_docState) { m_docState->setStereoDescriptors(jsonMap); applyLocalState(); return; }
