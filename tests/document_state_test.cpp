@@ -2839,6 +2839,173 @@ static void test_alignAndDistributeAtoms() {
     }
 }
 
+static void test_setShowExplicitH() {
+    std::printf("--- Test: setShowExplicitH ---\n");
+    DocumentState doc;
+    CHECK(doc.showExplicitH() == false, "showExplicitH defaults to false");
+    doc.setShowExplicitH(true);
+    CHECK(doc.showExplicitH() == true, "setShowExplicitH(true) flips the flag");
+    doc.setShowExplicitH(false);
+    CHECK(doc.showExplicitH() == false, "setShowExplicitH(false) flips it back");
+    CHECK(!doc.canUndo(), "toggling showExplicitH does not push an undo entry (not an edit)");
+}
+
+static void test_layoutSelectedChain() {
+    std::printf("--- Test: layoutSelectedChain ---\n");
+    const double kEps = 1e-6;
+
+    // Happy path: Anchor-A-B-C, select {A,B,C} only.
+    {
+        DocumentState doc;
+        AtomId anchor = doc.addAtom(QStringLiteral("C"), 0.0, 0.0);
+        AtomId a = doc.addAtom(QStringLiteral("C"), 1.0, 0.0);
+        AtomId b = doc.addAtom(QStringLiteral("C"), 2.0, 0.0);
+        AtomId c = doc.addAtom(QStringLiteral("C"), 3.0, 0.0);
+        doc.addBond(anchor, a, 1);
+        doc.addBond(a, b, 1);
+        doc.addBond(b, c, 1);
+        doc.selectAtom(a);
+        doc.addAtomToSelection(b);
+        doc.addAtomToSelection(c);
+
+        double anchorXBefore = 0, anchorYBefore = 0;
+        doc.molecule().atomPos(anchor, anchorXBefore, anchorYBefore);
+
+        doc.layoutSelectedChain();
+
+        double anchorXAfter = 0, anchorYAfter = 0;
+        doc.molecule().atomPos(anchor, anchorXAfter, anchorYAfter);
+        CHECK(anchorXAfter == anchorXBefore && anchorYAfter == anchorYBefore,
+              "layoutSelectedChain: the anchor atom's own position is completely untouched");
+
+        double ax = 0, ay = 0, bx = 0, by = 0, cx = 0, cy = 0;
+        doc.molecule().atomPos(a, ax, ay);
+        doc.molecule().atomPos(b, bx, by);
+        doc.molecule().atomPos(c, cx, cy);
+
+        double distAnchorA = std::sqrt((ax - anchorXAfter) * (ax - anchorXAfter) + (ay - anchorYAfter) * (ay - anchorYAfter));
+        double distAB = std::sqrt((bx - ax) * (bx - ax) + (by - ay) * (by - ay));
+        double distBC = std::sqrt((cx - bx) * (cx - bx) + (cy - by) * (cy - by));
+        CHECK(std::abs(distAnchorA - 1.5) < kEps, "layoutSelectedChain: anchor-to-A distance is the bond length (1.5)");
+        CHECK(std::abs(distAB - 1.5) < kEps, "layoutSelectedChain: A-to-B distance is the bond length (1.5)");
+        CHECK(std::abs(distBC - 1.5) < kEps, "layoutSelectedChain: B-to-C distance is the bond length (1.5)");
+        CHECK(std::abs(ax - 1.0) > kEps || std::abs(ay - 0.0) > kEps,
+              "layoutSelectedChain: atom A's position actually changed from its pre-layout position");
+
+        doc.undo();
+        double axUndone = 0, ayUndone = 0;
+        doc.molecule().atomPos(a, axUndone, ayUndone);
+        CHECK(std::abs(axUndone - 1.0) < kEps && std::abs(ayUndone - 0.0) < kEps,
+              "layoutSelectedChain: undo restores atom A's original position");
+    }
+
+    // Guard: 0 attachment bonds (fully disconnected selected fragment) -> no-op.
+    {
+        DocumentState doc;
+        AtomId a = doc.addAtom(QStringLiteral("C"), 5.0, 5.0);
+        AtomId b = doc.addAtom(QStringLiteral("C"), 6.0, 5.0);
+        doc.addBond(a, b, 1);
+        doc.selectAtom(a);
+        doc.addAtomToSelection(b);
+        bool couldUndoBefore = doc.canUndo();
+        doc.layoutSelectedChain();
+        double x = 0, y = 0;
+        doc.molecule().atomPos(a, x, y);
+        CHECK(x == 5.0 && y == 5.0, "layoutSelectedChain: 0 attachment bonds is a no-op");
+        CHECK(doc.canUndo() == couldUndoBefore, "layoutSelectedChain: no-op pushes no undo entry");
+    }
+
+    // Guard: 2 attachment bonds (selection attached to the rest of the structure at two
+    // separate points) -> no-op.
+    {
+        DocumentState doc;
+        AtomId anchor1 = doc.addAtom(QStringLiteral("C"), 0.0, 0.0);
+        AtomId a = doc.addAtom(QStringLiteral("C"), 1.0, 0.0);
+        AtomId b = doc.addAtom(QStringLiteral("C"), 2.0, 0.0);
+        AtomId anchor2 = doc.addAtom(QStringLiteral("C"), 3.0, 0.0);
+        doc.addBond(anchor1, a, 1);
+        doc.addBond(a, b, 1);
+        doc.addBond(b, anchor2, 1);
+        doc.selectAtom(a);
+        doc.addAtomToSelection(b);
+        doc.layoutSelectedChain();
+        double x = 0, y = 0;
+        doc.molecule().atomPos(a, x, y);
+        CHECK(x == 1.0 && y == 0.0, "layoutSelectedChain: 2 attachment bonds is a no-op");
+    }
+
+    // Guard: branching within the selection (an atom with 3 internal neighbors) -> no-op.
+    {
+        DocumentState doc;
+        AtomId anchor = doc.addAtom(QStringLiteral("C"), 0.0, 0.0);
+        AtomId center = doc.addAtom(QStringLiteral("C"), 1.0, 0.0);
+        AtomId branch1 = doc.addAtom(QStringLiteral("C"), 2.0, 1.0);
+        AtomId branch2 = doc.addAtom(QStringLiteral("C"), 2.0, -1.0);
+        AtomId branch3 = doc.addAtom(QStringLiteral("C"), 2.0, 0.0);
+        doc.addBond(anchor, center, 1);
+        doc.addBond(center, branch1, 1);
+        doc.addBond(center, branch2, 1);
+        doc.addBond(center, branch3, 1);
+        doc.selectAtom(center);
+        doc.addAtomToSelection(branch1);
+        doc.addAtomToSelection(branch2);
+        doc.addAtomToSelection(branch3);
+        doc.layoutSelectedChain();
+        double x = 0, y = 0;
+        doc.molecule().atomPos(center, x, y);
+        CHECK(x == 1.0 && y == 0.0, "layoutSelectedChain: branching within the selection is a no-op");
+    }
+
+    // Guard: a disconnected sub-group within the selection -- a valid attached chain
+    // (Anchor-A-B) plus a wholly separate, unconnected pair also selected (X-Y, bonded to
+    // each other but to nothing else) -> no-op, since the walk from the anchor-adjacent atom
+    // can never reach X/Y.
+    {
+        DocumentState doc;
+        AtomId anchor = doc.addAtom(QStringLiteral("C"), 0.0, 0.0);
+        AtomId a = doc.addAtom(QStringLiteral("C"), 1.0, 0.0);
+        AtomId b = doc.addAtom(QStringLiteral("C"), 2.0, 0.0);
+        AtomId x = doc.addAtom(QStringLiteral("C"), 10.0, 10.0);
+        AtomId y = doc.addAtom(QStringLiteral("C"), 11.0, 10.0);
+        doc.addBond(anchor, a, 1);
+        doc.addBond(a, b, 1);
+        doc.addBond(x, y, 1);
+        doc.selectAtom(a);
+        doc.addAtomToSelection(b);
+        doc.addAtomToSelection(x);
+        doc.addAtomToSelection(y);
+        doc.layoutSelectedChain();
+        double ax = 0, ay = 0, xx = 0, xy = 0;
+        doc.molecule().atomPos(a, ax, ay);
+        doc.molecule().atomPos(x, xx, xy);
+        CHECK(ax == 1.0 && ay == 0.0, "layoutSelectedChain: disconnected sub-group is a no-op (chain atom untouched)");
+        CHECK(xx == 10.0 && xy == 10.0, "layoutSelectedChain: disconnected sub-group is a no-op (orphan atom untouched)");
+    }
+
+    // Documented non-guard: a clean cycle (3-ring A-B-C-A, all selected, anchor bonded only
+    // to A) is NOT rejected -- the walk reaches all 3 atoms before ever needing the ring-
+    // closing bond. This must actually succeed (positions change), matching real behavior.
+    {
+        DocumentState doc;
+        AtomId anchor = doc.addAtom(QStringLiteral("C"), 0.0, 0.0);
+        AtomId a = doc.addAtom(QStringLiteral("C"), 1.0, 0.0);
+        AtomId b = doc.addAtom(QStringLiteral("C"), 2.0, 0.5);
+        AtomId c = doc.addAtom(QStringLiteral("C"), 2.0, -0.5);
+        doc.addBond(anchor, a, 1);
+        doc.addBond(a, b, 1);
+        doc.addBond(b, c, 1);
+        doc.addBond(c, a, 1);
+        doc.selectAtom(a);
+        doc.addAtomToSelection(b);
+        doc.addAtomToSelection(c);
+        doc.layoutSelectedChain();
+        double ax = 0, ay = 0;
+        doc.molecule().atomPos(a, ax, ay);
+        CHECK(std::abs(ax - 1.0) > kEps || std::abs(ay - 0.0) > kEps,
+              "layoutSelectedChain: a clean ring is NOT rejected -- it lays out like a simple chain");
+    }
+}
+
 int main() {
     test_selectionStateBasics();
     test_editCommandBasics();
@@ -2905,6 +3072,8 @@ int main() {
     test_selectFragmentRingChain();
     test_templateLibraryNameLists();
     test_alignAndDistributeAtoms();
+    test_setShowExplicitH();
+    test_layoutSelectedChain();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }
