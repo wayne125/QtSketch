@@ -1,9 +1,15 @@
 // tests/render_primitives_test.cpp
 // Standalone tests for RenderPrimitiveBuilder (chem-core.js migration, sub-project 4).
 #include <cstdio>
+#include <cmath>
+#include <algorithm>
+#include <QHash>
+#include <QJsonObject>
+#include <QJsonArray>
 #include "app/molecule/EditableMolecule.h"
 #include "app/molecule/ElementData.h"
 #include "app/molecule/RenderPrimitives.h"
+#include "app/molecule/TemplateLibrary.h"
 #include "indigo.h"
 
 static int g_pass = 0, g_fail = 0;
@@ -437,6 +443,123 @@ static void test_attachmentPointsAndRGroupBracketPrimitives() {
     }
 }
 
+static void test_templateThumbnailPipeline() {
+    std::printf("--- Test: template thumbnail render + normalize pipeline ---\n");
+    TemplateLibrary lib(
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/fg.sdf"),
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/library.sdf"),
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/salts-and-solvents.sdf"));
+
+    // Mirrors V8Process::requestTemplateThumbnail's own pipeline exactly (lookup -> molfile ->
+    // EditableMolecule -> RenderPrimitiveBuilder::build -> normalize), proving the underlying
+    // recipe works. V8Process itself isn't constructed here -- it needs a QObject parent, a
+    // DocumentManager, and Qt's signal/slot machinery, none of which this standalone test
+    // binary sets up (no other V8Process method is unit-tested in this codebase either; the
+    // wiring itself is verified by live UI testing, same as sub-projects 13-14).
+    auto renderThumbnail = [&](const QString& name) -> QJsonObject {
+        int handle = lib.functionalGroup(name);
+        if (handle < 0) handle = lib.saltOrSolvent(name);
+        if (handle < 0) handle = lib.libraryTemplate(name);
+        if (handle < 0) return QJsonObject();
+
+        EditableMolecule tmp(lib.molfileText(handle));
+        RenderPrimitives prims = RenderPrimitiveBuilder::build(tmp, false);
+
+        QJsonArray atomsArr;
+        QJsonArray bondsArr;
+        if (prims.bbox.valid) {
+            double w = prims.bbox.maxX - prims.bbox.minX;
+            double h = prims.bbox.maxY - prims.bbox.minY;
+            if (w <= 0) w = 1;
+            if (h <= 0) h = 1;
+            const double pad = 0.1;
+            double scale = (1.0 - 2.0 * pad) / std::max(w, h);
+            double offX = pad + (1.0 - 2.0 * pad - w * scale) / 2.0;
+            double offY = pad + (1.0 - 2.0 * pad - h * scale) / 2.0;
+
+            QHash<AtomId, QPointF> positions;
+            for (const AtomPrim& a : prims.atoms) {
+                double nx = offX + (a.x - prims.bbox.minX) * scale;
+                double ny = offY + (a.y - prims.bbox.minY) * scale;
+                positions.insert(a.id, QPointF(nx, ny));
+                QJsonObject o;
+                o["x"] = nx;
+                o["y"] = ny;
+                o["label"] = a.element;
+                atomsArr.append(o);
+            }
+            for (const BondPrim& b : prims.bonds) {
+                if (!positions.contains(b.begin) || !positions.contains(b.end)) continue;
+                QPointF p1 = positions.value(b.begin);
+                QPointF p2 = positions.value(b.end);
+                QJsonObject o;
+                o["x1"] = p1.x();
+                o["y1"] = p1.y();
+                o["x2"] = p2.x();
+                o["y2"] = p2.y();
+                o["type"] = b.type > 0 ? b.type : 1;
+                o["stereo"] = b.stereo;
+                bondsArr.append(o);
+            }
+        }
+        QJsonObject result;
+        result["atoms"] = atomsArr;
+        result["bonds"] = bondsArr;
+        return result;
+    };
+
+    // "Ac": 3 atoms, 2 bonds (one real C=O double bond), everything normalized into [0,1].
+    {
+        QJsonObject thumb = renderThumbnail(QStringLiteral("Ac"));
+        QJsonArray atoms = thumb["atoms"].toArray();
+        QJsonArray bonds = thumb["bonds"].toArray();
+        CHECK(atoms.size() == 3, "\"Ac\" thumbnail has 3 atoms");
+        bool allInRange = true;
+        for (const QJsonValue& v : atoms) {
+            double x = v.toObject()["x"].toDouble();
+            double y = v.toObject()["y"].toDouble();
+            if (x < 0.0 || x > 1.0 || y < 0.0 || y > 1.0) allInRange = false;
+        }
+        CHECK(allInRange, "every \"Ac\" atom lands within [0,1]");
+        CHECK(bonds.size() == 2, "\"Ac\" thumbnail has 2 bonds");
+        bool foundDoubleBond = false;
+        bool allBondsInRange = true;
+        for (const QJsonValue& v : bonds) {
+            QJsonObject bo = v.toObject();
+            if (bo["type"].toInt() == 2) foundDoubleBond = true;
+            double x1 = bo["x1"].toDouble(), y1 = bo["y1"].toDouble();
+            double x2 = bo["x2"].toDouble(), y2 = bo["y2"].toDouble();
+            if (x1 < 0.0 || x1 > 1.0 || y1 < 0.0 || y1 > 1.0 ||
+                x2 < 0.0 || x2 > 1.0 || y2 < 0.0 || y2 > 1.0) allBondsInRange = false;
+        }
+        CHECK(foundDoubleBond, "\"Ac\"'s real C=O bond reports type 2");
+        CHECK(allBondsInRange, "every \"Ac\" bond endpoint lands within [0,1]");
+    }
+
+    // "water": the real, single-atom (w=h=0) case the zero-width/zero-height guard exists for.
+    // Without that guard this produces NaN/Infinity instead of a finite, in-range value.
+    {
+        QJsonObject thumb = renderThumbnail(QStringLiteral("water"));
+        QJsonArray atoms = thumb["atoms"].toArray();
+        CHECK(atoms.size() == 1, "\"water\" thumbnail has exactly 1 atom");
+        if (atoms.size() == 1) {
+            double x = atoms[0].toObject()["x"].toDouble();
+            double y = atoms[0].toObject()["y"].toDouble();
+            CHECK(std::isfinite(x) && std::isfinite(y),
+                  "\"water\"'s single atom has finite (not NaN/Infinity) coordinates");
+            CHECK(x >= 0.0 && x <= 1.0 && y >= 0.0 && y <= 1.0,
+                  "\"water\"'s single atom lands within [0,1]");
+        }
+    }
+
+    // Unknown name: this test's own miss-signal is an empty QJsonObject, standing in for the
+    // real getTemplateThumbnail's literal "{}" wire response for the same case.
+    {
+        QJsonObject thumb = renderThumbnail(QStringLiteral("NotARealTemplateName"));
+        CHECK(thumb.isEmpty(), "unknown template name yields an empty result (maps to the real \"{}\" response)");
+    }
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -445,6 +568,7 @@ int main() {
     test_atomPrimitivesAndSgroupContraction();
     test_ringsBondsAndAuxiliaryPrimitives();
     test_attachmentPointsAndRGroupBracketPrimitives();
+    test_templateThumbnailPipeline();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
