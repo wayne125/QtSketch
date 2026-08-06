@@ -14,6 +14,9 @@
 #define _USE_MATH_DEFINES
 #include <cmath>
 #include <algorithm>
+#include <QtConcurrent>
+#include <QPointer>
+#include "indigo.h"
 
 V8Process::V8Process(QObject *parent, bool cppEngine, TemplateLibrary* templateLibrary)
     : QObject(parent), m_cppEngine(cppEngine), m_templateLibrary(templateLibrary) {
@@ -362,6 +365,56 @@ void V8Process::insertLibraryTemplateFused(const QString& fgName, double cx, dou
 void V8Process::requestSaltsAndSolventsList() { sendCommand("getSaltsAndSolventsList"); }
 void V8Process::requestFunctionalGroupsList() { sendCommand("getFunctionalGroupsList"); }
 void V8Process::requestTemplateLibraryList() { sendCommand("getTemplateLibraryList"); }
+// Render + normalize a single thumbnail's atoms/bonds. Runs entirely on whatever thread calls
+// it, using whatever Indigo session is already active there -- caller's responsibility.
+static QString renderThumbnailJson(const QString& molfile) {
+    EditableMolecule tmp(molfile);
+    RenderPrimitives prims = RenderPrimitiveBuilder::build(tmp, /*showExplicitH=*/false);
+
+    QJsonArray atomsArr;
+    QJsonArray bondsArr;
+    if (prims.bbox.valid) {
+        double w = prims.bbox.maxX - prims.bbox.minX;
+        double h = prims.bbox.maxY - prims.bbox.minY;
+        if (w <= 0) w = 1;
+        if (h <= 0) h = 1;
+        const double pad = 0.1;
+        double scale = (1.0 - 2.0 * pad) / std::max(w, h);
+        double offX = pad + (1.0 - 2.0 * pad - w * scale) / 2.0;
+        double offY = pad + (1.0 - 2.0 * pad - h * scale) / 2.0;
+
+        QHash<AtomId, QPointF> positions;
+        for (const AtomPrim& a : prims.atoms) {
+            double nx = offX + (a.x - prims.bbox.minX) * scale;
+            double ny = offY + (a.y - prims.bbox.minY) * scale;
+            positions.insert(a.id, QPointF(nx, ny));
+            QJsonObject o;
+            o["x"] = nx;
+            o["y"] = ny;
+            o["label"] = a.element;
+            atomsArr.append(o);
+        }
+        for (const BondPrim& b : prims.bonds) {
+            if (!positions.contains(b.begin) || !positions.contains(b.end)) continue;
+            QPointF p1 = positions.value(b.begin);
+            QPointF p2 = positions.value(b.end);
+            QJsonObject o;
+            o["x1"] = p1.x();
+            o["y1"] = p1.y();
+            o["x2"] = p2.x();
+            o["y2"] = p2.y();
+            o["type"] = b.type > 0 ? b.type : 1;
+            o["stereo"] = b.stereo;
+            bondsArr.append(o);
+        }
+    }
+
+    QJsonObject result;
+    result["atoms"] = atomsArr;
+    result["bonds"] = bondsArr;
+    return QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact));
+}
+
 void V8Process::requestTemplateThumbnail(const QString& name, const QString& reqId) {
     if (m_docState && m_templateLibrary) {
         int handle = m_templateLibrary->functionalGroup(name);
@@ -372,51 +425,37 @@ void V8Process::requestTemplateThumbnail(const QString& name, const QString& req
             return;
         }
 
-        EditableMolecule tmp(m_templateLibrary->molfileText(handle));
-        RenderPrimitives prims = RenderPrimitiveBuilder::build(tmp, /*showExplicitH=*/false);
+        // Rendering happens on a background thread, not here: a handful of real library
+        // templates (confirmed empirically -- e.g. "C20H20", a dodecahedrane cage) make
+        // Indigo's own SSSR ring-perception (EditableMolecule::ringMembership, called from
+        // RenderPrimitiveBuilder::build) take an unbounded amount of time for certain highly
+        // symmetric polycyclic topologies -- a known hard case for ring-perception algorithms
+        // in general, not a bug in this port. On the main thread this manifested as a real,
+        // reproduced Windows AppHang (confirmed via Event Viewer) the moment the Library
+        // picker opened and synchronously requested all 249 thumbnails. Backgrounding it, the
+        // exact same pattern already proven throughout IndigoService.cpp (fresh session
+        // per task, QPointer-guarded emit marshaled back via QMetaObject::invokeMethod on
+        // qApp), means a single pathological template can only ever delay its OWN thumbnail
+        // -- never block the UI thread or the rest of the app.
+        QString molfile = m_templateLibrary->molfileText(handle);
+        QPointer<V8Process> self = this;
 
-        QJsonArray atomsArr;
-        QJsonArray bondsArr;
-        if (prims.bbox.valid) {
-            double w = prims.bbox.maxX - prims.bbox.minX;
-            double h = prims.bbox.maxY - prims.bbox.minY;
-            if (w <= 0) w = 1;
-            if (h <= 0) h = 1;
-            const double pad = 0.1;
-            double scale = (1.0 - 2.0 * pad) / std::max(w, h);
-            double offX = pad + (1.0 - 2.0 * pad - w * scale) / 2.0;
-            double offY = pad + (1.0 - 2.0 * pad - h * scale) / 2.0;
+        (void)QtConcurrent::run([self, reqId, molfile]() {
+            unsigned long long threadSessionId = indigoAllocSessionId();
+            indigoSetSessionId(threadSessionId);
 
-            QHash<AtomId, QPointF> positions;
-            for (const AtomPrim& a : prims.atoms) {
-                double nx = offX + (a.x - prims.bbox.minX) * scale;
-                double ny = offY + (a.y - prims.bbox.minY) * scale;
-                positions.insert(a.id, QPointF(nx, ny));
-                QJsonObject o;
-                o["x"] = nx;
-                o["y"] = ny;
-                o["label"] = a.element;
-                atomsArr.append(o);
+            QString json = QStringLiteral("{\"atoms\":[],\"bonds\":[]}");
+            try {
+                json = renderThumbnailJson(molfile);
+            } catch (...) {
             }
-            for (const BondPrim& b : prims.bonds) {
-                if (!positions.contains(b.begin) || !positions.contains(b.end)) continue;
-                QPointF p1 = positions.value(b.begin);
-                QPointF p2 = positions.value(b.end);
-                QJsonObject o;
-                o["x1"] = p1.x();
-                o["y1"] = p1.y();
-                o["x2"] = p2.x();
-                o["y2"] = p2.y();
-                o["type"] = b.type > 0 ? b.type : 1;
-                o["stereo"] = b.stereo;
-                bondsArr.append(o);
-            }
-        }
 
-        QJsonObject result;
-        result["atoms"] = atomsArr;
-        result["bonds"] = bondsArr;
-        emit structureReady(reqId, QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact)));
+            indigoReleaseSessionId(threadSessionId);
+
+            QMetaObject::invokeMethod(qApp, [self, reqId, json]() {
+                if (self) emit self->structureReady(reqId, json);
+            }, Qt::QueuedConnection);
+        });
         return;
     }
     sendCommand("getTemplateThumbnail", {name, reqId});
