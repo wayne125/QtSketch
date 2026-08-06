@@ -2639,6 +2639,71 @@ static void test_selectFragmentRingChain() {
     }
 }
 
+static void test_templateLibraryNameLists() {
+    std::printf("--- Test: TemplateLibrary name-order and <group> metadata ---\n");
+    TemplateLibrary lib(
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/fg.sdf"),
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/library.sdf"),
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/salts-and-solvents.sdf"));
+
+    // functionalGroupNames(): file insertion order, unsorted -- fg.sdf's first
+    // record is "Ac", last is "Ts" (confirmed by direct file inspection and by
+    // what the live JS-engine picker already showed before this port).
+    {
+        QStringList names = lib.functionalGroupNames();
+        CHECK(names.size() == 62, "functionalGroupNames() returns all 62 fg.sdf records");
+        CHECK(!names.isEmpty() && names.first() == QStringLiteral("Ac"),
+              "functionalGroupNames() first entry is \"Ac\" (real file order)");
+        CHECK(!names.isEmpty() && names.last() == QStringLiteral("Ts"),
+              "functionalGroupNames() last entry is \"Ts\" (real file order)");
+    }
+
+    // libraryTemplateNames(): library.sdf has 276 raw records, but only 250 distinct
+    // names -- 26 records are genuine same-name duplicates in the real bundled file
+    // (e.g. "alpha-D-Allopyranose", "Bicyclo[4-1-1]octane", "Ring5" each appear 2-4
+    // times; confirmed by direct inspection, not a loading bug -- the real JS engine's
+    // Object.keys()-based store would collapse them identically). Of those 250, one
+    // more ("Chlorophyll A_dative") is a V3000-format record using a dative/coordinate
+    // bond that this Indigo build's indigoLoadMoleculeFromString rejects outright even
+    // in isolation -- a real, narrow Indigo parsing limitation unrelated to this
+    // loader, out of scope to chase further for one exotic organometallic template.
+    // 250 - 1 = 249 is the real, currently achievable count.
+    {
+        QStringList names = lib.libraryTemplateNames();
+        CHECK(names.size() == 249, "libraryTemplateNames() returns 249 of library.sdf's 250 distinct names");
+        CHECK(!names.isEmpty() && names.first() == QStringLiteral("alpha-D-Allopyranose"),
+              "libraryTemplateNames() first entry is \"alpha-D-Allopyranose\" (real file order)");
+        CHECK(!names.isEmpty() && names.last() == QStringLiteral("Phenylalanine mustard"),
+              "libraryTemplateNames() last entry is \"Phenylalanine mustard\" (real file order)");
+    }
+
+    // saltOrSolventNames(): 135 records, real first/last by file order.
+    {
+        QStringList names = lib.saltOrSolventNames();
+        CHECK(names.size() == 135, "saltOrSolventNames() returns all 135 salts-and-solvents.sdf records");
+        CHECK(!names.isEmpty() && names.first() == QStringLiteral("acetic acid"),
+              "saltOrSolventNames() first entry is \"acetic acid\" (real file order)");
+        CHECK(!names.isEmpty() && names.last() == QStringLiteral("Ammonium-sulfate"),
+              "saltOrSolventNames() last entry is \"Ammonium-sulfate\" (real file order)");
+    }
+
+    // functionalGroupGroup(): real fallback value when no <group> is present.
+    CHECK(lib.functionalGroupGroup(QStringLiteral("Ac")) == QStringLiteral("Functional Groups"),
+          "functionalGroupGroup(\"Ac\") falls back to \"Functional Groups\" (fg.sdf has no <group> field)");
+    CHECK(lib.functionalGroupGroup(QStringLiteral("NotARealName")) == QStringLiteral("Functional Groups"),
+          "functionalGroupGroup() on an unknown name also falls back to \"Functional Groups\"");
+
+    // libraryTemplateGroup(): real, diverse <group> values, at least 3 exact pairs asserted.
+    CHECK(lib.libraryTemplateGroup(QStringLiteral("alpha-D-Allopyranose")) == QStringLiteral("alpha-D-Sugars"),
+          "libraryTemplateGroup(\"alpha-D-Allopyranose\") == \"alpha-D-Sugars\"");
+    CHECK(lib.libraryTemplateGroup(QStringLiteral("Cyclopenta-1,3-diene")) == QStringLiteral("Aromatics"),
+          "libraryTemplateGroup(\"Cyclopenta-1,3-diene\") == \"Aromatics\"");
+    CHECK(lib.libraryTemplateGroup(QStringLiteral("Bicyclo[1-1-1]pentane")) == QStringLiteral("Bicycles"),
+          "libraryTemplateGroup(\"Bicyclo[1-1-1]pentane\") == \"Bicycles\"");
+    CHECK(lib.libraryTemplateGroup(QStringLiteral("NotARealName")) == QStringLiteral("Templates"),
+          "libraryTemplateGroup() on an unknown name falls back to \"Templates\"");
+}
+
 int main() {
     test_selectionStateBasics();
     test_editCommandBasics();
@@ -2703,6 +2768,7 @@ int main() {
     test_changeBondTypeAndStereo();
     test_selectByRectAndLasso();
     test_selectFragmentRingChain();
+    test_templateLibraryNameLists();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }
