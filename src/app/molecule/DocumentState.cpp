@@ -1819,6 +1819,108 @@ void DocumentState::commitScale() {
     m_scaleTotalFactor = 1.0;
 }
 
+void DocumentState::alignAtoms(const QString& direction) {
+    if (m_selection.atoms.size() < 2) return;
+
+    const bool horizontal = (direction == QStringLiteral("left") || direction == QStringLiteral("right")
+                              || direction == QStringLiteral("centerH"));
+    const bool vertical = (direction == QStringLiteral("top") || direction == QStringLiteral("bottom")
+                            || direction == QStringLiteral("centerV"));
+    if (!horizontal && !vertical) return;
+
+    double minV = 0, maxV = 0, sumV = 0;
+    bool any = false;
+    for (AtomId id : m_selection.atoms) {
+        double x = 0, y = 0;
+        if (!m_molecule.atomPos(id, x, y)) continue;
+        double v = horizontal ? x : y;
+        if (!any) { minV = maxV = v; any = true; }
+        else {
+            if (v < minV) minV = v;
+            if (v > maxV) maxV = v;
+        }
+        sumV += v;
+    }
+    if (!any) return;
+
+    double target;
+    if (direction == QStringLiteral("left") || direction == QStringLiteral("top")) target = minV;
+    else if (direction == QStringLiteral("right") || direction == QStringLiteral("bottom")) target = maxV;
+    else target = sumV / m_selection.atoms.size();
+
+    QList<AtomId> ids;
+    QList<QPointF> oldPos;
+    for (AtomId id : m_selection.atoms) {
+        double x = 0, y = 0;
+        if (!m_molecule.atomPos(id, x, y)) continue;
+        ids.append(id);
+        oldPos.append(QPointF(x, y));
+    }
+
+    EditableMolecule& mol = m_molecule;
+    EditCommand cmd;
+    cmd.execute = [&mol, ids, oldPos, horizontal, target]() {
+        for (int i = 0; i < ids.size(); ++i) {
+            double x = oldPos[i].x(), y = oldPos[i].y();
+            if (horizontal) x = target; else y = target;
+            mol.setAtomPos(ids[i], x, y);
+        }
+    };
+    cmd.invert = [&mol, ids, oldPos]() {
+        for (int i = 0; i < ids.size(); ++i) mol.setAtomPos(ids[i], oldPos[i].x(), oldPos[i].y());
+    };
+    executeCommand(std::move(cmd));
+}
+
+void DocumentState::distributeAtoms(const QString& direction) {
+    if (m_selection.atoms.size() < 3) return;
+
+    const bool horizontal = (direction == QStringLiteral("horizontal"));
+
+    QList<AtomId> ids;
+    for (AtomId id : m_selection.atoms) ids.append(id);
+
+    QList<QPointF> oldPos;
+    QList<double> coordFor;
+    for (AtomId id : ids) {
+        double x = 0, y = 0;
+        m_molecule.atomPos(id, x, y);
+        oldPos.append(QPointF(x, y));
+        coordFor.append(horizontal ? x : y);
+    }
+
+    QList<int> order;
+    for (int i = 0; i < ids.size(); ++i) order.append(i);
+    std::sort(order.begin(), order.end(), [&coordFor](int a, int b) { return coordFor[a] < coordFor[b]; });
+
+    const double minC = coordFor[order.first()];
+    const double maxC = coordFor[order.last()];
+    const double step = (maxC - minC) / (order.size() - 1);
+
+    QList<AtomId> sortedIds;
+    QList<QPointF> sortedOldPos;
+    QList<double> newCoord;
+    for (int i = 0; i < order.size(); ++i) {
+        sortedIds.append(ids[order[i]]);
+        sortedOldPos.append(oldPos[order[i]]);
+        newCoord.append(minC + step * i);
+    }
+
+    EditableMolecule& mol = m_molecule;
+    EditCommand cmd;
+    cmd.execute = [&mol, sortedIds, sortedOldPos, newCoord, horizontal]() {
+        for (int i = 0; i < sortedIds.size(); ++i) {
+            double x = sortedOldPos[i].x(), y = sortedOldPos[i].y();
+            if (horizontal) x = newCoord[i]; else y = newCoord[i];
+            mol.setAtomPos(sortedIds[i], x, y);
+        }
+    };
+    cmd.invert = [&mol, sortedIds, sortedOldPos]() {
+        for (int i = 0; i < sortedIds.size(); ++i) mol.setAtomPos(sortedIds[i], sortedOldPos[i].x(), sortedOldPos[i].y());
+    };
+    executeCommand(std::move(cmd));
+}
+
 void DocumentState::resetAllDragState() {
     resetMoveDragState();
     m_rotateOrigPos.clear();

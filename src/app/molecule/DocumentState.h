@@ -331,6 +331,13 @@ public:
     void scaleSelectionLive(double factor, double anchorX, double anchorY);
     void commitScale();
 
+    // Structure-cleanup commands ported from src/worker/20-edit.js:753-834. Both operate on
+    // the current selection's atoms only (never rxn-arrows/pluses/etc, unlike commitMove/
+    // commitScale) -- confirmed by direct read of the real JS, which only ever touches
+    // _selection.atom_ids for these two commands.
+    void alignAtoms(const QString& direction);
+    void distributeAtoms(const QString& direction);
+
     // Generic ring construction, ported from 30-templates.js's addRing +
     // perceiveRingAlternation. `coords` is a flat [x0,y0, x1,y1, ...] list in
     // exactly the caller's winding order -- NEVER canonicalized, since the
