@@ -2704,6 +2704,141 @@ static void test_templateLibraryNameLists() {
           "libraryTemplateGroup() on an unknown name falls back to \"Templates\"");
 }
 
+static void test_alignAndDistributeAtoms() {
+    std::printf("--- Test: alignAtoms / distributeAtoms ---\n");
+
+    // alignAtoms("left"): target is the real minimum x; y untouched.
+    {
+        DocumentState doc;
+        AtomId a = doc.addAtom(QStringLiteral("C"), 5.0, 1.0);
+        AtomId b = doc.addAtom(QStringLiteral("C"), 1.0, 2.0);   // real minimum x
+        AtomId c = doc.addAtom(QStringLiteral("C"), 3.0, 3.0);
+        doc.selectAtom(a); doc.addAtomToSelection(b); doc.addAtomToSelection(c);
+        doc.alignAtoms(QStringLiteral("left"));
+        double x = 0, y = 0;
+        doc.molecule().atomPos(a, x, y);
+        CHECK(x == 1.0 && y == 1.0, "alignAtoms(left): atom a moved to real min x, y untouched");
+        doc.molecule().atomPos(b, x, y);
+        CHECK(x == 1.0 && y == 2.0, "alignAtoms(left): atom b (already at min) stays put");
+        doc.molecule().atomPos(c, x, y);
+        CHECK(x == 1.0 && y == 3.0, "alignAtoms(left): atom c moved to real min x, y untouched");
+        doc.undo();
+        doc.molecule().atomPos(a, x, y);
+        CHECK(x == 5.0 && y == 1.0, "alignAtoms(left): undo restores atom a's original position");
+    }
+
+    // alignAtoms("right"): target is the real maximum x.
+    {
+        DocumentState doc;
+        AtomId a = doc.addAtom(QStringLiteral("C"), 5.0, 0.0);
+        AtomId b = doc.addAtom(QStringLiteral("C"), 9.0, 0.0);   // real maximum x
+        doc.selectAtom(a); doc.addAtomToSelection(b);
+        doc.alignAtoms(QStringLiteral("right"));
+        double x = 0, y = 0;
+        doc.molecule().atomPos(a, x, y);
+        CHECK(x == 9.0, "alignAtoms(right): atom a moved to real max x");
+    }
+
+    // alignAtoms("centerH"): target is the real average x.
+    {
+        DocumentState doc;
+        AtomId a = doc.addAtom(QStringLiteral("C"), 0.0, 0.0);
+        AtomId b = doc.addAtom(QStringLiteral("C"), 10.0, 0.0);
+        doc.selectAtom(a); doc.addAtomToSelection(b);
+        doc.alignAtoms(QStringLiteral("centerH"));
+        double x = 0, y = 0;
+        doc.molecule().atomPos(a, x, y);
+        CHECK(x == 5.0, "alignAtoms(centerH): atom a moved to the real average x (5.0)");
+        doc.molecule().atomPos(b, x, y);
+        CHECK(x == 5.0, "alignAtoms(centerH): atom b moved to the real average x (5.0)");
+    }
+
+    // alignAtoms("top"): vertical axis, real minimum y.
+    {
+        DocumentState doc;
+        AtomId a = doc.addAtom(QStringLiteral("C"), 0.0, 5.0);
+        AtomId b = doc.addAtom(QStringLiteral("C"), 0.0, 1.0);   // real minimum y
+        doc.selectAtom(a); doc.addAtomToSelection(b);
+        doc.alignAtoms(QStringLiteral("top"));
+        double x = 0, y = 0;
+        doc.molecule().atomPos(a, x, y);
+        CHECK(y == 1.0, "alignAtoms(top): atom a moved to real min y");
+    }
+
+    // alignAtoms: guard, <2 selected atoms is a no-op.
+    {
+        DocumentState doc;
+        AtomId a = doc.addAtom(QStringLiteral("C"), 5.0, 1.0);
+        doc.selectAtom(a);
+        doc.alignAtoms(QStringLiteral("left"));
+        double x = 0, y = 0;
+        doc.molecule().atomPos(a, x, y);
+        CHECK(x == 5.0 && y == 1.0, "alignAtoms: <2 selected atoms is a no-op");
+    }
+
+    // alignAtoms: an atom present but NOT selected is untouched.
+    {
+        DocumentState doc;
+        AtomId a = doc.addAtom(QStringLiteral("C"), 5.0, 0.0);
+        AtomId b = doc.addAtom(QStringLiteral("C"), 1.0, 0.0);
+        AtomId unselected = doc.addAtom(QStringLiteral("C"), 42.0, 42.0);
+        doc.selectAtom(a); doc.addAtomToSelection(b);
+        doc.alignAtoms(QStringLiteral("left"));
+        double x = 0, y = 0;
+        doc.molecule().atomPos(unselected, x, y);
+        CHECK(x == 42.0 && y == 42.0, "alignAtoms: an unselected atom is left completely untouched");
+    }
+
+    // distributeAtoms("horizontal"): 4 atoms at irregular x, evenly spaced after.
+    {
+        DocumentState doc;
+        AtomId a = doc.addAtom(QStringLiteral("C"), 0.0, 0.0);
+        AtomId b = doc.addAtom(QStringLiteral("C"), 1.0, 0.0);
+        AtomId c = doc.addAtom(QStringLiteral("C"), 8.0, 0.0);
+        AtomId d = doc.addAtom(QStringLiteral("C"), 9.0, 0.0);
+        doc.selectAtom(a); doc.addAtomToSelection(b); doc.addAtomToSelection(c); doc.addAtomToSelection(d);
+        doc.distributeAtoms(QStringLiteral("horizontal"));
+        // real step = (9-0)/(4-1) = 3.0 -> expected x: 0, 3, 6, 9
+        double x = 0, y = 0;
+        doc.molecule().atomPos(a, x, y);
+        CHECK(x == 0.0, "distributeAtoms(horizontal): min-x atom stays at 0.0");
+        doc.molecule().atomPos(b, x, y);
+        CHECK(x == 3.0, "distributeAtoms(horizontal): 2nd-sorted atom lands at min+step (3.0)");
+        doc.molecule().atomPos(c, x, y);
+        CHECK(x == 6.0, "distributeAtoms(horizontal): 3rd-sorted atom lands at min+2*step (6.0)");
+        doc.molecule().atomPos(d, x, y);
+        CHECK(x == 9.0, "distributeAtoms(horizontal): max-x atom stays at 9.0");
+        doc.undo();
+        doc.molecule().atomPos(b, x, y);
+        CHECK(x == 1.0, "distributeAtoms(horizontal): undo restores original x positions");
+    }
+
+    // distributeAtoms("vertical"): same, on the y axis.
+    {
+        DocumentState doc;
+        AtomId a = doc.addAtom(QStringLiteral("C"), 0.0, 0.0);
+        AtomId b = doc.addAtom(QStringLiteral("C"), 0.0, 2.0);
+        AtomId c = doc.addAtom(QStringLiteral("C"), 0.0, 4.0);
+        doc.selectAtom(a); doc.addAtomToSelection(b); doc.addAtomToSelection(c);
+        doc.distributeAtoms(QStringLiteral("vertical"));
+        double x = 0, y = 0;
+        doc.molecule().atomPos(b, x, y);
+        CHECK(y == 2.0, "distributeAtoms(vertical): already-evenly-spaced middle atom stays put");
+    }
+
+    // distributeAtoms: guard, <3 selected atoms is a no-op.
+    {
+        DocumentState doc;
+        AtomId a = doc.addAtom(QStringLiteral("C"), 5.0, 1.0);
+        AtomId b = doc.addAtom(QStringLiteral("C"), 9.0, 1.0);
+        doc.selectAtom(a); doc.addAtomToSelection(b);
+        doc.distributeAtoms(QStringLiteral("horizontal"));
+        double x = 0, y = 0;
+        doc.molecule().atomPos(a, x, y);
+        CHECK(x == 5.0, "distributeAtoms: <3 selected atoms is a no-op");
+    }
+}
+
 int main() {
     test_selectionStateBasics();
     test_editCommandBasics();
@@ -2769,6 +2904,7 @@ int main() {
     test_selectByRectAndLasso();
     test_selectFragmentRingChain();
     test_templateLibraryNameLists();
+    test_alignAndDistributeAtoms();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }
