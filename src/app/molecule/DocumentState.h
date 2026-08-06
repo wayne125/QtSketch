@@ -38,6 +38,13 @@ public:
     bool canUndo() const;
     bool canRedo() const;
 
+    // Ports src/worker/90-dispatch.js:147's setShowExplicitH -- a bare module-level variable
+    // assignment in the real JS, deliberately NOT wrapped in makeCmd/executeCommand: it's a
+    // display preference, not an edit, so it is not undoable and does not mark the document
+    // dirty. Read by V8Process::applyLocalState() on every render.
+    void setShowExplicitH(bool show);
+    bool showExplicitH() const;
+
     void selectAtom(AtomId id);
     void selectBond(BondId id);
     void selectRxnArrow(RxnArrowId id);
@@ -338,6 +345,13 @@ public:
     void alignAtoms(const QString& direction);
     void distributeAtoms(const QString& direction);
 
+    // Ports src/worker/20-edit.js:836-956's layoutSelectedChain. Re-positions only the
+    // selected atoms, leaving everything else fixed. 4 validation gates, each a silent no-op
+    // on failure (never a partial/best-effort layout) -- see largestEmptyAngleAt below and the
+    // spec's precision note on gate 3 (a clean cycle is NOT rejected, only a genuinely
+    // disconnected sub-group is).
+    void layoutSelectedChain();
+
     // Generic ring construction, ported from 30-templates.js's addRing +
     // perceiveRingAlternation. `coords` is a flat [x0,y0, x1,y1, ...] list in
     // exactly the caller's winding order -- NEVER canonicalized, since the
@@ -423,6 +437,14 @@ public:
 private:
     enum class DiscreteTransform { RotateCW, RotateCCW, FlipH, FlipV };
     void applyDiscreteTransform(DiscreteTransform mode);
+
+    // DocumentState's own equivalent of V8Process::getLargestEmptyAngle (v8_process.cpp:768-808),
+    // built directly on EditableMolecule instead of rendered QVariantMap primitives. That
+    // existing method stays untouched -- this is an independent port for layoutSelectedChain's
+    // placement step, not a refactor of it. Same algorithm: 0 neighbors -> 0; 1 neighbor ->
+    // that neighbor's angle + 2.61799 (fixed ~150 degree offset); 2+ neighbors -> largest
+    // circular gap between consecutive sorted neighbor angles, midpoint of that gap.
+    double largestEmptyAngleAt(AtomId id) const;
 
     static constexpr double kBondLength = 1.5;   // chem-core's StandardBondLength
 
@@ -510,6 +532,7 @@ private:
     int m_historyPointer = -1;
     bool m_inCommand = false;
     bool m_dirty = false;
+    bool m_showExplicitH = false;
     SelectionState m_selection;
     static constexpr int kHistorySize = 50;
 };

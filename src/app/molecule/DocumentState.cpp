@@ -230,6 +230,14 @@ bool DocumentState::canRedo() const {
     return m_historyPointer < static_cast<int>(m_history.size()) - 1;
 }
 
+void DocumentState::setShowExplicitH(bool show) {
+    m_showExplicitH = show;
+}
+
+bool DocumentState::showExplicitH() const {
+    return m_showExplicitH;
+}
+
 void DocumentState::selectAtom(AtomId id) {
     m_selection.clear();
     m_selection.atoms.insert(id);
@@ -1917,6 +1925,135 @@ void DocumentState::distributeAtoms(const QString& direction) {
     };
     cmd.invert = [&mol, sortedIds, sortedOldPos]() {
         for (int i = 0; i < sortedIds.size(); ++i) mol.setAtomPos(sortedIds[i], sortedOldPos[i].x(), sortedOldPos[i].y());
+    };
+    executeCommand(std::move(cmd));
+}
+
+double DocumentState::largestEmptyAngleAt(AtomId id) const {
+    const double kPi = 3.14159265358979323846;
+    double ax = 0, ay = 0;
+    if (!m_molecule.atomPos(id, ax, ay)) return 0.0;
+
+    QList<double> neighborAngles;
+    for (AtomId nid : m_molecule.neighborAtomIds(id)) {
+        double nx = 0, ny = 0;
+        if (!m_molecule.atomPos(nid, nx, ny)) continue;
+        neighborAngles.append(std::atan2(ny - ay, nx - ax));
+    }
+
+    if (neighborAngles.isEmpty()) return 0.0;
+    if (neighborAngles.size() == 1) return neighborAngles.first() + 2.61799;
+
+    std::sort(neighborAngles.begin(), neighborAngles.end());
+    double maxGap = 0.0, bestAngle = 0.0;
+    for (int i = 0; i < neighborAngles.size(); ++i) {
+        double a1 = neighborAngles[i];
+        double a2 = neighborAngles[(i + 1) % neighborAngles.size()];
+        double gap = a2 - a1;
+        while (gap <= 0) gap += 2.0 * kPi;
+        if (gap > maxGap) {
+            maxGap = gap;
+            bestAngle = a1 + gap / 2.0;
+        }
+    }
+    return bestAngle;
+}
+
+void DocumentState::layoutSelectedChain() {
+    QList<AtomId> sel;
+    for (AtomId id : m_selection.atoms) sel.append(id);
+    if (sel.isEmpty()) return;
+
+    // Gate 1: classify every bond touching the selection. Both ends selected -> internal
+    // (builds the chain graph). Exactly one end selected -> a candidate attachment point to
+    // the rest of the structure. Exactly one such attachment bond must exist.
+    QHash<AtomId, QList<AtomId>> internalAdj;
+    for (AtomId id : sel) internalAdj[id] = QList<AtomId>();
+
+    struct Anchor { AtomId insideId; AtomId outsideId; };
+    QList<Anchor> anchorBonds;
+
+    for (BondId bid : m_molecule.bondIds()) {
+        AtomId a = -1, b = -1;
+        if (!m_molecule.bondEndpoints(bid, a, b)) continue;
+        bool aSel = m_selection.atoms.contains(a);
+        bool bSel = m_selection.atoms.contains(b);
+        if (aSel && bSel) {
+            internalAdj[a].append(b);
+            internalAdj[b].append(a);
+        } else if (aSel != bSel) {
+            anchorBonds.append(aSel ? Anchor{a, b} : Anchor{b, a});
+        }
+    }
+
+    if (anchorBonds.size() != 1) return;
+
+    // Gate 2: no selected atom may have more than 2 internal neighbors (rules out branching).
+    for (AtomId id : sel) {
+        if (internalAdj.value(id).size() > 2) return;
+    }
+
+    // Gate 3: walk the chain from the atom adjacent to the anchor, refusing to revisit any
+    // atom. Must visit every selected atom exactly once. NOTE: this does not reject a clean
+    // cycle (every atom at or under the degree-2 cap already enforced by gate 2) -- the walk
+    // simply traces once around the ring and stops once it has visited sel.size() atoms,
+    // without ever needing the ring-closing bond. Only a genuinely disconnected sub-group
+    // (unreachable atoms) makes chain.size() end up short of sel.size(). This matches the real
+    // code's actual behavior exactly -- see spec precision note.
+    Anchor anchor = anchorBonds.first();
+    QList<AtomId> chain;
+    chain.append(anchor.insideId);
+    QSet<AtomId> visited;
+    visited.insert(anchor.insideId);
+    AtomId prevId = -1;
+    AtomId curId = anchor.insideId;
+    while (chain.size() < sel.size()) {
+        AtomId nextId = -1;
+        for (AtomId n : internalAdj.value(curId)) {
+            if (n != prevId && !visited.contains(n)) { nextId = n; break; }
+        }
+        if (nextId < 0) break;
+        chain.append(nextId);
+        visited.insert(nextId);
+        prevId = curId;
+        curId = nextId;
+    }
+    if (chain.size() != sel.size()) return;
+
+    // Gate 4: re-fetch the anchor's outside atom (real code re-fetches anchorAtom after the
+    // walk and bails if missing). In practice this atom always exists since it came from a
+    // real bond endpoint found in gate 1, but the check doubles as fetching the coordinates
+    // needed for placement, so it's not dead weight to skip.
+    double ax = 0, ay = 0;
+    if (!m_molecule.atomPos(anchor.outsideId, ax, ay)) return;
+
+    const double kPi = 3.14159265358979323846;
+    double theta = largestEmptyAngleAt(anchor.outsideId);
+    double half = kPi / 6.0;
+
+    QList<QPointF> oldPositions;
+    for (AtomId id : chain) {
+        double x = 0, y = 0;
+        m_molecule.atomPos(id, x, y);
+        oldPositions.append(QPointF(x, y));
+    }
+
+    QList<QPointF> newPositions;
+    double px = ax, py = ay;
+    for (int k = 0; k < chain.size(); ++k) {
+        double ang = theta + ((k % 2 == 0) ? half : -half);
+        px += kBondLength * std::cos(ang);
+        py += kBondLength * std::sin(ang);
+        newPositions.append(QPointF(px, py));
+    }
+
+    EditableMolecule& mol = m_molecule;
+    EditCommand cmd;
+    cmd.execute = [&mol, chain, newPositions]() {
+        for (int i = 0; i < chain.size(); ++i) mol.setAtomPos(chain[i], newPositions[i].x(), newPositions[i].y());
+    };
+    cmd.invert = [&mol, chain, oldPositions]() {
+        for (int i = 0; i < chain.size(); ++i) mol.setAtomPos(chain[i], oldPositions[i].x(), oldPositions[i].y());
     };
     executeCommand(std::move(cmd));
 }
