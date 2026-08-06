@@ -64,7 +64,7 @@ V8Process::V8Process(QObject *parent, bool cppEngine, TemplateLibrary* templateL
 V8Process::~V8Process() = default;
 
 void V8Process::applyLocalState() {
-    RenderPrimitives prims = RenderPrimitiveBuilder::build(m_docState->molecule(), /*showExplicitH=*/false);
+    RenderPrimitives prims = RenderPrimitiveBuilder::build(m_docState->molecule(), m_docState->showExplicitH());
     m_primitives = renderPrimitivesToVariant(prims);
     m_selection = selectionStateToVariant(m_docState->selection());
     emit primitivesChanged();
@@ -150,6 +150,10 @@ void V8Process::sendCommand(const QString& cmd, const QVariantList& args) {
             m_docState->selectChain(
                 (!args.isEmpty() && args[0].isValid()) ? args[0].toInt() : -1,
                 (args.size() > 1 && args[1].isValid()) ? args[1].toInt() : -1);
+        } else if (cmd == "setShowExplicitH" && !args.isEmpty()) {
+            m_docState->setShowExplicitH(args[0].toBool());
+        } else if (cmd == "layoutSelectedChain") {
+            m_docState->layoutSelectedChain();
         } else {
             return; // unhandled command name on a C++-engine document: silent no-op,
                      // matching every other unsupported gesture's existing behavior
