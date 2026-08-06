@@ -362,7 +362,65 @@ void V8Process::insertLibraryTemplateFused(const QString& fgName, double cx, dou
 void V8Process::requestSaltsAndSolventsList() { sendCommand("getSaltsAndSolventsList"); }
 void V8Process::requestFunctionalGroupsList() { sendCommand("getFunctionalGroupsList"); }
 void V8Process::requestTemplateLibraryList() { sendCommand("getTemplateLibraryList"); }
-void V8Process::requestTemplateThumbnail(const QString& name, const QString& reqId) { sendCommand("getTemplateThumbnail", {name, reqId}); }
+void V8Process::requestTemplateThumbnail(const QString& name, const QString& reqId) {
+    if (m_docState && m_templateLibrary) {
+        int handle = m_templateLibrary->functionalGroup(name);
+        if (handle < 0) handle = m_templateLibrary->saltOrSolvent(name);
+        if (handle < 0) handle = m_templateLibrary->libraryTemplate(name);
+        if (handle < 0) {
+            emit structureReady(reqId, QStringLiteral("{}"));
+            return;
+        }
+
+        EditableMolecule tmp(m_templateLibrary->molfileText(handle));
+        RenderPrimitives prims = RenderPrimitiveBuilder::build(tmp, /*showExplicitH=*/false);
+
+        QJsonArray atomsArr;
+        QJsonArray bondsArr;
+        if (prims.bbox.valid) {
+            double w = prims.bbox.maxX - prims.bbox.minX;
+            double h = prims.bbox.maxY - prims.bbox.minY;
+            if (w <= 0) w = 1;
+            if (h <= 0) h = 1;
+            const double pad = 0.1;
+            double scale = (1.0 - 2.0 * pad) / std::max(w, h);
+            double offX = pad + (1.0 - 2.0 * pad - w * scale) / 2.0;
+            double offY = pad + (1.0 - 2.0 * pad - h * scale) / 2.0;
+
+            QHash<AtomId, QPointF> positions;
+            for (const AtomPrim& a : prims.atoms) {
+                double nx = offX + (a.x - prims.bbox.minX) * scale;
+                double ny = offY + (a.y - prims.bbox.minY) * scale;
+                positions.insert(a.id, QPointF(nx, ny));
+                QJsonObject o;
+                o["x"] = nx;
+                o["y"] = ny;
+                o["label"] = a.element;
+                atomsArr.append(o);
+            }
+            for (const BondPrim& b : prims.bonds) {
+                if (!positions.contains(b.begin) || !positions.contains(b.end)) continue;
+                QPointF p1 = positions.value(b.begin);
+                QPointF p2 = positions.value(b.end);
+                QJsonObject o;
+                o["x1"] = p1.x();
+                o["y1"] = p1.y();
+                o["x2"] = p2.x();
+                o["y2"] = p2.y();
+                o["type"] = b.type > 0 ? b.type : 1;
+                o["stereo"] = b.stereo;
+                bondsArr.append(o);
+            }
+        }
+
+        QJsonObject result;
+        result["atoms"] = atomsArr;
+        result["bonds"] = bondsArr;
+        emit structureReady(reqId, QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact)));
+        return;
+    }
+    sendCommand("getTemplateThumbnail", {name, reqId});
+}
 void V8Process::addRxnArrow(double x, double y, const QString& mode) {
     if (m_docState) { m_docState->addRxnArrow(x, y, mode); applyLocalState(); return; }
     sendCommand("addRxnArrow", {x, y, mode});
