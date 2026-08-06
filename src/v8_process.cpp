@@ -13,6 +13,7 @@
 #include "app/molecule/RenderPrimitivesToVariant.h"
 #define _USE_MATH_DEFINES
 #include <cmath>
+#include <algorithm>
 
 V8Process::V8Process(QObject *parent, bool cppEngine, TemplateLibrary* templateLibrary)
     : QObject(parent), m_cppEngine(cppEngine), m_templateLibrary(templateLibrary) {
@@ -75,6 +76,45 @@ void V8Process::sendCommand(const QString& cmd, const QVariantList& args) {
             // Read-only: emits directly, no applyLocalState() -- nothing mutated. reqId "mol_name"
             // and raw-string (not JSON) data confirmed against 40-serialize.js:104-106.
             emit structureReady(QStringLiteral("mol_name"), m_docState->molecule().name());
+            return;
+        }
+        if (cmd == "getSaltsAndSolventsList") {
+            QStringList names = m_templateLibrary->saltOrSolventNames();
+            QJsonArray arr;
+            for (const QString& n : names) {
+                QJsonObject o;
+                o["label"] = n;
+                arr.append(o);
+            }
+            emit structureReady(QStringLiteral("salts"),
+                                 QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact)));
+            return;
+        }
+        if (cmd == "getFunctionalGroupsList") {
+            QStringList names = m_templateLibrary->functionalGroupNames();
+            std::sort(names.begin(), names.end());
+            QJsonArray arr;
+            for (const QString& n : names) {
+                QJsonObject o;
+                o["label"] = n;
+                o["group"] = m_templateLibrary->functionalGroupGroup(n);
+                arr.append(o);
+            }
+            emit structureReady(QStringLiteral("fg_list"),
+                                 QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact)));
+            return;
+        }
+        if (cmd == "getTemplateLibraryList") {
+            QStringList names = m_templateLibrary->libraryTemplateNames();
+            QJsonArray arr;
+            for (const QString& n : names) {
+                QJsonObject o;
+                o["label"] = n;
+                o["group"] = m_templateLibrary->libraryTemplateGroup(n);
+                arr.append(o);
+            }
+            emit structureReady(QStringLiteral("library_list"),
+                                 QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact)));
             return;
         }
         if (cmd == "deleteRxnArrow" && !args.isEmpty()) {
