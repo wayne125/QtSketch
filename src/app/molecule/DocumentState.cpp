@@ -2755,15 +2755,49 @@ void DocumentState::toggleSgroupExpanded(SGroupId id) {
     executeCommand(std::move(cmd));
 }
 
-void DocumentState::deserializeMol(const QString& data) {
+void DocumentState::deserializeMol(const QString& data, bool centerOnPage) {
     EditableMolecule& mol = m_molecule;
     auto before = std::make_shared<MoleculeSnapshot>(mol.snapshot());
     if (!mol.loadFrom(data)) return;
 
     EditCommand cmd;
-    cmd.execute = [this, &mol, data]() { mol.loadFrom(data); m_selection.clear(); };
+    cmd.execute = [this, &mol, data, centerOnPage]() {
+        mol.loadFrom(data);
+        m_selection.clear();
+        if (centerOnPage) centerMoleculeOnOrigin();
+    };
     cmd.invert = [&mol, before]() { mol.restore(*before); };
     executeCommand(std::move(cmd));
+}
+
+void DocumentState::centerMoleculeOnOrigin() {
+    double minX = 0, minY = 0, maxX = 0, maxY = 0;
+    bool first = true;
+    for (AtomId id : m_molecule.atomIds()) {
+        double x = 0, y = 0;
+        if (!m_molecule.atomPos(id, x, y)) continue;
+        if (first) { minX = maxX = x; minY = maxY = y; first = false; }
+        else {
+            minX = std::min(minX, x); maxX = std::max(maxX, x);
+            minY = std::min(minY, y); maxY = std::max(maxY, y);
+        }
+    }
+    if (first) return;
+    double cdx = -(minX + maxX) / 2.0;
+    double cdy = -(minY + maxY) / 2.0;
+    for (AtomId id : m_molecule.atomIds()) {
+        double x = 0, y = 0;
+        if (m_molecule.atomPos(id, x, y)) m_molecule.setAtomPos(id, x + cdx, y + cdy);
+    }
+    for (RxnArrowId id : m_molecule.rxnArrowIds()) {
+        double x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+        if (m_molecule.rxnArrowEndpoints(id, x1, y1, x2, y2))
+            m_molecule.setRxnArrowEndpoints(id, x1 + cdx, y1 + cdy, x2 + cdx, y2 + cdy);
+    }
+    for (RxnPlusId id : m_molecule.rxnPlusIds()) {
+        double x = 0, y = 0;
+        if (m_molecule.rxnPlusPos(id, x, y)) m_molecule.setRxnPlusPos(id, x + cdx, y + cdy);
+    }
 }
 
 void DocumentState::setMoleculeName(const QString& name) {

@@ -1722,6 +1722,58 @@ static void test_deserializeMol() {
     CHECK(doc.molecule().atomCount() == 6, "a parse failure leaves the current document completely unchanged");
 }
 
+static void test_deserializeMolCenterOnPage() {
+    std::printf("--- Test: deserializeMol centerOnPage ---\n");
+
+    QString offOriginMolfile =
+        "\n"
+        "  -INDIGO-\n"
+        "\n"
+        "  2  1  0  0  0  0  0  0  0  0999 V2000\n"
+        "   98.0000   98.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "  102.0000  102.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "  1  2  1  0  0  0  0\n"
+        "M  END\n";
+
+    DocumentState doc;
+    doc.deserializeMol(offOriginMolfile);
+    CHECK(doc.molecule().atomIds().size() == 2, "setup: 2 atoms loaded");
+    {
+        QList<AtomId> ids = doc.molecule().atomIds();
+        double x = 0, y = 0;
+        CHECK(doc.molecule().atomPos(ids[0], x, y) && std::abs(x - 98.0) < 0.001,
+              "centerOnPage=false (default) leaves coordinates untouched");
+    }
+
+    doc.deserializeMol(offOriginMolfile, true);
+    {
+        QList<AtomId> ids = doc.molecule().atomIds();
+        CHECK(ids.size() == 2, "2 atoms after centered reload");
+        double x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+        doc.molecule().atomPos(ids[0], x1, y1);
+        doc.molecule().atomPos(ids[1], x2, y2);
+        double minX = std::min(x1, x2), maxX = std::max(x1, x2);
+        double minY = std::min(y1, y2), maxY = std::max(y1, y2);
+        CHECK(std::abs(minX + maxX) < 0.001, "centerOnPage=true: bbox center x is 0");
+        CHECK(std::abs(minY + maxY) < 0.001, "centerOnPage=true: bbox center y is 0");
+        CHECK(std::abs((maxX - minX) - 4.0) < 0.001, "shape preserved (atoms still 4 apart)");
+    }
+
+    DocumentState doc2;
+    doc2.loadBenzene();
+    int atomsBeforeLoad = doc2.molecule().atomIds().size();
+    doc2.deserializeMol(offOriginMolfile, true);
+    CHECK(doc2.molecule().atomIds().size() == 2, "centered load replaced benzene with 2 atoms");
+    CHECK(doc2.canUndo(), "load pushed a history entry");
+    doc2.undo();
+    CHECK(doc2.molecule().atomIds().size() == atomsBeforeLoad,
+          "single undo fully restores the pre-load document (one atomic step, not two)");
+
+    DocumentState doc3;
+    doc3.deserializeMol(QString(), true);
+    CHECK(doc3.molecule().atomIds().size() == 0, "empty input with centerOnPage=true does not crash");
+}
+
 static void test_clearCanvas() {
     std::printf("--- Test: clearCanvas ---\n");
     DocumentState doc;
@@ -3091,6 +3143,7 @@ int main() {
     test_addBracketSelection();
     test_imageCommands();
     test_deserializeMol();
+    test_deserializeMolCenterOnPage();
     test_clearCanvas();
     test_loadBenzene();
     test_documentStateBioSequenceViewForwarding();

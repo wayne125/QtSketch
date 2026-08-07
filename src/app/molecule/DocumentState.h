@@ -310,7 +310,7 @@ public:
     // 40-serialize.js: deserializeMol via _applyLoadedStruct). No-ops (no history entry) on a
     // parse failure. Extension data (name, texts, rxnArrows, etc.) is wiped on success, matching
     // the real JS exactly -- it never carries anything across a document replace.
-    void deserializeMol(const QString& data);
+    void deserializeMol(const QString& data, bool centerOnPage = false);
 
     // Document name (40-serialize.js's setMoleculeName). No-op if unchanged, matching the real
     // JS's `if (oldName === newName) return`. getMoleculeName needs no wrapper -- pure read,
@@ -446,6 +446,15 @@ public:
     void toggleSgroupExpanded(SGroupId id);
 
 private:
+    // Recenters the whole document's atom bounding box (plus any reaction arrows/pluses)
+    // on the origin. Ports the real JS's loadMolfile(molStr, centerOnPage) recentering
+    // step (src/worker/40-serialize.js:313-325) -- SMILES/InChI layout results and
+    // Ketcher-derived write-back ops (Aromatize, Normalize, etc.) arrive with arbitrary,
+    // often off-page coordinates; genuine file-opens skip this (centerOnPage=false).
+    // No-op if the document has zero positioned atoms (matches real JS's
+    // `loaded.atoms.size > 0` guard).
+    void centerMoleculeOnOrigin();
+
     enum class DiscreteTransform { RotateCW, RotateCCW, FlipH, FlipV };
     void applyDiscreteTransform(DiscreteTransform mode);
 
