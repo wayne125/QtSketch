@@ -83,10 +83,11 @@ RenderPrimitives RenderPrimitiveBuilder::build(const EditableMolecule& mol, bool
         SgroupPrim prim;
         prim.id = sgId;
         prim.attachAtomId = attach;
-        prim.label = QString();   // chem-core reads sg.data.name; this port has no stored sgroup
-                                   // label anywhere (sub-project 3d's insertStructure discovers
-                                   // sgroups from indigoMerge but never captures a display name) --
-                                   // documented gap, empty string rather than a guess.
+        prim.label = mol.sgroupLabel(sgId);   // real label for insertFunctionalGroup-created
+                                               // groups (sub-project 25); still empty for a
+                                               // sgroup discovered by loading/parsing an
+                                               // arbitrary molfile Indigo can't name for us --
+                                               // pre-existing, unrelated limitation.
 
         QList<AtomId> members = mol.sgroupMemberAtomIds(sgId);
         double px = 0, py = 0;

@@ -2353,7 +2353,7 @@ void DocumentState::insertFunctionalGroup(const TemplateLibrary& lib, const QStr
     auto createdSGroups = std::make_shared<QList<SGroupId>>();
 
     EditCommand cmd;
-    cmd.execute = [&mol, fgMolfile, dx, dy, templateAttachIdx, graft, targetAtomId, fullStructure,
+    cmd.execute = [&mol, fgMolfile, fgName, dx, dy, templateAttachIdx, graft, targetAtomId, fullStructure,
                    createdAtoms, createdBonds, createdSGroups]() {
         createdAtoms->clear();
         createdBonds->clear();
@@ -2375,7 +2375,10 @@ void DocumentState::insertFunctionalGroup(const TemplateLibrary& lib, const QStr
             }
         }
 
-        for (SGroupId sg : *createdSGroups) mol.setSGroupExpanded(sg, fullStructure);
+        for (SGroupId sg : *createdSGroups) {
+            mol.setSGroupExpanded(sg, fullStructure);
+            mol.setSGroupLabel(sg, fgName);
+        }
     };
     cmd.invert = [&mol, createdAtoms, createdBonds]() {
         for (BondId b : *createdBonds) mol.removeBond(b);

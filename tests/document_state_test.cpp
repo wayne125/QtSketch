@@ -1774,6 +1774,21 @@ static void test_deserializeMolCenterOnPage() {
     CHECK(doc3.molecule().atomIds().size() == 0, "empty input with centerOnPage=true does not crash");
 }
 
+static void test_insertFunctionalGroupLabel() {
+    std::printf("--- Test: insertFunctionalGroup sets sgroup label ---\n");
+    TemplateLibrary lib(
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/fg.sdf"),
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/library.sdf"),
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/salts-and-solvents.sdf"));
+
+    DocumentState doc;
+    doc.insertFunctionalGroup(lib, QStringLiteral("Ac"), 10.0, 10.0);
+    QList<SGroupId> sgIds = doc.molecule().sgroupIds();
+    CHECK(sgIds.size() == 1, "insertFunctionalGroup created exactly one sgroup");
+    CHECK(doc.molecule().sgroupLabel(sgIds[0]) == QStringLiteral("Ac"),
+          "the sgroup's label matches the inserted group's name");
+}
+
 static void test_clearCanvas() {
     std::printf("--- Test: clearCanvas ---\n");
     DocumentState doc;
@@ -3144,6 +3159,7 @@ int main() {
     test_imageCommands();
     test_deserializeMol();
     test_deserializeMolCenterOnPage();
+    test_insertFunctionalGroupLabel();
     test_clearCanvas();
     test_loadBenzene();
     test_documentStateBioSequenceViewForwarding();
