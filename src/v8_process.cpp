@@ -798,6 +798,15 @@ void V8Process::requestClipboardKet() {
 }
 
 void V8Process::importKetAtPosition(const QString& ket, double cx, double cy) {
+    if (m_docState) {
+        EditableMolecule mol(ket);
+        if (!mol.isValid()) return;
+        StringResult mf = mol.toMolfile();
+        if (!mf.success) return;
+        m_docState->insertStructureAt(mf.value, cx, cy);
+        applyLocalState();
+        return;
+    }
     sendCommand("importKetAtPosition", {ket, cx, cy});
 }
 
