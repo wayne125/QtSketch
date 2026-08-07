@@ -457,7 +457,13 @@ void V8Process::requestStructure(const QString& fmt, const QString& reqId) {
 }
 void V8Process::requestSelectionStructure(const QString& reqId) {
     if (m_docState) {
-        emit structureReady(reqId, QString()); // KET export is out of scope for this pilot
+        m_docClipboardMol = m_docState->copySelection();
+        if (m_docClipboardMol.isEmpty()) {
+            emit structureReady(reqId, QString());
+            return;
+        }
+        EditableMolecule mol(m_docClipboardMol);
+        emit structureReady(reqId, mol.isValid() ? mol.toKetJson() : QString());
         return;
     }
     sendCommand("getSelectionStructure", {reqId});
