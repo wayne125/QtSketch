@@ -12,6 +12,7 @@
 #include "app/molecule/RenderPrimitives.h"
 #include "app/molecule/RenderPrimitivesToVariant.h"
 #include "app/molecule/ClipboardPreview.h"
+#include "app/molecule/EditableMolecule.h"
 #define _USE_MATH_DEFINES
 #include <cmath>
 #include <algorithm>
@@ -784,6 +785,15 @@ void V8Process::setOsClipboardText(const QString& text) {
 }
 
 void V8Process::requestClipboardKet() {
+    if (m_docState) {
+        if (m_docClipboardMol.isEmpty()) {
+            emit structureReady(QStringLiteral("clipboard_ket"), QString());
+            return;
+        }
+        EditableMolecule mol(m_docClipboardMol);
+        emit structureReady(QStringLiteral("clipboard_ket"), mol.isValid() ? mol.toKetJson() : QString());
+        return;
+    }
     sendCommand("getClipboardAsKet", {});
 }
 
