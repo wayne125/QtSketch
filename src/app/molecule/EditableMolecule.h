@@ -441,6 +441,8 @@ public:
     bool superatomAttachAtom(SGroupId id, AtomId& out) const;   // first attachment point's atom, if any
     void setSGroupExpanded(SGroupId id, bool expanded);
     bool sgroupExpanded(SGroupId id) const;
+    void setSGroupLabel(SGroupId id, const QString& label);
+    QString sgroupLabel(SGroupId id) const;
 
     // Sgroup introspection beyond superatomAttachAtom's single-attachment-point view: every
     // currently-existing sgroup id, and a given sgroup's FULL member-atom set (not just its
@@ -508,6 +510,7 @@ private:
     QHash<SGroupId, int> m_sgroupIdx;   // external stable ID -> indigo superatom index
     SGroupId m_nextSGroupId = 1;        // monotonic, never reused
     QHash<int, bool> m_sgroupExpanded;  // SGroupId -> expanded flag (Indigo has no such concept)
+    QHash<int, QString> m_sgroupLabels; // SGroupId -> display label (Indigo has no such concept either)
 
     void activateSession() const; // indigoSetSessionId(m_session)
     void rebuildIndexTables();

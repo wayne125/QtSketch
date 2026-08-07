@@ -78,6 +78,7 @@ bool EditableMolecule::loadFrom(const QString& molfileOrSmiles) {
     m_bondIdx.clear();
     m_sgroupIdx.clear();
     m_sgroupExpanded.clear();
+    m_sgroupLabels.clear();
     m_ext = ExtensionData{};
     assignFreshAtomBondIds();
     return true;
@@ -643,6 +644,7 @@ void EditableMolecule::rebuildIndexTables() {
         if (s < 0) {
             m_sgroupIdx.remove(sid);
             m_sgroupExpanded.remove(sid);
+            m_sgroupLabels.remove(sid);
         } else {
             indigoFree(s);
         }
@@ -1104,6 +1106,15 @@ bool EditableMolecule::sgroupExpanded(SGroupId id) const {
     return m_sgroupExpanded.value(id, true);
 }
 
+void EditableMolecule::setSGroupLabel(SGroupId id, const QString& label) {
+    if (!m_sgroupIdx.contains(id)) return;
+    m_sgroupLabels.insert(id, label);
+}
+
+QString EditableMolecule::sgroupLabel(SGroupId id) const {
+    return m_sgroupLabels.value(id);
+}
+
 QString EditableMolecule::stereoFlagsType() const { return m_ext.stereoFlagsType; }
 int EditableMolecule::stereoFlagsGroupId() const { return m_ext.stereoFlagsGroupId; }
 void EditableMolecule::setStereoFlagsDocument(const QString& type, int groupId) {
@@ -1520,6 +1531,7 @@ bool EditableMolecule::removeSuperatomOnly(SGroupId id) {
     if (ok) {
         m_sgroupIdx.remove(id);
         m_sgroupExpanded.remove(id);
+        m_sgroupLabels.remove(id);
     }
     return ok;
 }
