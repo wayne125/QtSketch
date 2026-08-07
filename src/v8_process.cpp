@@ -574,7 +574,8 @@ static QString renderThumbnailJson(const QString& molfile) {
             QJsonObject o;
             o["x"] = nx;
             o["y"] = ny;
-            o["label"] = a.element;
+            o["label"] = a.label;
+            o["color"] = a.color;
             atomsArr.append(o);
         }
         for (const BondPrim& b : prims.bonds) {
