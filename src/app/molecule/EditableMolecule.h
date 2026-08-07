@@ -145,6 +145,13 @@ public:
     int bondCount() const;
     StringResult toMolfile() const;
 
+    // Real KET-format JSON export via Indigo's own indigoJson() (already proven correct via its
+    // use in IndigoService.cpp) -- C++ equivalent of chem-core.js's getClipboardAsKet. Returns an
+    // empty string on any failure (invalid molecule or null Indigo result), matching the real
+    // JS's own bare `ketStr = ""` failure mode exactly -- deliberately not a StringResult, since
+    // no distinct error is ever surfaced to the real caller either.
+    QString toKetJson() const;
+
     // Extracts an explicit atom+bond selection as standalone MOL-format text -- the C++
     // equivalent of chem-core.js's Struct.clone(atomSet, bondSet), used by copySelection.
     // Preserves any sgroup whose member atoms fall (fully or partially) within the selection,

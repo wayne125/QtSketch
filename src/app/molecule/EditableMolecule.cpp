@@ -125,6 +125,14 @@ StringResult EditableMolecule::toMolfile() const {
     return r;
 }
 
+QString EditableMolecule::toKetJson() const {
+    if (m_mol < 0) return QString();
+    activateSession();
+    const char* json = indigoJson(m_mol);
+    if (!json) return QString();
+    return QString::fromUtf8(json);
+}
+
 StringResult EditableMolecule::submoleculeMolfile(const QList<AtomId>& atomIds, const QList<BondId>& bondIds) const {
     StringResult r;
     if (m_mol < 0) { r.error = QStringLiteral("invalid molecule"); return r; }

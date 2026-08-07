@@ -7,6 +7,8 @@
 #include <cstring>
 #include <algorithm>
 #include <QPointF>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <functional>
 #include "app/molecule/EditableMolecule.h"
 #include "app/molecule/TemplateLibrary.h"
@@ -92,6 +94,30 @@ static void test_constructionAndMolfile() {
     EditableMolecule bad(QStringLiteral("not_a_molecule((("));
     CHECK(!bad.isValid(), "garbage input yields invalid molecule");
     CHECK(!bad.lastError().isEmpty(), "invalid molecule carries an error string");
+}
+
+static void test_toKetJson() {
+    std::printf("--- Test: toKetJson ---\n");
+
+    // indigoLoadMoleculeFromString auto-detects SMILES, matching test_constructionAndMolfile's
+    // own established convention.
+    EditableMolecule ethane(QStringLiteral("CC"));
+    CHECK(ethane.isValid(), "toKetJson: ethane constructs valid");
+
+    QString ket = ethane.toKetJson();
+    CHECK(!ket.isEmpty(), "toKetJson: non-empty result for a valid molecule");
+
+    QJsonParseError err;
+    QJsonDocument doc = QJsonDocument::fromJson(ket.toUtf8(), &err);
+    CHECK(err.error == QJsonParseError::NoError, "toKetJson: result parses as valid JSON");
+    CHECK(doc.isObject() && doc.object().contains(QStringLiteral("root")),
+          "toKetJson: result has a top-level \"root\" key (real KET shape)");
+
+    // Genuinely-invalid input (not empty string, which yields a valid zero-atom molecule --
+    // see test_constructionAndMolfile's own `empty.isValid()` assertion).
+    EditableMolecule bad(QStringLiteral("not_a_molecule((("));
+    CHECK(!bad.isValid(), "toKetJson: garbage input is invalid");
+    CHECK(bad.toKetJson().isEmpty(), "toKetJson: empty result for an invalid molecule, no crash");
 }
 
 static void test_atomBondCrud() {
@@ -1804,6 +1830,7 @@ int main() {
 
     spike_idBehavior();
     test_constructionAndMolfile();
+    test_toKetJson();
     test_atomBondCrud();
     test_extensionData();
     test_sgroupPassthrough();
