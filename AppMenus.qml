@@ -55,6 +55,7 @@ AppMenuBar {
         MenuItemRow { text: "Paste"; iconSource: "paste.svg"; shortcutHint: "Ctrl+V"; onTriggered: root.win.activeCanvas.pasteSelection() }
         Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6 }
         MenuItemRow { text: "Copy as Image"; iconSource: "copy_image.svg"; shortcutHint: "Ctrl+Shift+C"; onTriggered: root.win.activeCanvas.copyAsImage() }
+        MenuItemRow { text: "Save Selection as Template…"; iconSource: "copy.svg"; enabled: Selection.hasAtoms(root.win.activeSketch, 1); onTriggered: root.win.saveSelectionAsTemplate() }
     }
     AppMenuBarItem {
         text: "Structure"
