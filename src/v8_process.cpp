@@ -184,6 +184,8 @@ void V8Process::sendCommand(const QString& cmd, const QVariantList& args) {
             m_docState->selectChain(
                 (!args.isEmpty() && args[0].isValid()) ? args[0].toInt() : -1,
                 (args.size() > 1 && args[1].isValid()) ? args[1].toInt() : -1);
+        } else if (cmd == "selectSubstructureMatches" && !args.isEmpty()) {
+            m_docState->selectSubstructureMatches(args[0].toString());
         } else if (cmd == "setShowExplicitH" && !args.isEmpty()) {
             m_docState->setShowExplicitH(args[0].toBool());
         } else if (cmd == "layoutSelectedChain") {
