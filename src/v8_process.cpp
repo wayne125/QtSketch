@@ -11,6 +11,7 @@
 #include <QClipboard>
 #include "app/molecule/RenderPrimitives.h"
 #include "app/molecule/RenderPrimitivesToVariant.h"
+#include "app/molecule/ClipboardPreview.h"
 #define _USE_MATH_DEFINES
 #include <cmath>
 #include <algorithm>
@@ -118,6 +119,38 @@ void V8Process::sendCommand(const QString& cmd, const QVariantList& args) {
             }
             emit structureReady(QStringLiteral("library_list"),
                                  QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact)));
+            return;
+        }
+        if (cmd == "getClipboardPreview") {
+            if (m_docClipboardMol.isEmpty()) {
+                emit structureReady(QStringLiteral("clipboard_preview"), QStringLiteral("null"));
+                return;
+            }
+            ClipboardPreview preview = buildClipboardPreview(m_docClipboardMol);
+            QJsonArray atomsArr;
+            for (const ClipboardPreviewAtom& a : preview.atoms) {
+                QJsonObject o;
+                o["x"] = a.x;
+                o["y"] = a.y;
+                o["label"] = a.label;
+                atomsArr.append(o);
+            }
+            QJsonArray bondsArr;
+            for (const ClipboardPreviewBond& b : preview.bonds) {
+                QJsonObject o;
+                o["x1"] = b.x1;
+                o["y1"] = b.y1;
+                o["x2"] = b.x2;
+                o["y2"] = b.y2;
+                bondsArr.append(o);
+            }
+            QJsonObject root;
+            root["atoms"] = atomsArr;
+            root["bonds"] = bondsArr;
+            root["cx"] = preview.cx;
+            root["cy"] = preview.cy;
+            emit structureReady(QStringLiteral("clipboard_preview"),
+                                 QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact)));
             return;
         }
         if (cmd == "deleteRxnArrow" && !args.isEmpty()) {
