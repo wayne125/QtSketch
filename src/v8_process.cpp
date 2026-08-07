@@ -502,6 +502,25 @@ QString V8Process::serializeMol() {
     return getStructure("mol");
 }
 void V8Process::loadStructure(const QString& format, const QString& data, bool centerOnPage) {
+    if (m_docState) {
+        if (format == "mol") {
+            m_docState->deserializeMol(data, centerOnPage);
+            applyLocalState();
+            return;
+        }
+        if (format == "ket") {
+            EditableMolecule mol(data);
+            if (!mol.isValid()) return;
+            StringResult mf = mol.toMolfile();
+            if (!mf.success) return;
+            m_docState->deserializeMol(mf.value, centerOnPage);
+            applyLocalState();
+            return;
+        }
+        return; // sdf: out of scope -- deserializeSdf is confirmed dead (zero QML
+                // callers; MainWindow.qml's own File > Open handler routes .sdf
+                // through deserializeSdfBatch directly, never through here)
+    }
     if (format == "mol") {
         sendCommand("loadMol", {data, centerOnPage});
     } else if (format == "sdf") {
