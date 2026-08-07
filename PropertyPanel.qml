@@ -457,11 +457,21 @@ Rectangle {
                 color: Theme.textSecondary
                 font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontFamily }
             }
-            Text {
-                textFormat: Text.PlainText
+            TextField {
+                id: sgroupLabelInput
+                Layout.fillWidth: true
                 text: root.selAtom ? root.selAtom.label : ""
-                color: Theme.textPrimary
                 font { pixelSize: Theme.fontSizeHeadline; bold: true; family: Theme.fontFamily }
+                onEditingFinished: {
+                    if (root.selAtom && root.selAtom.isSgroup) {
+                        canvas.applyPropertyChange("sgroupLabel", root.selAtom.id, text)
+                    }
+                    focus = false
+                }
+                Keys.onEscapePressed: {
+                    text = root.selAtom ? root.selAtom.label : ""
+                    focus = false
+                }
             }
         }
 

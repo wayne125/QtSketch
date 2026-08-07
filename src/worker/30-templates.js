@@ -703,5 +703,20 @@ function toggleSgroupExpanded(sgId) {
     executeCommand(cmd)
 }
 
+// ---- SGroup abbreviation rename (sub-project 25 -- new capability, not a port) --------
+
+function renameSgroup(sgId, newLabel) {
+    if (!_struct.sgroups) return
+    var sg = _struct.sgroups.get(sgId)
+    if (!sg || sg.type !== 'SUP') return
+    var oldLabel = (sg.data && sg.data.name) ? sg.data.name : ''
+    if (oldLabel === newLabel) return
+    var cmd = makeCmd(
+        function() { sg.data.name = newLabel },
+        function() { sg.data.name = oldLabel }
+    )
+    executeCommand(cmd)
+}
+
 // ---- Serialization ---------------------------------------------------------
 

@@ -1789,6 +1789,35 @@ static void test_insertFunctionalGroupLabel() {
           "the sgroup's label matches the inserted group's name");
 }
 
+static void test_renameSGroup() {
+    std::printf("--- Test: renameSGroup ---\n");
+    TemplateLibrary lib(
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/fg.sdf"),
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/library.sdf"),
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/salts-and-solvents.sdf"));
+
+    DocumentState doc;
+    doc.insertFunctionalGroup(lib, QStringLiteral("Ac"), 10.0, 10.0);
+    QList<SGroupId> sgIds = doc.molecule().sgroupIds();
+    CHECK(sgIds.size() == 1, "setup: one sgroup exists");
+    SGroupId sg = sgIds[0];
+    CHECK(doc.molecule().sgroupLabel(sg) == QStringLiteral("Ac"), "setup: label starts as \"Ac\"");
+
+    doc.renameSGroup(sg, QStringLiteral("Acetyl"));
+    CHECK(doc.molecule().sgroupLabel(sg) == QStringLiteral("Acetyl"), "renameSGroup changed the label");
+    CHECK(doc.canUndo(), "rename pushed a history entry");
+
+    doc.undo();
+    CHECK(doc.molecule().sgroupLabel(sg) == QStringLiteral("Ac"), "undo restores the old label");
+
+    int historySizeBefore = doc.canUndo() ? 1 : 0;
+    doc.renameSGroup(sg, QStringLiteral("Ac")); // same as current: no-op
+    CHECK((doc.canUndo() ? 1 : 0) == historySizeBefore, "renaming to the same value pushes no history entry");
+
+    doc.renameSGroup(9999, QStringLiteral("bogus")); // unknown id: no-op, no crash
+    CHECK(doc.molecule().sgroupLabel(sg) == QStringLiteral("Ac"), "unknown id is a no-op");
+}
+
 static void test_clearCanvas() {
     std::printf("--- Test: clearCanvas ---\n");
     DocumentState doc;
@@ -3160,6 +3189,7 @@ int main() {
     test_deserializeMol();
     test_deserializeMolCenterOnPage();
     test_insertFunctionalGroupLabel();
+    test_renameSGroup();
     test_clearCanvas();
     test_loadBenzene();
     test_documentStateBioSequenceViewForwarding();

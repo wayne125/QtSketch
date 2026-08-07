@@ -282,6 +282,8 @@ void V8Process::sendCommand(const QString& cmd, const QVariantList& args) {
             m_docState->resizeImage(args[0].toInt(), args[1].toDouble());
         } else if (cmd == "toggleSgroupExpanded" && !args.isEmpty()) {
             m_docState->toggleSgroupExpanded(args[0].toInt());
+        } else if (cmd == "renameSgroup" && args.size() >= 2) {
+            m_docState->renameSGroup(args[0].toInt(), args[1].toString());
         } else if (cmd == "addBracketSelection") {
             m_docState->addBracketSelection();
         } else if (cmd == "insertRecognizedStructure" && args.size() >= 3) {

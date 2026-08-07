@@ -385,6 +385,8 @@ Item {
             sketch.addRGroupMember(id)
         } else if (type === "rgroupRemoveMember") {
             sketch.removeRGroupMember(id, val)
+        } else if (type === "sgroupLabel") {
+            sketch.sendCommand("renameSgroup", [id, val])
         }
         refresh()
     }

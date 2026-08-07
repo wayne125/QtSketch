@@ -2758,6 +2758,19 @@ void DocumentState::toggleSgroupExpanded(SGroupId id) {
     executeCommand(std::move(cmd));
 }
 
+void DocumentState::renameSGroup(SGroupId id, const QString& newLabel) {
+    EditableMolecule& mol = m_molecule;
+    AtomId probe = -1;
+    if (!mol.superatomAttachAtom(id, probe)) return;   // no such sgroup: no-op
+    QString oldLabel = mol.sgroupLabel(id);
+    if (oldLabel == newLabel) return;
+
+    EditCommand cmd;
+    cmd.execute = [&mol, id, newLabel]() { mol.setSGroupLabel(id, newLabel); };
+    cmd.invert = [&mol, id, oldLabel]() { mol.setSGroupLabel(id, oldLabel); };
+    executeCommand(std::move(cmd));
+}
+
 void DocumentState::deserializeMol(const QString& data, bool centerOnPage) {
     EditableMolecule& mol = m_molecule;
     auto before = std::make_shared<MoleculeSnapshot>(mol.snapshot());

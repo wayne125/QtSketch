@@ -445,6 +445,12 @@ public:
     // resolve to a real sgroup (matches the real function's early return).
     void toggleSgroupExpanded(SGroupId id);
 
+    // New capability (sub-project 25, not a port -- neither engine previously supported
+    // renaming a contracted group's abbreviation). No-ops if id doesn't resolve to a real
+    // sgroup, or if newLabel matches the current label (mirrors toggleSgroupExpanded's own
+    // no-op-on-invalid-id convention and setMoleculeName's own unchanged-value guard).
+    void renameSGroup(SGroupId id, const QString& newLabel);
+
 private:
     // Recenters the whole document's atom bounding box (plus any reaction arrows/pluses)
     // on the origin. Ports the real JS's loadMolfile(molStr, centerOnPage) recentering

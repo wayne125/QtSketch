@@ -148,6 +148,7 @@ const COMMANDS = {
     insertFunctionalGroup: { fn: (args) => insertFunctionalGroup(args[0], args[1], args[2], args[3], args[4]) },
     insertLibraryTemplateFused: { fn: (args) => insertLibraryTemplateFused(args[0], args[1], args[2], args[3]) },
     toggleSgroupExpanded: { fn: (args) => toggleSgroupExpanded(args[0]) },
+    renameSgroup: { fn: (args) => renameSgroup(args[0], args[1]) },
     getGenericsList: {
         custom: true,
         fn: () => {
