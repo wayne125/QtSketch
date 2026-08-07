@@ -75,6 +75,61 @@ void V8Process::applyLocalState() {
                        m_docState->canUndo(), m_docState->canRedo(), QVariant());
 }
 
+QString V8Process::buildSdfBatchListJson() const {
+    int count = m_sdfBatch.recordCount();
+    int limit = std::min(count, 500);
+    QJsonArray records;
+    for (int i = 0; i < limit; ++i) {
+        SdfBatch::Thumbnail thumb = m_sdfBatch.thumbnailAt(i);
+        QJsonArray atomsArr;
+        for (const SdfBatch::ThumbnailAtom& a : thumb.atoms) {
+            QJsonObject o;
+            o["x"] = a.x;
+            o["y"] = a.y;
+            o["label"] = a.label;
+            atomsArr.append(o);
+        }
+        QJsonArray bondsArr;
+        for (const SdfBatch::ThumbnailBond& b : thumb.bonds) {
+            QJsonObject o;
+            o["x1"] = b.x1;
+            o["y1"] = b.y1;
+            o["x2"] = b.x2;
+            o["y2"] = b.y2;
+            o["type"] = b.type;
+            bondsArr.append(o);
+        }
+        QJsonObject thumbObj;
+        thumbObj["atoms"] = atomsArr;
+        thumbObj["bonds"] = bondsArr;
+        QJsonObject rec;
+        rec["index"] = i;
+        rec["label"] = m_sdfBatch.labelAt(i);
+        rec["thumb"] = thumbObj;
+        records.append(rec);
+    }
+    QJsonObject root;
+    root["count"] = count;
+    root["records"] = records;
+    return QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact));
+}
+
+void V8Process::handleDeserializeBatchFromMolfiles(const QString& recordsJson) {
+    QJsonParseError err;
+    QJsonDocument doc = QJsonDocument::fromJson(recordsJson.toUtf8(), &err);
+    QStringList molfiles;
+    if (err.error == QJsonParseError::NoError && doc.isArray()) {
+        for (const QJsonValue& v : doc.array()) {
+            molfiles.append(v.toObject().value(QStringLiteral("molfile")).toString());
+        }
+    }
+    if (!m_sdfBatch.loadFromMolfileList(molfiles)) {
+        emit structureReady(QStringLiteral("sdf_batch_list"), QStringLiteral("{\"count\":0,\"records\":[]}"));
+        return;
+    }
+    emit structureReady(QStringLiteral("sdf_batch_list"), buildSdfBatchListJson());
+}
+
 void V8Process::sendCommand(const QString& cmd, const QVariantList& args) {
     if (m_docState) {
         if (cmd == "getMoleculeName") {
@@ -152,6 +207,69 @@ void V8Process::sendCommand(const QString& cmd, const QVariantList& args) {
             root["cy"] = preview.cy;
             emit structureReady(QStringLiteral("clipboard_preview"),
                                  QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact)));
+            return;
+        }
+        if (cmd == "deserializeRdfBatch" && !args.isEmpty()) {
+            handleDeserializeBatchFromMolfiles(args[0].toString());
+            return;
+        }
+        if (cmd == "deserializeIndigoBatch" && !args.isEmpty()) {
+            handleDeserializeBatchFromMolfiles(args[0].toString());
+            return;
+        }
+        if (cmd == "deserializeSdfBatch" && !args.isEmpty()) {
+            if (!m_sdfBatch.loadFromSdfText(args[0].toString())) {
+                emit structureReady(QStringLiteral("sdf_batch_list"), QStringLiteral("{\"count\":0,\"records\":[]}"));
+                return;
+            }
+            emit structureReady(QStringLiteral("sdf_batch_list"), buildSdfBatchListJson());
+            return;
+        }
+        if (cmd == "loadSdfBatchRecord" && !args.isEmpty()) {
+            int index = args[0].toInt();
+            QString mf = m_sdfBatch.molfileAt(index);
+            if (mf.isEmpty()) return; // matches the real code's silent no-response early return
+            m_docState->deserializeMol(mf);
+            m_sdfProps = m_sdfBatch.propsAt(index);
+            applyLocalState();
+            emit structureReady(QStringLiteral("sdf_batch_load"), QString());
+            return;
+        }
+        if (cmd == "getSdfBatchMolfiles") {
+            int limit = std::min(m_sdfBatch.recordCount(), 500);
+            QJsonArray molfilesArr, labelsArr;
+            for (int i = 0; i < limit; ++i) {
+                QString mf = m_sdfBatch.molfileAt(i);
+                if (mf.isEmpty()) continue; // matches the real per-record skip-on-failure
+                molfilesArr.append(mf);
+                labelsArr.append(m_sdfBatch.labelAt(i));
+            }
+            QJsonObject root;
+            root["molfiles"] = molfilesArr;
+            root["labels"] = labelsArr;
+            emit structureReady(QStringLiteral("sdf_batch_molfiles"),
+                                 QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact)));
+            return;
+        }
+        if (cmd == "realignSdfBatch" && !args.isEmpty()) {
+            QJsonParseError err;
+            QJsonDocument doc = QJsonDocument::fromJson(args[0].toString().toUtf8(), &err);
+            if (err.error != QJsonParseError::NoError || !doc.isArray()) return; // matches the
+                // real code's try/catch: a JSON.parse throw on malformed input silently returns
+                // with no response, regardless of the current batch's state -- must be checked
+                // BEFORE calling realign(), since a malformed-input empty list could otherwise
+                // coincidentally match an empty batch's length (0 == 0) and wrongly succeed
+            QStringList aligned;
+            for (const QJsonValue& v : doc.array()) aligned.append(v.toString());
+            if (!m_sdfBatch.realign(aligned)) return; // matches the real code's silent no-response early return
+            emit structureReady(QStringLiteral("sdf_batch_realigned"), buildSdfBatchListJson());
+            return;
+        }
+        if (cmd == "getSdfProps") {
+            QJsonObject obj;
+            for (auto it = m_sdfProps.constBegin(); it != m_sdfProps.constEnd(); ++it) obj[it.key()] = it.value();
+            emit structureReady(QStringLiteral("sdf_props"),
+                                 QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)));
             return;
         }
         if (cmd == "deleteRxnArrow" && !args.isEmpty()) {

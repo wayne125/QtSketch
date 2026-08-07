@@ -9,6 +9,7 @@
 #include "qjs_engine.h"
 #include "app/molecule/DocumentState.h"
 #include "app/molecule/TemplateLibrary.h"
+#include "app/molecule/SdfBatch.h"
 
 class V8Process : public QObject {
     Q_OBJECT
@@ -154,12 +155,29 @@ private:
     // pilot (see the approved spec's Scope section).
     void applyLocalState();
 
+    // Ports 40-serialize.js's _buildBatchRecordsFromStructs: builds the {count, records:
+    // [{index, label, thumb: {atoms, bonds}}]} JSON shape shared by deserializeRdfBatch/
+    // deserializeIndigoBatch/deserializeSdfBatch/realignSdfBatch. `count` is m_sdfBatch's true,
+    // uncapped record count; the `records` array itself is capped at the first 500 entries,
+    // matching the real code's own Math.min(count, 500) exactly.
+    QString buildSdfBatchListJson() const;
+
+    // Shared by deserializeRdfBatch/deserializeIndigoBatch, whose real JS bodies are byte-
+    // identical (confirmed by direct source read) -- avoids literally duplicating the branch
+    // body twice the way the real JS does. recordsJson is JSON.stringify([{molfile: "..."}, ...]).
+    void handleDeserializeBatchFromMolfiles(const QString& recordsJson);
+
     bool m_cppEngine = false;
     std::unique_ptr<DocumentState> m_docState;   // non-null only when m_cppEngine
     TemplateLibrary* m_templateLibrary = nullptr;   // non-owning; null unless passed in at construction
     QString m_docClipboardMol;   // C++-engine-only clipboard cache: set by copySelection/cutSelection,
                                   // read by pasteSelection. Mirrors the JS worker's module-level
                                   // _clipboard (90-dispatch.js:133-141, 40-serialize.js:120-123).
+    SdfBatch m_sdfBatch;          // C++-engine-only staged batch, mirrors the JS worker's module-level
+                                  // _sdfBatchRecords (40-serialize.js). Chemistry/Indigo work is
+                                  // already fully implemented and tested in SdfBatch itself.
+    QHash<QString, QString> m_sdfProps;   // mirrors _sdfProps (40-serialize.js:2, starts as {}),
+                                            // populated by loadSdfBatchRecord, read by getSdfProps.
 
     std::unique_ptr<QjsEngine> m_engine;
     QVariantMap m_primitives;
