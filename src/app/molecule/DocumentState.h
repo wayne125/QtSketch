@@ -120,6 +120,17 @@ public:
     // empty for an unknown atom).
     void selectChain(AtomId atomId, BondId bondId);
 
+    // Ports 40-serialize.js's selectSubstructureMatches (627-646). matchesJson is
+    // {matches: [[1-indexed atom position, ...], ...]}, the exact JSON shape
+    // IndigoService::substructureSearch already produces (indigoIndex(tAtom) + 1). REPLACES
+    // the current selection with the union of every matched atom across all match arrays,
+    // plus any bond whose both endpoints ended up selected. Malformed JSON, a missing
+    // "matches" key, an empty matches array, or an out-of-range index all degrade
+    // gracefully to selecting nothing / ignoring that one index -- never a crash, matching
+    // the real code's own graceful degradation exactly (this also covers the real
+    // "clear matches" UI case, an empty matches array).
+    void selectSubstructureMatches(const QString& matchesJson);
+
     // 40-serialize.js's copySelection: extracts the current selection's atoms+bonds as
     // MOL-format text. Pure read -- pushes NO history entry (matching the real function, which
     // performs no mutation). Returns an empty string if the selection has no atoms (matching the

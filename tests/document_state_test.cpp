@@ -3006,6 +3006,55 @@ static void test_layoutSelectedChain() {
     }
 }
 
+static void test_selectSubstructureMatches() {
+    std::printf("--- Test: selectSubstructureMatches ---\n");
+
+    DocumentState doc;
+    AtomId a = doc.addAtom(QStringLiteral("C"), 0.0, 0.0);
+    AtomId b = doc.addAtom(QStringLiteral("C"), 1.0, 0.0);
+    AtomId c = doc.addAtom(QStringLiteral("C"), 2.0, 0.0);
+    AtomId d = doc.addAtom(QStringLiteral("O"), 5.0, 5.0); // unconnected
+    doc.addBond(a, b, 1);
+    doc.addBond(b, c, 1);
+
+    // Determine the real 1-indexed Indigo positions for a and b, mirroring how a genuine
+    // caller would have gotten them from IndigoService::substructureSearch's own output.
+    QList<AtomId> order = doc.molecule().atomIdsInIndigoOrder();
+    int idxA = order.indexOf(a) + 1;
+    int idxB = order.indexOf(b) + 1;
+    int idxD = order.indexOf(d) + 1;
+
+    // A single match selecting the two connected atoms -> both atoms + the bond between
+    // them selected.
+    QString matchesAB = QStringLiteral("{\"matches\":[[%1,%2]]}").arg(idxA).arg(idxB);
+    doc.selectSubstructureMatches(matchesAB);
+    CHECK(doc.selection().atoms.size() == 2 && doc.selection().atoms.contains(a) && doc.selection().atoms.contains(b),
+          "selectSubstructureMatches: selects both matched atoms");
+    CHECK(doc.selection().bonds.size() == 1, "selectSubstructureMatches: selects the bond between two matched atoms");
+
+    // A match on the lone unconnected atom -> that atom selected, no spurious bond, and the
+    // old selection is fully replaced (a/b no longer selected).
+    QString matchesD = QStringLiteral("{\"matches\":[[%1]]}").arg(idxD);
+    doc.selectSubstructureMatches(matchesD);
+    CHECK(doc.selection().atoms.size() == 1 && doc.selection().atoms.contains(d),
+          "selectSubstructureMatches: replaces the old selection with the new match");
+    CHECK(doc.selection().bonds.isEmpty(), "selectSubstructureMatches: no bond for a lone unconnected match");
+
+    // Out-of-range index -> silently ignored, no crash.
+    doc.selectSubstructureMatches(QStringLiteral("{\"matches\":[[999]]}"));
+    CHECK(doc.selection().atoms.isEmpty(), "selectSubstructureMatches: out-of-range index selects nothing");
+
+    // Malformed JSON -> selection cleared, no crash.
+    doc.selectSubstructureMatches(matchesAB);
+    doc.selectSubstructureMatches(QStringLiteral("not json"));
+    CHECK(doc.selection().isEmpty(), "selectSubstructureMatches: malformed JSON clears the selection, no crash");
+
+    // Empty matches array -> selection cleared (the real "clear matches" UI case).
+    doc.selectSubstructureMatches(matchesAB);
+    doc.selectSubstructureMatches(QStringLiteral("{\"matches\":[]}"));
+    CHECK(doc.selection().isEmpty(), "selectSubstructureMatches: empty matches array clears the selection");
+}
+
 int main() {
     test_selectionStateBasics();
     test_editCommandBasics();
@@ -3074,6 +3123,7 @@ int main() {
     test_alignAndDistributeAtoms();
     test_setShowExplicitH();
     test_layoutSelectedChain();
+    test_selectSubstructureMatches();
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

@@ -872,6 +872,36 @@ void DocumentState::setStereoDescriptors(const QString& jsonMap) {
     }
 }
 
+void DocumentState::selectSubstructureMatches(const QString& matchesJson) {
+    QJsonParseError err;
+    QJsonDocument doc = QJsonDocument::fromJson(matchesJson.toUtf8(), &err);
+    QJsonArray matches;
+    if (err.error == QJsonParseError::NoError && doc.isObject()) {
+        matches = doc.object().value(QStringLiteral("matches")).toArray();
+    }
+
+    EditableMolecule& mol = m_molecule;
+    QList<AtomId> allAtomIds = mol.atomIdsInIndigoOrder();
+
+    QSet<AtomId> atomIdSet;
+    for (const QJsonValue& matchVal : matches) {
+        QJsonArray match = matchVal.toArray();
+        for (const QJsonValue& idxVal : match) {
+            int idx = idxVal.toInt();
+            if (idx >= 1 && idx <= allAtomIds.size()) atomIdSet.insert(allAtomIds[idx - 1]);
+        }
+    }
+
+    clearSelection();
+    for (AtomId id : atomIdSet) addAtomToSelection(id);
+
+    for (BondId bid : mol.bondIds()) {
+        AtomId a = -1, b = -1;
+        if (!mol.bondEndpoints(bid, a, b)) continue;
+        if (atomIdSet.contains(a) && atomIdSet.contains(b)) addBondToSelection(bid);
+    }
+}
+
 void DocumentState::setCheckIssues(const QString& jsonMap) {
     QJsonParseError err;
     QJsonDocument doc = QJsonDocument::fromJson(jsonMap.toUtf8(), &err);
