@@ -2258,8 +2258,18 @@ QString formatBranchStereoPrefix(
     return QString("(%1)-").arg(parts.join(","));
 }
 
+// Assumes generateName()'s multi-component rejection (indigoCountComponents(mol) > 1)
+// stays in place: Indigo's JSON saver gives each disconnected component its own,
+// separately-re-based "mol0"/"mol1"/... node with LOCAL atom indices, and this
+// function flattens every molecule node's bonds into one map keyed only by index --
+// if multi-component naming is ever supported, index collisions across components
+// would silently attach a wrong E/Z letter to the wrong bond.
 std::map<std::pair<int,int>, QChar> computeIndigoBondCIP(int mol) {
     std::map<std::pair<int,int>, QChar> result;
+    // Assumes this runs in a dedicated/throwaway Indigo session (matching
+    // IndigoService.cpp's identical pattern) -- this option is process/session-global
+    // and is never reset, so setting it on the shared main session would make every
+    // future indigoJson()/toKetJson() call on that session also emit "cip" fields.
     indigoSetOptionBool("json-saving-add-stereo-desc", 1);
     const char* ketStr = indigoJson(mol);
     if (!ketStr) return result;
@@ -2311,17 +2321,14 @@ StereoResult processDoubleBondStereo(
         }
 
         // 2. Count non-H heavy atom neighbors excluding the double-bond partner
-        std::vector<int> uNeighbors;
+        int deg_u = 0;
         for (int nei : g.nodes[u].neighbors) {
-            if (nei != v) uNeighbors.push_back(nei);
+            if (nei != v) deg_u++;
         }
-        std::vector<int> vNeighbors;
+        int deg_v = 0;
         for (int nei : g.nodes[v].neighbors) {
-            if (nei != u) vNeighbors.push_back(nei);
+            if (nei != u) deg_v++;
         }
-
-        int deg_u = static_cast<int>(uNeighbors.size());
-        int deg_v = static_cast<int>(vNeighbors.size());
 
         // Terminal alkene (=CH2): skip silently (not stereogenic)
         if (deg_u == 0 || deg_v == 0) {

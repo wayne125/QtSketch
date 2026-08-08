@@ -1164,11 +1164,19 @@ void IndigoService::calcStereoDescriptors(const QString &molfile) {
                     indigoFree(iter);
                 }
 
-                // E/Z bond descriptors: no C API exposes Indigo's bond-indexed CIP
-                // map directly. The only public path is to have the JSON/KET saver
-                // embed them as DAT sgroups (fieldName "INDIGO_CIP_DESC", a
-                // two-atom "atoms" list, fieldData "(E)"/"(Z)") and read them back
-                // out of the serialized structure.
+                // E/Z bond descriptors: this DAT-sgroup search is DEAD CODE for this
+                // app's actual call pattern (confirmed 2026-08-08 during the IUPAC
+                // namer's P-93.4 CIP-reuse fix -- see IUPAC Blue Book Coverage.md).
+                // indigoAddCIPSgroups (which emits "INDIGO_CIP_DESC" DAT sgroups) is
+                // only ever invoked from Indigo's molfile-save path, never from
+                // indigoJson/KET; this app never sets "molfile-saving-add-stereo-desc"
+                // anywhere, so bondMap below is always empty and MoleculeLayer.qml's
+                // bond-E/Z-label rendering has never actually displayed anything.
+                // src/app/IupacNamer.cpp's computeIndigoBondCIP found a working
+                // alternative: each bond object in the KET JSON carries its CIP
+                // label directly inline as a "cip" field ("cip":"E"/"cip":"Z") when
+                // json-saving-add-stereo-desc is set -- no DAT sgroup needed at all.
+                // TODO: replace this dead search with that direct-field read.
                 QJsonObject bondMap;
                 indigoSetOptionBool("json-saving-add-stereo-desc", 1);
                 const char* ketStr = indigoJson(mol);

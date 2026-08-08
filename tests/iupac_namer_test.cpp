@@ -1341,9 +1341,9 @@ int main() {
         indigoFree(m1); indigoFree(m2);
         std::string n1 = r1.name.toStdString();
         std::string n2 = r2.name.toStdString();
-        if (r1.success && r2.success && n1 != n2 &&
-            (n1 == "(1Z)-1-chloro-1-fluoroprop-1-ene" || n1 == "(1E)-1-chloro-1-fluoroprop-1-ene") &&
-            (n2 == "(1Z)-1-chloro-1-fluoroprop-1-ene" || n2 == "(1E)-1-chloro-1-fluoroprop-1-ene")) {
+        if (r1.success && r2.success &&
+            n1 == "(1E)-1-chloro-1-fluoroprop-1-ene" &&
+            n2 == "(1Z)-1-chloro-1-fluoroprop-1-ene") {
             std::cout << "[PASS] Phase 26 trisubstituted alkene stereo Cl/C(F)=C/C vs F/C(Cl)=C/C -> " << n1 << " vs " << n2 << "\n";
             passed++;
         } else {
@@ -1361,9 +1361,9 @@ int main() {
         indigoFree(m1); indigoFree(m2);
         std::string n1 = r1.name.toStdString();
         std::string n2 = r2.name.toStdString();
-        if (r1.success && r2.success && n1 != n2 &&
-            (n1 == "(1Z)-2-bromo-1-chloro-1-fluoroprop-1-ene" || n1 == "(1E)-2-bromo-1-chloro-1-fluoroprop-1-ene") &&
-            (n2 == "(1Z)-2-bromo-1-chloro-1-fluoroprop-1-ene" || n2 == "(1E)-2-bromo-1-chloro-1-fluoroprop-1-ene")) {
+        if (r1.success && r2.success &&
+            n1 == "(1E)-2-bromo-1-chloro-1-fluoroprop-1-ene" &&
+            n2 == "(1Z)-2-bromo-1-chloro-1-fluoroprop-1-ene") {
             std::cout << "[PASS] Phase 26 tetrasubstituted alkene stereo Cl/C(F)=C(/Br)C vs Cl/C(F)=C(\\Br)C -> " << n1 << " vs " << n2 << "\n";
             passed++;
         } else {
