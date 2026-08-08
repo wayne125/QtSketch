@@ -124,6 +124,18 @@ QtObject {
     readonly property real restOpacity: 0.6
     readonly property real hoverOpacity: 0.8
 
+    // ── Motion (Fluent 2) ────────────────────────────────────────────────────
+    // Curves sourced from Microsoft's own published Fluent motion guidance
+    // (learn.microsoft.com/en-us/windows/apps/design/motion/timing-and-easing):
+    // "Fast Out, Slow In" for anything entering, "Slow Out, Fast In" for anything
+    // exiting. QML's Easing.BezierSpline takes a flat [c1x,c1y,c2x,c2y,endx,endy]
+    // array -- the direct encoding of a CSS cubic-bezier(x1,y1,x2,y2) ending at (1,1).
+    readonly property var easingDecelerate: [0, 0, 0, 1, 1, 1]   // cubic-bezier(0,0,0,1)
+    readonly property var easingAccelerate: [1, 0, 1, 1, 1, 1]   // cubic-bezier(1,0,1,1)
+    readonly property int durationFast: 150
+    readonly property int durationMedium: 250
+    readonly property int durationSlow: 400
+
     // Chemistry UI Constants (style-sheet driven) — proxied from StyleSheets.currentSheet.
     // Theme.qml owns UI chrome tokens (colors/typography/layout/interaction states above);
     // StyleSheets.qml owns user-selectable chemistry-rendering presets (ACD/ChemSketch, RSC, etc).
