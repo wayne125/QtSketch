@@ -940,66 +940,84 @@ ApplicationWindow {
             Layout.fillWidth: true
             spacing: 4
 
-            TabBar {
-                id: docTabBar
+            Item {
+                id: docTabBarWrapper
                 Layout.fillWidth: true
-                currentIndex: DocumentManager.docIds.indexOf(DocumentManager.activeDocId)
-                onCurrentIndexChanged: {
-                    var ids = DocumentManager.docIds
-                    if (currentIndex >= 0 && currentIndex < ids.length) DocumentManager.activeDocId = ids[currentIndex]
-                }
+                implicitHeight: docTabBar.implicitHeight
 
-                Repeater {
-                    model: DocumentManager.docIds
-                    TabButton {
-                        id: tabBtn
-                        required property int modelData
-                        // titleRev forces re-evaluation after open / save-as / rename
-                        text: (window.titleRev, (window.dirtyDocs[modelData] ? "● " : "") + window.titleFor(modelData) + (window.cppEngineDocIds[modelData] ? " (C++ engine)" : ""))
+                TabBar {
+                    id: docTabBar
+                    anchors.fill: parent
+                    currentIndex: DocumentManager.docIds.indexOf(DocumentManager.activeDocId)
+                    onCurrentIndexChanged: {
+                        var ids = DocumentManager.docIds
+                        if (currentIndex >= 0 && currentIndex < ids.length) DocumentManager.activeDocId = ids[currentIndex]
+                    }
 
-                        // Content-sized and left-aligned, the Fluent tab behaviour.
-                        // TabBar stretches its buttons to fill the bar by default,
-                        // so a lone document tab spanned the whole window with its
-                        // label centred in the middle of empty space. The +32 is
-                        // room for the close affordance overlaid on the right.
-                        width: Math.min(240, Math.max(120, implicitWidth + 32))
+                    Repeater {
+                        model: DocumentManager.docIds
+                        TabButton {
+                            id: tabBtn
+                            indicator: Item {}
+                            required property int modelData
+                            // titleRev forces re-evaluation after open / save-as / rename
+                            text: (window.titleRev, (window.dirtyDocs[modelData] ? "● " : "") + window.titleFor(modelData) + (window.cppEngineDocIds[modelData] ? " (C++ engine)" : ""))
 
-                        onDoubleClicked: {
-                            taskDialogsGroup.renameDialog.docId = modelData
-                            taskDialogsGroup.renameDialog.open()
-                        }
+                            // Content-sized and left-aligned, the Fluent tab behaviour.
+                            // TabBar stretches its buttons to fill the bar by default,
+                            // so a lone document tab spanned the whole window with its
+                            // label centred in the middle of empty space. The +32 is
+                            // room for the close affordance overlaid on the right.
+                            width: Math.min(240, Math.max(120, implicitWidth + 32))
 
-                        Text {
-                            // Segoe Fluent Icons Dismiss (U+E8BB) -- same glyph the
-                            // window's own Close caption button uses.
-                            text: String.fromCharCode(0xE8BB)
-                            anchors.right: parent ? parent.right : undefined
-                            anchors.verticalCenter: parent ? parent.verticalCenter : undefined
-                            anchors.rightMargin: 8
-                            font { family: Theme.fontIcons; pixelSize: 10 }
-                            color: tabMouseArea.containsMouse ? Theme.error : Theme.textSecondary
-                            MouseArea {
-                                id: tabMouseArea
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                onClicked: {
-                                    if (DocumentManager.docIds.length <= 1) return
-                                    if (window.dirtyDocs[tabBtn.modelData]) {
-                                        // Switch to the tab being closed first: fileDialogsGroup.saveDialog/the
-                                        // structureReady Connections below only ever operate on
-                                        // activeSketch/activeCanvas, so saving a *different*,
-                                        // still-background tab here would silently save the
-                                        // wrong document's content instead.
-                                        DocumentManager.activeDocId = tabBtn.modelData
-                                        window._pendingCloseDocId = tabBtn.modelData
-                                        messageDialogsGroup.unsavedChangesDialog.open()
-                                    } else {
-                                        DocumentManager.closeDocument(tabBtn.modelData)
+                            onDoubleClicked: {
+                                taskDialogsGroup.renameDialog.docId = modelData
+                                taskDialogsGroup.renameDialog.open()
+                            }
+
+                            Text {
+                                // Segoe Fluent Icons Dismiss (U+E8BB) -- same glyph the
+                                // window's own Close caption button uses.
+                                text: String.fromCharCode(0xE8BB)
+                                anchors.right: parent ? parent.right : undefined
+                                anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+                                anchors.rightMargin: 8
+                                font { family: Theme.fontIcons; pixelSize: 10 }
+                                color: tabMouseArea.containsMouse ? Theme.error : Theme.textSecondary
+                                MouseArea {
+                                    id: tabMouseArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    onClicked: {
+                                        if (DocumentManager.docIds.length <= 1) return
+                                        if (window.dirtyDocs[tabBtn.modelData]) {
+                                            // Switch to the tab being closed first: fileDialogsGroup.saveDialog/the
+                                            // structureReady Connections below only ever operate on
+                                            // activeSketch/activeCanvas, so saving a *different*,
+                                            // still-background tab here would silently save the
+                                            // wrong document's content instead.
+                                            DocumentManager.activeDocId = tabBtn.modelData
+                                            window._pendingCloseDocId = tabBtn.modelData
+                                            messageDialogsGroup.unsavedChangesDialog.open()
+                                        } else {
+                                            DocumentManager.closeDocument(tabBtn.modelData)
+                                        }
                                     }
                                 }
                             }
                         }
                     }
+                }
+
+                Rectangle {
+                    id: tabIndicator
+                    height: 2
+                    color: Theme.accent
+                    y: docTabBar.height - height
+                    x: docTabBar.currentItem ? docTabBar.currentItem.x : 0
+                    width: docTabBar.currentItem ? docTabBar.currentItem.width : 0
+                    Behavior on x { NumberAnimation { duration: Theme.durationFast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate } }
+                    Behavior on width { NumberAnimation { duration: Theme.durationFast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate } }
                 }
             }
 
