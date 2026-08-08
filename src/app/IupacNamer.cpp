@@ -2653,10 +2653,14 @@ IupacResult IupacNamer::generateName(int mol) {
             if (atom == -1) break;
             int idx = indigoIndex(atom);
             int cip = indigoStereocenterCIPDescriptor(atom);
-            if (cip == 2 || cip == 3) {
-                indigoFree(atom);
-                indigoFree(stereoIter);
-                return {false, "", "Pseudo-asymmetric stereocenters are not supported in this phase."};
+            if (cip == 2) {
+                if (indigoToGraphIdx.count(idx)) {
+                    stereoByGraphId[indigoToGraphIdx[idx]] = 's';
+                }
+            } else if (cip == 3) {
+                if (indigoToGraphIdx.count(idx)) {
+                    stereoByGraphId[indigoToGraphIdx[idx]] = 'r';
+                }
             } else if (cip == 4) {
                 if (indigoToGraphIdx.count(idx)) {
                     stereoByGraphId[indigoToGraphIdx[idx]] = 'S';

@@ -184,6 +184,7 @@ int main() {
         {"C/C=C\\CC", "(2Z)-pent-2-ene"},
         {"CC(C)=CC", "", true, "E/Z determination requires comparing substituents beyond the first atom, which is not supported in this phase."},
         {"C=C=C", "", true, "Allenes and cumulated double bonds are not supported in this phase."},
+        {"OC(=O)[C@H](O)[C@H](O)[C@H](O)C(=O)O", "(2R,3r,4S)-2,3,4-trihydroxypentanedioic acid"},
 
         // Phase 8: Ring-attached sulfonic acid, thiol, thioether, and acyl halide
         {"c1ccccc1S", "benzenethiol"},
