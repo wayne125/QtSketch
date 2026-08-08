@@ -182,7 +182,10 @@ int main() {
         {"C/C=C\\C", "(2Z)-but-2-ene"},
         {"C/C=C/CC", "(2E)-pent-2-ene"},
         {"C/C=C\\CC", "(2Z)-pent-2-ene"},
-        {"CC(C)=CC", "", true, "E/Z determination requires comparing substituents beyond the first atom, which is not supported in this phase."},
+        {"CC(C)=CC", "2-methylbut-2-ene"},
+        {"C/C=C(C)\\CC", "(2Z)-3-methylpent-2-ene"},
+        {"C/C=C(C)/CC", "(2E)-3-methylpent-2-ene"},
+        {"CC=C(C)CC", "3-methylpent-2-ene"},
         {"C=C=C", "", true, "Allenes and cumulated double bonds are not supported in this phase."},
         {"OC(=O)[C@H](O)[C@H](O)[C@H](O)C(=O)O", "(2R,3r,4S)-2,3,4-trihydroxypentanedioic acid"},
 
@@ -1370,12 +1373,14 @@ int main() {
     }
 
     {
-        // Phase 26 regression: Genuine tie case (ethyl vs methyl on alkene carbon) correctly rejected
+        // Phase 26 regression: Genuine tie case (ethyl vs methyl on alkene carbon)
+        // Now resolves correctly (no error) because Indigo CIP handles 2nd-shell ties.
+        // With partially specified SMILES, it just omits the E/Z descriptor silently.
         int m = indigoLoadMoleculeFromString("CCC(C)=C/Cl");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
-        if (!r.success && r.error.contains("E/Z determination requires comparing substituents beyond the first atom, which is not supported in this phase.")) {
-            std::cout << "[PASS] Trisubstituted alkene tie case correctly rejected: " << r.error.toStdString() << "\n";
+        if (r.success && r.name == "1-chloro-2-methylbut-1-ene") {
+            std::cout << "[PASS] Trisubstituted alkene tie case resolved: " << r.name.toStdString() << "\n";
             passed++;
         } else {
             std::cout << "[FAIL] Trisubstituted alkene tie case -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";

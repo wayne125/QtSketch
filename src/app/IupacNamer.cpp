@@ -12,6 +12,9 @@
 #include <climits>
 #include <cmath>
 #include <iostream>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
 
 struct GraphNode {
     int id;           // 0..N-1 index in heavy atom graph
@@ -2255,6 +2258,34 @@ QString formatBranchStereoPrefix(
     return QString("(%1)-").arg(parts.join(","));
 }
 
+std::map<std::pair<int,int>, QChar> computeIndigoBondCIP(int mol) {
+    std::map<std::pair<int,int>, QChar> result;
+    indigoSetOptionBool("json-saving-add-stereo-desc", 1);
+    const char* ketStr = indigoJson(mol);
+    if (!ketStr) return result;
+    QJsonDocument ketDoc = QJsonDocument::fromJson(QByteArray(ketStr));
+    QJsonObject ketRoot = ketDoc.object();
+    QJsonArray nodes = ketRoot.value("root").toObject().value("nodes").toArray();
+    for (const QJsonValue &nodeVal : nodes) {
+        QString ref = nodeVal.toObject().value("$ref").toString();
+        if (ref.isEmpty()) continue;
+        QJsonObject molObj = ketRoot.value(ref).toObject();
+        if (molObj.value("type").toString() != "molecule") continue;
+        const QJsonArray bonds = molObj.value("bonds").toArray();
+        for (const QJsonValue &bondVal : bonds) {
+            QJsonObject bondObj = bondVal.toObject();
+            QString label = bondObj.value("cip").toString();
+            if (label != "E" && label != "Z") continue;
+            QJsonArray bondAtoms = bondObj.value("atoms").toArray();
+            if (bondAtoms.size() != 2) continue;
+            int a1 = bondAtoms.at(0).toInt();
+            int a2 = bondAtoms.at(1).toInt();
+            result[{std::min(a1, a2), std::max(a1, a2)}] = label == "Z" ? QChar('Z') : QChar('E');
+        }
+    }
+    return result;
+}
+
 StereoResult processDoubleBondStereo(
     int mol,
     const Graph &g,
@@ -2262,6 +2293,8 @@ StereoResult processDoubleBondStereo(
     const std::map<int, int> &graphIdToLocant,
     std::map<int, QChar> &stereoByGraphId)
 {
+    const std::map<std::pair<int,int>, QChar> bondCIP = computeIndigoBondCIP(mol);
+
     for (const auto &bond : g.bonds) {
         if (bond.order != 2) continue;
 
@@ -2295,40 +2328,6 @@ StereoResult processDoubleBondStereo(
             continue;
         }
 
-        // Determine high-priority substituent on u and v (by atomic number of first atom)
-        auto findHighPrioritySubstituent = [&](const std::vector<int> &neighbors, int &chosenSub) -> StereoResult {
-            if (neighbors.size() == 1) {
-                chosenSub = neighbors[0];
-                return {true, "", ""};
-            } else if (neighbors.size() == 2) {
-                int a = neighbors[0];
-                int b = neighbors[1];
-                int zA = g.nodes[a].atomicNumber;
-                int zB = g.nodes[b].atomicNumber;
-                if (zA > zB) {
-                    chosenSub = a;
-                    return {true, "", ""};
-                } else if (zB > zA) {
-                    chosenSub = b;
-                    return {true, "", ""};
-                } else {
-                    return {false, "", "E/Z determination requires comparing substituents beyond the first atom, which is not supported in this phase."};
-                }
-            }
-            return {false, "", "E/Z determination for trisubstituted or tetrasubstituted double bonds is not supported in this phase."};
-        };
-
-        int r1 = -1, r2 = -1;
-        StereoResult subResU = findHighPrioritySubstituent(uNeighbors, r1);
-        if (!subResU.ok) {
-            return subResU;
-        }
-
-        StereoResult subResV = findHighPrioritySubstituent(vNeighbors, r2);
-        if (!subResV.ok) {
-            return subResV;
-        }
-
         // 3. Check if double bond carbons are on main chain/ring
         auto it_u = graphIdToLocant.find(u);
         auto it_v = graphIdToLocant.find(v);
@@ -2340,58 +2339,18 @@ StereoResult processDoubleBondStereo(
         int loc_v = it_v->second;
         int targetGraphId = (loc_u < loc_v) ? u : v;
 
-        // 4. Retrieve 2D coordinates for u, v, r1, r2
-        int handle_u = indigoGetAtom(mol, g.nodes[u].indigoIdx);
-        int handle_v = indigoGetAtom(mol, g.nodes[v].indigoIdx);
-        int handle_r1 = indigoGetAtom(mol, g.nodes[r1].indigoIdx);
-        int handle_r2 = indigoGetAtom(mol, g.nodes[r2].indigoIdx);
-
-        float ux = 0, uy = 0, vx = 0, vy = 0, r1x = 0, r1y = 0, r2x = 0, r2y = 0;
-        bool coordsOk = true;
-
-        if (handle_u > 0) {
-            float* p = indigoXYZ(handle_u);
-            if (p) { ux = p[0]; uy = p[1]; } else coordsOk = false;
-            indigoFree(handle_u);
-        } else coordsOk = false;
-
-        if (handle_v > 0) {
-            float* p = indigoXYZ(handle_v);
-            if (p) { vx = p[0]; vy = p[1]; } else coordsOk = false;
-            indigoFree(handle_v);
-        } else coordsOk = false;
-
-        if (handle_r1 > 0) {
-            float* p = indigoXYZ(handle_r1);
-            if (p) { r1x = p[0]; r1y = p[1]; } else coordsOk = false;
-            indigoFree(handle_r1);
-        } else coordsOk = false;
-
-        if (handle_r2 > 0) {
-            float* p = indigoXYZ(handle_r2);
-            if (p) { r2x = p[0]; r2y = p[1]; } else coordsOk = false;
-            indigoFree(handle_r2);
-        } else coordsOk = false;
-
-        if (!coordsOk) {
-            return {false, "", "E/Z geometry could not be determined for this structure (missing or degenerate coordinates)."};
+        // 4. Look up Indigo's own real CIP answer for this bond (2nd-shell-aware,
+        // handles trisubstituted/tetrasubstituted cases the old hand-rolled
+        // first-shell-only comparator could not). Absent = not stereogenic
+        // (e.g. symmetric substituents) or geometry undefined -- skip silently.
+        auto key = std::make_pair(std::min(g.nodes[u].indigoIdx, g.nodes[v].indigoIdx),
+                                   std::max(g.nodes[u].indigoIdx, g.nodes[v].indigoIdx));
+        auto cipIt = bondCIP.find(key);
+        if (cipIt == bondCIP.end()) {
+            continue;
         }
 
-        float ab_x = vx - ux;
-        float ab_y = vy - uy;
-
-        float side1 = ab_x * (r1y - uy) - ab_y * (r1x - ux);
-        float side2 = ab_x * (r2y - uy) - ab_y * (r2x - ux);
-
-        const float EPSILON = 1e-6f;
-        if (std::abs(side1) < EPSILON || std::abs(side2) < EPSILON) {
-            return {false, "", "E/Z geometry could not be determined for this structure (missing or degenerate coordinates)."};
-        }
-
-        bool sameSide = (side1 > 0 && side2 > 0) || (side1 < 0 && side2 < 0);
-        QChar ezLetter = sameSide ? 'Z' : 'E';
-
-        stereoByGraphId[targetGraphId] = ezLetter;
+        stereoByGraphId[targetGraphId] = cipIt->second;
     }
 
     return {true, "", ""};
