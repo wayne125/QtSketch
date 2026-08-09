@@ -7879,6 +7879,7 @@ IupacResult IupacNamer::generateName(int mol) {
             std::vector<int> principalLocants;
             std::vector<int> substituentLocants;
             std::vector<std::pair<QString, int>> namedSubstituents;
+            std::set<int> handledBranchStereoIds;
         };
 
         std::vector<NaphthaleneSignature> signatures;
@@ -8038,7 +8039,15 @@ IupacResult IupacNamer::generateName(int mol) {
                         }
                         if (subName.isEmpty()) {
                             subName = nameBranchGraph(g, nei, rNode, allSSSRRings, ring2Nodes);
-                            if (subName.startsWith("(")) {
+                            QString branchStereo = formatBranchStereoPrefix(g, nei, rNode, stereoByGraphId, sig.handledBranchStereoIds);
+                            if (!branchStereo.isEmpty()) {
+                                if (subName.startsWith("(") && subName.endsWith(")")) {
+                                    QString inner = subName.mid(1, subName.length() - 2);
+                                    subName = QString("[%1%2]").arg(branchStereo, inner);
+                                } else {
+                                    subName = QString("[%1%2]").arg(branchStereo, subName);
+                                }
+                            } else if (subName.startsWith("(")) {
                                 subName = subName.mid(1);
                                 if (subName.endsWith(")")) subName.chop(1);
                             }
@@ -8088,7 +8097,7 @@ IupacResult IupacNamer::generateName(int mol) {
         if (!ezRes.ok) {
             return {false, "", ezRes.error};
         }
-        StereoResult stereoRes = formatStereoPrefix(stereoByGraphId, graphIdToLocant);
+        StereoResult stereoRes = formatStereoPrefix(stereoByGraphId, graphIdToLocant, bestSig.handledBranchStereoIds);
         if (!stereoRes.ok) {
             return {false, "", stereoRes.error};
         }

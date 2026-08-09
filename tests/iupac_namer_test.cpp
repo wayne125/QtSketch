@@ -1340,6 +1340,26 @@ int main() {
     }
 
     {
+        // Naphthalene parent structure with substituent stereocenter -- now correctly named
+        int m1 = indigoLoadMoleculeFromString("c1ccc2ccccc2c1[C@H](Cl)C");
+        int m2 = indigoLoadMoleculeFromString("c1ccc2ccccc2c1[C@@H](Cl)C");
+        IupacResult r1 = IupacNamer::generateName(m1);
+        IupacResult r2 = IupacNamer::generateName(m2);
+        indigoFree(m1); indigoFree(m2);
+        std::string n1 = r1.name.toStdString();
+        std::string n2 = r2.name.toStdString();
+        if (r1.success && r2.success &&
+            n1 == "1-[(1R)-1-chloroethyl]naphthalene" &&
+            n2 == "1-[(1S)-1-chloroethyl]naphthalene") {
+            std::cout << "[PASS] Naphthalene parent with branch stereocenter -> " << n1 << " vs " << n2 << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Naphthalene parent with branch stereocenter -> r1.succ=" << r1.success << " n1='" << n1 << "' r2.succ=" << r2.success << " n2='" << n2 << "' err1='" << r1.error.toStdString() << "' err2='" << r2.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
         // Phase 26: Trisubstituted alkene with atomic-number-resolvable priority
         int m1 = indigoLoadMoleculeFromString("Cl/C(F)=C/C");
         int m2 = indigoLoadMoleculeFromString("F/C(Cl)=C/C");
