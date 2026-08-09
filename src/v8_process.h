@@ -6,7 +6,6 @@
 #include <QByteArray>
 #include <QtQml/qqml.h>
 #include <memory>
-
 #include "app/molecule/DocumentState.h"
 #include "app/molecule/TemplateLibrary.h"
 #include "app/molecule/SdfBatch.h"
@@ -140,8 +139,6 @@ signals:
     void errorOccurred(const QString& error);
 
 private:
-
-
     // Turns m_docState's current molecule/selection into the exact QVariantMap shape and
     // signal set QML already consumes from the JS path -- the single place that makes a
     // C++-mode document indistinguishable from a JS-mode one at the QML boundary. Always
@@ -171,7 +168,6 @@ private:
                                   // already fully implemented and tested in SdfBatch itself.
     QHash<QString, QString> m_sdfProps;   // mirrors _sdfProps (40-serialize.js:2, starts as {}),
                                             // populated by loadSdfBatchRecord, read by getSdfProps.
-
 
     QVariantMap m_primitives;
     QVariantMap m_selection;
