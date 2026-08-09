@@ -19,7 +19,6 @@ AppMenuBar {
     AppMenuBarItem {
         text: "File"
         MenuItemRow { text: "New Document"; onTriggered: DocumentManager.addDocument() }
-        MenuItemRow { text: "New Document (C++ engine)"; onTriggered: root.win.addCppEngineDocument() }
         MenuItemRow { text: "Open…"; iconSource: "open.svg"; onTriggered: root.win.openDialog.open() }
         MenuItemRow { text: "Save"; iconSource: "save.svg"; shortcutHint: "Ctrl+S"; onTriggered: root.win.saveActive(false) }
         MenuItemRow { text: "Save As…"; iconSource: "save.svg"; onTriggered: root.win.saveActive(true) }

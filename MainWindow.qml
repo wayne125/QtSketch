@@ -177,9 +177,6 @@ ApplicationWindow {
     // Per-document file paths + display titles (UI-only state). titleRev bumps
     // force TabButton text bindings to re-evaluate after open/save-as/rename.
     property var docFilePaths: ({})
-    // Which docIds are running in C++-engine mode (sub-project 7b) -- purely a UI-side label
-    // flag, the same "extra per-doc UI state keyed by docId" pattern as docFilePaths above.
-    property var cppEngineDocIds: ({})
     property int titleRev: 0
     property url pendingSaveUrl
     property url pendingRenderUrl
@@ -276,18 +273,6 @@ ApplicationWindow {
     property alias uiSettings: uiSettings
 
     property var docTitles: ({})
-    function addCppEngineDocument() {
-        var newId = DocumentManager.addDocument(true)
-        cppEngineDocIds[newId] = true
-        // Mutating a QML `var` object property does NOT emit a property-changed notification on
-        // its own -- the new tab's TabButton is already instantiated (docIdsChanged fired
-        // synchronously inside addDocument(), before this line even runs) with a text binding
-        // that read cppEngineDocIds[newId] as unset. titleRev is the same explicit re-evaluation
-        // bump setDocFile() already uses for the identical docFilePaths/docTitles pattern above --
-        // every TabButton's text binding depends on it via the comma-operator trick, so
-        // incrementing it forces all of them to re-read the now-correctly-set flag.
-        titleRev++
-    }
 
     function titleFor(docId) {
         if (docTitles[docId] === undefined) {
@@ -961,7 +946,7 @@ ApplicationWindow {
                             indicator: Item {}
                             required property int modelData
                             // titleRev forces re-evaluation after open / save-as / rename
-                            text: (window.titleRev, (window.dirtyDocs[modelData] ? "● " : "") + window.titleFor(modelData) + (window.cppEngineDocIds[modelData] ? " (C++ engine)" : ""))
+                            text: (window.titleRev, (window.dirtyDocs[modelData] ? "● " : "") + window.titleFor(modelData))
 
                             // Content-sized and left-aligned, the Fluent tab behaviour.
                             // TabBar stretches its buttons to fill the bar by default,
