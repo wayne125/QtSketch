@@ -356,6 +356,9 @@ function snapshotStruct(s) {
             copy.images.set(id, img.clone ? img.clone() : img)
         })
     }
+    if (s.brackets && s.brackets.slice) {
+        copy.brackets = s.brackets.slice()
+    }
     copy.stereoFlags = s.stereoFlags ? Object.assign({}, s.stereoFlags) : { type: 'abs', groupId: 0 }
     if (copy.initHalfBonds) { copy.initHalfBonds(); copy.initNeighbors(); copy.updateHalfBonds(); copy.sortNeighbors() }
     if (copy.markFragments) copy.markFragments()
@@ -366,6 +369,7 @@ function snapshotStruct(s) {
 
 function init() {
     _struct = new CoreLib.ChemCore.Struct()
+    _struct.brackets = []
     _selection = { atom_ids: [], bond_ids: [], rxnArrow_ids: [], rxnPlus_ids: [], multitailArrow_ids: [], bbox: null }
     _history = []
     _historyPointer = -1
@@ -478,6 +482,140 @@ function selectFragment(atomId, bondId) {
     _struct.bonds.forEach(function(b, id) {
         if (!hiddenAtoms[b.begin] && !hiddenAtoms[b.end] && aidSet[b.begin] && aidSet[b.end])
             bids.push(id)
+    })
+
+    _selection = { atom_ids: aids, bond_ids: bids, rxnArrow_ids: [], rxnPlus_ids: [], multitailArrow_ids: [], bbox: null }
+}
+
+function selectRing(atomId, bondId) {
+    if (atomId === null && bondId === null) {
+        _selection = { atom_ids: [], bond_ids: [], rxnArrow_ids: [], rxnPlus_ids: [], multitailArrow_ids: [], bbox: null }
+        return
+    }
+
+    var startBondId = null
+    if (bondId !== null) {
+        startBondId = bondId
+    } else if (atomId !== null) {
+        var minLen = Infinity
+        var bestBond = null
+        _struct.bonds.forEach(function(b, bid) {
+            if (b.begin === atomId || b.end === atomId) {
+                var ring = shortestRingThroughBond(_struct, bid)
+                if (ring && ring.length < minLen) {
+                    minLen = ring.length
+                    bestBond = bid
+                }
+            }
+        })
+        startBondId = bestBond
+    }
+
+    if (startBondId === null) {
+        return
+    }
+
+    var ringAtoms = shortestRingThroughBond(_struct, startBondId)
+    if (!ringAtoms) return
+
+    var aidSet = {}
+    for (var i = 0; i < ringAtoms.length; i++) aidSet[ringAtoms[i]] = true
+
+    var bids = []
+    _struct.bonds.forEach(function(b, bid) {
+        if (aidSet[b.begin] && aidSet[b.end]) bids.push(bid)
+    })
+
+    _selection = { atom_ids: ringAtoms, bond_ids: bids, rxnArrow_ids: [], rxnPlus_ids: [], multitailArrow_ids: [], bbox: null }
+}
+
+function selectChain(atomId, bondId) {
+    if (atomId === null && bondId === null) {
+        _selection = { atom_ids: [], bond_ids: [], rxnArrow_ids: [], rxnPlus_ids: [], multitailArrow_ids: [], bbox: null }
+        return
+    }
+
+    var queue = []
+    var visited = {}
+    var aids = []
+    var bond = null
+
+    if (atomId !== null) {
+        queue.push(atomId)
+        visited[atomId] = true
+    } else if (bondId !== null) {
+        bond = _struct.bonds.get(bondId)
+        if (bond) {
+            queue.push(bond.begin, bond.end)
+            visited[bond.begin] = true
+            visited[bond.end] = true
+        } else {
+            return
+        }
+    }
+
+    var adj = {}
+    _struct.bonds.forEach(function(b, bid) {
+        if (!adj[b.begin]) adj[b.begin] = []
+        if (!adj[b.end]) adj[b.end] = []
+        adj[b.begin].push({ atom: b.end, bond: bid })
+        adj[b.end].push({ atom: b.begin, bond: bid })
+    })
+
+    var ringAtoms = {}
+    _struct.bonds.forEach(function(b, bid) {
+        var cycle = shortestRingThroughBond(_struct, bid)
+        if (cycle) {
+            cycle.forEach(function(a) { ringAtoms[a] = true })
+        }
+    })
+
+    while (queue.length > 0) {
+        var cur = queue.shift()
+        aids.push(cur)
+
+        var isH = false
+        var a = _struct.atoms.get(cur)
+        if (a && a.label === 'H') isH = true
+
+        var isStart = (atomId !== null && cur === atomId) || 
+                      (bondId !== null && bond && (cur === bond.begin || cur === bond.end))
+
+        if (!isH && ringAtoms[cur] && !isStart) {
+            continue
+        }
+
+        var neighbors = adj[cur] || []
+        var heavyNeighbors = neighbors.filter(function(n) {
+            var nA = _struct.atoms.get(n.atom)
+            return nA && nA.label !== 'H'
+        })
+
+        if (!isH) {
+            if (heavyNeighbors.length > 2) {
+                continue
+            } else if (heavyNeighbors.length === 1 && !isStart) {
+                continue
+            } else if (heavyNeighbors.length === 0) {
+                continue
+            }
+        }
+
+        for (var i = 0; i < neighbors.length; i++) {
+            var n = neighbors[i]
+            if (!visited[n.atom]) {
+                visited[n.atom] = true
+                queue.push(n.atom)
+            }
+        }
+    }
+
+    var aidSet = {}
+    for (var i = 0; i < aids.length; i++) aidSet[aids[i]] = true
+
+    var bids = []
+    _struct.bonds.forEach(function(b, bid) {
+        if (aidSet[b.begin] && aidSet[b.end]) bids.push(bid)
     })
 
     _selection = { atom_ids: aids, bond_ids: bids, rxnArrow_ids: [], rxnPlus_ids: [], multitailArrow_ids: [], bbox: null }
@@ -1221,7 +1359,7 @@ function buildRenderPrimitives(showExplicitH) {
         texts: (function() {
             var out = []
             if (_struct.texts) _struct.texts.forEach(function(t, id) {
-                out.push({ id: id, x: t.position.x, y: t.position.y, content: _plainFromTextJson(t.content || "") })
+                out.push({ id: id, x: t.position.x, y: t.position.y, content: _plainFromTextJson(t.content || ""), bold: !!t.bold, italic: !!t.italic })
             })
             return out
         })(),
@@ -1250,7 +1388,8 @@ function buildRenderPrimitives(showExplicitH) {
             }
             out.sort(function(a, b) { return a.number - b.number })
             return out
-        })()
+        })(),
+        brackets: _struct.brackets ? _struct.brackets.slice() : []
     }
 }
 

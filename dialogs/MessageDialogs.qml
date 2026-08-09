@@ -34,7 +34,10 @@ Item {
                     var docId = win._pendingCloseDocId
                     win._pendingCloseDocId = -1
                     DocumentManager.closeDocument(docId)
+                    const appData = StandardPaths.writableLocation(StandardPaths.AppDataLocation)
+                    win.fileIO.remove(appData + "/recovery/autosave_" + docId + ".ket")
                 } else {
+                    if (win.discardRecoveryFiles) win.discardRecoveryFiles()
                     win._forceQuit = true
                     Qt.quit()
                 }
@@ -77,6 +80,22 @@ Item {
         id: similarityRankResultDialog
         title: "Similarity Ranking"
         text: ""
+    }
+
+    property alias recoveryDialog: recoveryDialog
+
+    MessageDialog {
+        id: recoveryDialog
+        title: "Recover Unsaved Documents?"
+        buttons: MessageDialog.Yes | MessageDialog.No
+        text: "The application closed unexpectedly. Recover unsaved changes?"
+        onButtonClicked: function(button) {
+            if (button === MessageDialog.Yes) {
+                win.restoreRecoveryFiles()
+            } else if (button === MessageDialog.No) {
+                win.discardRecoveryFiles()
+            }
+        }
     }
 
 }

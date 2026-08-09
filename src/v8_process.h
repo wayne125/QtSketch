@@ -7,6 +7,9 @@
 #include <QtQml/qqml.h>
 #include <memory>
 #include "qjs_engine.h"
+#include "app/molecule/DocumentState.h"
+#include "app/molecule/TemplateLibrary.h"
+#include "app/molecule/SdfBatch.h"
 
 class V8Process : public QObject {
     Q_OBJECT
@@ -17,7 +20,15 @@ class V8Process : public QObject {
     Q_PROPERTY(QVariantMap overlayState READ overlayState WRITE setOverlayState NOTIFY overlayStateChanged)
 
 public:
-    explicit V8Process(QObject *parent = nullptr);
+    // cppEngine=true creates a document that routes the in-scope gestures (see
+    // applyLocalState's own comment) through DocumentState instead of the JS engine, and never
+    // creates m_engine at all. Defaulted so every existing call site (which never passes this
+    // argument) is completely unaffected.
+    // templateLibrary is non-owning: DocumentManager owns the real instance and outlives
+    // every V8Process it creates. Defaulted to nullptr so any hypothetical future
+    // construction site that doesn't need template insertion (e.g. a test) still
+    // compiles unchanged.
+    explicit V8Process(QObject *parent = nullptr, bool cppEngine = false, TemplateLibrary* templateLibrary = nullptr);
     ~V8Process();
 
     QVariantMap primitives() const { return m_primitives; }
@@ -46,11 +57,12 @@ public:
     Q_INVOKABLE void loadBenzene();
     Q_INVOKABLE void deserializeMol(const QString& data);
     Q_INVOKABLE void requestStructure(const QString& fmt, const QString& reqId);
+    Q_INVOKABLE void requestSelectionStructure(const QString& reqId);
     Q_INVOKABLE void requestSerialize(const QString& reqId);
     Q_INVOKABLE QString getStructure(const QString& fmt);
     Q_INVOKABLE QString serializeMol();
-    Q_INVOKABLE void loadStructure(const QString& format, const QString& data);
-    Q_INVOKABLE void insertFunctionalGroup(const QString& fgName, double cx, double cy, int targetAtomId = -1);
+    Q_INVOKABLE void loadStructure(const QString& format, const QString& data, bool centerOnPage = false);
+    Q_INVOKABLE void insertFunctionalGroup(const QString& fgName, double cx, double cy, int targetAtomId = -1, bool fullStructure = true);
     Q_INVOKABLE void insertLibraryTemplateFused(const QString& fgName, double cx, double cy, int targetBondId);
     Q_INVOKABLE void requestSaltsAndSolventsList();
     Q_INVOKABLE void requestFunctionalGroupsList();
@@ -101,8 +113,8 @@ public:
     Q_INVOKABLE void distributeAtoms(const QString& direction);
     Q_INVOKABLE void transformSelection(const QString& mode);
     Q_INVOKABLE void addChain(double x1, double y1, double x2, double y2);
-    Q_INVOKABLE void addText(const QString& content, double x, double y);
-    Q_INVOKABLE void updateText(int id, const QString& content);
+    Q_INVOKABLE void addText(const QString& content, double x, double y, bool bold = false, bool italic = false);
+    Q_INVOKABLE void updateText(int id, const QString& content, bool bold = false, bool italic = false);
     Q_INVOKABLE void deleteText(int id);
     Q_INVOKABLE void addImage(const QString& base64DataUri, double cx, double cy, double halfW, double halfH);
     Q_INVOKABLE void deleteImage(int id);
@@ -135,6 +147,37 @@ private:
     // JSON line the worker emits via console.log, whether that line came from
     // QjsEngine's synchronous native_log callback (see qjs_engine.cpp).
     void handleWorkerLine(const QString &line);
+
+    // Turns m_docState's current molecule/selection into the exact QVariantMap shape and
+    // signal set QML already consumes from the JS path -- the single place that makes a
+    // C++-mode document indistinguishable from a JS-mode one at the QML boundary. Always
+    // renders with showExplicitH=false; the setShowExplicitH toggle is out of scope for this
+    // pilot (see the approved spec's Scope section).
+    void applyLocalState();
+
+    // Ports 40-serialize.js's _buildBatchRecordsFromStructs: builds the {count, records:
+    // [{index, label, thumb: {atoms, bonds}}]} JSON shape shared by deserializeRdfBatch/
+    // deserializeIndigoBatch/deserializeSdfBatch/realignSdfBatch. `count` is m_sdfBatch's true,
+    // uncapped record count; the `records` array itself is capped at the first 500 entries,
+    // matching the real code's own Math.min(count, 500) exactly.
+    QString buildSdfBatchListJson() const;
+
+    // Shared by deserializeRdfBatch/deserializeIndigoBatch, whose real JS bodies are byte-
+    // identical (confirmed by direct source read) -- avoids literally duplicating the branch
+    // body twice the way the real JS does. recordsJson is JSON.stringify([{molfile: "..."}, ...]).
+    void handleDeserializeBatchFromMolfiles(const QString& recordsJson);
+
+    bool m_cppEngine = false;
+    std::unique_ptr<DocumentState> m_docState;   // non-null only when m_cppEngine
+    TemplateLibrary* m_templateLibrary = nullptr;   // non-owning; null unless passed in at construction
+    QString m_docClipboardMol;   // C++-engine-only clipboard cache: set by copySelection/cutSelection,
+                                  // read by pasteSelection. Mirrors the JS worker's module-level
+                                  // _clipboard (90-dispatch.js:133-141, 40-serialize.js:120-123).
+    SdfBatch m_sdfBatch;          // C++-engine-only staged batch, mirrors the JS worker's module-level
+                                  // _sdfBatchRecords (40-serialize.js). Chemistry/Indigo work is
+                                  // already fully implemented and tested in SdfBatch itself.
+    QHash<QString, QString> m_sdfProps;   // mirrors _sdfProps (40-serialize.js:2, starts as {}),
+                                            // populated by loadSdfBatchRecord, read by getSdfProps.
 
     std::unique_ptr<QjsEngine> m_engine;
     QVariantMap m_primitives;

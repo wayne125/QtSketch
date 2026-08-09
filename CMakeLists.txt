@@ -4,7 +4,7 @@ project(sketchQmlDesktop LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Qml Quick Concurrent)
+find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Concurrent)
 qt_standard_project_setup(REQUIRES 6.6)
 qt_policy(SET QTP0004 OLD)
 
@@ -24,7 +24,12 @@ endforeach()
 set_source_files_properties(Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 set_source_files_properties(StyleSheets.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
-qt_add_executable(sketch src/app/main.cpp src/app/IndigoService.h src/app/IndigoService.cpp src/app/ImagoService.h src/app/ImagoService.cpp src/v8_process.h src/v8_process.cpp src/qjs_engine.h src/qjs_engine.cpp src/app/FileIO.h src/app/PlacementEngines.h src/app/PlacementEngines.cpp src/app/PlacementPreviewManager.h src/app/PlacementPreviewManager.cpp src/app/AppController.h src/app/AppController.cpp src/app/DocumentManager.h src/app/DocumentManager.cpp)
+qt_add_executable(sketch src/app/main.cpp src/app/IndigoService.h src/app/IndigoService.cpp src/app/IupacNamer.h src/app/IupacNamer.cpp src/app/ImagoService.h src/app/ImagoService.cpp src/v8_process.h src/v8_process.cpp src/qjs_engine.h src/qjs_engine.cpp src/app/FileIO.h src/app/PlacementEngines.h src/app/PlacementEngines.cpp src/app/PlacementPreviewManager.h src/app/PlacementPreviewManager.cpp src/app/AppController.h src/app/AppController.cpp src/app/DocumentManager.h src/app/DocumentManager.cpp)
+# FusedRingOrientation/FusedRingDirectionDetector are NOT linked into this target:
+# IupacNamer.cpp has zero calls into them (confirmed 2026-07-29). They're real,
+# tested geometric-orientation modules meant for a future numbering-integration
+# phase, not dead weight to ship in the app binary today. They're still built
+# and exercised by their own standalone test executables below.
 
 # set_target_properties( PROPERTIES WIN32_EXECUTABLE TRUE)
 
@@ -32,6 +37,7 @@ qt_add_qml_module(sketch
     URI Sketch.App
     VERSION 1.0
     QML_FILES
+        CommandPalette.qml
         MainWindow.qml
         AppMenus.qml
         MainToolbar.qml
@@ -138,7 +144,7 @@ qt_add_qml_module(sketch
         icons/search.svg
 )
 
-target_link_libraries(sketch PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Concurrent qjs
+target_link_libraries(sketch PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Concurrent qjs molecule_model
 )
 
 
@@ -189,4 +195,109 @@ add_custom_command(TARGET sketch POST_BUILD
         ${CMAKE_CURRENT_SOURCE_DIR}/assets/monomer_library.ket
         ${CMAKE_CURRENT_SOURCE_DIR}/indigo/data/molecules/basic/monomer_library.ket
 )
+
+qt_add_executable(iupac_namer_test tests/iupac_namer_test.cpp src/app/IupacNamer.h src/app/IupacNamer.cpp)
+target_include_directories(iupac_namer_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/app
+    ${CMAKE_CURRENT_SOURCE_DIR}/indigo/api/c/indigo
+)
+if (MSVC)
+    target_link_libraries(iupac_namer_test PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.lib)
+else()
+    target_link_libraries(iupac_namer_test PRIVATE ${INDIGO_LIB_DIR}/indigo.dll)
+endif()
+
+enable_testing()
+add_test(NAME iupac_namer_test COMMAND iupac_namer_test)
+
+qt_add_executable(fused_ring_orientation_test tests/fused_ring_orientation_test.cpp src/app/FusedRingOrientation.h src/app/FusedRingOrientation.cpp)
+target_include_directories(fused_ring_orientation_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/app
+)
+if (MSVC)
+    target_link_libraries(fused_ring_orientation_test PRIVATE Qt6::Core)
+endif()
+add_test(NAME fused_ring_orientation_test COMMAND fused_ring_orientation_test)
+
+qt_add_executable(fused_ring_direction_detector_test tests/fused_ring_direction_detector_test.cpp src/app/FusedRingDirectionDetector.h src/app/FusedRingDirectionDetector.cpp src/app/FusedRingOrientation.h src/app/FusedRingOrientation.cpp)
+target_include_directories(fused_ring_direction_detector_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/app
+    ${CMAKE_CURRENT_SOURCE_DIR}/indigo/api/c/indigo
+)
+if (MSVC)
+    target_link_libraries(fused_ring_direction_detector_test PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.lib)
+else()
+    target_link_libraries(fused_ring_direction_detector_test PRIVATE ${INDIGO_LIB_DIR}/indigo.dll)
+endif()
+add_test(NAME fused_ring_direction_detector_test COMMAND fused_ring_direction_detector_test)
+
+add_library(molecule_model STATIC
+    src/app/molecule/ExtensionData.h
+    src/app/molecule/MoleculeSnapshot.h
+    src/app/molecule/SelectionState.h
+    src/app/molecule/EditCommand.h
+    src/app/molecule/EditableMolecule.h
+    src/app/molecule/EditableMolecule.cpp
+    src/app/molecule/DocumentState.h
+    src/app/molecule/DocumentState.cpp
+    src/app/molecule/TemplateLibrary.h
+    src/app/molecule/TemplateLibrary.cpp
+    src/app/molecule/ElementData.h
+    src/app/molecule/RenderPrimitives.h
+    src/app/molecule/RenderPrimitives.cpp
+    src/app/molecule/SdfBatch.h
+    src/app/molecule/SdfBatch.cpp
+    src/app/molecule/ClipboardPreview.h
+    src/app/molecule/ClipboardPreview.cpp
+    src/app/molecule/BiopolymerSequenceView.h
+    src/app/molecule/BiopolymerSequenceView.cpp
+    src/app/molecule/RenderPrimitivesToVariant.h
+    src/app/molecule/RenderPrimitivesToVariant.cpp
+)
+target_include_directories(molecule_model PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/app
+    ${CMAKE_CURRENT_SOURCE_DIR}/indigo/api/c/indigo
+)
+if (MSVC)
+    target_link_libraries(molecule_model PUBLIC Qt6::Core ${INDIGO_LIB_DIR}/indigo.lib)
+else()
+    target_link_libraries(molecule_model PUBLIC Qt6::Core ${INDIGO_LIB_DIR}/indigo.dll)
+endif()
+
+qt_add_executable(editable_molecule_test tests/editable_molecule_test.cpp)
+target_link_libraries(editable_molecule_test PRIVATE molecule_model)
+target_compile_definitions(editable_molecule_test PRIVATE SKETCH_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_test(NAME editable_molecule_test COMMAND editable_molecule_test)
+
+qt_add_executable(document_state_test tests/document_state_test.cpp)
+target_link_libraries(document_state_test PRIVATE molecule_model)
+target_compile_definitions(document_state_test PRIVATE SKETCH_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_test(NAME document_state_test COMMAND document_state_test)
+
+qt_add_executable(render_primitives_test tests/render_primitives_test.cpp)
+target_link_libraries(render_primitives_test PRIVATE molecule_model)
+target_compile_definitions(render_primitives_test PRIVATE SKETCH_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_test(NAME render_primitives_test COMMAND render_primitives_test)
+
+qt_add_executable(sdf_batch_test tests/sdf_batch_test.cpp)
+target_link_libraries(sdf_batch_test PRIVATE molecule_model)
+target_compile_definitions(sdf_batch_test PRIVATE SKETCH_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_test(NAME sdf_batch_test COMMAND sdf_batch_test)
+
+qt_add_executable(clipboard_preview_test tests/clipboard_preview_test.cpp)
+target_link_libraries(clipboard_preview_test PRIVATE molecule_model)
+target_compile_definitions(clipboard_preview_test PRIVATE SKETCH_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+add_test(NAME clipboard_preview_test COMMAND clipboard_preview_test)
+
+qt_add_executable(biopolymer_sequence_view_test tests/biopolymer_sequence_view_test.cpp)
+target_link_libraries(biopolymer_sequence_view_test PRIVATE molecule_model)
+add_test(NAME biopolymer_sequence_view_test COMMAND biopolymer_sequence_view_test)
+
+qt_add_executable(render_primitives_to_variant_test tests/render_primitives_to_variant_test.cpp)
+target_link_libraries(render_primitives_to_variant_test PRIVATE molecule_model)
+add_test(NAME render_primitives_to_variant_test COMMAND render_primitives_to_variant_test)
 

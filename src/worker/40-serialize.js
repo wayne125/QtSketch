@@ -296,7 +296,7 @@ function _reattachMultitailArrows(struct, extracted) {
 
 // ---- Public API: Serialization --------------------------------------------
 
-function loadMolfile(molStr) {
+function loadMolfile(molStr, centerOnPage) {
     if (!molStr) return
     var MolSerializerClass = CoreLib.ChemCore.MolSerializer
     var serializer = new MolSerializerClass()
@@ -304,6 +304,25 @@ function loadMolfile(molStr) {
         var loaded = serializer.deserialize(molStr)
         if (!loaded) {
             return;
+        }
+        // SMILES/InChI loads arrive with whatever coordinates Indigo's layout()
+        // chose -- often well off the page. Recenter the fresh struct's bbox on
+        // the page origin BEFORE it becomes _struct (the undo closure restores
+        // oldStruct wholesale, so pre-translating `loaded` is undo-safe).
+        // Placement-preserving write-back ops (Aromatize etc.) pass false.
+        if (centerOnPage && loaded.atoms && loaded.atoms.size > 0 && loaded.getCoordBoundingBox) {
+            var lbb = loaded.getCoordBoundingBox()
+            if (lbb && lbb.min && lbb.max) {
+                var cdx = -(lbb.min.x + lbb.max.x) / 2
+                var cdy = -(lbb.min.y + lbb.max.y) / 2
+                loaded.atoms.forEach(function(a) { a.pp.x += cdx; a.pp.y += cdy })
+                if (loaded.rxnArrows) loaded.rxnArrows.forEach(function(ar) {
+                    if (ar.pos) ar.pos.forEach(function(p) { p.x += cdx; p.y += cdy })
+                })
+                if (loaded.rxnPluses) loaded.rxnPluses.forEach(function(pl) {
+                    if (pl.pp) { pl.pp.x += cdx; pl.pp.y += cdy }
+                })
+            }
         }
         loaded.initHalfBonds()
         loaded.initNeighbors()
