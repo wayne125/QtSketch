@@ -93,7 +93,6 @@ void V8Process::handleDeserializeBatchFromMolfiles(const QString& recordsJson) {
 }
 
 void V8Process::sendCommand(const QString& cmd, const QVariantList& args) {
-    {
         if (cmd == "getMoleculeName") {
             // Read-only: emits directly, no applyLocalState() -- nothing mutated. reqId "mol_name"
             // and raw-string (not JSON) data confirmed against 40-serialize.js:104-106.
@@ -101,6 +100,7 @@ void V8Process::sendCommand(const QString& cmd, const QVariantList& args) {
             return;
         }
         if (cmd == "getSaltsAndSolventsList") {
+            if (!m_templateLibrary) return;
             QStringList names = m_templateLibrary->saltOrSolventNames();
             QJsonArray arr;
             for (const QString& n : names) {
@@ -113,6 +113,7 @@ void V8Process::sendCommand(const QString& cmd, const QVariantList& args) {
             return;
         }
         if (cmd == "getFunctionalGroupsList") {
+            if (!m_templateLibrary) return;
             QStringList names = m_templateLibrary->functionalGroupNames();
             std::sort(names.begin(), names.end());
             QJsonArray arr;
@@ -127,6 +128,7 @@ void V8Process::sendCommand(const QString& cmd, const QVariantList& args) {
             return;
         }
         if (cmd == "getTemplateLibraryList") {
+            if (!m_templateLibrary) return;
             QStringList names = m_templateLibrary->libraryTemplateNames();
             QJsonArray arr;
             for (const QString& n : names) {
@@ -278,7 +280,6 @@ void V8Process::sendCommand(const QString& cmd, const QVariantList& args) {
         }
         applyLocalState();
         return;
-    }
 }
 
 void V8Process::init() {
@@ -351,15 +352,11 @@ void V8Process::deserializeMol(const QString& data) {
     m_docState->deserializeMol(data); applyLocalState(); return;
 }
 void V8Process::requestStructure(const QString& fmt, const QString& reqId) {
-    // Real bug found via live UI testing (sub-project 7b): the actual Save UI flow
-    // (MainWindow.qml's saveActive()) calls THIS async, signal-based method -- not the
-    // synchronous getStructure() below -- and listens for structureReady to actually write
-    // the file to disk. Without this branch, the method would be a no-op
-    // silently no-ops and structureReady never fires, so the save UI's own optimistic
-    // bookkeeping (clean flag, recent-files entry) fires while NO file is ever written --
-    // confirmed by directly attempting to reopen the "saved" file and getting "File not
-    // found." Emitting structureReady synchronously here (rather than through the async
-    // JS round-trip) fixes this exactly the way getStructure() itself already works.
+    // Async, signal-based structure export: the actual Save UI flow (MainWindow.qml's
+    // saveActive()) calls THIS method -- not the synchronous getStructure() below -- and
+    // listens for structureReady to actually write the file to disk. Emitting
+    // structureReady synchronously here is what makes save-to-file work; this exactly
+    // matches how getStructure() itself already works.
     if (fmt == "mol") {
         StringResult r = m_docState->molecule().toMolfile();
         emit structureReady(reqId, r.success ? r.value : QString());
