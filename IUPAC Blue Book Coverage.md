@@ -333,15 +333,21 @@ wherever both could appear.
    copy (the spec's original "duplicate, don't share" reasoning was sound only because it
    assumed the second consumer already worked; now that it's confirmed broken, sharing is the
    right call).
-9. **Branch-stereocenter guard bypass on the acyclic parent path (Phase 1)** — found 2026-08-09
-   during the ring-branch-stereocenter final review's re-review, confirmed via direct rebuild
-   and probe, NOT part of that sub-project's scope (Phase 1's wiring at `IupacNamer.cpp:4171-
-   4181` predates it and was explicitly out of scope). Same bug class just fixed for the ring
-   paths (Phase 2/3, see item 6): `formatBranchStereoPrefix` is called unconditionally right
-   after `nameBranchGraph` with no check that `nameBranchGraph` actually produced a name, so a
-   chain-parent branch that is both a stereocenter AND contains an unnameable subgroup (e.g. an
-   azide) bypasses the "unrecognized substituent" rejection and returns a malformed name as
-   success — confirmed live: `CCCCC([C@H](CN=[N+]=[N-])C)CCC` returns
-   `success=1 name='4-[(1R)-]octane'` instead of correctly rejecting. Fix: apply the identical
-   `if (!bName.isEmpty())` guard used for the Phase 2/3 fix.
-10. Lower priority / rarely load-bearing for this app: P-26 (phane), P-27 (fullerenes), P-7/P-8 (ions/isotopes), P-10 (natural products).
+9. **Branch-stereocenter guard bypass on the acyclic parent path (Phase 1)** — fixed. Same bug
+   class already fixed for the ring paths (Phase 2/3): `formatBranchStereoPrefix` was called
+   unconditionally right after `nameBranchGraph` with no check that `nameBranchGraph` actually
+   produced a name. Fixed by gating the call behind `!bName.isEmpty()`, identical to the
+   Phase 2/3 fix (`IupacNamer.cpp:4171-4181`). Live-UI note: for the specific regression
+   molecule (`CCCCC([C@H](CN=[N+]=[N-])C)CCC`), the app's SMILES-load-then-molfile-round-trip
+   path rejects earlier, with "Charged atoms are not supported in Phase 1." (the early
+   reject-early charge check at `IupacNamer.cpp:~2517`, well upstream of this fix) rather than
+   the unit test's direct-SMILES-load "Stereocenters on substituent branches are not supported
+   in this phase." — both are correct rejections (no malformed success either way); the
+   difference traces to the azide's exact bond-order/charge pattern not surviving the
+   molfile round trip identically to a direct SMILES parse, unrelated to this fix.
+11. **Stereo-bracket alphabetization** — fixed. A shared `alphabetizationKey()` helper
+    (`IupacNamer.cpp`, near `multiPrefix`) now strips wrapping brackets, stereo-descriptor
+    parentheticals, and locant-digit prefixes before alphabetizing, used at both the
+    substituent-citation-order sort-key sites (6) and the ring-numbering-candidate tiebreak
+    sites (6) that previously compared raw, still-bracketed names.
+12. Lower priority / rarely load-bearing for this app: P-26 (phane), P-27 (fullerenes), P-7/P-8 (ions/isotopes), P-10 (natural products).
