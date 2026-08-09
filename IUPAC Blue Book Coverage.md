@@ -333,4 +333,15 @@ wherever both could appear.
    copy (the spec's original "duplicate, don't share" reasoning was sound only because it
    assumed the second consumer already worked; now that it's confirmed broken, sharing is the
    right call).
-9. Lower priority / rarely load-bearing for this app: P-26 (phane), P-27 (fullerenes), P-7/P-8 (ions/isotopes), P-10 (natural products).
+9. **Branch-stereocenter guard bypass on the acyclic parent path (Phase 1)** — found 2026-08-09
+   during the ring-branch-stereocenter final review's re-review, confirmed via direct rebuild
+   and probe, NOT part of that sub-project's scope (Phase 1's wiring at `IupacNamer.cpp:4171-
+   4181` predates it and was explicitly out of scope). Same bug class just fixed for the ring
+   paths (Phase 2/3, see item 6): `formatBranchStereoPrefix` is called unconditionally right
+   after `nameBranchGraph` with no check that `nameBranchGraph` actually produced a name, so a
+   chain-parent branch that is both a stereocenter AND contains an unnameable subgroup (e.g. an
+   azide) bypasses the "unrecognized substituent" rejection and returns a malformed name as
+   success — confirmed live: `CCCCC([C@H](CN=[N+]=[N-])C)CCC` returns
+   `success=1 name='4-[(1R)-]octane'` instead of correctly rejecting. Fix: apply the identical
+   `if (!bName.isEmpty())` guard used for the Phase 2/3 fix.
+10. Lower priority / rarely load-bearing for this app: P-26 (phane), P-27 (fullerenes), P-7/P-8 (ions/isotopes), P-10 (natural products).
