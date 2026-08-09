@@ -21,6 +21,15 @@ Popup {
     y: (parent.height - height) / 2
     padding: Theme.marginSmall
 
+    enter: Transition {
+        NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.durationFast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate }
+        NumberAnimation { property: "scale"; from: 0.92; to: 1; duration: Theme.durationFast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate }
+    }
+    exit: Transition {
+        NumberAnimation { property: "opacity"; from: 1; to: 0; duration: Theme.durationFast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingAccelerate }
+        NumberAnimation { property: "scale"; from: 1; to: 0.92; duration: Theme.durationFast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingAccelerate }
+    }
+
     property string title: ""
     property bool loading: false
     default property alias body: bodyContainer.data

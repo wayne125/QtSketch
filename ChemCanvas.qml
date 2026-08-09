@@ -62,18 +62,42 @@ Item {
 
     signal atomPropertiesRequested(int atomId)
     // Emitted by the TEXT tool: textId is -1 for "create new at (chemX, chemY)"
-    signal textEditRequested(int textId, string content, real chemX, real chemY)
+    signal textEditRequested(int textId, string content, real chemX, real chemY, bool isBold, bool isItalic)
     signal imageInsertRequested(real cx, real cy)
 
     // Finds a text annotation near a canvas point (px tolerance), or null.
     function hitTestText(cx, cy) {
         if (!sketch || !sketch.primitives || !sketch.primitives.texts) return null
-        for (let i = 0; i < sketch.primitives.texts.length; i++) {
+        const txFont = Theme.clampFontSize(Theme.baseFontSize, chemScale)
+        for (let i = sketch.primitives.texts.length - 1; i >= 0; i--) {
             const t = sketch.primitives.texts[i]
-            const p = chemToCanvas(t.x, t.y)
-            if (Math.abs(p.x - cx) < 60 && Math.abs(p.y - cy) < 20) return t
+            const tp = chemToCanvas(t.x, t.y)
+            const lines = String(t.content).split("\n")
+            let maxW = 0
+            for (let li = 0; li < lines.length; li++) {
+                // approximate width instead of requiring context
+                const lw = lines[li].length * txFont * 0.6
+                if (lw > maxW) maxW = lw
+            }
+            const th = lines.length * txFont * 1.25
+            if (cx >= tp.x && cx <= tp.x + maxW && cy >= tp.y && cy <= tp.y + th) return t
         }
         return null
+    }
+
+    function computeNextNumbering() {
+        if (!sketch || !sketch.primitives || !sketch.primitives.texts) return "1"
+        let maxNum = 0
+        const texts = sketch.primitives.texts
+        for (let i = 0; i < texts.length; i++) {
+            const content = texts[i].content.trim()
+            const match = content.match(/^(\d+)([a-z])?$/)
+            if (match) {
+                const num = parseInt(match[1])
+                if (num > maxNum) maxNum = num
+            }
+        }
+        return (maxNum + 1).toString()
     }
 
     function hitTestImage(cx, cy) {
@@ -183,7 +207,12 @@ Item {
         }
         if (event.key === Qt.Key_Escape) {
             currentTool = "SELECT"
-            sketch.setOverlayState({ hoverAtomId: null, hoverBondId: null, dragRect: null, bondPreview: null })
+            // Canvas-local helper, not sketch.setOverlayState: on V8Process that name
+            // is only a property WRITE accessor, not Q_INVOKABLE, so the qualified
+            // call threw "not a function" every time Escape was pressed and the
+            // overlay was never cleared. Every other call site here is unqualified.
+            setOverlayState({ hoverAtomId: null, hoverBondId: null, dragRect: null, bondPreview: null })
+            sketch.selectItem(null, null)
             event.accepted = true
         }
         // Hover-atom element shortcuts: type an element letter while hovering an atom
@@ -356,6 +385,8 @@ Item {
             sketch.addRGroupMember(id)
         } else if (type === "rgroupRemoveMember") {
             sketch.removeRGroupMember(id, val)
+        } else if (type === "sgroupLabel") {
+            sketch.sendCommand("renameSgroup", [id, val])
         }
         refresh()
     }
@@ -403,13 +434,16 @@ Item {
         return getStructure('mol')
     }
 
-    function loadMolfile(data) {
-        loadStructure('mol', data)
+    // centerOnPage: recenter the loaded coordinates on the page origin in the
+    // worker before display -- pass true for coordinate-less sources (SMILES/
+    // InChI layout output), false/omit for placement-preserving write-backs.
+    function loadMolfile(data, centerOnPage) {
+        loadStructure('mol', data, centerOnPage)
     }
 
-    function loadStructure(fmt, data) {
+    function loadStructure(fmt, data, centerOnPage) {
         _needsCentering = true
-        sketch.loadStructure(fmt, data)
+        sketch.loadStructure(fmt, data, !!centerOnPage)
         refresh()
     }
 
@@ -658,16 +692,6 @@ Item {
         }
     }
 
-    // Theme flips (dark mode) must repaint every Canvas layer — they read Theme
-    // colors imperatively at paint time, not through bindings.
-    Connections {
-        target: Theme
-        function onDarkModeChanged() {
-            root._renderVersion++
-            gridCanvas.requestPaint()
-        }
-    }
-
     Connections {
         target: root
         function onScaleChanged() { gridCanvas.requestPaint() }
@@ -730,7 +754,7 @@ Item {
             if (rotatingSelection) return Qt.CrossCursor
             if (resizingSelection) return Qt.SizeAllCursor
             if (currentTool === "HAND") return Qt.OpenHandCursor
-            if (currentTool === "SELECT" || currentTool === "SELECT_FRAGMENT") {
+            if (currentTool === "SELECT" || currentTool === "SELECT_FRAGMENT" || currentTool === "SELECT_RING" || currentTool === "SELECT_CHAIN") {
                 const hb = selectionBBoxCanvas()
                 if (hb) {
                     const handles = selectionHandles(hb)
@@ -816,7 +840,7 @@ Item {
                 const hitRxnPlus = (hitAtom === null && hitBond === null && hitRxnArrow === null) ? selectionLayer.hitTestRxnPlus(m.x, m.y) : null
                 const hitMultitailArrow = (hitAtom === null && hitBond === null && hitRxnArrow === null && hitRxnPlus === null) ? selectionLayer.hitTestMultitailArrow(m.x, m.y) : null
                 
-                if (currentTool === "SELECT" || currentTool === "SELECT_FRAGMENT") {
+                if (currentTool === "SELECT" || currentTool === "SELECT_FRAGMENT" || currentTool === "SELECT_RING" || currentTool === "SELECT_CHAIN") {
                     // PowerPoint-style selection handles take priority over the
                     // normal hit-test below since they're drawn on top and only
                     // exist when a qualifying selection is already present.
@@ -894,6 +918,14 @@ Item {
                             sketch.selectFragment(hitAtom, null)
                             isDragging = true
                             movingSelection = true
+                        } else if (currentTool === "SELECT_RING") {
+                            sketch.sendCommand("selectRing", [hitAtom, null])
+                            isDragging = true
+                            movingSelection = true
+                        } else if (currentTool === "SELECT_CHAIN") {
+                            sketch.sendCommand("selectChain", [hitAtom, null])
+                            isDragging = true
+                            movingSelection = true
                         } else {
                             const hitPrim = sketch.primitives.atomsById[hitAtom.toString()]
                             if (hitPrim && hitPrim.isSgroup) {
@@ -915,6 +947,14 @@ Item {
                     } else if (hitBond !== null) {
                         if (currentTool === "SELECT_FRAGMENT") {
                             sketch.selectFragment(null, hitBond)
+                            isDragging = true
+                            movingSelection = true
+                        } else if (currentTool === "SELECT_RING") {
+                            sketch.sendCommand("selectRing", [null, hitBond])
+                            isDragging = true
+                            movingSelection = true
+                        } else if (currentTool === "SELECT_CHAIN") {
+                            sketch.sendCommand("selectChain", [null, hitBond])
                             isDragging = true
                             movingSelection = true
                         } else if (sketch.selection.bond_ids && sketch.selection.bond_ids.indexOf(hitBond) >= 0 &&
@@ -1022,6 +1062,13 @@ Item {
                             endY: m.y
                         }
                     })
+                } else if (currentTool.startsWith("USER_")) {
+                    const cP = canvasToChem(m.x, m.y)
+                    const index = parseInt(currentTool.substring(5))
+                    if (window._userTemplates && index >= 0 && index < window._userTemplates.length) {
+                        sketch.importKetAtPosition(window._userTemplates[index].data, cP.x, cP.y)
+                    }
+                    refresh()
                 } else if (currentTool.startsWith("ATOM_") || currentTool.startsWith("FG_") || currentTool.startsWith("SS_") || currentTool.startsWith("LIB_") || currentTool.startsWith("TEMPLATE_")) {
                     if (hitAtom !== null) {
                         const cP = canvasToChem(m.x, m.y)
@@ -1041,7 +1088,7 @@ Item {
                         } else if (currentTool.startsWith("FG_") || currentTool.startsWith("SS_")) {
                             const fgName = currentTool.substring(3)
                             const cP = canvasToChem(m.x, m.y)
-                            sketch.insertFunctionalGroup(fgName, cP.x, cP.y)
+                            sketch.insertFunctionalGroup(fgName, cP.x, cP.y, -1, currentTool.startsWith("FG_") ? AppController.fgFullStructure : false)
                             refresh()
                         } else if (currentTool.startsWith("LIB_")) {
                             const cP = canvasToChem(m.x, m.y)
@@ -1054,7 +1101,7 @@ Item {
                             if (hitBond !== null)
                                 sketch.insertLibraryTemplateFused(currentTool.substring(4), cP.x, cP.y, hitBond)
                             else
-                                sketch.insertFunctionalGroup(currentTool.substring(4), cP.x, cP.y)
+                                sketch.insertFunctionalGroup(currentTool.substring(4), cP.x, cP.y, -1, false)
                             refresh()
                         } else if (currentTool.startsWith("TEMPLATE_")) {
                             const cP2 = canvasToChem(m.x, m.y)
@@ -1087,13 +1134,19 @@ Item {
                         hoverAtomId: null, hoverBondId: null, dragRect: null,
                         bondPreview: { startX: canvasToChem(m.x, m.y).x, startY: canvasToChem(m.x, m.y).y, endX: m.x, endY: m.y }
                     })
-                } else if (currentTool === "TEXT") {
+                } else if (currentTool === "TEXT" || currentTool === "TEXT_NUMBER") {
                     const hitText = hitTestText(m.x, m.y)
                     const cP = canvasToChem(m.x, m.y)
                     if (hitText !== null) {
-                        textEditRequested(hitText.id, hitText.content, hitText.x, hitText.y)
+                        textEditRequested(hitText.id, hitText.content, hitText.x, hitText.y, !!hitText.bold, !!hitText.italic)
                     } else {
-                        textEditRequested(-1, "", cP.x, cP.y)
+                        let defaultText = ""
+                        let defBold = false
+                        if (currentTool === "TEXT_NUMBER") {
+                            defaultText = computeNextNumbering()
+                            defBold = true
+                        }
+                        textEditRequested(-1, defaultText, cP.x, cP.y, defBold, false)
                     }
                 } else if (currentTool === "IMAGE") {
                     const cP = canvasToChem(m.x, m.y)
@@ -1252,7 +1305,7 @@ Item {
                     return
                 }
 
-                if (currentTool === "SELECT" || currentTool === "SELECT_FRAGMENT") {
+                if (currentTool === "SELECT" || currentTool === "SELECT_FRAGMENT" || currentTool === "SELECT_RING" || currentTool === "SELECT_CHAIN") {
                     if (movingImage) {
                         _renderVersion++
                     } else if (movingSelection) {
@@ -1438,7 +1491,7 @@ Item {
                             const hid = sketch.overlayState.hoverAtomId
                             const atom = sketch.primitives.atomsById[hid.toString()]
                             const realTargetId = resolveHitAtom(hid)
-                            sketch.insertFunctionalGroup(fgName, atom.x, atom.y, realTargetId)
+                            sketch.insertFunctionalGroup(fgName, atom.x, atom.y, realTargetId, currentTool.startsWith("FG_") ? AppController.fgFullStructure : false)
                         }
                     } else if (currentTool.startsWith("TEMPLATE_")) {
                         const cP2 = canvasToChem(m.x, m.y)
@@ -1464,7 +1517,7 @@ Item {
 
             if (isDragging) {
                 isDragging = false
-                if (currentTool === "SELECT" || currentTool === "SELECT_FRAGMENT") {
+                if (currentTool === "SELECT" || currentTool === "SELECT_FRAGMENT" || currentTool === "SELECT_RING" || currentTool === "SELECT_CHAIN") {
                     if (movingSelection) {
                         movingSelection = false
                         const dx = m.x - startPressX
@@ -1519,6 +1572,9 @@ Item {
                             } else {
                                 sketch.selectItem(null, hitBond)
                             }
+                        } else {
+                            // Short click on truly empty canvas (no atom/bond hit): deselect.
+                            sketch.selectItem(null, null)
                         }
                     }
                 } else if (currentTool.startsWith("BOND_")) {
@@ -1585,7 +1641,7 @@ Item {
 
         onDoubleClicked: (m) => {
             if (m.button !== Qt.LeftButton) return
-            if (currentTool === "SELECT" || currentTool === "SELECT_FRAGMENT") {
+            if (currentTool === "SELECT" || currentTool === "SELECT_FRAGMENT" || currentTool === "SELECT_RING" || currentTool === "SELECT_CHAIN") {
                 const hitAtom = selectionLayer.hitTestAtom(m.x, m.y)
                 if (hitAtom !== null) {
                     // Cancel drag from the second press so onReleased is a no-op
@@ -1707,6 +1763,142 @@ Item {
             text: "Clear Canvas"
             visible: contextMenu._hitAtom === null && contextMenu._hitBond === null
             onTriggered: { sketch.clearCanvas(); refresh() }
+        }
+    }
+
+    Rectangle {
+        id: floatingToolbar
+        
+        property int _rv: root._renderVersion
+        property bool _drag: mouse.isDragging
+        
+        property var tbBBox: {
+            let dummy1 = _rv
+            let dummy2 = _drag
+            if (_drag || !sketch || !sketch.selection || !sketch.primitives) return null
+            
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+            let count = 0
+            function feed(cx, cy) {
+                const p = chemToCanvas(cx, cy)
+                if (p.x < minX) minX = p.x
+                if (p.x > maxX) maxX = p.x
+                if (p.y < minY) minY = p.y
+                if (p.y > maxY) maxY = p.y
+                count++
+            }
+            
+            const atomIds = sketch.selection.atom_ids || []
+            for (let i = 0; i < atomIds.length; ++i) {
+                const a = sketch.primitives.atomsById ? sketch.primitives.atomsById[atomIds[i].toString()] : null
+                if (a) feed(a.x, a.y)
+            }
+            
+            const bondIds = sketch.selection.bond_ids || []
+            for (let i = 0; i < bondIds.length; ++i) {
+                const b = sketch.primitives.bondsById ? sketch.primitives.bondsById[bondIds[i].toString()] : null
+                if (b) {
+                    const a1 = sketch.primitives.atomsById[b.a1.toString()]
+                    const a2 = sketch.primitives.atomsById[b.a2.toString()]
+                    if (a1) feed(a1.x, a1.y)
+                    if (a2) feed(a2.x, a2.y)
+                }
+            }
+            
+            if (count === 0) return null
+            if (minX === maxX) { minX -= 10; maxX += 10 }
+            if (minY === maxY) { minY -= 10; maxY += 10 }
+            
+            return { minX: minX, minY: minY, maxX: maxX, maxY: maxY }
+        }
+        
+        property bool hasSelection: tbBBox !== null
+        visible: hasSelection
+        
+        x: tbBBox ? (tbBBox.minX + tbBBox.maxX) / 2 - width / 2 : 0
+        y: tbBBox ? (tbBBox.minY - height - 10 > 0 ? tbBBox.minY - height - 10 : tbBBox.maxY + 10) : 0
+        
+        width: tbRow.width + 16
+        height: tbRow.height + 16
+        color: Theme.surface
+        border.color: Theme.outline
+        radius: 4
+        
+        // Add a MouseArea to prevent clicks on the toolbar from falling through to the canvas
+        MouseArea {
+            anchors.fill: parent
+            // Do not propagate clicks
+        }
+        
+        Row {
+            id: tbRow
+            anchors.centerIn: parent
+            spacing: 8
+            
+            Button {
+                text: "Delete"
+                font.pixelSize: Theme.fontSizeLabel
+                onClicked: { sketch.deleteSelection(); refresh() }
+            }
+            
+            Button {
+                text: "Charge +"
+                font.pixelSize: Theme.fontSizeLabel
+                visible: sketch && sketch.selection && sketch.selection.atom_ids && sketch.selection.atom_ids.length > 0
+                onClicked: {
+                    for (let i = 0; i < sketch.selection.atom_ids.length; i++) {
+                        let id = sketch.selection.atom_ids[i]
+                        let a = sketch.primitives.atomsById[id.toString()]
+                        let currentCharge = a ? (a.charge || 0) : 0
+                        applyPropertyChange("atomCharge", id, (currentCharge + 1).toString())
+                    }
+                }
+            }
+            
+            Button {
+                text: "Charge -"
+                font.pixelSize: Theme.fontSizeLabel
+                visible: sketch && sketch.selection && sketch.selection.atom_ids && sketch.selection.atom_ids.length > 0
+                onClicked: {
+                    for (let i = 0; i < sketch.selection.atom_ids.length; i++) {
+                        let id = sketch.selection.atom_ids[i]
+                        let a = sketch.primitives.atomsById[id.toString()]
+                        let currentCharge = a ? (a.charge || 0) : 0
+                        applyPropertyChange("atomCharge", id, (currentCharge - 1).toString())
+                    }
+                }
+            }
+            
+            Button {
+                text: "Wedge"
+                font.pixelSize: Theme.fontSizeLabel
+                visible: sketch && sketch.selection && sketch.selection.bond_ids && sketch.selection.bond_ids.length === 1 && (!sketch.selection.atom_ids || sketch.selection.atom_ids.length === 0)
+                onClicked: {
+                    let bId = sketch.selection.bond_ids[0]
+                    sketch.changeBondType(bId, 1, 1)
+                    refresh()
+                }
+            }
+            
+            Button {
+                text: "Dash"
+                font.pixelSize: Theme.fontSizeLabel
+                visible: sketch && sketch.selection && sketch.selection.bond_ids && sketch.selection.bond_ids.length === 1 && (!sketch.selection.atom_ids || sketch.selection.atom_ids.length === 0)
+                onClicked: {
+                    let bId = sketch.selection.bond_ids[0]
+                    sketch.changeBondType(bId, 1, 6)
+                    refresh()
+                }
+            }
+
+            Button {
+                text: "Bracket"
+                font.pixelSize: Theme.fontSizeLabel
+                onClicked: {
+                    sketch.sendCommand("addBracketSelection", [])
+                    refresh()
+                }
+            }
         }
     }
 }

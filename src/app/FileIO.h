@@ -7,6 +7,7 @@
 #include <QUrl>
 #include <QDebug>
 #include <QFileInfo>
+#include <QDir>
 #include <QtQml/qqml.h>
 
 class FileIO : public QObject {
@@ -35,6 +36,30 @@ public:
         }
         QTextStream in(&file);
         return in.readAll();
+    }
+
+    Q_INVOKABLE bool exists(const QString& fileUrl) {
+        QUrl url(fileUrl);
+        return QFile::exists(url.isLocalFile() ? url.toLocalFile() : fileUrl);
+    }
+
+    Q_INVOKABLE bool remove(const QString& fileUrl) {
+        QUrl url(fileUrl);
+        return QFile::remove(url.isLocalFile() ? url.toLocalFile() : fileUrl);
+    }
+
+    Q_INVOKABLE bool mkpath(const QString& dirUrl) {
+        QUrl url(dirUrl);
+        QString path = url.isLocalFile() ? url.toLocalFile() : dirUrl;
+        QDir dir;
+        return dir.mkpath(path);
+    }
+
+    Q_INVOKABLE QStringList listFiles(const QString& dirUrl, const QString& filter) {
+        QUrl url(dirUrl);
+        QString path = url.isLocalFile() ? url.toLocalFile() : dirUrl;
+        QDir dir(path);
+        return dir.entryList(QStringList() << filter, QDir::Files);
     }
 
     Q_INVOKABLE QString readImageAsDataUri(const QUrl &fileUrl) {

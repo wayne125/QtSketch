@@ -7,6 +7,7 @@ Rectangle {
     id: root
 
     property string currentTool: "SELECT"
+    property var win: undefined
     // Bound by MainWindow to the currently-active document's V8Process instance.
     property var sketch: null
 
@@ -18,13 +19,16 @@ Rectangle {
     property bool editOpen: true
     property bool bondsOpen: true
     property bool ringsOpen: true
+    property bool groupsOpen: true
     property bool templatesOpen: true
+    property bool userTemplatesOpen: false
 
     Settings {
         category: "toolPanel"
         property alias editOpen: root.editOpen
         property alias bondsOpen: root.bondsOpen
         property alias ringsOpen: root.ringsOpen
+        property alias groupsOpen: root.groupsOpen
         property alias templatesOpen: root.templatesOpen
     }
 
@@ -32,13 +36,15 @@ Rectangle {
     // shortcut, periodic-table pick). Only ever opens sections — never collapses.
     onCurrentToolChanged: {
         if (currentTool === "SELECT" || currentTool === "SELECT_FRAGMENT" || currentTool === "SELECT_LASSO" ||
-            currentTool === "HAND" || currentTool === "ERASE" || currentTool === "TEXT")
+            currentTool === "HAND" || currentTool === "ERASE" || currentTool === "TEXT" || currentTool === "TEXT_NUMBER")
             editOpen = true
         else if (currentTool.indexOf("BOND_") === 0 || currentTool === "CHAIN")
             bondsOpen = true
         else if (currentTool.indexOf("TEMPLATE_") === 0 || currentTool === "LIB_Pyridine")
             ringsOpen = true
-        else if (currentTool.indexOf("FG_") === 0 || currentTool.indexOf("SS_") === 0 || currentTool.indexOf("LIB_") === 0)
+        else if (currentTool.indexOf("FG_") === 0 || currentTool.indexOf("SS_") === 0)
+            groupsOpen = true
+        else if (currentTool.indexOf("LIB_") === 0)
             templatesOpen = true
     }
 
@@ -61,16 +67,27 @@ Rectangle {
             anchors.leftMargin: 4
             spacing: 4
             Text {
-                text: header.expanded ? "▾" : "▸"
+                // Segoe Fluent Icons ChevronDown / ChevronRight, written as
+                // \u escapes rather than literal private-use characters so the
+                // source stays ASCII and the glyphs cannot be lost in transit.
+                text: header.expanded ? "" : ""
                 color: Theme.textSecondary
-                font.pixelSize: 10
+                font { family: Theme.fontIcons; pixelSize: 10 }
             }
             Text {
+                Layout.fillWidth: true
                 text: header.title
                 color: Theme.textSecondary
-                font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1.5; family: Theme.fontDisplay }
+                elide: Text.ElideRight
+                // Fluent section headers are sentence-case Body Strong, not
+                // letterspaced small caps. Dropping the tracking and the caps
+                // also buys back the width that was truncating "Templates".
+                font {
+                    pixelSize: Theme.fontSizeLabel
+                    weight: Font.DemiBold
+                    family: Theme.fontFamily
+                }
             }
-            Item { Layout.fillWidth: true }
         }
         MouseArea {
             id: headerMouse
@@ -97,17 +114,17 @@ Rectangle {
 
         // ── Edit section ─────────────────────────────────────────────────────
         SectionHeader {
-            title: "EDIT"
+            title: "Edit"
             expanded: root.editOpen
             onToggled: root.editOpen = !root.editOpen
         }
         Item {
             Layout.fillWidth: true
             Layout.preferredHeight: root.editOpen ? editGrid.implicitHeight : 0
-            Behavior on Layout.preferredHeight { NumberAnimation { duration: 200; easing.type: Easing.InOutQuad } }
+            Behavior on Layout.preferredHeight { NumberAnimation { duration: Theme.durationMedium; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate } }
             clip: true
             opacity: root.editOpen ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: 200 } }
+            Behavior on opacity { NumberAnimation { duration: Theme.durationMedium; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate } }
 
             GridLayout {
                 id: editGrid
@@ -120,10 +137,13 @@ Rectangle {
                 model: [
                     { id: "SELECT", icon: "select.svg", tip: "Selection tool (S)" },
                     { id: "SELECT_FRAGMENT", icon: "select-fragment.svg", tip: "Fragment Selection tool" },
+                    { id: "SELECT_RING", icon: "Ring", tip: "Ring Selection tool" },
+                    { id: "SELECT_CHAIN", icon: "Chain", tip: "Chain Selection tool" },
                     { id: "SELECT_LASSO", icon: "select-lasso.svg", tip: "Lasso select tool - freeform selection" },
                     { id: "HAND", icon: "hand.svg", tip: "Hand tool - drag to pan canvas (H)" },
                     { id: "ERASE", icon: "erase.svg", tip: "Erase tool (E)" },
                     { id: "TEXT", icon: "text.svg", tip: "Text annotation (click canvas)" },
+                    { id: "TEXT_NUMBER", icon: "1a", tip: "Auto-numbering annotation" },
                     { id: "IMAGE", icon: "add-image.svg", tip: "Insert image" }
                 ]
                 delegate: IconCell {
@@ -141,17 +161,17 @@ Rectangle {
 
         // ── Bonds section ────────────────────────────────────────────────────
         SectionHeader {
-            title: "BONDS"
+            title: "Bonds"
             expanded: root.bondsOpen
             onToggled: root.bondsOpen = !root.bondsOpen
         }
         Item {
             Layout.fillWidth: true
             Layout.preferredHeight: root.bondsOpen ? bondsGrid.implicitHeight : 0
-            Behavior on Layout.preferredHeight { NumberAnimation { duration: 200; easing.type: Easing.InOutQuad } }
+            Behavior on Layout.preferredHeight { NumberAnimation { duration: Theme.durationMedium; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate } }
             clip: true
             opacity: root.bondsOpen ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: 200 } }
+            Behavior on opacity { NumberAnimation { duration: Theme.durationMedium; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate } }
 
             GridLayout {
                 id: bondsGrid
@@ -185,17 +205,17 @@ Rectangle {
 
         // ── Rings section ────────────────────────────────────────────────────
         SectionHeader {
-            title: "RINGS"
+            title: "Rings"
             expanded: root.ringsOpen
             onToggled: root.ringsOpen = !root.ringsOpen
         }
         Item {
             Layout.fillWidth: true
             Layout.preferredHeight: root.ringsOpen ? ringsGrid.implicitHeight : 0
-            Behavior on Layout.preferredHeight { NumberAnimation { duration: 200; easing.type: Easing.InOutQuad } }
+            Behavior on Layout.preferredHeight { NumberAnimation { duration: Theme.durationMedium; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate } }
             clip: true
             opacity: root.ringsOpen ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: 200 } }
+            Behavior on opacity { NumberAnimation { duration: Theme.durationMedium; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate } }
 
             GridLayout {
                 id: ringsGrid
@@ -230,19 +250,69 @@ Rectangle {
         }
         }
 
-        // ── Templates section (FG / Salts / Library launchers) ───────────────
+        // ── Groups & Salts section ───────────────────────────────────────────
         SectionHeader {
-            title: "TEMPLATES"
+            title: "Groups"
+            expanded: root.groupsOpen
+            onToggled: root.groupsOpen = !root.groupsOpen
+        }
+        Item {
+            Layout.fillWidth: true
+            Layout.preferredHeight: root.groupsOpen ? groupsGrid.implicitHeight : 0
+            Behavior on Layout.preferredHeight { NumberAnimation { duration: Theme.durationMedium; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate } }
+            clip: true
+            opacity: root.groupsOpen ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: Theme.durationMedium; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate } }
+
+            GridLayout {
+                id: groupsGrid
+                anchors.top: parent.top
+                anchors.horizontalCenter: parent.horizontalCenter
+                columns: 3
+                columnSpacing: Theme.toolGridGap
+                rowSpacing: Theme.toolGridGap
+
+                // Functional Groups Tool
+                IconCell {
+                    Layout.alignment: Qt.AlignHCenter
+                    iconSource: "icons/generic-groups.svg"
+                    tip: "Functional Groups"
+                    selected: root.currentTool.startsWith("FG_")
+                    onClicked: {
+                        fgList.model = []
+                        fgPopup.open()
+                        sketch.requestFunctionalGroupsList()
+                    }
+                }
+
+                // Salts & Solvents Tool
+                IconCell {
+                    Layout.alignment: Qt.AlignHCenter
+                    glyph: "S&S"
+                    tip: "Salts & Solvents"
+                    selected: root.currentTool.startsWith("SS_")
+                    onClicked: {
+                        saltsList.model = []
+                        ssPopup.open()
+                        sketch.requestSaltsAndSolventsList()
+                    }
+                }
+            }
+        }
+
+        // ── Templates section (Library launchers) ───────────────
+        SectionHeader {
+            title: "Templates"
             expanded: root.templatesOpen
             onToggled: root.templatesOpen = !root.templatesOpen
         }
         Item {
             Layout.fillWidth: true
             Layout.preferredHeight: root.templatesOpen ? templatesGrid.implicitHeight : 0
-            Behavior on Layout.preferredHeight { NumberAnimation { duration: 200; easing.type: Easing.InOutQuad } }
+            Behavior on Layout.preferredHeight { NumberAnimation { duration: Theme.durationMedium; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate } }
             clip: true
             opacity: root.templatesOpen ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: 200 } }
+            Behavior on opacity { NumberAnimation { duration: Theme.durationMedium; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate } }
 
             GridLayout {
                 id: templatesGrid
@@ -251,32 +321,6 @@ Rectangle {
                 columns: 3
             columnSpacing: Theme.toolGridGap
             rowSpacing: Theme.toolGridGap
-
-        // Functional Groups Tool
-        IconCell {
-            Layout.alignment: Qt.AlignHCenter
-            iconSource: "icons/generic-groups.svg"
-            tip: "Functional Groups"
-            selected: root.currentTool.startsWith("FG_")
-            onClicked: {
-                fgList.model = []
-                fgPopup.open()
-                sketch.requestFunctionalGroupsList()
-            }
-        }
-
-        // Salts & Solvents Tool
-        IconCell {
-            Layout.alignment: Qt.AlignHCenter
-            glyph: "S&S"
-            tip: "Salts & Solvents"
-            selected: root.currentTool.startsWith("SS_")
-            onClicked: {
-                saltsList.model = []
-                ssPopup.open()
-                sketch.requestSaltsAndSolventsList()
-            }
-        }
 
         // Template Library Tool
         IconCell {
@@ -294,6 +338,78 @@ Rectangle {
             }
         }
         }
+        }
+
+        // ── User Templates section ───────────────
+        SectionHeader {
+            title: "Saved"
+            expanded: root.userTemplatesOpen
+            onToggled: root.userTemplatesOpen = !root.userTemplatesOpen
+        }
+        Item {
+            Layout.fillWidth: true
+            Layout.preferredHeight: root.userTemplatesOpen ? userTemplatesGrid.implicitHeight : 0
+            Behavior on Layout.preferredHeight { NumberAnimation { duration: Theme.durationMedium; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate } }
+            clip: true
+            opacity: root.userTemplatesOpen ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: Theme.durationMedium; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate } }
+
+            GridLayout {
+                id: userTemplatesGrid
+                anchors.top: parent.top
+                anchors.horizontalCenter: parent.horizontalCenter
+                columns: 3
+                columnSpacing: Theme.toolGridGap
+                rowSpacing: Theme.toolGridGap
+
+                Repeater {
+                    model: root.win ? root.win._userTemplates : []
+                    IconCell {
+                        Layout.alignment: Qt.AlignHCenter
+                        glyph: modelData.name.substring(0, 2).toUpperCase()
+                        tip: modelData.name
+                        selected: root.currentTool === "USER_" + index
+                        onClicked: {
+                            root.toolSelected("USER_" + index)
+                        }
+                        
+                        Rectangle {
+                            width: 14
+                            height: 14
+                            color: Theme.error
+                            radius: 7
+                            anchors.top: parent.top
+                            anchors.right: parent.right
+                            // Gated on the enclosing IconCell's own `hovered` (AbstractButton
+                            // property), not this Rectangle's own MouseArea.containsMouse --
+                            // a hidden Item's MouseArea never receives hover, so gating on its
+                            // own containsMouse made the badge permanently unreachable.
+                            visible: hovered
+                            Text {
+                                // Segoe Fluent Icons Dismiss (U+E8BB)
+                                text: String.fromCharCode(0xE8BB)
+                                color: "white"
+                                font { family: Theme.fontIcons; pixelSize: 9 }
+                                anchors.centerIn: parent
+                            }
+                            MouseArea {
+                                id: mouseAreaForDel
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                onClicked: {
+                                    if (root.win) {
+                                        root.win._userTemplates.splice(index, 1)
+                                        root.win.saveUserTemplates()
+                                        var tmp = root.win._userTemplates
+                                        root.win._userTemplates = []
+                                        root.win._userTemplates = tmp
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         Item { Layout.fillHeight: true }  // Spacer
@@ -427,9 +543,24 @@ Rectangle {
         title: "Functional Groups"
         loading: fgList.count === 0
 
+        SegmentedControl {
+            id: fgToggleRow
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.topMargin: 4
+            anchors.leftMargin: 4
+            model: ["Full structure", "Shortcut"]
+            currentValue: AppController.fgFullStructure ? "Full structure" : "Shortcut"
+            onValueSelected: (value) => { AppController.fgFullStructure = (value === "Full structure") }
+        }
+
         GridView {
             id: fgList
-            anchors.fill: parent
+            anchors.top: fgToggleRow.bottom
+            anchors.topMargin: 4
+            anchors.bottom: parent.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
             clip: true
             cellWidth: 110
             cellHeight: 48

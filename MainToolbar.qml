@@ -129,7 +129,7 @@ Rectangle {
         Text {
             text: "STYLE"
             color: Theme.textSecondary
-            font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 2; family: Theme.fontDisplay }
+            font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 2; family: Theme.fontFamily }
             Layout.alignment: Qt.AlignVCenter
         }
         SegmentedControl {
@@ -142,13 +142,16 @@ Rectangle {
         Text {
             text: "CHIRAL"
             color: Theme.textSecondary
-            font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 2; family: Theme.fontDisplay }
+            font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 2; family: Theme.fontFamily }
             Layout.alignment: Qt.AlignVCenter
         }
         ComboBox {
             id: stereoFlagsCombo
             model: ["Absolute", "Relative"]
             currentIndex: 0
+            Layout.preferredWidth: 116
+            Layout.preferredHeight: Theme.controlHeight
+            Layout.alignment: Qt.AlignVCenter
             onActivated: if (root.win.activeSketch) root.win.activeSketch.setStereoFlags(currentIndex === 0 ? "abs" : "rel", 0)
             Binding on currentIndex {
                 value: (root.win.activeSketch && root.win.activeSketch.primitives && root.win.activeSketch.primitives.stereoFlags && root.win.activeSketch.primitives.stereoFlags.type === "rel") ? 1 : 0
@@ -210,7 +213,7 @@ Rectangle {
         Text {
             text: "PAGE"
             color: Theme.textSecondary
-            font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 2; family: Theme.fontDisplay }
+            font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 2; family: Theme.fontFamily }
             Layout.alignment: Qt.AlignVCenter
         }
 
@@ -218,6 +221,12 @@ Rectangle {
             id: pageSizeCombo
             model: ["A4", "A3", "A5", "Letter"]
             currentIndex: 0
+            // Sized to its longest entry ("Letter") rather than left at the
+            // style's default minimum, which reserved ~140px for a 2-character
+            // value and made the control the heaviest thing in the toolbar.
+            Layout.preferredWidth: 104
+            Layout.preferredHeight: Theme.controlHeight
+            Layout.alignment: Qt.AlignVCenter
         }
     } // end RowLayout
     } // end Flickable

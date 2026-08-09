@@ -12,8 +12,15 @@ class AppController : public QObject {
     QML_NAMED_ELEMENT(AppController)
     QML_SINGLETON
 
+    Q_PROPERTY(bool fgFullStructure MEMBER m_fgFullStructure NOTIFY fgFullStructureChanged)
+
 public:
     explicit AppController(QObject* parent = nullptr);
+
+signals:
+    void fgFullStructureChanged();
+
+public:
     
     Q_INVOKABLE void setV8Process(V8Process* v8);
 
@@ -44,6 +51,7 @@ public:
 private:
     V8Process* m_v8 = nullptr;
     PlacementPreviewManager* m_previewManager = nullptr;
+    bool m_fgFullStructure = true;
 };
 
 

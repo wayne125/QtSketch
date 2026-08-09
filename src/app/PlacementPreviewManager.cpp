@@ -105,8 +105,12 @@ void PlacementPreviewManager::publishToOverlay() {
 }
 
 PlacementResult PlacementPreviewManager::commitPreview() {
+    if (!m_active) {
+        return PlacementResult();
+    }
     PlacementResult res = m_lastResult;
     m_active = false;
+    m_lastResult.valid = false;
     return res;
 }
 

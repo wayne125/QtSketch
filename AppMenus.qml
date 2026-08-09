@@ -19,6 +19,7 @@ AppMenuBar {
     AppMenuBarItem {
         text: "File"
         MenuItemRow { text: "New Document"; onTriggered: DocumentManager.addDocument() }
+        MenuItemRow { text: "New Document (C++ engine)"; onTriggered: root.win.addCppEngineDocument() }
         MenuItemRow { text: "Open…"; iconSource: "open.svg"; onTriggered: root.win.openDialog.open() }
         MenuItemRow { text: "Save"; iconSource: "save.svg"; shortcutHint: "Ctrl+S"; onTriggered: root.win.saveActive(false) }
         MenuItemRow { text: "Save As…"; iconSource: "save.svg"; onTriggered: root.win.saveActive(true) }
@@ -54,6 +55,7 @@ AppMenuBar {
         MenuItemRow { text: "Paste"; iconSource: "paste.svg"; shortcutHint: "Ctrl+V"; onTriggered: root.win.activeCanvas.pasteSelection() }
         Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6 }
         MenuItemRow { text: "Copy as Image"; iconSource: "copy_image.svg"; shortcutHint: "Ctrl+Shift+C"; onTriggered: root.win.activeCanvas.copyAsImage() }
+        MenuItemRow { text: "Save Selection as Template…"; iconSource: "copy.svg"; enabled: Selection.hasAtoms(root.win.activeSketch, 1); onTriggered: root.win.saveSelectionAsTemplate() }
     }
     AppMenuBarItem {
         text: "Structure"
@@ -301,6 +303,15 @@ AppMenuBar {
         MenuItemRow { text: "Zoom In"; iconSource: "zoom-in.svg"; onTriggered: root.win.zoomLevel = Math.min(3.0, root.win.zoomLevel + 0.1) }
         MenuItemRow { text: "Zoom Out"; iconSource: "zoom-out.svg"; onTriggered: root.win.zoomLevel = Math.max(0.1, root.win.zoomLevel - 0.1) }
         MenuItemRow { text: "Reset (100%)"; onTriggered: root.win.zoomLevel = 1.0 }
+        Rectangle { width: parent.width; height: 1; color: Theme.outline; opacity: 0.6 }
+        MenuItemRow { 
+            text: (root.win.uiSettings.cpkColorsEnabled ? "☑ " : "☐ ") + "CPK Atom Colors"
+            onTriggered: {
+                root.win.uiSettings.cpkColorsEnabled = !root.win.uiSettings.cpkColorsEnabled
+                Theme.cpkColorsEnabled = root.win.uiSettings.cpkColorsEnabled
+                if (root.win.activeCanvas) root.win.activeCanvas.requestPaint()
+            }
+        }
     }
     AppMenuBarItem {
         text: "Help"

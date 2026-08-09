@@ -1,5 +1,7 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
+#include <QQuickStyle>
+#include <QStyleHints>
 #include <QFile>
 #include <QTextStream>
 
@@ -25,6 +27,13 @@ void myMessageOutput(QtMsgType type, const QMessageLogContext &context, const QS
 
 int main(int argc, char *argv[])
 {
+    // FluentWinUI3 gives every stock control the Windows 11 Fluent metrics
+    // (32px control height, 4px radii, Fluent focus rings) instead of the Basic
+    // style's touch-sized 100x40 buttons and 140x40 combo boxes, which were the
+    // single cause of the oversized caption buttons, page-size box and zoom
+    // slider. Must be set before the QGuiApplication is constructed.
+    QQuickStyle::setStyle("FluentWinUI3");
+
     g_logFile = new QFile("qml_errors.log");
     if (g_logFile->open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
         g_logStream = new QTextStream(g_logFile);
@@ -32,8 +41,12 @@ int main(int argc, char *argv[])
     
     qInstallMessageHandler(myMessageOutput);
 
-
     QGuiApplication app(argc, argv);
+    // The app ships a single light theme. Without pinning the colour scheme the
+    // Fluent style follows the OS setting, so every stock control (dialogs,
+    // text fields, combo boxes) rendered dark inside the light app on a machine
+    // set to dark mode -- the defect that made the dialogs look foreign.
+    app.styleHints()->setColorScheme(Qt::ColorScheme::Light);
     // Required for the QML Settings backing store (tool-panel section states)
     app.setOrganizationName("sketch");
     app.setApplicationName("sketch");

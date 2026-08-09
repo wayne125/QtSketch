@@ -83,6 +83,57 @@ Item {
             const superSize = Math.max(7, 10 * root.scale)
             const subSize   = Math.max(7, 10 * root.scale)
 
+            // Cheap pre-pass: approximate canvas position + "occupied radius" for
+            // every atom, used only to steer check-warning badges away from
+            // overlapping ANY atom's own label pill (including the flagged atom's
+            // own pill, and any neighbour's). A generous constant multiple of
+            // pillH stands in for the real per-atom pill width -- exact text
+            // measurement isn't needed for a collision-avoidance estimate, and
+            // redoing it here for every atom would double the paint-time cost.
+            const approxPillH = fontSize * 1.1 + 8 * root.scale
+            const atomOccupancy = []
+            for (let ai = 0; ai < canvas.sketch.primitives.atoms.length; ai++) {
+                const aa = canvas.sketch.primitives.atoms[ai]
+                if (aa.isSgroup) { atomOccupancy.push(null); continue }
+                const hasVisibleLabel = aa.isSgroup || aa.element !== "C" || aa.charge !== 0 ||
+                        (aa.stereoLabel && aa.stereoLabel !== "") || canvas.showExplicitH ||
+                        (aa.isotope && aa.isotope > 0) || (aa.radical && aa.radical > 0) ||
+                        (aa.explicitValence !== undefined && aa.explicitValence >= 0) ||
+                        (aa.attachmentPoints && aa.attachmentPoints > 0) ||
+                        (aa.implicitHCount || 0) > 0
+                if (!hasVisibleLabel) { atomOccupancy.push(null); continue }
+                const ap = canvas.chemToCanvas(aa.x, aa.y)
+                atomOccupancy.push({ x: ap.x, y: ap.y, r: approxPillH * 0.9 })
+            }
+
+            // Given a flagged atom's own canvas position and pill half-extents,
+            // pick the closest-to-original badge center (searching 8 compass
+            // directions, preferring the original upper-left placement) that
+            // does not overlap any atom's own label pill. Falls back to the
+            // original upper-left placement if every direction collides.
+            function pickBadgeCenter(px, py, pillHalfW, pillHalfH, warnR, selfIdx) {
+                const baseDist = Math.max(pillHalfW, pillHalfH) + warnR + 2 * root.scale
+                const angles = [225, 180, 270, 135, 315, 90, 0, 45] // degrees; 225 = up-left (original)
+                let fallback = null
+                for (let k = 0; k < angles.length; k++) {
+                    const rad = angles[k] * Math.PI / 180
+                    const cx = px + baseDist * Math.cos(rad)
+                    const cy = py + baseDist * Math.sin(rad)
+                    if (k === 0) fallback = { x: cx, y: cy }
+                    let collides = false
+                    for (let oi = 0; oi < atomOccupancy.length; oi++) {
+                        if (oi === selfIdx) continue
+                        const occ = atomOccupancy[oi]
+                        if (!occ) continue
+                        const ddx = cx - occ.x, ddy = cy - occ.y
+                        const minDist = occ.r + warnR
+                        if (ddx * ddx + ddy * ddy < minDist * minDist) { collides = true; break }
+                    }
+                    if (!collides) return { x: cx, y: cy }
+                }
+                return fallback
+            }
+
             for (let i = 0; i < canvas.sketch.primitives.atoms.length; i++) {
                 const a = canvas.sketch.primitives.atoms[i]
 
@@ -351,11 +402,13 @@ Item {
                     ctx.fillText(aam.toString(), p.x + pillW / 2 + badgeR, badgeY)
                 }
 
-                // Check warning badge — small red circle with "!" to the upper-left of pill
+                // Check warning badge — small red circle with "!", steered away from
+                // overlapping any atom's own label pill (see pickBadgeCenter above).
                 if (checkWarning) {
                     const warnR = Math.max(5, 7 * root.scale)
-                    const warnCx = p.x - pillW / 2 - warnR
-                    const warnY = p.y - pillH / 2 - warnR - 1 * root.scale
+                    const warnCenter = pickBadgeCenter(p.x, p.y, pillW / 2, pillH / 2, warnR, i)
+                    const warnCx = warnCenter.x
+                    const warnY = warnCenter.y
                     ctx.fillStyle = Theme.error
                     ctx.beginPath()
                     ctx.arc(warnCx, warnY, warnR, 0, Math.PI * 2)
@@ -375,17 +428,52 @@ Item {
             // ── Text annotations ─────────────────────────────────────────────
             if (canvas.sketch.primitives.texts) {
                 const txFont = Theme.clampFontSize(Theme.baseFontSize, root.scale)
-                ctx.font = txFont + "px " + Theme.fontFamilyCss
                 ctx.textAlign = "left"
                 ctx.textBaseline = "top"
                 ctx.fillStyle = Theme.textPrimary
                 for (let ti = 0; ti < canvas.sketch.primitives.texts.length; ti++) {
                     const t = canvas.sketch.primitives.texts[ti]
                     const tp = canvas.chemToCanvas(t.x, t.y)
+                    let fontStr = ""
+                    if (t.italic) fontStr += "italic "
+                    if (t.bold) fontStr += "bold "
+                    fontStr += txFont + "px " + Theme.fontFamilyCss
+                    ctx.font = fontStr
+
                     const txLines = String(t.content).split("\n")
                     for (let li = 0; li < txLines.length; li++) {
                         ctx.fillText(txLines[li], tp.x, tp.y + li * txFont * 1.25)
                     }
+                }
+            }
+
+            // ── Bracket-around-group annotations ──────────────────────────────
+            if (canvas.sketch.primitives.brackets) {
+                ctx.strokeStyle = Theme.textPrimary
+                ctx.lineWidth = 1.5
+                for (let bi = 0; bi < canvas.sketch.primitives.brackets.length; bi++) {
+                    const br = canvas.sketch.primitives.brackets[bi]
+                    const topLeft = canvas.chemToCanvas(br.minX, br.minY)
+                    const bottomRight = canvas.chemToCanvas(br.maxX, br.maxY)
+                    const left = Math.min(topLeft.x, bottomRight.x)
+                    const right = Math.max(topLeft.x, bottomRight.x)
+                    const top = Math.min(topLeft.y, bottomRight.y)
+                    const bottom = Math.max(topLeft.y, bottomRight.y)
+                    const tick = 6 * root.scale
+
+                    ctx.beginPath()
+                    ctx.moveTo(left + tick, top)
+                    ctx.lineTo(left, top)
+                    ctx.lineTo(left, bottom)
+                    ctx.lineTo(left + tick, bottom)
+                    ctx.stroke()
+
+                    ctx.beginPath()
+                    ctx.moveTo(right - tick, top)
+                    ctx.lineTo(right, top)
+                    ctx.lineTo(right, bottom)
+                    ctx.lineTo(right - tick, bottom)
+                    ctx.stroke()
                 }
             }
 

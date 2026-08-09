@@ -217,21 +217,23 @@ function _textBoxPos(x, y, plainStr) {
     ]
 }
 
-function _makeText(plainStr, x, y) {
+function _makeText(plainStr, x, y, bold, italic) {
     return {
         content: _textJsonFromPlain(plainStr),
         position: new CoreLib.ChemCore.Vec2(x, y),
         pos: _textBoxPos(x, y, plainStr),
+        bold: !!bold,
+        italic: !!italic,
         getInitiallySelected: function() { return false },
         resetInitiallySelected: function() {},
         setInitiallySelected: function() {},
-        clone: function() { return _makeText(_plainFromTextJson(this.content), this.position.x, this.position.y) }
+        clone: function() { return _makeText(_plainFromTextJson(this.content), this.position.x, this.position.y, this.bold, this.italic) }
     }
 }
 
-function addText(plainStr, x, y) {
+function addText(plainStr, x, y, bold, italic) {
     if (!plainStr || !String(plainStr).trim()) return
-    var t = _makeText(String(plainStr), x, y)
+    var t = _makeText(String(plainStr), x, y, bold, italic)
     var id = null
     var cmd = makeCmd(
         function() { if (id === null) id = _struct.texts.add(t); else _struct.texts.set(id, t); _dirty = true },
@@ -240,17 +242,21 @@ function addText(plainStr, x, y) {
     executeCommand(cmd)
 }
 
-function updateText(id, plainStr) {
+function updateText(id, plainStr, bold, italic) {
     var t = _struct.texts.get(id)
     if (!t) return
     var oldContent = t.content
     var oldPos = t.pos
+    var oldBold = !!t.bold
+    var oldItalic = !!t.italic
     var newContent = _textJsonFromPlain(plainStr)
-    if (oldContent === newContent) return
     var newPos = _textBoxPos(t.position.x, t.position.y, plainStr)
+    var newBold = !!bold
+    var newItalic = !!italic
+    if (oldContent === newContent && oldBold === newBold && oldItalic === newItalic) return
     var cmd = makeCmd(
-        function() { t.content = newContent; t.pos = newPos; _dirty = true },
-        function() { t.content = oldContent; t.pos = oldPos; _dirty = true }
+        function() { t.content = newContent; t.pos = newPos; t.bold = newBold; t.italic = newItalic; _dirty = true },
+        function() { t.content = oldContent; t.pos = oldPos; t.bold = oldBold; t.italic = oldItalic; _dirty = true }
     )
     executeCommand(cmd)
 }
@@ -263,6 +269,40 @@ function deleteText(id) {
         function() { _struct.texts.set(id, t); _dirty = true }
     )
     executeCommand(cmd)
+}
+
+function addBracketSelection() {
+    if (!_selection || (!_selection.atom_ids.length && !_selection.bond_ids.length)) return;
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    var has = false;
+    _selection.atom_ids.forEach(function(aid) {
+        var a = _struct.atoms.get(aid);
+        if (a) {
+            if (a.pp.x < minX) minX = a.pp.x;
+            if (a.pp.x > maxX) maxX = a.pp.x;
+            if (a.pp.y < minY) minY = a.pp.y;
+            if (a.pp.y > maxY) maxY = a.pp.y;
+            has = true;
+        }
+    });
+    _selection.bond_ids.forEach(function(bid) {
+        var b = _struct.bonds.get(bid);
+        if (b) {
+            var a1 = _struct.atoms.get(b.begin);
+            var a2 = _struct.atoms.get(b.end);
+            if (a1) { minX = Math.min(minX, a1.pp.x); maxX = Math.max(maxX, a1.pp.x); minY = Math.min(minY, a1.pp.y); maxY = Math.max(maxY, a1.pp.y); has = true; }
+            if (a2) { minX = Math.min(minX, a2.pp.x); maxX = Math.max(maxX, a2.pp.x); minY = Math.min(minY, a2.pp.y); maxY = Math.max(maxY, a2.pp.y); has = true; }
+        }
+    });
+    if (!has) return;
+    var pad = 0.8;
+    var bracket = { minX: minX - pad, minY: minY - pad, maxX: maxX + pad, maxY: maxY + pad };
+    if (!_struct.brackets) _struct.brackets = [];
+    var cmd = makeCmd(
+        function() { _struct.brackets.push(bracket); _dirty = true; },
+        function() { _struct.brackets.pop(); _dirty = true; }
+    );
+    executeCommand(cmd);
 }
 
 function _makeImage(bitmap, cx, cy, halfW, halfH) {

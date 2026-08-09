@@ -42,6 +42,7 @@ public:
     Q_INVOKABLE void calcProperties(const QString &molfile);
     Q_INVOKABLE void calcStereoDescriptors(const QString &molfile);
     Q_INVOKABLE void checkStructure(const QString &molfile);
+    Q_INVOKABLE void generateIupacName(const QString &molfile);
     Q_INVOKABLE void substructureSearch(const QString &molfile, const QString &smarts);
     Q_INVOKABLE void findCommonScaffold(const QStringList &molfiles);
     Q_INVOKABLE void decomposeToRGroups(const QStringList &molfiles);
@@ -100,6 +101,7 @@ Q_SIGNALS:
     void checkFinished(const QString &report);
     void checkIssuesReady(const QString &structuredJson);
     void substructureSearchFinished(const QString &result);
+    void iupacNameReady(const QString &name, const QString &error);
 
     void biopolymerLoaded(const QString &molfile);
     void biopolymerLoadError(const QString &error);
