@@ -59,6 +59,16 @@ Item {
 
             if (!canvas.sketch.primitives || !canvas.sketch.primitives.bonds || !canvas.sketch.primitives.atoms) return
 
+            // Atoms with their own outgoing wedge/hash bond get their CIP label drawn
+            // beside that bond (LabelLayer.qml), not centered on the vertex -- so
+            // none of their bonds need retraction for it. Mirrors LabelLayer.qml's
+            // chiralBondDir pre-pass (the stereocenter is always the begin end).
+            const chiralBesideBondAtoms = {}
+            for (let sbi = 0; sbi < canvas.sketch.primitives.bonds.length; sbi++) {
+                const sbb = canvas.sketch.primitives.bonds[sbi]
+                if (sbb.stereo === 1 || sbb.stereo === 6) chiralBesideBondAtoms[sbb.begin] = true
+            }
+
             // Helper: check if an atom has a visible label (needs bond retraction)
             function atomHasLabel(a) {
                 if (!a) return false
@@ -89,6 +99,10 @@ Item {
                         !(a.isotope > 0) && !(a.radical > 0) &&
                         !(a.explicitValence !== undefined && a.explicitValence >= 0) &&
                         !(a.attachmentPoints > 0) && a.cipLabel
+                if (isChiralCarbon && (a.implicitHCount || 0) === 0 && !canvas.showExplicitH &&
+                        chiralBesideBondAtoms[a.id]) {
+                    return 0
+                }
                 let retract = 2 * root.scale
                 if (!isChiralCarbon) {
                     let textStr = a.label
