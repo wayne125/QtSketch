@@ -1319,15 +1319,22 @@ int main() {
     }
 
     {
-        // Phase 25 regression: Ring parent structure with substituent stereocenter correctly rejected
-        int m = indigoLoadMoleculeFromString("C1CCCCC1[C@H](Cl)C");
-        IupacResult r = IupacNamer::generateName(m);
-        indigoFree(m);
-        if (!r.success && r.error.contains("Stereocenters on substituent branches are not supported in this phase.")) {
-            std::cout << "[PASS] Ring parent with branch stereocenter correctly rejected: " << r.error.toStdString() << "\n";
+        // Ring parent structure with substituent stereocenter -- now correctly named
+        // (previously rejected; see docs/superpowers/plans/2026-08-09-ring-branch-stereo-locants.md)
+        int m1 = indigoLoadMoleculeFromString("C1CCCCC1[C@H](Cl)C");
+        int m2 = indigoLoadMoleculeFromString("C1CCCCC1[C@@H](Cl)C");
+        IupacResult r1 = IupacNamer::generateName(m1);
+        IupacResult r2 = IupacNamer::generateName(m2);
+        indigoFree(m1); indigoFree(m2);
+        std::string n1 = r1.name.toStdString();
+        std::string n2 = r2.name.toStdString();
+        if (r1.success && r2.success &&
+            n1 == "[(1R)-1-chloroethyl]cyclohexane" &&
+            n2 == "[(1S)-1-chloroethyl]cyclohexane") {
+            std::cout << "[PASS] Ring parent with branch stereocenter -> " << n1 << " vs " << n2 << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] Ring parent with branch stereocenter -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            std::cout << "[FAIL] Ring parent with branch stereocenter -> r1.succ=" << r1.success << " n1='" << n1 << "' r2.succ=" << r2.success << " n2='" << n2 << "' err1='" << r1.error.toStdString() << "' err2='" << r2.error.toStdString() << "'\n";
             failed++;
         }
     }
