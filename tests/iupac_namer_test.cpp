@@ -1409,6 +1409,52 @@ int main() {
     }
 
     {
+        // Alphabetization: Phase 1 (acyclic) -- bromo must cite before chloroethyl.
+        int m = indigoLoadMoleculeFromString("CCCCC(Br)C([C@H](Cl)C)CCC");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        std::string n = r.name.toStdString();
+        if (r.success && n == "5-bromo-4-[(1R)-1-chloroethyl]nonane") {
+            std::cout << "[PASS] Alphabetization Phase 1 -> " << n << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Alphabetization Phase 1 -> success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Alphabetization: Phase 2 (monocyclic) -- bromo must cite before chloroethyl AND
+        // get the lower locant (genuine locant-set tie between the two ring positions).
+        int m = indigoLoadMoleculeFromString("BrC1CCCCC1[C@H](C)Cl");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        std::string n = r.name.toStdString();
+        if (r.success && n == "1-bromo-2-[(1S)-1-chloroethyl]cyclohexane") {
+            std::cout << "[PASS] Alphabetization Phase 2 -> " << n << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Alphabetization Phase 2 -> success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Alphabetization: Phase 3 (naphthalene) -- bromo must cite before chloroethyl.
+        int m = indigoLoadMoleculeFromString("Brc1ccc2ccccc2c1[C@H](C)Cl");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        std::string n = r.name.toStdString();
+        if (r.success && n == "2-bromo-1-[(1S)-1-chloroethyl]naphthalene") {
+            std::cout << "[PASS] Alphabetization Phase 3 -> " << n << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Alphabetization Phase 3 -> success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
         // Phase 26: Trisubstituted alkene with atomic-number-resolvable priority
         int m1 = indigoLoadMoleculeFromString("Cl/C(F)=C/C");
         int m2 = indigoLoadMoleculeFromString("F/C(Cl)=C/C");

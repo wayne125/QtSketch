@@ -198,6 +198,33 @@ QString chainRoot(int len) {
     return "";
 }
 
+// Alphabetization key for substituent-citation sorting and numbering-tiebreak scoring.
+// Strips wrapping brackets a substituent name may carry (from compound-substituent or
+// stereo-prefix wrapping), then a leading stereo-descriptor parenthetical like "(1R)-", then
+// a leading locant-digit(s)-hyphen sequence like "1-", down to the true alphabetic root --
+// e.g. "[(1R)-1-chloroethyl]" -> "chloroethyl". Plain names like "bromo" pass through
+// unchanged.
+QString alphabetizationKey(const QString &pName) {
+    QString s = pName;
+    if ((s.startsWith("(") && s.endsWith(")")) || (s.startsWith("[") && s.endsWith("]"))) {
+        s = s.mid(1, s.length() - 2);
+    } else if (s.startsWith("(") || s.startsWith("[")) {
+        s = s.mid(1);
+    }
+    if (s.startsWith("(")) {
+        int closeParen = s.indexOf(')');
+        if (closeParen != -1 && closeParen + 1 < s.length() && s[closeParen + 1] == '-') {
+            s = s.mid(closeParen + 2);
+        }
+    }
+    int i = 0;
+    while (i < s.length() && (s[i].isDigit() || s[i] == ',')) i++;
+    if (i > 0 && i < s.length() && s[i] == '-') {
+        s = s.mid(i + 1);
+    }
+    return s;
+}
+
 // Multiplying prefixes
 QString multiPrefix(int count) {
     static const QString prefixes[] = {
@@ -1014,7 +1041,7 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
         }
 
         PrefixGroup pg;
-        pg.baseName = (pName.startsWith("(") || pName.startsWith("[")) ? pName.mid(1) : pName;
+        pg.baseName = alphabetizationKey(pName);
         pg.formattedStr = pStr;
         pGroups.push_back(pg);
     }
@@ -1816,7 +1843,7 @@ QString nameAcyclicChainParentWithSubstituents(
 
             auto firstAlpha = [](const std::vector<std::pair<QString,int>> &named) {
                 return std::min_element(named.begin(), named.end(),
-                    [](const auto &x, const auto &y) { return x.first.toLower() < y.first.toLower(); });
+                    [](const auto &x, const auto &y) { return alphabetizationKey(x.first).toLower() < alphabetizationKey(y.first).toLower(); });
             };
             if (!a.namedSubstituents.empty()) {
                 QString alphaName = firstAlpha(a.namedSubstituents)->first;
@@ -1874,7 +1901,7 @@ QString nameAcyclicChainParentWithSubstituents(
         }
 
         PrefixGroup pg;
-        pg.baseName = pName.startsWith("(") ? pName.mid(1) : pName;
+        pg.baseName = alphabetizationKey(pName);
         pg.formattedStr = pStr;
         pGroups.push_back(pg);
     }
@@ -3802,7 +3829,7 @@ IupacResult IupacNamer::generateName(int mol) {
 
                 auto firstAlpha = [](const std::vector<std::pair<QString,int>> &named) {
                     return std::min_element(named.begin(), named.end(),
-                        [](const auto &x, const auto &y) { return x.first.toLower() < y.first.toLower(); });
+                        [](const auto &x, const auto &y) { return alphabetizationKey(x.first).toLower() < alphabetizationKey(y.first).toLower(); });
                 };
                 if (!a.namedSubstituents.empty()) {
                     QString alphaName = firstAlpha(a.namedSubstituents)->first;
@@ -4230,7 +4257,7 @@ IupacResult IupacNamer::generateName(int mol) {
             }
 
             PrefixGroup pg;
-            pg.baseName = (pName.startsWith("(") || pName.startsWith("[")) ? pName.mid(1) : pName;
+            pg.baseName = alphabetizationKey(pName);
             pg.formattedStr = pStr;
             pGroups.push_back(pg);
         }
@@ -4636,7 +4663,7 @@ IupacResult IupacNamer::generateName(int mol) {
                                             if (a.subLocants != b.subLocants) return a.subLocants < b.subLocants;
                                             auto firstAlpha = [](const std::vector<std::pair<QString,int>> &nm) {
                                                 return std::min_element(nm.begin(), nm.end(),
-                                                    [](const auto &x, const auto &y){ return x.first.toLower() < y.first.toLower(); });
+                                                    [](const auto &x, const auto &y){ return alphabetizationKey(x.first).toLower() < alphabetizationKey(y.first).toLower(); });
                                             };
                                             if (!a.namedSubs.empty()) {
                                                 QString alphaName = firstAlpha(a.namedSubs)->first;
@@ -4947,7 +4974,7 @@ IupacResult IupacNamer::generateName(int mol) {
                                     if (a.subLocants != b.subLocants) return a.subLocants < b.subLocants;
                                     auto firstAlpha = [](const std::vector<std::pair<QString,int>> &nm) {
                                         return std::min_element(nm.begin(), nm.end(),
-                                            [](const auto &x, const auto &y){ return x.first.toLower() < y.first.toLower(); });
+                                            [](const auto &x, const auto &y){ return alphabetizationKey(x.first).toLower() < alphabetizationKey(y.first).toLower(); });
                                     };
                                     if (!a.namedSubs.empty()) {
                                         QString alphaName = firstAlpha(a.namedSubs)->first;
@@ -5295,7 +5322,7 @@ IupacResult IupacNamer::generateName(int mol) {
                                                     }
 
                                                     PrefixGroup pg;
-                                                    pg.baseName = pName.startsWith("(") ? pName.mid(1) : pName;
+                                                    pg.baseName = alphabetizationKey(pName);
                                                     pg.formattedStr = pStr;
                                                     pGroups.push_back(pg);
                                                 }
@@ -8077,7 +8104,7 @@ IupacResult IupacNamer::generateName(int mol) {
 
                 auto firstAlpha = [](const std::vector<std::pair<QString,int>> &named) {
                     return std::min_element(named.begin(), named.end(),
-                        [](const auto &x, const auto &y) { return x.first.toLower() < y.first.toLower(); });
+                        [](const auto &x, const auto &y) { return alphabetizationKey(x.first).toLower() < alphabetizationKey(y.first).toLower(); });
                 };
                 if (!a.namedSubstituents.empty()) {
                     QString alphaName = firstAlpha(a.namedSubstituents)->first;
@@ -8132,7 +8159,7 @@ IupacResult IupacNamer::generateName(int mol) {
             }
 
             PrefixGroup pg;
-            pg.baseName = pName.startsWith("(") ? pName.mid(1) : pName;
+            pg.baseName = alphabetizationKey(pName);
             pg.formattedStr = pStr;
             pGroups.push_back(pg);
         }
@@ -8972,7 +8999,7 @@ IupacResult IupacNamer::generateName(int mol) {
 
             auto firstAlpha = [](const std::vector<std::pair<QString,int>> &named) {
                 return std::min_element(named.begin(), named.end(),
-                    [](const auto &x, const auto &y) { return x.first.toLower() < y.first.toLower(); });
+                    [](const auto &x, const auto &y) { return alphabetizationKey(x.first).toLower() < alphabetizationKey(y.first).toLower(); });
             };
             if (!a.namedSubstituents.empty()) {
                 QString alphaName = firstAlpha(a.namedSubstituents)->first;
@@ -9127,7 +9154,7 @@ IupacResult IupacNamer::generateName(int mol) {
         }
 
         PrefixGroup pg;
-        pg.baseName = pName.startsWith("(") ? pName.mid(1) : pName;
+        pg.baseName = alphabetizationKey(pName);
         pg.formattedStr = pStr;
         pGroups.push_back(pg);
     }
