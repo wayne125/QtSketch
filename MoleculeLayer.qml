@@ -118,10 +118,22 @@ Item {
                 if (bondLen > 0) {
                     const ux = dx_full / bondLen
                     const uy = dy_full / bondLen
-                    
-                    const retract1 = getLabelRetraction(a1, fontSize)
-                    const retract2 = getLabelRetraction(a2, fontSize)
-                    
+
+                    let retract1 = getLabelRetraction(a1, fontSize)
+                    let retract2 = getLabelRetraction(a2, fontSize)
+                    // Cap combined retraction so a bond between two labeled atoms (e.g. a
+                    // CIP-labeled stereocenter next to a multi-character halogen symbol)
+                    // never fully vanishes -- always leave at least 40% of the bond visible,
+                    // scaling both ends down proportionally so neither pill's clearance is
+                    // favored over the other's.
+                    const maxTotalRetract = bondLen * 0.6
+                    const totalRetract = retract1 + retract2
+                    if (totalRetract > maxTotalRetract) {
+                        const factor = maxTotalRetract / totalRetract
+                        retract1 *= factor
+                        retract2 *= factor
+                    }
+
                     if (retract1 > 0) {
                         p1 = { x: p1.x + ux * retract1, y: p1.y + uy * retract1 }
                     }
