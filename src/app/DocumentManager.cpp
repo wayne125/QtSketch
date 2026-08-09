@@ -37,9 +37,9 @@ void DocumentManager::setActiveDocId(int docId) {
     emit activeDocIdChanged();
 }
 
-int DocumentManager::addDocument(bool cppEngine) {
+int DocumentManager::addDocument() {
     int docId = m_nextDocId++;
-    if (cppEngine && !m_templateLibrary) {
+    if (!m_templateLibrary) {
         // TemplateLibrary::loadSdf gracefully leaves a hash empty for a missing/
         // unreadable path (confirmed: TemplateLibrary.cpp:27-33, "missing/unreadable
         // file: leave target empty") -- constructing with a not-found directory (empty
@@ -53,7 +53,7 @@ int DocumentManager::addDocument(bool cppEngine) {
             dir + QStringLiteral("/salts-and-solvents.sdf"));
     }
     auto *proc = new V8Process(this, m_templateLibrary.get());
-    proc->init(); // no-op on a C++-mode document
+    proc->init();
     m_documents.insert(docId, proc);
     m_order.append(docId);
     emit docIdsChanged();
