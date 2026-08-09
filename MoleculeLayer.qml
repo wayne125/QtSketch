@@ -82,13 +82,23 @@ Item {
                 if (a.isSgroup) {
                     return (root.measureCached(ctx, a.label) / 2) + 6 * root.scale
                 }
-                let textStr = a.label
-                if (a.isotope && a.isotope > 0) textStr = a.isotope.toString() + textStr
-                let retract = (root.measureCached(ctx, textStr) / 2) + 2 * root.scale
+                // Chiral centers on a plain carbon don't draw the "C" element symbol
+                // (LabelLayer.qml's isChiralCarbon) -- match that here so retraction
+                // isn't sized for text that never gets painted.
+                const isChiralCarbon = a.element === "C" && (a.charge || 0) === 0 &&
+                        !(a.isotope > 0) && !(a.radical > 0) &&
+                        !(a.explicitValence !== undefined && a.explicitValence >= 0) &&
+                        !(a.attachmentPoints > 0) && a.cipLabel
+                let retract = 2 * root.scale
+                if (!isChiralCarbon) {
+                    let textStr = a.label
+                    if (a.isotope && a.isotope > 0) textStr = a.isotope.toString() + textStr
+                    retract += root.measureCached(ctx, textStr) / 2
+                }
                 // Account for CIP label (subscript-sized)
                 const subSize = Math.max(7, 10 * root.scale)
                 ctx.font = "bold " + subSize + "px " + Theme.fontFamilyCss
-                if (a.cipLabel) retract += root.measureCached(ctx, " " + a.cipLabel) / 2
+                if (a.cipLabel) retract += root.measureCached(ctx, isChiralCarbon ? a.cipLabel : " " + a.cipLabel) / 2
                 return retract
             }
 
