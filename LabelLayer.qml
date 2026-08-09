@@ -190,9 +190,15 @@ Item {
                 const checkWarning = a.checkWarning || ""
                 const hOnLeft      = a.hOnLeft || false
 
+                // Chiral centers on a plain carbon show only the CIP letter (R/S/E/Z),
+                // not the "C" element symbol -- matches standard skeletal-formula
+                // convention (bare vertex + stereo descriptor, no atom label).
+                const isChiralCarbon = baseElement === "C" && charge === 0 && !hasIsotope &&
+                        !hasRadical && !hasValence && !hasAttachment && cipLabel !== ""
+
                 // ── Measure components ──────────────────────────────────────
                 ctx.font = "bold " + fontSize + "px " + Theme.fontFamilyCss
-                const elemW = root.measureCached(ctx, baseElement)
+                const elemW = isChiralCarbon ? 0 : root.measureCached(ctx, baseElement)
 
                 let hText = "", hSubText = ""
                 if (implicitH > 0) {
@@ -234,9 +240,10 @@ Item {
 
                 let totalWidth = isoW + elemW + hW + hSubW + chargeW + valW + apW
                 let cipW = 0
+                const cipText = isChiralCarbon ? cipLabel : " " + cipLabel
                 if (cipLabel) {
                     ctx.font = "bold " + subSize + "px " + Theme.fontFamilyCss
-                    cipW = root.measureCached(ctx, " " + cipLabel)
+                    cipW = root.measureCached(ctx, cipText)
                     totalWidth += cipW
                 }
 
@@ -280,8 +287,10 @@ Item {
                         ctx.fillText(hSubText, cx, p.y + fontSize * Theme.subscriptOffset)
                         cx += hSubW
                     }
-                    ctx.font = "bold " + fontSize + "px " + Theme.fontFamilyCss
-                    ctx.fillText(baseElement, cx, p.y)
+                    if (!isChiralCarbon) {
+                        ctx.font = "bold " + fontSize + "px " + Theme.fontFamilyCss
+                        ctx.fillText(baseElement, cx, p.y)
+                    }
                     cx += elemW
                 } else {
                     // Element first, H on right
@@ -289,7 +298,9 @@ Item {
                     ctx.fillStyle = textColor
                     ctx.textAlign = "left"
                     ctx.textBaseline = "middle"
-                    ctx.fillText(baseElement, cx, p.y)
+                    if (!isChiralCarbon) {
+                        ctx.fillText(baseElement, cx, p.y)
+                    }
                     cx += elemW
                     if (hText) {
                         ctx.fillText(hText, cx, p.y)
@@ -330,7 +341,7 @@ Item {
                 if (cipLabel) {
                     ctx.font = "bold " + subSize + "px " + Theme.fontFamilyCss
                     ctx.fillStyle = Theme.accent
-                    ctx.fillText(" " + cipLabel, cx, p.y)
+                    ctx.fillText(cipText, cx, p.y)
                     cx += cipW
                 }
 
