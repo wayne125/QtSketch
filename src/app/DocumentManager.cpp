@@ -52,8 +52,8 @@ int DocumentManager::addDocument(bool cppEngine) {
             dir + QStringLiteral("/library.sdf"),
             dir + QStringLiteral("/salts-and-solvents.sdf"));
     }
-    auto *proc = new V8Process(this, cppEngine, m_templateLibrary.get());
-    proc->init(); // no-op on a C++-mode document: sendCommand's own guard (m_engine is null) warns and returns
+    auto *proc = new V8Process(this, m_templateLibrary.get());
+    proc->init(); // no-op on a C++-mode document
     m_documents.insert(docId, proc);
     m_order.append(docId);
     emit docIdsChanged();

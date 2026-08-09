@@ -6,7 +6,7 @@
 #include <QByteArray>
 #include <QtQml/qqml.h>
 #include <memory>
-#include "qjs_engine.h"
+
 #include "app/molecule/DocumentState.h"
 #include "app/molecule/TemplateLibrary.h"
 #include "app/molecule/SdfBatch.h"
@@ -20,15 +20,12 @@ class V8Process : public QObject {
     Q_PROPERTY(QVariantMap overlayState READ overlayState WRITE setOverlayState NOTIFY overlayStateChanged)
 
 public:
-    // cppEngine=true creates a document that routes the in-scope gestures (see
-    // applyLocalState's own comment) through DocumentState instead of the JS engine, and never
-    // creates m_engine at all. Defaulted so every existing call site (which never passes this
-    // argument) is completely unaffected.
+    // Every document runs on DocumentState; there is no other engine.
     // templateLibrary is non-owning: DocumentManager owns the real instance and outlives
     // every V8Process it creates. Defaulted to nullptr so any hypothetical future
     // construction site that doesn't need template insertion (e.g. a test) still
     // compiles unchanged.
-    explicit V8Process(QObject *parent = nullptr, bool cppEngine = false, TemplateLibrary* templateLibrary = nullptr);
+    explicit V8Process(QObject *parent = nullptr, TemplateLibrary* templateLibrary = nullptr);
     ~V8Process();
 
     QVariantMap primitives() const { return m_primitives; }
@@ -143,10 +140,7 @@ signals:
     void errorOccurred(const QString& error);
 
 private:
-    // Replaces the old QProcess-based onReadyReadStandardOutput: called once per
-    // JSON line the worker emits via console.log, whether that line came from
-    // QjsEngine's synchronous native_log callback (see qjs_engine.cpp).
-    void handleWorkerLine(const QString &line);
+
 
     // Turns m_docState's current molecule/selection into the exact QVariantMap shape and
     // signal set QML already consumes from the JS path -- the single place that makes a
@@ -167,8 +161,7 @@ private:
     // body twice the way the real JS does. recordsJson is JSON.stringify([{molfile: "..."}, ...]).
     void handleDeserializeBatchFromMolfiles(const QString& recordsJson);
 
-    bool m_cppEngine = false;
-    std::unique_ptr<DocumentState> m_docState;   // non-null only when m_cppEngine
+    std::unique_ptr<DocumentState> m_docState;   // always non-null; every document is C++-engine now
     TemplateLibrary* m_templateLibrary = nullptr;   // non-owning; null unless passed in at construction
     QString m_docClipboardMol;   // C++-engine-only clipboard cache: set by copySelection/cutSelection,
                                   // read by pasteSelection. Mirrors the JS worker's module-level
@@ -179,7 +172,7 @@ private:
     QHash<QString, QString> m_sdfProps;   // mirrors _sdfProps (40-serialize.js:2, starts as {}),
                                             // populated by loadSdfBatchRecord, read by getSdfProps.
 
-    std::unique_ptr<QjsEngine> m_engine;
+
     QVariantMap m_primitives;
     QVariantMap m_selection;
     QVariantMap m_overlayState;
