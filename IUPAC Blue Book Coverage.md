@@ -363,7 +363,7 @@ wherever both could appear.
     9002`, plus 2 acyclic-chain numbering-direction sites at `:1846, 3832`) that previously
     compared raw, still-bracketed names.
 11. Lower priority / rarely load-bearing for this app: P-26 (phane), P-27 (fullerenes), P-7/P-8 (ions/isotopes), P-10 (natural products).
-13. **Unnameable-branch guard bypass without a stereocenter (Phase 1)** — found 2026-08-09 during
+12. **Unnameable-branch guard bypass without a stereocenter (Phase 1)** — found 2026-08-09 during
     this plan's own final review, confirmed via a temporary probe then reverted, NOT fixed by
     this plan (out of scope -- see item 9). `nameBranchGraph` can return `""` for a branch that
     is unnameable for reasons unrelated to stereocenters (fused/bridged ring branch at
