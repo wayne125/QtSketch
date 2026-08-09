@@ -347,7 +347,7 @@ wherever both could appear.
    `CCCCC(CN=[N+]=[N-])CCC` (no stereocenter) returns `success=1 name='4-octane'` (the azide
    substituent is silently dropped instead of triggering rejection). This predates and is
    unrelated to this fix (the unconditional append was never inside the guard this fix added);
-   tracked as new item 13 below, not fixed by this plan. Live-UI note: for the specific regression
+   tracked as new item 12 below, not fixed by this plan. Live-UI note: for the specific regression
    molecule (`CCCCC([C@H](CN=[N+]=[N-])C)CCC`), the app's SMILES-load-then-molfile-round-trip
    path rejects earlier, with "Charged atoms are not supported in Phase 1." (the early
    reject-early charge check at `IupacNamer.cpp:~2517`, well upstream of this fix) rather than
