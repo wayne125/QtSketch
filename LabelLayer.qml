@@ -106,6 +106,27 @@ Item {
                 atomOccupancy.push({ x: ap.x, y: ap.y, r: approxPillH * 0.9 })
             }
 
+            // Chiral-center CIP labels (R/S) are drawn beside their own wedge/hash
+            // bond rather than centered on the atom -- map atomId -> unit direction
+            // of that bond (the stereocenter is always the narrow/begin end).
+            const chiralBondDir = {}
+            if (canvas.sketch.primitives.bonds && canvas.sketch.primitives.atomsById) {
+                const bondsList = canvas.sketch.primitives.bonds
+                for (let bi = 0; bi < bondsList.length; bi++) {
+                    const bb = bondsList[bi]
+                    if (bb.stereo !== 1 && bb.stereo !== 6) continue
+                    if (chiralBondDir[bb.begin] !== undefined) continue
+                    const beginA = canvas.sketch.primitives.atomsById[bb.begin.toString()]
+                    const endA = canvas.sketch.primitives.atomsById[bb.end.toString()]
+                    if (!beginA || !endA) continue
+                    const bp1 = canvas.chemToCanvas(beginA.x, beginA.y)
+                    const bp2 = canvas.chemToCanvas(endA.x, endA.y)
+                    const bdx = bp2.x - bp1.x, bdy = bp2.y - bp1.y
+                    const blen = Math.sqrt(bdx * bdx + bdy * bdy)
+                    if (blen > 0) chiralBondDir[bb.begin] = { x: bdx / blen, y: bdy / blen }
+                }
+            }
+
             // Given a flagged atom's own canvas position and pill half-extents,
             // pick the closest-to-original badge center (searching 8 compass
             // directions, preferring the original upper-left placement) that
@@ -195,6 +216,22 @@ Item {
                 // convention (bare vertex + stereo descriptor, no atom label).
                 const isChiralCarbon = baseElement === "C" && charge === 0 && !hasIsotope &&
                         !hasRadical && !hasValence && !hasAttachment && cipLabel !== ""
+
+                // When nothing else needs a pill at this vertex, draw the CIP letter
+                // as a small floating label beside the atom's own wedge/hash bond
+                // instead of centered on the vertex -- keeps the bond/vertex clear.
+                if (isChiralCarbon && implicitH === 0 && !canvas.showExplicitH && chiralBondDir[a.id]) {
+                    const dir = chiralBondDir[a.id]
+                    const perpX = -dir.y, perpY = dir.x
+                    const cipFontSize = Math.max(9, 11 * root.scale)
+                    const cipOffset = 10 * root.scale
+                    ctx.font = "bold " + cipFontSize + "px " + Theme.fontFamilyCss
+                    ctx.textAlign = "center"
+                    ctx.textBaseline = "middle"
+                    ctx.fillStyle = Theme.accent
+                    ctx.fillText(cipLabel, p.x + perpX * cipOffset, p.y + perpY * cipOffset)
+                    continue
+                }
 
                 // ── Measure components ──────────────────────────────────────
                 ctx.font = "bold " + fontSize + "px " + Theme.fontFamilyCss
