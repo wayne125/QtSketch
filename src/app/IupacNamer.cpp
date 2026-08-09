@@ -8039,17 +8039,19 @@ IupacResult IupacNamer::generateName(int mol) {
                         }
                         if (subName.isEmpty()) {
                             subName = nameBranchGraph(g, nei, rNode, allSSSRRings, ring2Nodes);
-                            QString branchStereo = formatBranchStereoPrefix(g, nei, rNode, stereoByGraphId, sig.handledBranchStereoIds);
-                            if (!branchStereo.isEmpty()) {
-                                if (subName.startsWith("(") && subName.endsWith(")")) {
-                                    QString inner = subName.mid(1, subName.length() - 2);
-                                    subName = QString("[%1%2]").arg(branchStereo, inner);
-                                } else {
-                                    subName = QString("[%1%2]").arg(branchStereo, subName);
+                            if (!subName.isEmpty()) {
+                                QString branchStereo = formatBranchStereoPrefix(g, nei, rNode, stereoByGraphId, sig.handledBranchStereoIds);
+                                if (!branchStereo.isEmpty()) {
+                                    if (subName.startsWith("(") && subName.endsWith(")")) {
+                                        QString inner = subName.mid(1, subName.length() - 2);
+                                        subName = QString("[%1%2]").arg(branchStereo, inner);
+                                    } else {
+                                        subName = QString("[%1%2]").arg(branchStereo, subName);
+                                    }
+                                } else if (subName.startsWith("(")) {
+                                    subName = subName.mid(1);
+                                    if (subName.endsWith(")")) subName.chop(1);
                                 }
-                            } else if (subName.startsWith("(")) {
-                                subName = subName.mid(1);
-                                if (subName.endsWith(")")) subName.chop(1);
                             }
                         }
                     }
@@ -8928,17 +8930,19 @@ IupacResult IupacNamer::generateName(int mol) {
                     }
                     if (subName.isEmpty()) {
                         subName = nameBranchGraph(g, nei, rNode, allSSSRRings, ringNodeSet);
-                        QString branchStereo = formatBranchStereoPrefix(g, nei, rNode, stereoByGraphId, sig.handledBranchStereoIds);
-                        if (!branchStereo.isEmpty()) {
-                            if (subName.startsWith("(") && subName.endsWith(")")) {
-                                QString inner = subName.mid(1, subName.length() - 2);
-                                subName = QString("[%1%2]").arg(branchStereo, inner);
-                            } else {
-                                subName = QString("[%1%2]").arg(branchStereo, subName);
+                        if (!subName.isEmpty()) {
+                            QString branchStereo = formatBranchStereoPrefix(g, nei, rNode, stereoByGraphId, sig.handledBranchStereoIds);
+                            if (!branchStereo.isEmpty()) {
+                                if (subName.startsWith("(") && subName.endsWith(")")) {
+                                    QString inner = subName.mid(1, subName.length() - 2);
+                                    subName = QString("[%1%2]").arg(branchStereo, inner);
+                                } else {
+                                    subName = QString("[%1%2]").arg(branchStereo, subName);
+                                }
+                            } else if (subName.startsWith("(")) {
+                                subName = subName.mid(1);
+                                if (subName.endsWith(")")) subName.chop(1);
                             }
-                        } else if (subName.startsWith("(")) {
-                            subName = subName.mid(1);
-                            if (subName.endsWith(")")) subName.chop(1);
                         }
                     }
                 }

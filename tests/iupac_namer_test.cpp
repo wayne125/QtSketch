@@ -1360,6 +1360,36 @@ int main() {
     }
 
     {
+        // Regression: ring parent branch that is both a stereocenter AND contains an
+        // unnameable group (azide) must still cleanly reject, not silently bypass the
+        // "Unrecognized or unsupported substituent on ring." guard via the stereo path.
+        int m = indigoLoadMoleculeFromString("C1CCCCC1[C@H](C)CN=[N+]=[N-]");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success && r.error.contains("Unrecognized or unsupported substituent on ring.")) {
+            std::cout << "[PASS] Ring parent branch stereocenter + unnameable substituent correctly rejected: " << r.error.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Ring parent branch stereocenter + unnameable substituent -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Same regression, naphthalene parent.
+        int m = indigoLoadMoleculeFromString("c1ccc2ccccc2c1[C@H](C)CN=[N+]=[N-]");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success && r.error.contains("Unrecognized or unsupported substituent on ring.")) {
+            std::cout << "[PASS] Naphthalene parent branch stereocenter + unnameable substituent correctly rejected: " << r.error.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Naphthalene parent branch stereocenter + unnameable substituent -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
         // Phase 26: Trisubstituted alkene with atomic-number-resolvable priority
         int m1 = indigoLoadMoleculeFromString("Cl/C(F)=C/C");
         int m2 = indigoLoadMoleculeFromString("F/C(Cl)=C/C");
