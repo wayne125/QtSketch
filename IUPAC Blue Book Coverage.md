@@ -336,8 +336,18 @@ wherever both could appear.
 9. **Branch-stereocenter guard bypass on the acyclic parent path (Phase 1)** — fixed. Same bug
    class already fixed for the ring paths (Phase 2/3): `formatBranchStereoPrefix` was called
    unconditionally right after `nameBranchGraph` with no check that `nameBranchGraph` actually
-   produced a name. Fixed by gating the call behind `!bName.isEmpty()`, identical to the
-   Phase 2/3 fix (`IupacNamer.cpp:4171-4181`). Live-UI note: for the specific regression
+   produced a name. Fixed by gating the call behind `!bName.isEmpty()` (now at `IupacNamer.cpp:4198-4210`),
+   identical in shape to the Phase 2/3 fix at `IupacNamer.cpp:8071` and `:8962`. **Scope note:**
+   this only fixes the case where the unnameable branch ALSO carries a stereocenter (the disclosed
+   bug). A confirmed, separate, pre-existing bug remains for unnameable branches WITHOUT a
+   stereocenter: `nameBranchGraph` can return `""` for other reasons (e.g. a fused/bridged ring
+   branch at `IupacNamer.cpp:1147`, or an azide at `:1193`) and the final
+   `locantSubstituents[locant].append(bName)` at `:4210` still unconditionally appends the empty
+   string, producing a malformed but "successful" name -- confirmed live via a temporary probe:
+   `CCCCC(CN=[N+]=[N-])CCC` (no stereocenter) returns `success=1 name='4-octane'` (the azide
+   substituent is silently dropped instead of triggering rejection). This predates and is
+   unrelated to this fix (the unconditional append was never inside the guard this fix added);
+   tracked as new item 13 below, not fixed by this plan. Live-UI note: for the specific regression
    molecule (`CCCCC([C@H](CN=[N+]=[N-])C)CCC`), the app's SMILES-load-then-molfile-round-trip
    path rejects earlier, with "Charged atoms are not supported in Phase 1." (the early
    reject-early charge check at `IupacNamer.cpp:~2517`, well upstream of this fix) rather than
@@ -345,9 +355,24 @@ wherever both could appear.
    in this phase." — both are correct rejections (no malformed success either way); the
    difference traces to the azide's exact bond-order/charge pattern not surviving the
    molfile round trip identically to a direct SMILES parse, unrelated to this fix.
-11. **Stereo-bracket alphabetization** — fixed. A shared `alphabetizationKey()` helper
+10. **Stereo-bracket alphabetization** — fixed. A shared `alphabetizationKey()` helper
     (`IupacNamer.cpp`, near `multiPrefix`) now strips wrapping brackets, stereo-descriptor
     parentheticals, and locant-digit prefixes before alphabetizing, used at both the
-    substituent-citation-order sort-key sites (6) and the ring-numbering-candidate tiebreak
-    sites (6) that previously compared raw, still-bracketed names.
-12. Lower priority / rarely load-bearing for this app: P-26 (phane), P-27 (fullerenes), P-7/P-8 (ions/isotopes), P-10 (natural products).
+    substituent-citation-order sort-key sites (6) and the numbering/path-direction tiebreak
+    sites (6: 4 ring/spiro/naphthalene-numbering sites at `IupacNamer.cpp:4666, 4977, 8107,
+    9002`, plus 2 acyclic-chain numbering-direction sites at `:1846, 3832`) that previously
+    compared raw, still-bracketed names.
+11. Lower priority / rarely load-bearing for this app: P-26 (phane), P-27 (fullerenes), P-7/P-8 (ions/isotopes), P-10 (natural products).
+13. **Unnameable-branch guard bypass without a stereocenter (Phase 1)** — found 2026-08-09 during
+    this plan's own final review, confirmed via a temporary probe then reverted, NOT fixed by
+    this plan (out of scope -- see item 9). `nameBranchGraph` can return `""` for a branch that
+    is unnameable for reasons unrelated to stereocenters (fused/bridged ring branch at
+    `IupacNamer.cpp:1147`, azide at `:1193`, and likely other `return ""` sites in the same
+    function). The final `locantSubstituents[locant].append(bName)` at `:4210` is unconditional
+    and was never inside item 9's `!bName.isEmpty()` guard (that guard only wraps the
+    stereo-prefix logic, not the append itself) -- so an unnameable, non-stereocenter branch is
+    silently dropped from the name instead of triggering rejection. Confirmed live:
+    `CCCCC(CN=[N+]=[N-])CCC` returns `success=1 name='4-octane'` (azide substituent vanishes).
+    Fix (future work, not this plan): after the `if (!bName.isEmpty()) {...}` block, add
+    `else { return {false, "", "Unrecognized or unsupported substituent."}; }` mirroring the
+    Phase 2/3 rejection pattern, then add a regression test.

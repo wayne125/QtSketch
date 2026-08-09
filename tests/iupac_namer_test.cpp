@@ -1399,6 +1399,11 @@ int main() {
         int m = indigoLoadMoleculeFromString("CCCCC([C@H](CN=[N+]=[N-])C)CCC");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
+        // Pinned to this exact message deliberately: this test calls generateName()
+        // directly on the raw SMILES (no molfile round-trip), which deterministically
+        // takes this code path. The live app's SMILES-load-then-molfile-round-trip path
+        // can reject the same molecule earlier with a different (also correct) message;
+        // see IUPAC Blue Book Coverage.md item 9.
         if (!r.success && r.error.contains("Stereocenters on substituent branches are not supported in this phase.")) {
             std::cout << "[PASS] Acyclic parent branch stereocenter + unnameable substituent correctly rejected: " << r.error.toStdString() << "\n";
             passed++;
