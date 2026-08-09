@@ -65,7 +65,6 @@ Item {
                 if (a.isSgroup) return true
                 if (a.element !== "C") return true
                 if (a.charge !== 0) return true
-                if (a.stereoLabel && a.stereoLabel !== "") return true
                 if (a.cipLabel && a.cipLabel !== "") return true
                 if (a.aam && a.aam > 0) return true
                 if (canvas.showExplicitH) return true
@@ -86,10 +85,9 @@ Item {
                 let textStr = a.label
                 if (a.isotope && a.isotope > 0) textStr = a.isotope.toString() + textStr
                 let retract = (root.measureCached(ctx, textStr) / 2) + 2 * root.scale
-                // Account for stereo label and CIP label (subscript-sized)
+                // Account for CIP label (subscript-sized)
                 const subSize = Math.max(7, 10 * root.scale)
                 ctx.font = "bold " + subSize + "px " + Theme.fontFamilyCss
-                if (a.stereoLabel) retract += root.measureCached(ctx, " " + a.stereoLabel) / 2
                 if (a.cipLabel) retract += root.measureCached(ctx, " " + a.cipLabel) / 2
                 return retract
             }
