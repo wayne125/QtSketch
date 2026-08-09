@@ -4169,13 +4169,15 @@ IupacResult IupacNamer::generateName(int mol) {
                         }
                     } else {
                         QString bName = nameBranchGraph(g, nei, cNode, allSSSRRings);
-                        QString branchStereo = formatBranchStereoPrefix(g, nei, cNode, stereoByGraphId, handledBranchStereoIds);
-                        if (!branchStereo.isEmpty()) {
-                            if (bName.startsWith("(") && bName.endsWith(")")) {
-                                QString inner = bName.mid(1, bName.length() - 2);
-                                bName = QString("[%1%2]").arg(branchStereo, inner);
-                            } else {
-                                bName = QString("[%1%2]").arg(branchStereo, bName);
+                        if (!bName.isEmpty()) {
+                            QString branchStereo = formatBranchStereoPrefix(g, nei, cNode, stereoByGraphId, handledBranchStereoIds);
+                            if (!branchStereo.isEmpty()) {
+                                if (bName.startsWith("(") && bName.endsWith(")")) {
+                                    QString inner = bName.mid(1, bName.length() - 2);
+                                    bName = QString("[%1%2]").arg(branchStereo, inner);
+                                } else {
+                                    bName = QString("[%1%2]").arg(branchStereo, bName);
+                                }
                             }
                         }
                         locantSubstituents[locant].append(bName);

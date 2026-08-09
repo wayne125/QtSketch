@@ -1390,6 +1390,25 @@ int main() {
     }
 
     {
+        // Regression: acyclic (Phase 1) parent branch that is both a stereocenter AND
+        // contains an unnameable group (azide) must still cleanly reject. Phase 1 has no
+        // "Unrecognized or unsupported substituent" guard the way Phase 2/3 do -- instead,
+        // an unhandled branch stereocenter correctly falls through to the pre-existing
+        // "Stereocenters on substituent branches are not supported in this phase." rejection
+        // (the same message used for the already-tested "two-branches-deep" case).
+        int m = indigoLoadMoleculeFromString("CCCCC([C@H](CN=[N+]=[N-])C)CCC");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success && r.error.contains("Stereocenters on substituent branches are not supported in this phase.")) {
+            std::cout << "[PASS] Acyclic parent branch stereocenter + unnameable substituent correctly rejected: " << r.error.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Acyclic parent branch stereocenter + unnameable substituent -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
         // Phase 26: Trisubstituted alkene with atomic-number-resolvable priority
         int m1 = indigoLoadMoleculeFromString("Cl/C(F)=C/C");
         int m2 = indigoLoadMoleculeFromString("F/C(Cl)=C/C");
