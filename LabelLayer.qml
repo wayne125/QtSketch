@@ -96,7 +96,7 @@ Item {
                 const aa = canvas.sketch.primitives.atoms[ai]
                 if (aa.isSgroup) { atomOccupancy.push(null); continue }
                 const hasVisibleLabel = aa.isSgroup || aa.element !== "C" || aa.charge !== 0 ||
-                        (aa.stereoLabel && aa.stereoLabel !== "") || canvas.showExplicitH ||
+                        (aa.cipLabel && aa.cipLabel !== "") || canvas.showExplicitH ||
                         (aa.isotope && aa.isotope > 0) || (aa.radical && aa.radical > 0) ||
                         (aa.explicitValence !== undefined && aa.explicitValence >= 0) ||
                         (aa.attachmentPoints && aa.attachmentPoints > 0) ||
@@ -172,7 +172,7 @@ Item {
                 const hasAttachment = a.attachmentPoints && a.attachmentPoints > 0
 
                 // Skip unlabelled carbons
-                if (a.element === "C" && a.charge === 0 && !a.stereoLabel &&
+                if (a.element === "C" && a.charge === 0 && !a.cipLabel &&
                         !canvas.showExplicitH && !hasIsotope && !hasRadical && !hasValence && !hasAttachment) {
                     if (!hasH) continue
                     // Terminal carbons with showExplicitH off still show no label if renderLabel === "C"
@@ -185,7 +185,6 @@ Item {
                 const baseElement  = a.element
                 const implicitH    = a.implicitHCount || 0
                 const charge       = a.charge || 0
-                const stereoLabel  = a.stereoLabel || ""
                 const cipLabel     = a.cipLabel || ""
                 const aam          = a.aam || 0
                 const checkWarning = a.checkWarning || ""
@@ -234,12 +233,6 @@ Item {
                 const valW = valText ? root.measureCached(ctx, valText) : 0
 
                 let totalWidth = isoW + elemW + hW + hSubW + chargeW + valW + apW
-                let stereoW = 0
-                if (stereoLabel) {
-                    ctx.font = "bold " + subSize + "px " + Theme.fontFamilyCss
-                    stereoW = root.measureCached(ctx, " " + stereoLabel)
-                    totalWidth += stereoW
-                }
                 let cipW = 0
                 if (cipLabel) {
                     ctx.font = "bold " + subSize + "px " + Theme.fontFamilyCss
@@ -331,14 +324,6 @@ Item {
                     ctx.fillStyle = isSelected ? Theme.accent : Theme.textSecondary
                     ctx.fillText(valText, cx, p.y + fontSize * Theme.subscriptOffset)
                     cx += valW
-                }
-
-                // Stereo label
-                if (stereoLabel) {
-                    ctx.font = "bold " + subSize + "px " + Theme.fontFamilyCss
-                    ctx.fillStyle = isSelected ? Theme.accent : Theme.textSecondary
-                    ctx.fillText(" " + stereoLabel, cx, p.y)
-                    cx += stereoW
                 }
 
                 // CIP descriptor (R/S/E/Z)
