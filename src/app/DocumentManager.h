@@ -23,7 +23,7 @@ public:
     int activeDocId() const { return m_activeDocId; }
     void setActiveDocId(int docId);
 
-    Q_INVOKABLE int addDocument(bool cppEngine = false);
+    Q_INVOKABLE int addDocument(bool cppEngine = true);
     Q_INVOKABLE void closeDocument(int docId);
     Q_INVOKABLE QObject* documentFor(int docId) const;
 

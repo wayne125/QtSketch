@@ -20,47 +20,9 @@
 #include <QPointer>
 #include "indigo.h"
 
-V8Process::V8Process(QObject *parent, bool cppEngine, TemplateLibrary* templateLibrary)
-    : QObject(parent), m_cppEngine(cppEngine), m_templateLibrary(templateLibrary) {
-    if (m_cppEngine) {
-        m_docState = std::make_unique<DocumentState>();
-        return;
-    }
-
-    QString appDir = QCoreApplication::applicationDirPath();
-    // Walk up from the binary to find src/v8_worker.js regardless of build layout depth.
-    // Same discovery logic as before Node was removed -- the file is now read and
-    // JS_Eval'd directly instead of spawned, but it still lives in the same place.
-    QString scriptPath;
-    QDir dir(appDir);
-    for (int i = 0; i < 5; ++i) {
-        QString candidate = dir.filePath("src/v8_worker.js");
-        if (QFile::exists(candidate)) {
-            scriptPath = candidate;
-            break;
-        }
-        if (!dir.cdUp()) break;
-    }
-    if (scriptPath.isEmpty()) {
-        qWarning() << "V8Process: could not locate src/v8_worker.js from" << appDir;
-        QTimer::singleShot(0, this, [this]() {
-            emit errorOccurred("Chemistry engine script not found. Please reinstall the application.");
-        });
-        return;
-    }
-
-    m_engine = std::make_unique<QjsEngine>(
-        scriptPath,
-        [this](const QString &line) { handleWorkerLine(line); },
-        [this](const QString &msg) {
-            // Deferred for the same reason as the scriptPath.isEmpty() case above:
-            // this can fire synchronously from inside the QjsEngine constructor,
-            // i.e. before DocumentManager::addDocument() has even returned this
-            // V8Process's docId to QML -- emitting immediately means no QML
-            // Connections exists yet and the signal is silently lost.
-            QTimer::singleShot(0, this, [this, msg]() { emit errorOccurred(msg); });
-        }
-    );
+V8Process::V8Process(QObject *parent, TemplateLibrary* templateLibrary)
+    : QObject(parent), m_templateLibrary(templateLibrary) {
+    m_docState = std::make_unique<DocumentState>();
 }
 
 V8Process::~V8Process() = default;
@@ -131,7 +93,7 @@ void V8Process::handleDeserializeBatchFromMolfiles(const QString& recordsJson) {
 }
 
 void V8Process::sendCommand(const QString& cmd, const QVariantList& args) {
-    if (m_docState) {
+    {
         if (cmd == "getMoleculeName") {
             // Read-only: emits directly, no applyLocalState() -- nothing mutated. reqId "mol_name"
             // and raw-string (not JSON) data confirmed against 40-serialize.js:104-106.
@@ -317,235 +279,142 @@ void V8Process::sendCommand(const QString& cmd, const QVariantList& args) {
         applyLocalState();
         return;
     }
-    if (!m_engine || !m_engine->isValid()) {
-        qWarning() << "V8Process is not running!";
-        return;
-    }
-    m_engine->dispatch(cmd, args);
 }
 
 void V8Process::init() {
-    if (m_docState) { applyLocalState(); return; } // m_docState is already a freshly-constructed empty document (see constructor)
-    sendCommand("init");
+    applyLocalState(); return; // m_docState is always a freshly-constructed empty document (see constructor)
 }
 void V8Process::loadMol(const QString& molfile) {
-    if (m_docState) { m_docState->deserializeMol(molfile); applyLocalState(); return; }
-    sendCommand("loadMol", {molfile});
+    m_docState->deserializeMol(molfile); applyLocalState(); return;
 }
 void V8Process::addAtom(const QString& label, double x, double y, int charge) {
-    if (m_docState) {
-        AtomId id = m_docState->addAtom(label, x, y);
-        if (charge != 0) m_docState->changeAtomCharge(id, charge);
-        applyLocalState();
-        return;
-    }
-    sendCommand("addAtom", {label, x, y, charge});
+    AtomId id = m_docState->addAtom(label, x, y);
+    if (charge != 0) m_docState->changeAtomCharge(id, charge);
+    applyLocalState();
 }
 void V8Process::addBondAndAtom(int beginAtomId, const QString& endAtomLabel, double x, double y, int bondType, int stereo) {
-    if (m_docState) {
-        m_docState->addBondAndAtom(beginAtomId, endAtomLabel, x, y, bondType, stereo);
-        applyLocalState();
-        return;
-    }
-    sendCommand("addBondAndAtom", {beginAtomId, endAtomLabel, x, y, bondType, stereo});
+    m_docState->addBondAndAtom(beginAtomId, endAtomLabel, x, y, bondType, stereo);
+    applyLocalState();
 }
 void V8Process::addBondBetweenCoords(double x1, double y1, double x2, double y2, int type, int stereo) {
-    if (m_docState) {
-        m_docState->addBondBetweenCoords(x1, y1, x2, y2, type, stereo);
-        applyLocalState();
-        return;
-    }
-    sendCommand("addBondBetweenCoords", {x1, y1, x2, y2, type, stereo});
+    m_docState->addBondBetweenCoords(x1, y1, x2, y2, type, stereo);
+    applyLocalState();
 }
 void V8Process::addBond(int beginAtomId, int endAtomId, int bondType, int stereoDir) {
-    if (m_docState) { m_docState->addBond(beginAtomId, endAtomId, bondType, stereoDir); applyLocalState(); return; }
-    sendCommand("addBond", {beginAtomId, endAtomId, bondType, stereoDir});
+    m_docState->addBond(beginAtomId, endAtomId, bondType, stereoDir); applyLocalState(); return;
 }
 void V8Process::addRing(const QVariantList& coords, bool aromatic) {
-    if (m_docState) {
-        QList<double> pts;
-        for (const QVariant& v : coords) pts.append(v.toDouble());
-        m_docState->addRing(pts, aromatic);
-        applyLocalState();
-        return;
-    }
-    QVariantList wrapper; wrapper.append(QVariant(coords)); wrapper.append(aromatic); sendCommand("addRing", wrapper);
+    QList<double> pts;
+    for (const QVariant& v : coords) pts.append(v.toDouble());
+    m_docState->addRing(pts, aromatic);
+    applyLocalState();
 }
 void V8Process::deleteAtomById(int id) {
-    if (m_docState) { m_docState->deleteAtom(id); applyLocalState(); return; }
-    sendCommand("deleteAtomById", {id});
+    m_docState->deleteAtom(id); applyLocalState(); return;
 }
 void V8Process::deleteBondById(int id) {
-    if (m_docState) { m_docState->deleteBond(id); applyLocalState(); return; }
-    sendCommand("deleteBondById", {id});
+    m_docState->deleteBond(id); applyLocalState(); return;
 }
 void V8Process::deleteSelection() {
-    if (m_docState) {
-        m_docState->deleteSelectionEntities();
-        applyLocalState();
-        return;
-    }
-    sendCommand("deleteSelection");
+    m_docState->deleteSelectionEntities();
+    applyLocalState();
 }
 void V8Process::undo() {
-    if (m_docState) {
-        m_docState->undo();
-        applyLocalState();
-        return;
-    }
-    sendCommand("undo");
+    m_docState->undo();
+    applyLocalState();
 }
 void V8Process::redo() {
-    if (m_docState) {
-        m_docState->redo();
-        applyLocalState();
-        return;
-    }
-    sendCommand("redo");
+    m_docState->redo();
+    applyLocalState();
 }
 void V8Process::copySelection() {
-    if (m_docState) { m_docClipboardMol = m_docState->copySelection(); return; } // pure read, no applyLocalState() -- nothing mutated
-    sendCommand("copySelection");
+    m_docClipboardMol = m_docState->copySelection(); return; // pure read, no applyLocalState() -- nothing mutated
 }
 void V8Process::cutSelection() {
-    if (m_docState) { m_docClipboardMol = m_docState->cutSelection(); applyLocalState(); return; }
-    sendCommand("cutSelection");
+    m_docClipboardMol = m_docState->cutSelection(); applyLocalState(); return;
 }
 void V8Process::pasteSelection(double cx, double cy) {
-    if (m_docState) {
-        if (m_docClipboardMol.isEmpty()) return; // matches the real "if (!_clipboard) return"
-        m_docState->insertStructureAt(m_docClipboardMol, cx, cy);
-        applyLocalState();
-        return;
-    }
-    sendCommand("pasteSelection", {cx, cy});
+    if (m_docClipboardMol.isEmpty()) return; // matches the real "if (!_clipboard) return"
+    m_docState->insertStructureAt(m_docClipboardMol, cx, cy);
+    applyLocalState();
 }
 void V8Process::selectAll() {
-    if (m_docState) { m_docState->selectAll(); applyLocalState(); return; }
-    sendCommand("selectAll");
+    m_docState->selectAll(); applyLocalState(); return;
 }
 void V8Process::clearCanvas() {
-    if (m_docState) { m_docState->clearCanvas(); applyLocalState(); return; }
-    sendCommand("clearCanvas");
+    m_docState->clearCanvas(); applyLocalState(); return;
 }
 void V8Process::loadBenzene() {
-    if (m_docState) { m_docState->loadBenzene(); applyLocalState(); return; }
-    sendCommand("loadBenzene");
+    m_docState->loadBenzene(); applyLocalState(); return;
 }
 void V8Process::deserializeMol(const QString& data) {
-    if (m_docState) { m_docState->deserializeMol(data); applyLocalState(); return; }
-    sendCommand("deserializeMol", {data});
+    m_docState->deserializeMol(data); applyLocalState(); return;
 }
 void V8Process::requestStructure(const QString& fmt, const QString& reqId) {
-    if (m_docState) {
-        // Real bug found via live UI testing (sub-project 7b): the actual Save UI flow
-        // (MainWindow.qml's saveActive()) calls THIS async, signal-based method -- not the
-        // synchronous getStructure() below -- and listens for structureReady to actually write
-        // the file to disk. Without this branch, sendCommand's own guard (m_engine is null)
-        // silently no-ops and structureReady never fires, so the save UI's own optimistic
-        // bookkeeping (clean flag, recent-files entry) fires while NO file is ever written --
-        // confirmed by directly attempting to reopen the "saved" file and getting "File not
-        // found." Emitting structureReady synchronously here (rather than through the async
-        // JS round-trip) fixes this exactly the way getStructure() itself already works.
-        if (fmt == "mol") {
-            StringResult r = m_docState->molecule().toMolfile();
-            emit structureReady(reqId, r.success ? r.value : QString());
-        } else {
-            emit structureReady(reqId, QString()); // only molfile export is in scope for this pilot
-        }
-        return;
+    // Real bug found via live UI testing (sub-project 7b): the actual Save UI flow
+    // (MainWindow.qml's saveActive()) calls THIS async, signal-based method -- not the
+    // synchronous getStructure() below -- and listens for structureReady to actually write
+    // the file to disk. Without this branch, the method would be a no-op
+    // silently no-ops and structureReady never fires, so the save UI's own optimistic
+    // bookkeeping (clean flag, recent-files entry) fires while NO file is ever written --
+    // confirmed by directly attempting to reopen the "saved" file and getting "File not
+    // found." Emitting structureReady synchronously here (rather than through the async
+    // JS round-trip) fixes this exactly the way getStructure() itself already works.
+    if (fmt == "mol") {
+        StringResult r = m_docState->molecule().toMolfile();
+        emit structureReady(reqId, r.success ? r.value : QString());
+    } else {
+        emit structureReady(reqId, QString()); // only molfile export is in scope for this pilot
     }
-    sendCommand("getStructure", {fmt, reqId});
 }
 void V8Process::requestSelectionStructure(const QString& reqId) {
-    if (m_docState) {
-        m_docClipboardMol = m_docState->copySelection();
-        if (m_docClipboardMol.isEmpty()) {
-            emit structureReady(reqId, QString());
-            return;
-        }
-        EditableMolecule mol(m_docClipboardMol);
-        emit structureReady(reqId, mol.isValid() ? mol.toKetJson() : QString());
+    m_docClipboardMol = m_docState->copySelection();
+    if (m_docClipboardMol.isEmpty()) {
+        emit structureReady(reqId, QString());
         return;
     }
-    sendCommand("getSelectionStructure", {reqId});
+    EditableMolecule mol(m_docClipboardMol);
+    emit structureReady(reqId, mol.isValid() ? mol.toKetJson() : QString());
 }
 void V8Process::requestSerialize(const QString& reqId) {
     requestStructure("mol", reqId);
 }
 QString V8Process::getStructure(const QString& fmt) {
-    if (m_docState) {
-        if (fmt != "mol") return QString(); // only molfile export is in scope for this pilot
-        StringResult r = m_docState->molecule().toMolfile();
-        return r.success ? r.value : QString();
-    }
-    static int counter = 0;
-    int myId = ++counter;
-    QString reqId = "SYNC_" + fmt + "_" + QString::number(myId);
-
-    QString result;
-    QEventLoop loop;
-    auto conn = connect(this, &V8Process::structureReady, [&](const QString &rid, const QString &data) {
-        if (rid == reqId) {
-            result = data;
-            loop.quit();
-        }
-    });
-
-    sendCommand("getStructure", {fmt, reqId});
-    
-    QTimer::singleShot(2000, &loop, &QEventLoop::quit);
-    loop.exec();
-    
-    disconnect(conn);
-    return result;
+    if (fmt != "mol") return QString(); // only molfile export is in scope for this pilot
+    StringResult r = m_docState->molecule().toMolfile();
+    return r.success ? r.value : QString();
 }
 QString V8Process::serializeMol() {
     return getStructure("mol");
 }
 void V8Process::loadStructure(const QString& format, const QString& data, bool centerOnPage) {
-    if (m_docState) {
-        if (format == "mol") {
-            m_docState->deserializeMol(data, centerOnPage);
-            applyLocalState();
-            return;
-        }
-        if (format == "ket") {
-            EditableMolecule mol(data);
-            if (!mol.isValid()) return;
-            StringResult mf = mol.toMolfile();
-            if (!mf.success) return;
-            m_docState->deserializeMol(mf.value, centerOnPage);
-            applyLocalState();
-            return;
-        }
-        return; // sdf: out of scope -- deserializeSdf is confirmed dead (zero QML
-                // callers; MainWindow.qml's own File > Open handler routes .sdf
-                // through deserializeSdfBatch directly, never through here)
-    }
     if (format == "mol") {
-        sendCommand("loadMol", {data, centerOnPage});
-    } else if (format == "sdf") {
-        sendCommand("deserializeSdf", {data});
-    } else if (format == "ket") {
-        sendCommand("deserializeKet", {data});
+        m_docState->deserializeMol(data, centerOnPage);
+        applyLocalState();
+        return;
     }
+    if (format == "ket") {
+        EditableMolecule mol(data);
+        if (!mol.isValid()) return;
+        StringResult mf = mol.toMolfile();
+        if (!mf.success) return;
+        m_docState->deserializeMol(mf.value, centerOnPage);
+        applyLocalState();
+        return;
+    }
+    // sdf: out of scope -- deserializeSdf is confirmed dead (zero QML callers;
+    // MainWindow.qml's own File > Open handler routes .sdf through
+    // deserializeSdfBatch directly, never through here)
 }
 void V8Process::insertFunctionalGroup(const QString& fgName, double cx, double cy, int targetAtomId, bool fullStructure) {
-    if (m_docState && m_templateLibrary) {
-        m_docState->insertFunctionalGroup(*m_templateLibrary, fgName, cx, cy, targetAtomId, fullStructure);
-        applyLocalState();
-        return;
-    }
-    sendCommand("insertFunctionalGroup", {fgName, cx, cy, targetAtomId, fullStructure});
+    if (!m_templateLibrary) return;
+    m_docState->insertFunctionalGroup(*m_templateLibrary, fgName, cx, cy, targetAtomId, fullStructure);
+    applyLocalState();
 }
 void V8Process::insertLibraryTemplateFused(const QString& fgName, double cx, double cy, int targetBondId) {
-    if (m_docState && m_templateLibrary) {
-        m_docState->insertLibraryTemplateFused(*m_templateLibrary, fgName, cx, cy, targetBondId);
-        applyLocalState();
-        return;
-    }
-    sendCommand("insertLibraryTemplateFused", {fgName, cx, cy, targetBondId});
+    if (!m_templateLibrary) return;
+    m_docState->insertLibraryTemplateFused(*m_templateLibrary, fgName, cx, cy, targetBondId);
+    applyLocalState();
 }
 void V8Process::requestSaltsAndSolventsList() { sendCommand("getSaltsAndSolventsList"); }
 void V8Process::requestFunctionalGroupsList() { sendCommand("getFunctionalGroupsList"); }
@@ -602,7 +471,7 @@ static QString renderThumbnailJson(const QString& molfile) {
 }
 
 void V8Process::requestTemplateThumbnail(const QString& name, const QString& reqId) {
-    if (m_docState && m_templateLibrary) {
+    if (m_templateLibrary) {
         int handle = m_templateLibrary->functionalGroup(name);
         if (handle < 0) handle = m_templateLibrary->saltOrSolvent(name);
         if (handle < 0) handle = m_templateLibrary->libraryTemplate(name);
@@ -644,284 +513,204 @@ void V8Process::requestTemplateThumbnail(const QString& name, const QString& req
         });
         return;
     }
-    sendCommand("getTemplateThumbnail", {name, reqId});
 }
 void V8Process::addRxnArrow(double x, double y, const QString& mode) {
-    if (m_docState) { m_docState->addRxnArrow(x, y, mode); applyLocalState(); return; }
-    sendCommand("addRxnArrow", {x, y, mode});
+    m_docState->addRxnArrow(x, y, mode); applyLocalState(); return;
 }
 void V8Process::addRxnPlus(double x, double y) {
-    if (m_docState) { m_docState->addRxnPlus(x, y); applyLocalState(); return; }
-    sendCommand("addRxnPlus", {x, y});
+    m_docState->addRxnPlus(x, y); applyLocalState(); return;
 }
 void V8Process::addCurvedArrow(double x1, double y1, double ctrlX, double ctrlY, double x2, double y2) {
-    if (m_docState) { m_docState->addCurvedArrow(x1, y1, ctrlX, ctrlY, x2, y2); applyLocalState(); return; }
-    sendCommand("addCurvedArrow", {x1, y1, ctrlX, ctrlY, x2, y2});
+    m_docState->addCurvedArrow(x1, y1, ctrlX, ctrlY, x2, y2); applyLocalState(); return;
 }
 void V8Process::setRxnArrowMode(int id, const QString& mode) {
-    if (m_docState) { m_docState->setRxnArrowMode(id, mode); applyLocalState(); return; }
-    sendCommand("setRxnArrowMode", {id, mode});
+    m_docState->setRxnArrowMode(id, mode); applyLocalState(); return;
 }
 void V8Process::setRxnArrowConditions(int id, const QString& above, const QString& below) {
-    if (m_docState) { m_docState->setRxnArrowConditions(id, above, below); applyLocalState(); return; }
-    sendCommand("setRxnArrowConditions", {id, above, below});
+    m_docState->setRxnArrowConditions(id, above, below); applyLocalState(); return;
 }
 void V8Process::setStereoFlags(const QString& type, int groupId) {
-    if (m_docState) { m_docState->setStereoFlags(type, groupId); applyLocalState(); return; }
-    sendCommand("setStereoFlags", {type, groupId});
+    m_docState->setStereoFlags(type, groupId); applyLocalState(); return;
 }
 void V8Process::transformSelection(const QString& mode) {
-    if (m_docState) {
-        // Mode strings confirmed against 20-edit.js:982-990.
-        if (mode == "rotate_cw") m_docState->rotateSelection90CW();
-        else if (mode == "rotate_ccw") m_docState->rotateSelection90CCW();
-        else if (mode == "flip_h") m_docState->flipSelectionHorizontal();
-        else if (mode == "flip_v") m_docState->flipSelectionVertical();
-        else return; // unknown mode: no-op, matches the real function's implicit fallthrough
-        applyLocalState();
-        return;
-    }
-    sendCommand("transformSelection", {mode});
+    // Mode strings confirmed against 20-edit.js:982-990.
+    if (mode == "rotate_cw") m_docState->rotateSelection90CW();
+    else if (mode == "rotate_ccw") m_docState->rotateSelection90CCW();
+    else if (mode == "flip_h") m_docState->flipSelectionHorizontal();
+    else if (mode == "flip_v") m_docState->flipSelectionVertical();
+    else return; // unknown mode: no-op, matches the real function's implicit fallthrough
+    applyLocalState();
 }
 void V8Process::addChain(double x1, double y1, double x2, double y2) {
-    if (m_docState) { m_docState->addChain(x1, y1, x2, y2); applyLocalState(); return; }
-    sendCommand("addChain", {x1, y1, x2, y2});
+    m_docState->addChain(x1, y1, x2, y2); applyLocalState(); return;
 }
 void V8Process::addText(const QString& content, double x, double y, bool bold, bool italic) {
-    if (m_docState) { m_docState->addText(content, x, y, bold, italic); applyLocalState(); return; }
-    sendCommand("addText", {content, x, y, bold, italic});
+    m_docState->addText(content, x, y, bold, italic); applyLocalState(); return;
 }
 void V8Process::updateText(int id, const QString& content, bool bold, bool italic) {
-    if (m_docState) { m_docState->updateText(id, content, bold, italic); applyLocalState(); return; }
-    sendCommand("updateText", {id, content, bold, italic});
+    m_docState->updateText(id, content, bold, italic); applyLocalState(); return;
 }
 void V8Process::deleteText(int id) {
-    if (m_docState) { m_docState->deleteText(id); applyLocalState(); return; }
-    sendCommand("deleteText", {id});
+    m_docState->deleteText(id); applyLocalState(); return;
 }
 void V8Process::addImage(const QString& base64DataUri, double cx, double cy, double halfW, double halfH) {
-    if (m_docState) {
-        // Not a real base64 decode -- ImagePrim::bitmap is round-tripped via
-        // QString::fromUtf8 (RenderPrimitivesToVariant.cpp:122), meaning this port stores the
-        // raw data-URI TEXT as the "image data" everywhere, same as the JS side (50-reactions.js
-        // stores base64DataUri verbatim too). toUtf8() is the correct, exact-match conversion.
-        m_docState->addImage(base64DataUri.toUtf8(), cx, cy, halfW, halfH);
-        applyLocalState();
-        return;
-    }
-    sendCommand("addImage", {base64DataUri, cx, cy, halfW, halfH});
+    // Not a real base64 decode -- ImagePrim::bitmap is round-tripped via
+    // QString::fromUtf8 (RenderPrimitivesToVariant.cpp:122), meaning this port stores the
+    // raw data-URI TEXT as the "image data" everywhere, same as the JS side (50-reactions.js
+    // stores base64DataUri verbatim too). toUtf8() is the correct, exact-match conversion.
+    m_docState->addImage(base64DataUri.toUtf8(), cx, cy, halfW, halfH);
+    applyLocalState();
 }
 void V8Process::deleteImage(int id) {
-    if (m_docState) { m_docState->deleteImage(id); applyLocalState(); return; }
-    sendCommand("deleteImage", {id});
+    m_docState->deleteImage(id); applyLocalState(); return;
 }
 void V8Process::addRGroup(int rgroupNumber) {
-    if (m_docState) { m_docState->addRGroup(rgroupNumber); applyLocalState(); return; }
-    sendCommand("addRGroup", {rgroupNumber});
+    m_docState->addRGroup(rgroupNumber); applyLocalState(); return;
 }
 void V8Process::deleteRGroup(int rgroupNumber) {
-    if (m_docState) { m_docState->deleteRGroup(rgroupNumber); applyLocalState(); return; }
-    sendCommand("deleteRGroup", {rgroupNumber});
+    m_docState->deleteRGroup(rgroupNumber); applyLocalState(); return;
 }
 void V8Process::setRGroupLogic(int rgroupNumber, const QString& range, bool resth, int ifthen) {
-    if (m_docState) { m_docState->setRGroupLogic(rgroupNumber, range, resth, ifthen); applyLocalState(); return; }
-    sendCommand("setRGroupLogic", {rgroupNumber, range, resth, ifthen});
+    m_docState->setRGroupLogic(rgroupNumber, range, resth, ifthen); applyLocalState(); return;
 }
 void V8Process::addRGroupMember(int rgroupNumber) {
-    if (m_docState) { m_docState->addRGroupMember(rgroupNumber); applyLocalState(); return; }
-    sendCommand("addRGroupMember", {rgroupNumber});
+    m_docState->addRGroupMember(rgroupNumber); applyLocalState(); return;
 }
 void V8Process::removeRGroupMember(int rgroupNumber, int fragId) {
-    if (m_docState) { m_docState->removeRGroupMember(rgroupNumber, fragId); applyLocalState(); return; }
-    sendCommand("removeRGroupMember", {rgroupNumber, fragId});
+    m_docState->removeRGroupMember(rgroupNumber, fragId); applyLocalState(); return;
 }
 void V8Process::setAtomQueryList(int atomId, const QString& elementsCsv, bool notList) {
-    if (m_docState) { m_docState->setAtomQueryList(atomId, elementsCsv, notList); applyLocalState(); return; }
-    sendCommand("setAtomQueryList", {atomId, elementsCsv, notList});
+    m_docState->setAtomQueryList(atomId, elementsCsv, notList); applyLocalState(); return;
 }
 void V8Process::clearAtomQueryList(int atomId, const QString& fallbackLabel) {
-    if (m_docState) { m_docState->clearAtomQueryList(atomId, fallbackLabel); applyLocalState(); return; }
-    sendCommand("clearAtomQueryList", {atomId, fallbackLabel});
+    m_docState->clearAtomQueryList(atomId, fallbackLabel); applyLocalState(); return;
 }
 void V8Process::addMultitailArrow(double x, double y) {
-    if (m_docState) { m_docState->addMultitailArrow(x, y); applyLocalState(); return; }
-    sendCommand("addMultitailArrow", {x, y});
+    m_docState->addMultitailArrow(x, y); applyLocalState(); return;
 }
 void V8Process::deleteMultitailArrow(int id) {
-    if (m_docState) { m_docState->deleteMultitailArrow(id); applyLocalState(); return; }
-    sendCommand("deleteMultitailArrow", {id});
+    m_docState->deleteMultitailArrow(id); applyLocalState(); return;
 }
 void V8Process::addMultitailArrowTail(int id) {
-    if (m_docState) { m_docState->addMultitailArrowTail(id); applyLocalState(); return; }
-    sendCommand("addMultitailArrowTail", {id});
+    m_docState->addMultitailArrowTail(id); applyLocalState(); return;
 }
 void V8Process::changeAtomLabel(int id, const QString& label) {
-    if (m_docState) { m_docState->changeAtomLabel(id, label); applyLocalState(); return; }
-    sendCommand("changeAtomLabel", {id, label});
+    m_docState->changeAtomLabel(id, label); applyLocalState(); return;
 }
 void V8Process::setAtomMapping(int id, int mapping) {
-    if (m_docState) { m_docState->setAtomMapping(id, mapping); applyLocalState(); return; }
-    sendCommand("setAtomMapping", {id, mapping});
+    m_docState->setAtomMapping(id, mapping); applyLocalState(); return;
 }
 void V8Process::changeBondType(int id, int type, int stereo) {
-    if (m_docState) { m_docState->changeBondTypeAndStereo(id, type, stereo); applyLocalState(); return; }
-    sendCommand("changeBondType", {id, type, stereo});
+    m_docState->changeBondTypeAndStereo(id, type, stereo); applyLocalState(); return;
 }
 void V8Process::changeAtomCharge(int id, int charge) {
-    if (m_docState) { m_docState->changeAtomCharge(id, charge); applyLocalState(); return; }
-    sendCommand("changeAtomCharge", {id, charge});
+    m_docState->changeAtomCharge(id, charge); applyLocalState(); return;
 }
 void V8Process::setAttachmentPoint(int id, int order) {
-    if (m_docState) { m_docState->setAttachmentPoint(id, order); applyLocalState(); return; }
-    sendCommand("setAttachmentPoint", {id, order});
+    m_docState->setAttachmentPoint(id, order); applyLocalState(); return;
 }
 void V8Process::changeAtomIsotope(int id, int isotope) {
-    if (m_docState) { m_docState->changeAtomIsotope(id, isotope); applyLocalState(); return; }
-    sendCommand("changeAtomIsotope", {id, isotope});
+    m_docState->changeAtomIsotope(id, isotope); applyLocalState(); return;
 }
 void V8Process::changeAtomRadical(int id, int radical) {
-    if (m_docState) { m_docState->changeAtomRadical(id, radical); applyLocalState(); return; }
-    sendCommand("changeAtomRadical", {id, radical});
+    m_docState->changeAtomRadical(id, radical); applyLocalState(); return;
 }
 void V8Process::changeAtomValence(int id, int valence) {
-    if (m_docState) { m_docState->changeAtomValence(id, valence); applyLocalState(); return; }
-    sendCommand("changeAtomValence", {id, valence});
+    m_docState->changeAtomValence(id, valence); applyLocalState(); return;
 }
 void V8Process::requestAtomProperties(int id) {
-    if (m_docState) {
-        // Read-only: emits directly via the same structureReady/reqId convention
-        // requestStructure already established (sub-project 7b), no applyLocalState() call.
-        if (!m_docState->molecule().atomIds().contains(id)) {
-            emit structureReady(QStringLiteral("atom_props"), QStringLiteral("{}")); // matches real "JSON.stringify(props || {})"
-            return;
-        }
-        DocumentState::AtomProperties props = m_docState->atomProperties(id);
-        QJsonObject obj;
-        obj["id"] = id;
-        obj["label"] = props.label;
-        obj["charge"] = props.charge;
-        obj["isotope"] = props.isotope;
-        obj["radical"] = props.radical;
-        obj["explicitValence"] = props.explicitValence;
-        emit structureReady(QStringLiteral("atom_props"), QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)));
+    // Read-only: emits directly via the same structureReady/reqId convention
+    // requestStructure already established (sub-project 7b), no applyLocalState() call.
+    if (!m_docState->molecule().atomIds().contains(id)) {
+        emit structureReady(QStringLiteral("atom_props"), QStringLiteral("{}")); // matches real "JSON.stringify(props || {})"
         return;
     }
-    sendCommand("getAtomProperties", {id});
+    DocumentState::AtomProperties props = m_docState->atomProperties(id);
+    QJsonObject obj;
+    obj["id"] = id;
+    obj["label"] = props.label;
+    obj["charge"] = props.charge;
+    obj["isotope"] = props.isotope;
+    obj["radical"] = props.radical;
+    obj["explicitValence"] = props.explicitValence;
+    emit structureReady(QStringLiteral("atom_props"), QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)));
 }
 void V8Process::selectByRect(double x1, double y1, double x2, double y2) {
-    if (m_docState) { m_docState->selectByRect(x1, y1, x2, y2); applyLocalState(); return; }
-    sendCommand("selectByRect", {x1, y1, x2, y2});
+    m_docState->selectByRect(x1, y1, x2, y2); applyLocalState(); return;
 }
 void V8Process::addSelectionByRect(double x1, double y1, double x2, double y2) {
-    if (m_docState) { m_docState->addSelectionByRect(x1, y1, x2, y2); applyLocalState(); return; }
-    sendCommand("addSelectionByRect", {x1, y1, x2, y2});
+    m_docState->addSelectionByRect(x1, y1, x2, y2); applyLocalState(); return;
 }
 void V8Process::selectByLasso(const QVariantList& pointsFlat) {
-    if (m_docState) {
-        QList<QPointF> pts;
-        for (int i = 0; i + 1 < pointsFlat.size(); i += 2) {
-            pts.append(QPointF(pointsFlat[i].toDouble(), pointsFlat[i + 1].toDouble()));
-        }
-        m_docState->selectByLasso(pts);
-        applyLocalState();
-        return;
+    QList<QPointF> pts;
+    for (int i = 0; i + 1 < pointsFlat.size(); i += 2) {
+        pts.append(QPointF(pointsFlat[i].toDouble(), pointsFlat[i + 1].toDouble()));
     }
-    sendCommand("selectByLasso", {QVariant(pointsFlat)});
+    m_docState->selectByLasso(pts);
+    applyLocalState();
 }
 void V8Process::selectItem(const QVariant& atomId, const QVariant& bondId, const QVariant& rxnArrowId, const QVariant& rxnPlusId, const QVariant& multitailArrowId) {
-    if (m_docState) {
-        m_docState->selectSingleItem(
-            atomId.isValid() ? atomId.toInt() : -1,
-            bondId.isValid() ? bondId.toInt() : -1,
-            rxnArrowId.isValid() ? rxnArrowId.toInt() : -1,
-            rxnPlusId.isValid() ? rxnPlusId.toInt() : -1,
-            multitailArrowId.isValid() ? multitailArrowId.toInt() : -1);
-        applyLocalState();
-        return;
-    }
-    sendCommand("selectItem", {atomId, bondId, rxnArrowId, rxnPlusId, multitailArrowId});
+    m_docState->selectSingleItem(
+        atomId.isValid() ? atomId.toInt() : -1,
+        bondId.isValid() ? bondId.toInt() : -1,
+        rxnArrowId.isValid() ? rxnArrowId.toInt() : -1,
+        rxnPlusId.isValid() ? rxnPlusId.toInt() : -1,
+        multitailArrowId.isValid() ? multitailArrowId.toInt() : -1);
+    applyLocalState();
 }
 void V8Process::addItemToSelection(const QVariant& atomId, const QVariant& bondId) {
-    if (m_docState) {
-        // Atom-priority-over-bond dispatch, confirmed against 10-state.js:406-414.
-        if (atomId.isValid()) m_docState->addAtomToSelection(atomId.toInt());
-        else if (bondId.isValid()) m_docState->addBondToSelection(bondId.toInt());
-        applyLocalState();
-        return;
-    }
-    sendCommand("addItemToSelection", {atomId, bondId});
+    // Atom-priority-over-bond dispatch, confirmed against 10-state.js:406-414.
+    if (atomId.isValid()) m_docState->addAtomToSelection(atomId.toInt());
+    else if (bondId.isValid()) m_docState->addBondToSelection(bondId.toInt());
+    applyLocalState();
 }
 void V8Process::removeItemFromSelection(const QVariant& atomId, const QVariant& bondId) {
-    if (m_docState) {
-        // Confirmed against 10-state.js:416-422.
-        if (atomId.isValid()) m_docState->removeAtomFromSelection(atomId.toInt());
-        else if (bondId.isValid()) m_docState->removeBondFromSelection(bondId.toInt());
-        applyLocalState();
-        return;
-    }
-    sendCommand("removeItemFromSelection", {atomId, bondId});
+    // Confirmed against 10-state.js:416-422.
+    if (atomId.isValid()) m_docState->removeAtomFromSelection(atomId.toInt());
+    else if (bondId.isValid()) m_docState->removeBondFromSelection(bondId.toInt());
+    applyLocalState();
 }
 void V8Process::selectFragment(const QVariant& atomId, const QVariant& bondId) {
-    if (m_docState) {
-        m_docState->selectFragment(
-            atomId.isValid() ? atomId.toInt() : -1,
-            bondId.isValid() ? bondId.toInt() : -1);
-        applyLocalState();
-        return;
-    }
-    sendCommand("selectFragment", {atomId, bondId});
+    m_docState->selectFragment(
+        atomId.isValid() ? atomId.toInt() : -1,
+        bondId.isValid() ? bondId.toInt() : -1);
+    applyLocalState();
 }
 void V8Process::moveSelection(double dx, double dy) {
-    if (m_docState) {
-        m_docState->moveSelectionLive(dx, dy);
-        applyLocalState();
-        return;
-    }
-    sendCommand("moveSelection", {dx, dy});
+    m_docState->moveSelectionLive(dx, dy);
+    applyLocalState();
 }
 void V8Process::commitMove() {
-    if (m_docState) {
-        m_docState->commitMove();
-        applyLocalState();
-        return;
-    }
-    sendCommand("commitMove");
+    m_docState->commitMove();
+    applyLocalState();
 }
 void V8Process::rotateSelectionLive(double angleDelta) {
-    if (m_docState) { m_docState->rotateSelectionLive(angleDelta); applyLocalState(); return; }
-    sendCommand("rotateSelectionLive", {angleDelta});
+    m_docState->rotateSelectionLive(angleDelta); applyLocalState();
 }
 void V8Process::commitRotate() {
-    if (m_docState) { m_docState->commitRotate(); applyLocalState(); return; }
-    sendCommand("commitRotate");
+    m_docState->commitRotate(); applyLocalState();
 }
 void V8Process::scaleSelectionLive(double factor, double anchorX, double anchorY) {
-    if (m_docState) { m_docState->scaleSelectionLive(factor, anchorX, anchorY); applyLocalState(); return; }
-    sendCommand("scaleSelectionLive", {factor, anchorX, anchorY});
+    m_docState->scaleSelectionLive(factor, anchorX, anchorY); applyLocalState();
 }
 void V8Process::commitScale() {
-    if (m_docState) { m_docState->commitScale(); applyLocalState(); return; }
-    sendCommand("commitScale");
+    m_docState->commitScale(); applyLocalState();
 }
 void V8Process::centerStructure() { sendCommand("centerStructure"); }
 void V8Process::normalizeStructure() { sendCommand("normalizeStructure"); }
 
 void V8Process::alignAtoms(const QString& direction) {
-    if (m_docState) { m_docState->alignAtoms(direction); applyLocalState(); return; }
-    sendCommand("alignAtoms", {direction});
+    m_docState->alignAtoms(direction); applyLocalState();
 }
 void V8Process::distributeAtoms(const QString& direction) {
-    if (m_docState) { m_docState->distributeAtoms(direction); applyLocalState(); return; }
-    sendCommand("distributeAtoms", {direction});
+    m_docState->distributeAtoms(direction); applyLocalState();
 }
 
 void V8Process::setStereoDescriptors(const QString& jsonMap) {
-    if (m_docState) { m_docState->setStereoDescriptors(jsonMap); applyLocalState(); return; }
-    sendCommand("setStereoDescriptors", {jsonMap});
+    m_docState->setStereoDescriptors(jsonMap); applyLocalState();
 }
 void V8Process::setCheckIssues(const QString& jsonMap) {
-    if (m_docState) { m_docState->setCheckIssues(jsonMap); applyLocalState(); return; }
-    sendCommand("setCheckIssues", {jsonMap});
+    m_docState->setCheckIssues(jsonMap); applyLocalState();
 }
 
 QString V8Process::getOsClipboardText() const {
@@ -933,29 +722,21 @@ void V8Process::setOsClipboardText(const QString& text) {
 }
 
 void V8Process::requestClipboardKet() {
-    if (m_docState) {
-        if (m_docClipboardMol.isEmpty()) {
-            emit structureReady(QStringLiteral("clipboard_ket"), QString());
-            return;
-        }
-        EditableMolecule mol(m_docClipboardMol);
-        emit structureReady(QStringLiteral("clipboard_ket"), mol.isValid() ? mol.toKetJson() : QString());
+    if (m_docClipboardMol.isEmpty()) {
+        emit structureReady(QStringLiteral("clipboard_ket"), QString());
         return;
     }
-    sendCommand("getClipboardAsKet", {});
+    EditableMolecule mol(m_docClipboardMol);
+    emit structureReady(QStringLiteral("clipboard_ket"), mol.isValid() ? mol.toKetJson() : QString());
 }
 
 void V8Process::importKetAtPosition(const QString& ket, double cx, double cy) {
-    if (m_docState) {
-        EditableMolecule mol(ket);
-        if (!mol.isValid()) return;
-        StringResult mf = mol.toMolfile();
-        if (!mf.success) return;
-        m_docState->insertStructureAt(mf.value, cx, cy);
-        applyLocalState();
-        return;
-    }
-    sendCommand("importKetAtPosition", {ket, cx, cy});
+    EditableMolecule mol(ket);
+    if (!mol.isValid()) return;
+    StringResult mf = mol.toMolfile();
+    if (!mf.success) return;
+    m_docState->insertStructureAt(mf.value, cx, cy);
+    applyLocalState();
 }
 
 void V8Process::setOverlayState(const QVariantMap& state) {
@@ -1127,40 +908,5 @@ QVariantList V8Process::getRingPreviewCoords(int n, double cx, double cy, const 
         coords.append(p);
     }
     return coords;
-}
-
-void V8Process::handleWorkerLine(const QString &line) {
-    QJsonParseError error;
-    QJsonDocument doc = QJsonDocument::fromJson(line.toUtf8(), &error);
-    if (error.error != QJsonParseError::NoError) {
-        qWarning() << "Failed to parse JSON from worker:" << error.errorString() << line;
-        return;
-    }
-
-    QJsonObject obj = doc.object();
-    if (obj["type"].toString() == "structureResponse") {
-        emit structureReady(obj["reqId"].toString(), obj["data"].toString());
-        return;
-    }
-
-    if (obj["status"].toString() == "ok") {
-        m_primitives = obj["state"].toVariant().toMap();
-        m_selection = obj["selection"].toVariant().toMap();
-        emit primitivesChanged();
-        emit selectionChanged();
-
-        emit stateUpdated(
-            m_primitives,
-            m_selection,
-            obj["isDirty"].toBool(),
-            obj["canUndo"].toBool(),
-            obj["canRedo"].toBool(),
-            obj["result"].toVariant()
-        );
-    } else if (obj["status"].toString() == "error") {
-        qWarning() << "Worker Error:" << obj["message"].toString();
-        QFile f("worker_error.log"); if(f.open(QIODevice::Append)) { f.write(obj["message"].toString().toUtf8() + "\n"); f.close(); }
-        emit errorOccurred(obj["message"].toString());
-    }
 }
 
