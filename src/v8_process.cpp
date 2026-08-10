@@ -92,6 +92,37 @@ void V8Process::handleDeserializeBatchFromMolfiles(const QString& recordsJson) {
     emit structureReady(QStringLiteral("sdf_batch_list"), buildSdfBatchListJson());
 }
 
+// Mirrors 70-biopolymer.js's bioGetSequenceViewSnapshot(): the JS worker calls this
+// after every bio mutation to push {monomers,bonds,seqType} back to
+// BiopolymerSequenceView.qml's openSnapshot(). The C++ port's bio command handlers below
+// were missing this emit entirely, leaving "Preview as Sequence View" a silent no-op.
+static QString buildBioSequenceViewJson(const DocumentState& docState) {
+    QJsonArray monomersArr;
+    for (const BioMonomer& m : docState.bioMonomers()) {
+        QJsonObject o;
+        o["id"] = m.id;
+        o["label"] = m.label;
+        o["alias"] = m.alias;
+        o["x"] = m.x;
+        o["y"] = m.y;
+        o["monomerClass"] = m.monomerClass;
+        o["ambiguous"] = m.ambiguous;
+        monomersArr.append(o);
+    }
+    QJsonArray bondsArr;
+    for (const BioBond& b : docState.bioBonds()) {
+        QJsonObject o;
+        o["fromId"] = b.fromId;
+        o["toId"] = b.toId;
+        bondsArr.append(o);
+    }
+    QJsonObject root;
+    root["monomers"] = monomersArr;
+    root["bonds"] = bondsArr;
+    root["seqType"] = docState.bioSeqType();
+    return QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact));
+}
+
 void V8Process::sendCommand(const QString& cmd, const QVariantList& args) {
         if (cmd == "getMoleculeName") {
             // Read-only: emits directly, no applyLocalState() -- nothing mutated. reqId "mol_name"
@@ -256,10 +287,13 @@ void V8Process::sendCommand(const QString& cmd, const QVariantList& args) {
             m_docState->setMoleculeName(args[0].toString());
         } else if (cmd == "bioBuildSequenceView" && args.size() >= 2) {
             m_docState->buildBioSequenceView(args[0].toString(), args[1].toString());
+            emit structureReady(QStringLiteral("biopolymer_seq_view"), buildBioSequenceViewJson(*m_docState));
         } else if (cmd == "bioAddMonomer" && args.size() >= 2) {
             m_docState->addBioMonomer(args[0].toString(), args[1].toString());
+            emit structureReady(QStringLiteral("biopolymer_seq_view"), buildBioSequenceViewJson(*m_docState));
         } else if (cmd == "bioDeleteMonomer" && !args.isEmpty()) {
             m_docState->deleteBioMonomer(args[0].toInt());
+            emit structureReady(QStringLiteral("biopolymer_seq_view"), buildBioSequenceViewJson(*m_docState));
         } else if (cmd == "selectRing") {
             m_docState->selectRing(
                 (!args.isEmpty() && args[0].isValid()) ? args[0].toInt() : -1,
