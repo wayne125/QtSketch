@@ -1612,16 +1612,25 @@ Item {
                         else if (currentTool === "BOND_UPDOWN") { newType = 1; newStereo = 4 }
                         else { newType = parseInt(currentTool.split("_")[1]) || 1 }
 
+                        // A plain click (no real drag) must still place a full standard-length
+                        // bond, like ChemDraw and other professional editors -- not the raw,
+                        // barely-moved mouse position, which put both atoms on top of each
+                        // other (rendered as a zero-length overlapping stub). Horizontal/angle-0
+                        // is the same no-neighbors default the old engine's own
+                        // getLargestEmptyAngle used; 1.5 is chem-core's StandardBondLength,
+                        // already hardcoded the same way for the Chain tool above.
+                        const clickDx = m.x - pressX, clickDy = m.y - pressY
+                        const wasClick = (clickDx * clickDx + clickDy * clickDy) < 25
+                        const endChemP = wasClick ? { x: startX + 1.5, y: startY } : canvasToChem(m.x, m.y)
+
                         if (startAtomId === null) {
                             if (endAtomId === null) {
-                                const endChemP = canvasToChem(m.x, m.y)
                                 sketch.addBondBetweenCoords(startX, startY, endChemP.x, endChemP.y, newType, newStereo)
                             } else {
                                 sketch.addBondAndAtom(endAtomId, "C", startX, startY, newType, newStereo)
                             }
                         } else {
                             if (endAtomId === null) {
-                                const endChemP = canvasToChem(m.x, m.y)
                                 sketch.addBondAndAtom(startAtomId, "C", endChemP.x, endChemP.y, newType, newStereo)
                             } else if (startAtomId !== endAtomId) {
                                 sketch.addBond(startAtomId, endAtomId, newType, newStereo)
