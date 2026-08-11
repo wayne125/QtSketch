@@ -1615,13 +1615,27 @@ Item {
                         // A plain click (no real drag) must still place a full standard-length
                         // bond, like ChemDraw and other professional editors -- not the raw,
                         // barely-moved mouse position, which put both atoms on top of each
-                        // other (rendered as a zero-length overlapping stub). Horizontal/angle-0
-                        // is the same no-neighbors default the old engine's own
-                        // getLargestEmptyAngle used; 1.5 is chem-core's StandardBondLength,
-                        // already hardcoded the same way for the Chain tool above.
+                        // other (rendered as a zero-length overlapping stub). On empty canvas
+                        // this is a simple horizontal default (1.5 = chem-core's
+                        // StandardBondLength, already hardcoded the same way for the Chain tool
+                        // above; angle-0 matches the old engine's own getLargestEmptyAngle
+                        // no-neighbors default). Clicking on an existing atom instead asks
+                        // suggestBondEndpoint to reuse AtomPlacementEngine's own
+                        // existing-neighbor-aware angle snap (the same engine the ATOM_/FG_
+                        // tools' click-to-extend gesture already uses), so the new bond doesn't
+                        // land on top of one that's already there.
                         const clickDx = m.x - pressX, clickDy = m.y - pressY
                         const wasClick = (clickDx * clickDx + clickDy * clickDy) < 25
-                        const endChemP = wasClick ? { x: startX + 1.5, y: startY } : canvasToChem(m.x, m.y)
+                        let endChemP = wasClick ? { x: startX + 1.5, y: startY } : canvasToChem(m.x, m.y)
+                        if (wasClick && startAtomId !== null) {
+                            const suggested = sketch.suggestBondEndpoint(startAtomId, 1.5)
+                            if (suggested && suggested.x !== undefined) endChemP = suggested
+                        }
+                        // A plain click landing back on the very atom the drag started from
+                        // (mouse never really left it) must extend by one bond, exactly like
+                        // landing on empty canvas -- not silently do nothing, which is what
+                        // the startAtomId !== endAtomId check below would otherwise do.
+                        const clickedOwnStart = wasClick && endAtomId === startAtomId
 
                         if (startAtomId === null) {
                             if (endAtomId === null) {
@@ -1630,7 +1644,7 @@ Item {
                                 sketch.addBondAndAtom(endAtomId, "C", startX, startY, newType, newStereo)
                             }
                         } else {
-                            if (endAtomId === null) {
+                            if (endAtomId === null || clickedOwnStart) {
                                 sketch.addBondAndAtom(startAtomId, "C", endChemP.x, endChemP.y, newType, newStereo)
                             } else if (startAtomId !== endAtomId) {
                                 sketch.addBond(startAtomId, endAtomId, newType, newStereo)

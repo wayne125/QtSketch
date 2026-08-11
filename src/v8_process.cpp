@@ -13,6 +13,7 @@
 #include "app/molecule/RenderPrimitivesToVariant.h"
 #include "app/molecule/ClipboardPreview.h"
 #include "app/molecule/EditableMolecule.h"
+#include "app/PlacementEngines.h"
 #define _USE_MATH_DEFINES
 #include <cmath>
 #include <algorithm>
@@ -337,6 +338,44 @@ void V8Process::addBondBetweenCoords(double x1, double y1, double x2, double y2,
 }
 void V8Process::addBond(int beginAtomId, int endAtomId, int bondType, int stereoDir) {
     m_docState->addBond(beginAtomId, endAtomId, bondType, stereoDir); applyLocalState(); return;
+}
+QVariantMap V8Process::suggestBondEndpoint(int fromAtomId, double bondLength) {
+    // Same atomsById/bonds read PlacementPreviewManager::getExistingAngles() does off
+    // m_v8->primitives() -- duplicated here rather than shared, matching this file's own
+    // getRingPreviewCoords just above, which reads m_primitives directly the same way.
+    QVariantMap atomsById = m_primitives.value(QStringLiteral("atomsById")).toMap();
+    QVariantMap fromAtom = atomsById.value(QString::number(fromAtomId)).toMap();
+    QVariantMap result;
+    if (fromAtom.isEmpty()) return result;
+    double cx = fromAtom.value(QStringLiteral("x")).toDouble();
+    double cy = fromAtom.value(QStringLiteral("y")).toDouble();
+
+    QList<double> existingAngles;
+    for (const QVariant& bVar : m_primitives.value(QStringLiteral("bonds")).toList()) {
+        QVariantMap b = bVar.toMap();
+        int beginId = b.value(QStringLiteral("begin")).toInt();
+        int endId = b.value(QStringLiteral("end")).toInt();
+        int otherId = -1;
+        if (beginId == fromAtomId) otherId = endId;
+        else if (endId == fromAtomId) otherId = beginId;
+        if (otherId == -1) continue;
+        QVariantMap other = atomsById.value(QString::number(otherId)).toMap();
+        if (other.isEmpty()) continue;
+        double ox = other.value(QStringLiteral("x")).toDouble();
+        double oy = other.value(QStringLiteral("y")).toDouble();
+        existingAngles.append(std::atan2(oy - cy, ox - cx));
+    }
+
+    // Same point for start and "current mouse": forces AtomPlacementEngine's own
+    // negligible-movement fallback (dx=1,dy=0) before it snaps against existingAngles --
+    // exactly what a plain click (no drag) should do.
+    QPointF start(cx, cy);
+    PlacementResult placed = AtomPlacementEngine::compute(start, start, QStringLiteral("C"), existingAngles, bondLength);
+    if (placed.valid && !placed.atoms.isEmpty()) {
+        result[QStringLiteral("x")] = placed.atoms[0].pos.x();
+        result[QStringLiteral("y")] = placed.atoms[0].pos.y();
+    }
+    return result;
 }
 void V8Process::addRing(const QVariantList& coords, bool aromatic) {
     QList<double> pts;
