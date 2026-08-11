@@ -47,31 +47,47 @@ static void test_elementData() {
 static void test_atomPrimitivesAndSgroupContraction() {
     std::printf("--- Test 2: atom primitives + sgroup contraction ---\n");
 
-    // Implicit-H display: heteroatoms/terminal atoms always show H; carbons only with showExplicitH.
+    // Implicit-H display: heteroatoms always show H; a chain-end carbon (bonded, degree 1) is
+    // a bare skeletal vertex, same as any other carbon; carbons only show H with showExplicitH.
     {
-        EditableMolecule m(QStringLiteral("CCO"));   // ethanol: terminal C, middle C, O
+        EditableMolecule m(QStringLiteral("CCO"));   // ethanol: chain-end C, middle C, O
         QList<AtomId> ids = m.atomIds();
 
         RenderPrimitives noExplicit = RenderPrimitiveBuilder::build(m, false);
         CHECK(noExplicit.atoms.size() == 3, "ethanol produces 3 atom primitives");
-        AtomPrim* terminalC = nullptr; AtomPrim* middleC = nullptr; AtomPrim* oxy = nullptr;
+        AtomPrim* chainEndC = nullptr; AtomPrim* middleC = nullptr; AtomPrim* oxy = nullptr;
         for (AtomPrim& a : noExplicit.atoms) {
-            if (a.id == ids[0]) terminalC = &a;
+            if (a.id == ids[0]) chainEndC = &a;
             else if (a.id == ids[1]) middleC = &a;
             else if (a.id == ids[2]) oxy = &a;
         }
-        CHECK(terminalC && terminalC->label == QStringLiteral("CH3"),
-              "terminal carbon shows its 3 implicit H even without showExplicitH (terminal rule)");
+        CHECK(chainEndC && chainEndC->label == QStringLiteral("C"),
+              "a bonded chain-end carbon is a bare vertex, no implicit-H label, without showExplicitH");
         CHECK(middleC && middleC->label == QStringLiteral("C"),
               "non-terminal carbon shows NO implicit H without showExplicitH");
         CHECK(oxy && oxy->label == QStringLiteral("OH"),
               "oxygen (heteroatom) shows its implicit H even without showExplicitH");
 
         RenderPrimitives withExplicit = RenderPrimitiveBuilder::build(m, true);
-        AtomPrim* middleC2 = nullptr;
-        for (AtomPrim& a : withExplicit.atoms) if (a.id == ids[1]) middleC2 = &a;
+        AtomPrim* middleC2 = nullptr; AtomPrim* chainEndC2 = nullptr;
+        for (AtomPrim& a : withExplicit.atoms) {
+            if (a.id == ids[1]) middleC2 = &a;
+            else if (a.id == ids[0]) chainEndC2 = &a;
+        }
         CHECK(middleC2 && middleC2->label == QStringLiteral("CH2"),
               "non-terminal carbon shows implicit H when showExplicitH is true");
+        CHECK(chainEndC2 && chainEndC2->label == QStringLiteral("CH3"),
+              "chain-end carbon also shows implicit H when showExplicitH is true");
+    }
+
+    // An isolated atom (zero bonds — nothing else on canvas marks its position) must still
+    // carry its full implicit-H label even without showExplicitH, or it would render invisible.
+    {
+        EditableMolecule m(QStringLiteral("C"));   // a single, unbonded carbon atom (methane)
+        RenderPrimitives rp = RenderPrimitiveBuilder::build(m, false);
+        CHECK(rp.atoms.size() == 1, "a lone carbon atom produces 1 atom primitive");
+        CHECK(rp.atoms[0].label == QStringLiteral("CH4"),
+              "an isolated (zero-neighbor) carbon still shows its implicit H, unlike a bonded chain-end");
     }
 
     // Element color/number/title/mass sourced from ElementData.

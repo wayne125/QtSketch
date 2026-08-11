@@ -144,8 +144,12 @@ RenderPrimitives RenderPrimitiveBuilder::build(const EditableMolecule& mol, bool
 
         QList<AtomId> neighbors = mol.neighborAtomIds(id);
         bool isHetero = (symbol != QStringLiteral("C") && symbol != QStringLiteral("H"));
-        bool isTerminal = neighbors.size() <= 1;
-        if (rgroupFlag || prim.isAtomList) { isHetero = false; isTerminal = false; }
+        // A bonded chain-end atom (exactly 1 neighbor) is a bare skeletal vertex like any other
+        // carbon -- its position is already marked by the bond line, so it does not need its
+        // own implicit-H label. Only a truly isolated atom (0 neighbors, nothing else marks
+        // where it is) must always show its label, or it would render completely invisible.
+        bool isIsolated = neighbors.isEmpty();
+        if (rgroupFlag || prim.isAtomList) { isHetero = false; isIsolated = false; }
 
         QString renderLabel = symbol;
         int implicitH = mol.implicitHydrogenCount(id);
@@ -160,7 +164,7 @@ RenderPrimitives RenderPrimitiveBuilder::build(const EditableMolecule& mol, bool
             prim.atomListNot = mol.atomQueryListIsNotList(id);
             renderLabel = (prim.atomListNot ? QStringLiteral("!") : QString())
                           + QStringLiteral("[") + prim.atomListElements + QStringLiteral("]");
-        } else if ((showExplicitH || isHetero || isTerminal) && implicitH > 0) {
+        } else if ((showExplicitH || isHetero || isIsolated) && implicitH > 0) {
             renderLabel += (implicitH == 1) ? QStringLiteral("H")
                                              : (QStringLiteral("H") + QString::number(implicitH));
         }
