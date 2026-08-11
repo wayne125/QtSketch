@@ -38,6 +38,12 @@ public:
     Q_INVOKABLE void addBondAndAtom(int beginAtomId, const QString& endAtomLabel, double x, double y, int bondType, int stereo);
     Q_INVOKABLE void addBondBetweenCoords(double x1, double y1, double x2, double y2, int type, int stereo);
     Q_INVOKABLE void addBond(int beginAtomId, int endAtomId, int bondType, int stereoDir = 0);
+    // Read-only: for a plain click (no drag) with a bond tool starting on an existing atom,
+    // suggests where the new atom should land -- reusing AtomPlacementEngine's own
+    // existing-neighbor-aware angle snap (the same engine the ATOM_/FG_ tools' click-to-extend
+    // gesture already uses), so the new bond doesn't land directly on top of one that's
+    // already there. Returns {} if fromAtomId doesn't exist.
+    Q_INVOKABLE QVariantMap suggestBondEndpoint(int fromAtomId, double bondLength);
     Q_INVOKABLE void addRing(const QVariantList& coords, bool aromatic = true);
     Q_INVOKABLE QVariantList getRingPreviewCoords(int n, double cx, double cy, const QVariant& hoverAtomId, const QVariant& hoverBondId);
     Q_INVOKABLE void deleteAtomById(int id);
