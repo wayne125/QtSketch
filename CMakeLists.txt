@@ -8,23 +8,10 @@ find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Concu
 qt_standard_project_setup(REQUIRES 6.6)
 qt_policy(SET QTP0004 OLD)
 
-# quickjs-ng: in-process JS engine, replacing the Node.js child-process worker.
-# Vendored as plain source (third_party/quickjs-ng) since it has no prebuilt-binary
-# toolchain mismatch to fight (unlike Indigo) -- CMake compiles it fresh for
-# whichever compiler is active. Only the "qjs" static library target is wanted;
-# the CLI/test/example executables their CMakeLists also defines are excluded
-# from the default build below to keep this minimal.
-add_subdirectory(third_party/quickjs-ng)
-foreach(_qjs_extra_target IN ITEMS qjsc qjs_exe qjs-libc run-test262 api-test lre-test function_source)
-    if (TARGET ${_qjs_extra_target})
-        set_target_properties(${_qjs_extra_target} PROPERTIES EXCLUDE_FROM_ALL TRUE)
-    endif()
-endforeach()
-
 set_source_files_properties(Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 set_source_files_properties(StyleSheets.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
-qt_add_executable(sketch src/app/main.cpp src/app/IndigoService.h src/app/IndigoService.cpp src/app/IupacNamer.h src/app/IupacNamer.cpp src/app/ImagoService.h src/app/ImagoService.cpp src/v8_process.h src/v8_process.cpp src/qjs_engine.h src/qjs_engine.cpp src/app/FileIO.h src/app/PlacementEngines.h src/app/PlacementEngines.cpp src/app/PlacementPreviewManager.h src/app/PlacementPreviewManager.cpp src/app/AppController.h src/app/AppController.cpp src/app/DocumentManager.h src/app/DocumentManager.cpp)
+qt_add_executable(sketch src/app/main.cpp src/app/IndigoService.h src/app/IndigoService.cpp src/app/IupacNamer.h src/app/IupacNamer.cpp src/app/ImagoService.h src/app/ImagoService.cpp src/v8_process.h src/v8_process.cpp src/app/FileIO.h src/app/PlacementEngines.h src/app/PlacementEngines.cpp src/app/PlacementPreviewManager.h src/app/PlacementPreviewManager.cpp src/app/AppController.h src/app/AppController.cpp src/app/DocumentManager.h src/app/DocumentManager.cpp)
 # FusedRingOrientation/FusedRingDirectionDetector are NOT linked into this target:
 # IupacNamer.cpp has zero calls into them (confirmed 2026-07-29). They're real,
 # tested geometric-orientation modules meant for a future numbering-integration
@@ -73,7 +60,6 @@ qt_add_qml_module(sketch
         components/MenuItemRow.qml
         components/TaskDialog.qml
 
-        chem-core.js
         js/Selection.js
         js/ToolLabels.js
         js/ThumbnailPainter.js
@@ -144,7 +130,7 @@ qt_add_qml_module(sketch
         icons/search.svg
 )
 
-target_link_libraries(sketch PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Concurrent qjs molecule_model
+target_link_libraries(sketch PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Concurrent molecule_model
 )
 
 
