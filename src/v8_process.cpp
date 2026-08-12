@@ -380,6 +380,25 @@ QVariantMap V8Process::suggestBondEndpoint(int fromAtomId, double bondLength) {
     }
     return result;
 }
+// Same {x,y}-or-empty-map convention as suggestBondEndpoint, for the FG_/SS_/LIB_/TEMPLATE_
+// click-to-place path (AppController::handleDragEnd). Returns an empty map for 0 or 3+
+// existing neighbors -- the caller's own existing fallback (FragmentPlacementEngine::compute)
+// covers those, unchanged.
+QVariantMap V8Process::suggestFragmentAttachPoint(int fromAtomId, double bondLength) {
+    QVariantMap atomsById = m_primitives.value(QStringLiteral("atomsById")).toMap();
+    QVariantMap fromAtom = atomsById.value(QString::number(fromAtomId)).toMap();
+    QVariantMap result;
+    if (fromAtom.isEmpty()) return result;
+    double cx = fromAtom.value(QStringLiteral("x")).toDouble();
+    double cy = fromAtom.value(QStringLiteral("y")).toDouble();
+    QVariantList bondsList = m_primitives.value(QStringLiteral("bonds")).toList();
+
+    std::optional<double> angle = BondAngleSuggester::suggestAngle(fromAtomId, atomsById, bondsList);
+    if (!angle.has_value()) return result;
+    result[QStringLiteral("x")] = cx + std::cos(*angle) * bondLength;
+    result[QStringLiteral("y")] = cy + std::sin(*angle) * bondLength;
+    return result;
+}
 void V8Process::addRing(const QVariantList& coords, bool aromatic) {
     QList<double> pts;
     for (const QVariant& v : coords) pts.append(v.toDouble());
