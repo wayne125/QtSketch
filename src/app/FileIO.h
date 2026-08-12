@@ -23,8 +23,13 @@ public:
         }
         QTextStream out(&file);
         out << data;
+        out.flush();
+        bool ok = (out.status() == QTextStream::Ok) && (file.error() == QFile::NoError);
         file.close();
-        return true;
+        if (!ok) {
+            qWarning() << "FileIO write failed:" << file.errorString();
+        }
+        return ok;
     }
 
     Q_INVOKABLE QString read(const QString& fileUrl) {
