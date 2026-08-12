@@ -50,8 +50,20 @@ void TemplateLibrary::loadSdf(const QString& path, QHash<QString, int>& target, 
     const QString content = QString::fromUtf8(file.readAll());
     file.close();
 
-    const QStringList rawRecords = content.split(QStringLiteral("$$$$"));
-    for (const QString& rawRecord : rawRecords) {
+    static const QRegularExpression kRecordDelim(QStringLiteral("\\$\\$\\$\\$"));
+    int pos = 0;
+    QRegularExpressionMatchIterator recordIt = kRecordDelim.globalMatch(content);
+    bool more = true;
+    while (more) {
+        QString rawRecord;
+        if (recordIt.hasNext()) {
+            QRegularExpressionMatch m = recordIt.next();
+            rawRecord = content.mid(pos, m.capturedStart() - pos);
+            pos = m.capturedEnd();
+        } else {
+            rawRecord = content.mid(pos);
+            more = false;
+        }
         QString text = rawRecord;
         // Every record but the first is preceded by a blank line left over from the
         // previous record's "$$$$" delimiter (confirmed directly: fg.sdf line 25, right
