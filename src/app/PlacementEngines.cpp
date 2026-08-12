@@ -78,7 +78,7 @@ PlacementResult FragmentPlacementEngine::compute(const QPointF& startPos, const 
             QString sizeStr = fragmentId.mid(9);
             bool ok;
             int parsed = sizeStr.toInt(&ok);
-            if (ok && parsed >= 3) n = parsed;
+            if (ok && parsed >= 3 && parsed <= 24) n = parsed;
         }
         
         // Circumradius R = s / (2 * sin(PI / n))
