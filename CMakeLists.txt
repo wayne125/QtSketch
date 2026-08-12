@@ -11,7 +11,7 @@ qt_policy(SET QTP0004 OLD)
 set_source_files_properties(Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 set_source_files_properties(StyleSheets.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
-qt_add_executable(sketch src/app/main.cpp src/app/IndigoService.h src/app/IndigoService.cpp src/app/IupacNamer.h src/app/IupacNamer.cpp src/app/ImagoService.h src/app/ImagoService.cpp src/v8_process.h src/v8_process.cpp src/app/FileIO.h src/app/PlacementEngines.h src/app/PlacementEngines.cpp src/app/PlacementPreviewManager.h src/app/PlacementPreviewManager.cpp src/app/AppController.h src/app/AppController.cpp src/app/DocumentManager.h src/app/DocumentManager.cpp)
+qt_add_executable(sketch src/app/main.cpp src/app/IndigoService.h src/app/IndigoService.cpp src/app/IupacNamer.h src/app/IupacNamer.cpp src/app/ImagoService.h src/app/ImagoService.cpp src/v8_process.h src/v8_process.cpp src/app/FileIO.h src/app/PlacementEngines.h src/app/PlacementEngines.cpp src/app/BondAngleSuggester.h src/app/BondAngleSuggester.cpp src/app/PlacementPreviewManager.h src/app/PlacementPreviewManager.cpp src/app/AppController.h src/app/AppController.cpp src/app/DocumentManager.h src/app/DocumentManager.cpp)
 # FusedRingOrientation/FusedRingDirectionDetector are NOT linked into this target:
 # IupacNamer.cpp has zero calls into them (confirmed 2026-07-29). They're real,
 # tested geometric-orientation modules meant for a future numbering-integration
@@ -258,6 +258,14 @@ qt_add_executable(editable_molecule_test tests/editable_molecule_test.cpp)
 target_link_libraries(editable_molecule_test PRIVATE molecule_model)
 target_compile_definitions(editable_molecule_test PRIVATE SKETCH_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 add_test(NAME editable_molecule_test COMMAND editable_molecule_test)
+
+qt_add_executable(bond_angle_suggester_test tests/bond_angle_suggester_test.cpp src/app/BondAngleSuggester.h src/app/BondAngleSuggester.cpp)
+target_include_directories(bond_angle_suggester_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/app
+)
+target_link_libraries(bond_angle_suggester_test PRIVATE Qt6::Core)
+add_test(NAME bond_angle_suggester_test COMMAND bond_angle_suggester_test)
 
 qt_add_executable(document_state_test tests/document_state_test.cpp)
 target_link_libraries(document_state_test PRIVATE molecule_model)
