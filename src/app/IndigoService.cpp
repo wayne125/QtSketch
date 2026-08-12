@@ -710,13 +710,18 @@ void IndigoService::exportBatchGridToFile(const QStringList &molfiles, const QUr
         try {
             int arr = indigoCreateArray();
             QList<int> loadedMols;
-            for (const QString &mf : molfiles) {
-                int mol = indigoLoadMoleculeFromString(mf.toUtf8().constData());
-                if (mol >= 0) {
-                    indigoLayout(mol);
-                    indigoArrayAdd(arr, mol);
-                    loadedMols.append(mol);
+            try {
+                for (const QString &mf : molfiles) {
+                    int mol = indigoLoadMoleculeFromString(mf.toUtf8().constData());
+                    if (mol >= 0) {
+                        indigoLayout(mol);
+                        indigoArrayAdd(arr, mol);
+                        loadedMols.append(mol);
+                    }
                 }
+            } catch (...) {
+                for (int m : loadedMols) indigoFree(m);
+                throw;
             }
             if (!loadedMols.isEmpty()) {
                 int nColumns = static_cast<int>(std::ceil(std::sqrt(static_cast<double>(loadedMols.size()))));
