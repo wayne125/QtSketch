@@ -127,7 +127,7 @@ PlacementResult ChainPlacementEngine::compute(const QPointF& startChem, const QP
     double dx = currentChem.x() - startChem.x();
     double dy = currentChem.y() - startChem.y();
     double dist = std::sqrt(dx * dx + dy * dy);
-    int nBonds = std::max(1, (int)std::round(dist / bondLength));
+    int nBonds = std::min(200, std::max(1, (int)std::round(dist / bondLength)));
     double theta = std::atan2(dy, dx);
     double half = PI / 6.0;
 
