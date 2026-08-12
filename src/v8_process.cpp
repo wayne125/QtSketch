@@ -676,7 +676,7 @@ void V8Process::transformSelection(const QString& mode) {
     else if (mode == "rotate_ccw") m_docState->rotateSelection90CCW();
     else if (mode == "flip_h") m_docState->flipSelectionHorizontal();
     else if (mode == "flip_v") m_docState->flipSelectionVertical();
-    else return; // unknown mode: no-op, matches the real function's implicit fallthrough
+    else { emit errorOccurred("Unknown transform mode: " + mode); return; }
     applyLocalState();
 }
 void V8Process::addChain(double x1, double y1, double x2, double y2) {
