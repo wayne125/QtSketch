@@ -7,6 +7,7 @@
 #include <QRegularExpression>
 #include <QStringList>
 #include <QImage>
+#include <QImageReader>
 #include <QByteArray>
 #include <QBuffer>
 
@@ -39,13 +40,16 @@ static void emitOnGuiThread(QPointer<ImagoService> self, std::function<void(Imag
 static const int kImagoTargetLongSide = 1600;
 
 static QByteArray preprocessImageForRecognition(const QString &path) {
-    QImage img(path);
-    if (img.isNull()) return QByteArray(); // fall through to the original file-path load
-    int longSide = qMax(img.width(), img.height());
-    if (longSide >= kImagoTargetLongSide) return QByteArray();
+    QImageReader reader(path);
+    QSize sz = reader.size();
+    if (!sz.isValid() || sz.width() <= 0 || sz.height() <= 0) return QByteArray(); // fall through to the original file-path load
+    int longSide = qMax(sz.width(), sz.height());
+    if (longSide >= kImagoTargetLongSide) return QByteArray(); // already big enough -- don't even decode it
     double scale = (double)kImagoTargetLongSide / longSide;
-    QImage scaled = img.scaled(qRound(img.width() * scale), qRound(img.height() * scale),
-                                Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    QSize scaledSize(qRound(sz.width() * scale), qRound(sz.height() * scale));
+    reader.setScaledSize(scaledSize);
+    QImage scaled = reader.read();
+    if (scaled.isNull()) return QByteArray();
     QByteArray bytes;
     QBuffer buffer(&bytes);
     buffer.open(QIODevice::WriteOnly);
