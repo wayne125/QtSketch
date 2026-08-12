@@ -44,6 +44,7 @@ public:
     // gesture already uses), so the new bond doesn't land directly on top of one that's
     // already there. Returns {} if fromAtomId doesn't exist.
     Q_INVOKABLE QVariantMap suggestBondEndpoint(int fromAtomId, double bondLength);
+    Q_INVOKABLE QVariantMap suggestFragmentAttachPoint(int fromAtomId, double bondLength);
     Q_INVOKABLE void addRing(const QVariantList& coords, bool aromatic = true);
     Q_INVOKABLE QVariantList getRingPreviewCoords(int n, double cx, double cy, const QVariant& hoverAtomId, const QVariant& hoverBondId);
     Q_INVOKABLE void deleteAtomById(int id);

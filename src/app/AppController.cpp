@@ -25,6 +25,8 @@ namespace {
 // is the smaller, more surgical way to make the real-drag threshold below
 // scale-aware.
 double s_lastChemScale = 1.0;
+double s_lastBondLength = 1.5;   // chem-core's StandardBondLength; same default Chain/Single
+                                   // Bond already hardcode for their own plain-click case.
 }
 
 AppController::AppController(QObject* parent) : QObject(parent) {}
@@ -44,6 +46,7 @@ void AppController::handleDragStart(const QString& toolId, int hitAtomId, double
 
 void AppController::handleDrag(double mouseX, double mouseY, double chemScale, double bondLength) {
     if (chemScale > 0.0) s_lastChemScale = chemScale;
+    if (bondLength > 0.0) s_lastBondLength = bondLength;
     if (m_previewManager) {
         m_previewManager->updatePreview(QPointF(mouseX, mouseY), chemScale, bondLength);
     }
@@ -52,6 +55,19 @@ void AppController::handleDrag(double mouseX, double mouseY, double chemScale, d
 bool AppController::handleDragEnd() {
     if (m_previewManager) {
         PlacementResult result = m_previewManager->commitPreview();
+
+        bool haveSmartPoint = false;
+        if (result.valid && m_v8 && result.atoms.size() == 1 && result.bonds.size() == 1
+            && m_previewManager->startAtomId() >= 0) {
+            QVariantMap smart = m_v8->suggestFragmentAttachPoint(m_previewManager->startAtomId(),
+                                                                  s_lastBondLength);
+            if (!smart.isEmpty()) {
+                result.atoms[0].pos = QPointF(smart.value(QStringLiteral("x")).toDouble(),
+                                               smart.value(QStringLiteral("y")).toDouble());
+                haveSmartPoint = true;
+            }
+        }
+
         if (result.valid && m_v8) {
             bool isRealDrag = false;
             if (result.atoms.size() > 0) {
@@ -69,7 +85,7 @@ bool AppController::handleDragEnd() {
                 double screenDy = dy * s_lastChemScale;
                 if (screenDx*screenDx + screenDy*screenDy > 4.0) isRealDrag = true;
             }
-            if (!isRealDrag) { m_previewManager->cancelPreview(); return false; }
+            if (!isRealDrag && !haveSmartPoint) { m_previewManager->cancelPreview(); return false; }
             // Send IPC command to v8_worker to finalize addition
             
             // We'll create a generic bulk add operation, or use existing methods.
