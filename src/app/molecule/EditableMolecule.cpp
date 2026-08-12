@@ -40,7 +40,10 @@ void EditableMolecule::assignFreshAtomBondIds() {
     if (iter >= 0) {
         int b;
         while ((b = indigoNext(iter)) > 0) {
-            m_bondIdx.insert(m_nextBondId++, indigoIndex(b));
+            BondId newId = m_nextBondId++;
+            int idx = indigoIndex(b);
+            m_bondIdx.insert(newId, idx);
+            m_idxToBond.insert(idx, newId);
             indigoFree(b);
         }
         indigoFree(iter);
@@ -80,6 +83,7 @@ bool EditableMolecule::loadFrom(const QString& molfileOrSmiles) {
     m_atomIdx.clear();
     m_idxToAtom.clear();
     m_bondIdx.clear();
+    m_idxToBond.clear();
     m_sgroupIdx.clear();
     m_sgroupExpanded.clear();
     m_sgroupLabels.clear();
@@ -237,6 +241,7 @@ BondId EditableMolecule::addBond(AtomId a, AtomId b, int order) {
     indigoFree(bond);
     BondId id = m_nextBondId++;
     m_bondIdx.insert(id, idx);
+    m_idxToBond.insert(idx, id);
     return id;
 }
 
@@ -639,6 +644,9 @@ void EditableMolecule::rebuildIndexTables() {
     }
     if (bIds.size() == bIdx.size())
         for (int i = 0; i < bIds.size(); ++i) m_bondIdx[bIds[i]] = bIdx[i];
+
+    m_idxToBond.clear();
+    for (auto it = m_bondIdx.constBegin(); it != m_bondIdx.constEnd(); ++it) m_idxToBond.insert(it.value(), it.key());
 
     // Sgroup indices do NOT shift/compact on removal (confirmed by direct probe,
     // both for explicit indigoRemove and indirect indigoRemoveAtoms auto-cleanup paths)
@@ -1052,6 +1060,7 @@ EditableMolecule::InsertResult EditableMolecule::insertStructure(const QString& 
                 if (!bondIdxBefore.contains(idx)) {
                     BondId id = m_nextBondId++;
                     m_bondIdx.insert(id, idx);
+                    m_idxToBond.insert(idx, id);
                     result.createdBonds.append(id);
                 }
                 indigoFree(b);
@@ -1268,9 +1277,7 @@ QList<EditableMolecule::RingMembership> EditableMolecule::ringMembership() const
             int b;
             while ((b = indigoNext(bIter)) > 0) {
                 int idx = indigoIndex(b);
-                for (auto it = m_bondIdx.constBegin(); it != m_bondIdx.constEnd(); ++it) {
-                    if (it.value() == idx) { rm.bonds.append(it.key()); break; }
-                }
+                BondId bid = m_idxToBond.value(idx, -1); if (bid != -1) rm.bonds.append(bid);
                 indigoFree(b);
             }
             indigoFree(bIter);
@@ -1521,7 +1528,8 @@ bool EditableMolecule::setBondStereo(BondId id, Direction dir) {
     m_idxToAtom.clear();
     for (int i = 0; i < oldAtomOrder.size(); ++i) { m_atomIdx.insert(oldAtomOrder[i], i); m_idxToAtom.insert(i, oldAtomOrder[i]); }
     m_bondIdx.clear();
-    for (int i = 0; i < oldBondOrder.size(); ++i) m_bondIdx.insert(oldBondOrder[i], i);
+    m_idxToBond.clear();
+    for (int i = 0; i < oldBondOrder.size(); ++i) { m_bondIdx.insert(oldBondOrder[i], i); m_idxToBond.insert(i, oldBondOrder[i]); }
     m_sgroupIdx.clear();
     for (int i = 0; i < oldSgroupOrder.size(); ++i) m_sgroupIdx.insert(oldSgroupOrder[i], i);
 
