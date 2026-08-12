@@ -16,6 +16,17 @@
 #include <QPageSize>
 #include <QPageLayout>
 
+namespace {
+// handleDragEnd (Q_INVOKABLE, no arguments) has no access to screen-space
+// mouse coordinates or the live chemScale at commit time -- threading either
+// through would mean touching PlacementPreviewManager and/or AppController.h
+// plus their QML call sites, all outside this fix's scope. Caching the most
+// recent chemScale seen via handleDrag, confined to this translation unit,
+// is the smaller, more surgical way to make the real-drag threshold below
+// scale-aware.
+double s_lastChemScale = 1.0;
+}
+
 AppController::AppController(QObject* parent) : QObject(parent) {}
 
 void AppController::setV8Process(V8Process* v8) {
@@ -32,6 +43,7 @@ void AppController::handleDragStart(const QString& toolId, int hitAtomId, double
 }
 
 void AppController::handleDrag(double mouseX, double mouseY, double chemScale, double bondLength) {
+    if (chemScale > 0.0) s_lastChemScale = chemScale;
     if (m_previewManager) {
         m_previewManager->updatePreview(QPointF(mouseX, mouseY), chemScale, bondLength);
     }
@@ -45,7 +57,17 @@ bool AppController::handleDragEnd() {
             if (result.atoms.size() > 0) {
                 double dx = result.atoms[0].pos.x() - m_previewManager->startChemPos().x();
                 double dy = result.atoms[0].pos.y() - m_previewManager->startChemPos().y();
-                if (dx*dx + dy*dy > 0.01) isRealDrag = true;
+                // chemScale is pixels-per-chem-unit (ChemCanvas.qml), so a chem-space
+                // delta of (dx, dy) corresponds to an on-screen pixel delta of
+                // (dx*chemScale, dy*chemScale). Converting back to pixel space before
+                // comparing keeps this "was it a real drag?" check consistent across
+                // zoom levels instead of a fixed chem-space threshold whose effective
+                // pixel sensitivity swings with chemScale. 4 (px^2, i.e. ~2px) matches
+                // the equivalent real-drag-vs-click threshold already used for image
+                // dragging in ChemCanvas.qml.
+                double screenDx = dx * s_lastChemScale;
+                double screenDy = dy * s_lastChemScale;
+                if (screenDx*screenDx + screenDy*screenDy > 4.0) isRealDrag = true;
             }
             if (!isRealDrag) { m_previewManager->cancelPreview(); return false; }
             // Send IPC command to v8_worker to finalize addition
