@@ -20,7 +20,7 @@ AppController::AppController(QObject* parent) : QObject(parent) {}
 
 void AppController::setV8Process(V8Process* v8) {
     m_v8 = v8;
-    delete m_previewManager;
+    if (m_previewManager) m_previewManager->deleteLater();
     m_previewManager = new PlacementPreviewManager(v8, this);
 }
 
