@@ -8,6 +8,7 @@
 #include <QDebug>
 #include <QFileInfo>
 #include <QDir>
+#include <QStandardPaths>
 #include <QtQml/qqml.h>
 
 class FileIO : public QObject {
@@ -50,7 +51,19 @@ public:
 
     Q_INVOKABLE bool remove(const QString& fileUrl) {
         QUrl url(fileUrl);
-        return QFile::remove(url.isLocalFile() ? url.toLocalFile() : fileUrl);
+        QString path = url.isLocalFile() ? url.toLocalFile() : fileUrl;
+
+        // Every existing call site (MainWindow.qml/MessageDialogs.qml) only ever
+        // deletes recovery/autosave files under this app's own AppDataLocation
+        // tree. Guard against a compromised/buggy QML call passing an arbitrary
+        // path by refusing to remove anything outside that tree.
+        QString appData = QDir::cleanPath(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation));
+        QString cleanPath = QDir::cleanPath(path);
+        if (appData.isEmpty() || !cleanPath.startsWith(appData + "/")) {
+            qWarning() << "FileIO remove refused (outside app data directory):" << cleanPath;
+            return false;
+        }
+        return QFile::remove(cleanPath);
     }
 
     Q_INVOKABLE bool mkpath(const QString& dirUrl) {
