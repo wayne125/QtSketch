@@ -167,7 +167,7 @@ IndigoService::~IndigoService() {
 
 void IndigoService::layout(const QString &molfile) {
     if (molfile.isEmpty()) {
-        emit layoutFinished("");
+        emit layoutFinished("", "");
         return;
     }
     
@@ -175,6 +175,7 @@ void IndigoService::layout(const QString &molfile) {
     
     (void)QtConcurrent::run([self, molfile]() {
         QString resultMol = molfile;
+        QString errorMsg;
         unsigned long long threadSessionId = indigoAllocSessionId();
         
         try {
@@ -187,23 +188,34 @@ void IndigoService::layout(const QString &molfile) {
                     const char* result = isRxn ? indigoRxnfile(mol) : indigoMolfile(mol);
                     if (result) {
                         resultMol = QString::fromUtf8(result);
+                    } else {
+                        resultMol = "";
+                        errorMsg = QString::fromUtf8(indigoGetLastError());
                     }
                 } else {
                     qWarning() << "Indigo: Layout failed:" << indigoGetLastError();
+                    resultMol = "";
+                    errorMsg = QString("Layout failed: %1").arg(indigoGetLastError());
                 }
                 indigoFree(mol);
             } else {
                 qWarning() << "Indigo: Failed to load molecule for layout:" << indigoGetLastError();
+                resultMol = "";
+                errorMsg = QString("Failed to load molecule for layout: %1").arg(indigoGetLastError());
             }
         } catch (const std::exception& e) {
             qWarning() << "Indigo C++ Exception in layout:" << e.what();
+            resultMol = "";
+            errorMsg = QString::fromUtf8(e.what());
         } catch (...) {
             qWarning() << "Indigo C++ Unknown Exception in layout";
+            resultMol = "";
+            errorMsg = "Unknown exception in layout";
         }
         
         indigoReleaseSessionId(threadSessionId);
         
-        emitOnGuiThread(self, [resultMol](IndigoService *s) { emit s->layoutFinished(resultMol); });
+        emitOnGuiThread(self, [resultMol, errorMsg](IndigoService *s) { emit s->layoutFinished(resultMol, errorMsg); });
     });
 }
 
