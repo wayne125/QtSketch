@@ -877,6 +877,7 @@ void IndigoService::exportBatchToFile(const QStringList &molfiles, const QUrl &f
                     }
                 }
                 indigoClose(saver);
+                if (written == 0) QFile::remove(path);
                 if (written > 0) ok = true;
                 else error = "No valid structures could be written.";
             } else {
