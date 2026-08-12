@@ -2,6 +2,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QTimer>
 
 namespace {
 // Same "walk up from the binary, up to 5 levels" discovery pattern already proven in
@@ -53,7 +54,7 @@ int DocumentManager::addDocument() {
             dir + QStringLiteral("/salts-and-solvents.sdf"));
     }
     auto *proc = new V8Process(this, m_templateLibrary.get());
-    proc->init();
+    QTimer::singleShot(0, proc, [proc]() { proc->init(); });
     m_documents.insert(docId, proc);
     m_order.append(docId);
     emit docIdsChanged();
