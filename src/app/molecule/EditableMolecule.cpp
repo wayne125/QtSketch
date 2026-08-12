@@ -28,7 +28,10 @@ void EditableMolecule::assignFreshAtomBondIds() {
     if (iter >= 0) {
         int a;
         while ((a = indigoNext(iter)) > 0) {
-            m_atomIdx.insert(m_nextAtomId++, indigoIndex(a));
+            AtomId newId = m_nextAtomId++;
+            int idx = indigoIndex(a);
+            m_atomIdx.insert(newId, idx);
+            m_idxToAtom.insert(idx, newId);
             indigoFree(a);
         }
         indigoFree(iter);
@@ -75,6 +78,7 @@ bool EditableMolecule::loadFrom(const QString& molfileOrSmiles) {
     if (m_mol >= 0) indigoFree(m_mol);
     m_mol = fresh;
     m_atomIdx.clear();
+    m_idxToAtom.clear();
     m_bondIdx.clear();
     m_sgroupIdx.clear();
     m_sgroupExpanded.clear();
@@ -185,6 +189,7 @@ AtomId EditableMolecule::addAtom(const QString& symbol, double x, double y) {
     indigoFree(a);
     AtomId id = m_nextAtomId++;
     m_atomIdx.insert(id, idx);
+    m_idxToAtom.insert(idx, id);
     return id;
 }
 
@@ -620,6 +625,9 @@ void EditableMolecule::rebuildIndexTables() {
     if (aIds.size() == aIdx.size())
         for (int i = 0; i < aIds.size(); ++i) m_atomIdx[aIds[i]] = aIdx[i];
 
+    m_idxToAtom.clear();
+    for (auto it = m_atomIdx.constBegin(); it != m_atomIdx.constEnd(); ++it) m_idxToAtom.insert(it.value(), it.key());
+
     QList<BondId> bIds = m_bondIdx.keys();
     std::sort(bIds.begin(), bIds.end());
     QList<int> bIdx;
@@ -1021,6 +1029,7 @@ EditableMolecule::InsertResult EditableMolecule::insertStructure(const QString& 
                 if (!atomIdxBefore.contains(idx)) {
                     AtomId id = m_nextAtomId++;
                     m_atomIdx.insert(id, idx);
+                    m_idxToAtom.insert(idx, id);
                     newAtomIds.append(id);
                 }
                 indigoFree(a);
@@ -1249,9 +1258,7 @@ QList<EditableMolecule::RingMembership> EditableMolecule::ringMembership() const
             int a;
             while ((a = indigoNext(aIter)) > 0) {
                 int idx = indigoIndex(a);
-                for (auto it = m_atomIdx.constBegin(); it != m_atomIdx.constEnd(); ++it) {
-                    if (it.value() == idx) { rm.atoms.append(it.key()); break; }
-                }
+                AtomId aid = m_idxToAtom.value(idx, -1); if (aid != -1) rm.atoms.append(aid);
                 indigoFree(a);
             }
             indigoFree(aIter);
@@ -1511,7 +1518,8 @@ bool EditableMolecule::setBondStereo(BondId id, Direction dir) {
     // molfile's atom/bond/sgroup block is the exact same count and order it was captured in
     // above, and Indigo's fresh sequential index assignment on load reproduces that order.
     m_atomIdx.clear();
-    for (int i = 0; i < oldAtomOrder.size(); ++i) m_atomIdx.insert(oldAtomOrder[i], i);
+    m_idxToAtom.clear();
+    for (int i = 0; i < oldAtomOrder.size(); ++i) { m_atomIdx.insert(oldAtomOrder[i], i); m_idxToAtom.insert(i, oldAtomOrder[i]); }
     m_bondIdx.clear();
     for (int i = 0; i < oldBondOrder.size(); ++i) m_bondIdx.insert(oldBondOrder[i], i);
     m_sgroupIdx.clear();
