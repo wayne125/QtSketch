@@ -416,6 +416,24 @@ QVariantMap V8Process::suggestBondEndpoint(int fromAtomId, double bondLength) {
         return result;
     }
 
+    // Third-bond case (exactly two existing neighbors, e.g. sprouting the 3rd methyl off an
+    // isobutane-style center): BIOVIA fills the larger of the two gaps between the existing
+    // bonds with its bisector, giving a symmetric 120/120/120 trigonal spread rather than a
+    // grid-snapped/steric-nudged angle. Bisecting the bigger gap (not just "the" gap) is what
+    // makes this correct generically, not only when the first two bonds already happen to be
+    // 120 degrees apart.
+    if (existingAngles.size() == 2) {
+        double lo = existingAngles[0];
+        double hi = existingAngles[1];
+        if (lo > hi) std::swap(lo, hi);
+        double width1 = hi - lo;              // gap going the "short way" from lo up to hi
+        double width2 = 2 * M_PI - width1;    // the complementary gap, wrapping around
+        double newAngle = (width1 >= width2) ? (lo + width1 / 2.0) : (lo + width1 / 2.0 + M_PI);
+        result[QStringLiteral("x")] = cx + std::cos(newAngle) * bondLength;
+        result[QStringLiteral("y")] = cy + std::sin(newAngle) * bondLength;
+        return result;
+    }
+
     // Same point for start and "current mouse": forces AtomPlacementEngine's own
     // negligible-movement fallback (dx=1,dy=0) before it snaps against existingAngles --
     // exactly what a plain click (no drag) should do.
