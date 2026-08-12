@@ -1906,26 +1906,25 @@ void IndigoService::decomposeToRGroupsPerMolecule(const QStringList &molfiles, c
                             int idx = 0;
                             while (indigoHasNext(iter)) {
                                 int item = indigoNext(iter);
-                                if (item >= 0) {
-                                    int withR = indigoDecomposedMoleculeWithRGroups(item);
-                                    if (withR > 0) {
-                                        indigoLayout(withR);
-                                        const char* mf = indigoMolfile(withR);
-                                        if (mf) {
-                                            QJsonObject obj;
-                                            obj["index"] = idx;
-                                            obj["label"] = (idx < labels.size() && !labels[idx].isEmpty()) ? labels[idx] : QString("Record %1").arg(idx + 1);
-                                            obj["molfile"] = QString::fromUtf8(mf);
-                                            resultsArray.append(obj);
-                                        } else {
-                                            qWarning() << "Indigo: decomposeToRGroupsPerMolecule molfile null for item" << idx << ":" << indigoGetLastError();
-                                        }
-                                        indigoFree(withR);
+                                if (item < 0) break;
+                                int withR = indigoDecomposedMoleculeWithRGroups(item);
+                                if (withR > 0) {
+                                    indigoLayout(withR);
+                                    const char* mf = indigoMolfile(withR);
+                                    if (mf) {
+                                        QJsonObject obj;
+                                        obj["index"] = idx;
+                                        obj["label"] = (idx < labels.size() && !labels[idx].isEmpty()) ? labels[idx] : QString("Record %1").arg(idx + 1);
+                                        obj["molfile"] = QString::fromUtf8(mf);
+                                        resultsArray.append(obj);
                                     } else {
-                                        qWarning() << "Indigo: decomposeToRGroupsPerMolecule withRGroups failed for item" << idx << ":" << indigoGetLastError();
+                                        qWarning() << "Indigo: decomposeToRGroupsPerMolecule molfile null for item" << idx << ":" << indigoGetLastError();
                                     }
-                                    indigoFree(item);
+                                    indigoFree(withR);
+                                } else {
+                                    qWarning() << "Indigo: decomposeToRGroupsPerMolecule withRGroups failed for item" << idx << ":" << indigoGetLastError();
                                 }
+                                indigoFree(item);
                                 idx++;
                             }
                             indigoFree(iter);
