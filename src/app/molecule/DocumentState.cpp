@@ -11,6 +11,23 @@
 #include <QJsonArray>
 #include "indigo.h"
 
+// RAII guard for m_inCommand: execute/undo/redo previously set the flag true, ran an
+// arbitrary EditCommand closure, then set it false -- if that closure ever threw (Indigo
+// call, bad_alloc, ...), the flag stuck true forever and every future
+// executeCommand/undo/redo silently no-op'd (their own `if (m_inCommand) return;` guards),
+// bricking undo/redo for the rest of the session. The destructor resets the flag during
+// stack unwinding too, so a throw still propagates to the caller but no longer leaves the
+// document wedged.
+namespace {
+class InCommandGuard {
+public:
+    explicit InCommandGuard(bool& flag) : m_flag(flag) { m_flag = true; }
+    ~InCommandGuard() { m_flag = false; }
+private:
+    bool& m_flag;
+};
+} // namespace
+
 // ---- Pure geometry helpers for selectByRect/addSelectionByRect/selectByLasso ------
 // Plain file-scope functions, not DocumentState members -- matches RenderPrimitives.cpp's
 // own convention for its pure helpers (isCorrectStereoCenter, stereoLabelFor). Nothing
@@ -127,9 +144,10 @@ void DocumentState::executeCommand(EditCommand cmd) {
     if (m_historyPointer + 1 < static_cast<int>(m_history.size())) {
         m_history.resize(m_historyPointer + 1);
     }
-    m_inCommand = true;
-    cmd.execute();
-    m_inCommand = false;
+    {
+        InCommandGuard guard(m_inCommand);
+        cmd.execute();
+    }
     reconcileSelectionAfterCommand();
     m_history.push_back(std::move(cmd));
     ++m_historyPointer;
@@ -143,9 +161,10 @@ void DocumentState::executeCommand(EditCommand cmd) {
 void DocumentState::undo() {
     if (m_inCommand) return;
     if (m_historyPointer < 0) return;
-    m_inCommand = true;
-    m_history[m_historyPointer].invert();
-    m_inCommand = false;
+    {
+        InCommandGuard guard(m_inCommand);
+        m_history[m_historyPointer].invert();
+    }
     --m_historyPointer;
     m_selection.clear();
     resetAllDragState();
@@ -156,9 +175,10 @@ void DocumentState::redo() {
     if (m_inCommand) return;
     if (m_historyPointer >= static_cast<int>(m_history.size()) - 1) return;
     ++m_historyPointer;
-    m_inCommand = true;
-    m_history[m_historyPointer].execute();
-    m_inCommand = false;
+    {
+        InCommandGuard guard(m_inCommand);
+        m_history[m_historyPointer].execute();
+    }
     m_selection.clear();
     resetAllDragState();
     m_dirty = true;
