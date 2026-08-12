@@ -350,8 +350,10 @@ QVariantMap V8Process::suggestBondEndpoint(int fromAtomId, double bondLength) {
     double cx = fromAtom.value(QStringLiteral("x")).toDouble();
     double cy = fromAtom.value(QStringLiteral("y")).toDouble();
 
+    QVariantList bondsList = m_primitives.value(QStringLiteral("bonds")).toList();
     QList<double> existingAngles;
-    for (const QVariant& bVar : m_primitives.value(QStringLiteral("bonds")).toList()) {
+    QList<int> neighborIds;
+    for (const QVariant& bVar : bondsList) {
         QVariantMap b = bVar.toMap();
         int beginId = b.value(QStringLiteral("begin")).toInt();
         int endId = b.value(QStringLiteral("end")).toInt();
@@ -364,6 +366,54 @@ QVariantMap V8Process::suggestBondEndpoint(int fromAtomId, double bondLength) {
         double ox = other.value(QStringLiteral("x")).toDouble();
         double oy = other.value(QStringLiteral("y")).toDouble();
         existingAngles.append(std::atan2(oy - cy, ox - cx));
+        neighborIds.append(otherId);
+    }
+
+    // Chain-extension case (exactly one existing bond, i.e. clicking the growing tip of a
+    // chain): keep a real 60-degree kink between the incoming bond and the new one -- a flat
+    // zigzag with a proper 120-degree vertex angle, like ChemDraw, instead of the old grid-snap
+    // fallback which just continued the click's default horizontal direction (often a
+    // 180-degree straight line). The kink alternates up/down by looking one hop further back
+    // (the neighbor's other neighbor, if any) so a chain built by repeatedly clicking the tip
+    // zigzags flat instead of curling into a hexagon by always turning the same way.
+    if (existingAngles.size() == 1) {
+        int neighborId = neighborIds[0];
+        double existingAngle = existingAngles[0];         // fromAtom -> neighbor
+        double continuation = existingAngle + M_PI;        // straight-ahead direction past fromAtom
+
+        double turnSign = 1.0;   // default: first kink turns "up" if there's no prior kink to alternate against
+        QVariantMap neighborAtom = atomsById.value(QString::number(neighborId)).toMap();
+        if (!neighborAtom.isEmpty()) {
+            double nx = neighborAtom.value(QStringLiteral("x")).toDouble();
+            double ny = neighborAtom.value(QStringLiteral("y")).toDouble();
+            for (const QVariant& bVar : bondsList) {
+                QVariantMap b = bVar.toMap();
+                int beginId = b.value(QStringLiteral("begin")).toInt();
+                int endId = b.value(QStringLiteral("end")).toInt();
+                int grandparentId = -1;
+                if (beginId == neighborId && endId != fromAtomId) grandparentId = endId;
+                else if (endId == neighborId && beginId != fromAtomId) grandparentId = beginId;
+                if (grandparentId == -1) continue;
+                QVariantMap grandparent = atomsById.value(QString::number(grandparentId)).toMap();
+                if (grandparent.isEmpty()) continue;
+                double gx = grandparent.value(QStringLiteral("x")).toDouble();
+                double gy = grandparent.value(QStringLiteral("y")).toDouble();
+                double dirIn = std::atan2(ny - gy, nx - gx);   // grandparent -> neighbor
+                double dirOut = existingAngle + M_PI;           // neighbor -> fromAtom
+                double delta = dirOut - dirIn;
+                while (delta > M_PI) delta -= 2 * M_PI;
+                while (delta < -M_PI) delta += 2 * M_PI;
+                // Alternate: turn the opposite way from whichever way the incoming bond
+                // already kinked, so the chain stays flat instead of spiraling.
+                turnSign = (delta >= 0) ? -1.0 : 1.0;
+                break;
+            }
+        }
+
+        double newAngle = continuation + turnSign * (M_PI / 3.0);   // 60-degree kink
+        result[QStringLiteral("x")] = cx + std::cos(newAngle) * bondLength;
+        result[QStringLiteral("y")] = cy + std::sin(newAngle) * bondLength;
+        return result;
     }
 
     // Same point for start and "current mouse": forces AtomPlacementEngine's own
