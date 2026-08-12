@@ -907,8 +907,12 @@ void DocumentState::selectSubstructureMatches(const QString& matchesJson) {
     for (const QJsonValue& matchVal : matches) {
         QJsonArray match = matchVal.toArray();
         for (const QJsonValue& idxVal : match) {
+            // QJsonValue::toInt() has no &ok overload (unlike QString/QVariant);
+            // isDouble() is how a JSON value's numeric-ness is actually validated
+            // here, so a null/missing/non-numeric entry doesn't silently pass as 0.
+            bool ok = idxVal.isDouble();
             int idx = idxVal.toInt();
-            if (idx >= 1 && idx <= allAtomIds.size()) atomIdSet.insert(allAtomIds[idx - 1]);
+            if (ok && idx >= 1 && idx <= allAtomIds.size()) atomIdSet.insert(allAtomIds[idx - 1]);
         }
     }
 
