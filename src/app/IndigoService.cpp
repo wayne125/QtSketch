@@ -619,6 +619,7 @@ void IndigoService::renderToFile(const QString &molfile, const QUrl &fileUrl, co
     if (molfile.isEmpty()) { emit renderFinished(false, "No structure to render."); return; }
     QPointer<IndigoService> self = this;
     QString path = fileUrl.toLocalFile();
+    if (path.isEmpty()) { emit renderFinished(false, "Invalid file path."); return; }
     (void)QtConcurrent::run([self, molfile, path, format]() {
         bool ok = false;
         QString error;
