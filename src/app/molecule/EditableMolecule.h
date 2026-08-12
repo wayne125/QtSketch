@@ -501,6 +501,7 @@ private:
     QString m_lastError;
 
     QHash<AtomId, int> m_atomIdx; // external stable ID -> indigo atom index
+    QHash<int, AtomId> m_idxToAtom; // indigo atom index -> external stable ID (reverse of m_atomIdx)
     QHash<BondId, int> m_bondIdx; // external stable ID -> indigo bond index
     AtomId m_nextAtomId = 1;      // monotonic, never reused
     BondId m_nextBondId = 1;
