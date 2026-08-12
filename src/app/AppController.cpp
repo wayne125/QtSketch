@@ -129,7 +129,10 @@ void AppController::copyImageToClipboard(const QUrl &imageUrl) {
 
 bool AppController::exportPdf(const QUrl &imageUrl, const QUrl &pdfUrl,
                                double pageWidthMm, double pageHeightMm, double marginMm) {
-    QImage img(imageUrl.toLocalFile());
+    QString path = imageUrl.toLocalFile();
+    if (!imageUrl.isLocalFile() || path.isEmpty()) return false;
+
+    QImage img(path);
     if (img.isNull()) return false;
 
     QPdfWriter writer(pdfUrl.toLocalFile());
