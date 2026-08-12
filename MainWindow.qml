@@ -475,13 +475,17 @@ ApplicationWindow {
 
         Connections {
             target: indigoSvc
-            function onLayoutFinished(newMol) {
+            function onLayoutFinished(newMol, error) {
                 window.isProcessing = false
                 // true: layout() output (SMILES/InChI load, Clean/Layout op) has no
                 // meaningful page placement -- recenter it on the page.
                 if (newMol && activeCanvas) {
                     activeCanvas.loadMolfile(newMol, true)
                     window.centerViewOnPage()
+                } else if (error) {
+                    messageDialogsGroup.workerErrorDialog.errorText = "Layout: " + error
+                    messageDialogsGroup.workerErrorDialog.severe = false
+                    messageDialogsGroup.workerErrorDialog.open()
                 }
             }
             function onCommonScaffoldFinished(result, error) {
