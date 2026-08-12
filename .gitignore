@@ -64,3 +64,8 @@ library-audit.html
 
 # Journal/ChemDraw template samples - untracked from git, kept on disk locally only.
 Journal Templates/
+
+# Retired JS engine (quickjs-ng vendor tree + qjs_engine.*/chem-core.js) - kept on disk
+# for local reference only, no longer tracked/pushed. Same "on disk, not in history"
+# treatment as indigo/ and imago/ above.
+archive/js-engine/
