@@ -4,6 +4,8 @@
 #include <QStyleHints>
 #include <QFile>
 #include <QTextStream>
+#include <QStandardPaths>
+#include <QDir>
 
 #include <QUrl>
 #include "IndigoService.h"
@@ -34,13 +36,6 @@ int main(int argc, char *argv[])
     // slider. Must be set before the QGuiApplication is constructed.
     QQuickStyle::setStyle("FluentWinUI3");
 
-    g_logFile = new QFile("qml_errors.log");
-    if (g_logFile->open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
-        g_logStream = new QTextStream(g_logFile);
-    }
-    
-    qInstallMessageHandler(myMessageOutput);
-
     QGuiApplication app(argc, argv);
     // The app ships a single light theme. Without pinning the colour scheme the
     // Fluent style follows the OS setting, so every stock control (dialogs,
@@ -50,6 +45,20 @@ int main(int argc, char *argv[])
     // Required for the QML Settings backing store (tool-panel section states)
     app.setOrganizationName("sketch");
     app.setApplicationName("sketch");
+
+    // AppDataLocation depends on organizationName/applicationName above, so this
+    // must run after they're set. A relative "qml_errors.log" resolved to whatever
+    // the launch CWD happened to be, and Truncate wiped a crashing run's log
+    // evidence on the very next launch -- use a stable writable path and append.
+    QString logDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QDir().mkpath(logDir);
+    g_logFile = new QFile(logDir + "/qml_errors.log");
+    if (g_logFile->open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+        g_logStream = new QTextStream(g_logFile);
+    }
+
+    qInstallMessageHandler(myMessageOutput);
+
     QQmlApplicationEngine engine;
         
     engine.loadFromModule("Sketch.App", "MainWindow");
