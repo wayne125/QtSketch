@@ -2460,6 +2460,10 @@ struct Fragment {
     QString molfile;
     double width = 0;
     double height = 0;
+    double minX = 0;
+    double maxX = 0;
+    double minY = 0;
+    double maxY = 0;
 };
 }
 
@@ -2473,6 +2477,12 @@ bool DocumentState::importReaction(const QString& text) {
     auto collect = [&](int iterHandle, QList<Fragment>& out) {
         int comp;
         while ((comp = indigoNext(iterHandle)) > 0) {
+            // We lay out each component individually rather than calling indigoLayout(rxn) on the whole reaction.
+            // The prompt suspected this was due to the same session/handle-validity issue fixed in de7e111.
+            // However, that issue was caused by creating a new EditableMolecule (and thus a new indigo session)
+            // mid-loop. indigoLayout(rxn) would use the current session and wouldn't invalidate handles.
+            // The real reason for laying out individually is so we can compute our own custom left-to-right 
+            // packing with our own RxnPlus/RxnArrow spacing, rather than accepting Indigo's reaction layout spacing.
             indigoLayout(comp);
             const char* mf = indigoMolfile(comp);
             if (!mf) { indigoFree(comp); continue; }
@@ -2501,6 +2511,10 @@ bool DocumentState::importReaction(const QString& text) {
             if (any) {
                 f.width = maxX - minX;
                 f.height = maxY - minY;
+                f.minX = minX;
+                f.maxX = maxX;
+                f.minY = minY;
+                f.maxY = maxY;
             }
             out.append(f);
             indigoFree(comp);
@@ -2550,8 +2564,12 @@ bool DocumentState::importReaction(const QString& text) {
     cmd.execute = [&mol, reactants, products, reactantCenters, productCenters, arrowX1, arrowX2, gap,
                    createdAtoms, createdBonds, createdSGroups, createdArrows, createdPluses]() {
         auto placeFragment = [&](const Fragment& f, double cx) {
-            EditableMolecule::InsertResult r = mol.insertStructure(f.molfile, [cx](double ptX, double ptY) {
-                return QPointF(ptX + cx, ptY);   // f's own centroid-relative coords get re-centered at cx, y=0
+            double centroidX = (f.minX + f.maxX) / 2.0;
+            double centroidY = (f.minY + f.maxY) / 2.0;
+            double dx = cx - centroidX;
+            double dy = 0.0 - centroidY;
+            EditableMolecule::InsertResult r = mol.insertStructure(f.molfile, [dx, dy](double ptX, double ptY) {
+                return QPointF(ptX + dx, ptY + dy);
             });
             *createdAtoms += r.createdAtoms;
             *createdBonds += r.createdBonds;

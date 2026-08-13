@@ -1198,6 +1198,55 @@ static void test_importReaction() {
     CHECK(!ok2, "importReaction rejects unparseable text");
     CHECK(doc2.molecule().atomIds().size() == 0, "failed importReaction leaves no partial atoms");
     CHECK(!doc2.canUndo(), "failed importReaction pushes no history entry");
+
+    DocumentState doc3("");
+    bool ok3 = doc3.importReaction(QStringLiteral("CCO.CC(=O)O>>CC=O.O"));
+    
+    QList<QList<AtomId>> components;
+    QList<AtomId> unvisited = doc3.molecule().atomIds();
+    while (!unvisited.isEmpty()) {
+        QList<AtomId> comp;
+        QList<AtomId> queue;
+        queue.append(unvisited.takeFirst());
+        while (!queue.isEmpty()) {
+            AtomId curr = queue.takeFirst();
+            comp.append(curr);
+            for (BondId bid : doc3.molecule().bondIds()) {
+                AtomId a = -1, b = -1;
+                doc3.molecule().bondEndpoints(bid, a, b);
+                AtomId neighbor = -1;
+                if (a == curr) neighbor = b;
+                else if (b == curr) neighbor = a;
+                if (neighbor != -1 && unvisited.contains(neighbor)) {
+                    unvisited.removeAll(neighbor);
+                    queue.append(neighbor);
+                }
+            }
+        }
+        components.append(comp);
+    }
+    
+    bool valid = ok3 && components.size() == 4;
+    bool interFragmentOverlap = false;
+    if (valid) {
+        for (int i = 0; i < components.size(); ++i) {
+            for (int j = i + 1; j < components.size(); ++j) {
+                for (AtomId a1 : components[i]) {
+                    for (AtomId a2 : components[j]) {
+                        double x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+                        doc3.molecule().atomPos(a1, x1, y1);
+                        doc3.molecule().atomPos(a2, x2, y2);
+                        double dx = x1 - x2;
+                        double dy = y1 - y2;
+                        if (dx * dx + dy * dy < 0.1) {
+                            interFragmentOverlap = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    CHECK(valid && !interFragmentOverlap, "fragments in 2-reactant reaction do not overlap each other");
 }
 
 static void test_insertFunctionalGroup() {
