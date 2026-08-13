@@ -57,8 +57,17 @@ bool AppController::handleDragEnd() {
         PlacementResult result = m_previewManager->commitPreview();
 
         bool haveSmartPoint = false;
+        // Smart-angle placement only makes sense for FG_/SS_/LIB_ tools (whose templates
+        // have no SGroup attachment point, so without it the fragment would land directly
+        // on top of the clicked atom). ATOM_ tools have their own pre-existing plain-click
+        // gesture -- retype the clicked atom's element -- handled by ChemCanvas.qml's
+        // "Fallback to click behavior" block when handleDragEnd() returns false. Computing
+        // (and honoring) a smart point for ATOM_ tools here would make handleDragEnd()
+        // return true instead, which appends a new bonded atom and silently replaces the
+        // retype gesture with an append, so ATOM_ tools are excluded.
+        QString smartPointToolId = m_previewManager->toolId();
         if (result.valid && m_v8 && result.atoms.size() == 1 && result.bonds.size() == 1
-            && m_previewManager->startAtomId() >= 0) {
+            && m_previewManager->startAtomId() >= 0 && !smartPointToolId.startsWith("ATOM_")) {
             QVariantMap smart = m_v8->suggestFragmentAttachPoint(m_previewManager->startAtomId(),
                                                                   s_lastBondLength);
             if (!smart.isEmpty()) {
