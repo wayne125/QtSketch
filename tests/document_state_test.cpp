@@ -20,7 +20,11 @@ static int g_pass = 0, g_fail = 0;
 static QString writeTempSdf(const QString& content, const QString& baseName) {
     QString path = QDir::tempPath() + QStringLiteral("/") + baseName + QStringLiteral(".sdf");
     QFile f(path);
-    f.open(QIODevice::WriteOnly | QIODevice::Text);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        std::printf("[ERROR] writeTempSdf: failed to open '%s' for writing (error: %s)\n",
+                    path.toUtf8().constData(), f.errorString().toUtf8().constData());
+        return path;
+    }
     f.write(content.toUtf8());
     f.close();
     return path;
@@ -1873,15 +1877,42 @@ static const char* kTestTemplateOneBond =
     "M  SMT   1 TestFG\n"
     "M  END\n";
 
-static const char* kTestTemplateNoBonds =
+// Attach atom (F) has ZERO template-internal bonds -- disconnected from the template's other
+// atom (C). This still exercises the "no rotation" fallback (templateAngle stays nullopt because
+// the attach atom has no bonds), but unlike a genuinely single-atom template, the disconnected C
+// atom is NOT bonded to the attach atom and so is NOT merged away by graftAtomOnto -- it survives
+// as a real, checkable atom, so the test can assert an actual position instead of only an atom
+// count (see test_graftAngleOrientation_noTemplateInternalBonds).
+static const char* kTestTemplateDisconnected =
     "TestFG\n"
     "Ketcher 11161713142D 1   1.00000     0.00000     0\n"
     "\n"
-    "  1  0  0  0  0  0  0  0  0  0999 V2000\n"
+    "  2  0  0  0  0  0  0  0  0  0999 V2000\n"
     "    0.0000    0.0000    0.0000 F   0  0  0  0  0  0  0  0  0  0  0  0\n"
+    "    2.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
     "M  STY  1   1 SUP\n"
     "M  SLB  1   1   1\n"
-    "M  SAL   1  1   1\n"
+    "M  SAL   1  2   1   2\n"
+    "M  SAP   1  1   1   0\n"
+    "M  SMT   1 TestFG\n"
+    "M  END\n";
+
+// Attach atom (N) has TWO template-internal bonds, to atoms at 0 degrees and 120 degrees from it
+// -- the multi-bond-attach-atom case the "mean neighbor direction" fix addresses (see
+// test_graftAngleOrientation_multiBondAttachAtom).
+static const char* kTestTemplateTwoBondsAttach =
+    "TestFG\n"
+    "Ketcher 11161713142D 1   1.00000     0.00000     0\n"
+    "\n"
+    "  3  2  0  0  0  0  0  0  0  0999 V2000\n"
+    "    0.0000    0.0000    0.0000 N   0  0  0  0  0  0  0  0  0  0  0  0\n"
+    "    1.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
+    "   -0.5000    0.8660    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
+    "  1  2  1  0  0  0  0\n"
+    "  1  3  1  0  0  0  0\n"
+    "M  STY  1   1 SUP\n"
+    "M  SLB  1   1   1\n"
+    "M  SAL   1  3   1   2   3\n"
     "M  SAP   1  1   1   0\n"
     "M  SMT   1 TestFG\n"
     "M  END\n";
@@ -1972,9 +2003,13 @@ static void test_graftAngleOrientation_noRotationCase() {
 
 static void test_graftAngleOrientation_noTemplateInternalBonds() {
     std::printf("--- Test: insertFunctionalGroup graft with a bond-less attach atom falls back to translate-only ---\n");
-    // Single-atom template (the attach atom itself has no template-internal bonds at all) --
-    // templateAngle stays nullopt, rotation must not apply even if a suggested angle exists.
-    QString path = writeTempSdf(QString::fromUtf8(kTestTemplateNoBonds), QStringLiteral("test_graft_nobonds"));
+    // Attach atom (F) has zero template-internal bonds (disconnected from the template's other
+    // atom) -- templateAngle stays nullopt, so rotation must not apply even though a suggested
+    // angle exists for the target. The template's second atom is NOT bonded to the attach atom,
+    // so graftAtomOnto does not merge it away -- it survives as a real, checkable atom, letting
+    // this test actually verify translate-only behavior instead of merely inferring it from an
+    // atom count.
+    QString path = writeTempSdf(QString::fromUtf8(kTestTemplateDisconnected), QStringLiteral("test_graft_nobonds"));
     TemplateLibrary lib(path, path, path);
 
     DocumentState doc;
@@ -1982,11 +2017,135 @@ static void test_graftAngleOrientation_noTemplateInternalBonds() {
     AtomId a2 = doc.molecule().addAtom(QStringLiteral("C"), 1.5, 0.0);
     doc.molecule().addBond(a1, a2, 1);
 
-    // This should not crash and should complete via graftAtomOnto merging the single-atom
-    // template's only atom directly onto a1 -- no separate new atom, no rotation applied.
     doc.insertFunctionalGroup(lib, QStringLiteral("TestFG"), 0.0, 0.0, a1, true);
+
+    // Attach atom (F, at template-local (0,0)) merges into a1; the disconnected second atom (C,
+    // at template-local (2,0)) is inserted as a genuinely new, non-merged atom.
     QList<AtomId> allAtoms = doc.molecule().atomIds();
-    CHECK(allAtoms.size() == 2, "single-atom template's attach atom merges directly into a1, no new atom created, no crash");
+    CHECK(allAtoms.size() == 3, "graft added exactly one new atom (disconnected 2nd template atom); attach atom merged into a1");
+    AtomId newAtom = -1;
+    for (AtomId id : allAtoms) { if (id != a1 && id != a2) newAtom = id; }
+    CHECK(newAtom != -1, "found the newly grafted (disconnected) atom");
+    double nx = 0, ny = 0;
+    doc.molecule().atomPos(newAtom, nx, ny);
+    // Unrotated: template's raw offset from the attach atom (2,0) translated so the attach atom
+    // (was at (0,0) in template space) lands on a1 (0,0) -- so this atom should land at exactly
+    // (2,0), proving rotation was genuinely skipped rather than just "something happened".
+    CHECK(std::abs(nx - 2.0) < 0.01 && std::abs(ny - 0.0) < 0.01, "disconnected atom lands at the template's raw untransformed position -- rotation was skipped");
+}
+
+static void test_graftAngleOrientation_threeNeighbors() {
+    std::printf("--- Test: insertFunctionalGroup graft does NOT rotate for 3-neighbor target ---\n");
+    // BondAngleSuggester::suggestAngle returns nullopt for 0-OR-3+-neighbor targets; only the
+    // 0-neighbor case had a test before this. This covers the 3-neighbor case.
+    QString path = writeTempSdf(QString::fromUtf8(kTestTemplateOneBond), QStringLiteral("test_graft_3n"));
+    TemplateLibrary lib(path, path, path);
+
+    DocumentState doc;
+    AtomId a1 = doc.molecule().addAtom(QStringLiteral("C"), 0.0, 0.0);
+    AtomId a2 = doc.molecule().addAtom(QStringLiteral("C"), 1.0, 0.0);
+    AtomId a3 = doc.molecule().addAtom(QStringLiteral("C"), 0.0, 1.0);
+    AtomId a4 = doc.molecule().addAtom(QStringLiteral("C"), -1.0, 0.0);
+    doc.molecule().addBond(a1, a2, 1);
+    doc.molecule().addBond(a1, a3, 1);
+    doc.molecule().addBond(a1, a4, 1);
+
+    doc.insertFunctionalGroup(lib, QStringLiteral("TestFG"), 0.0, 0.0, a1, true);
+
+    QList<AtomId> allAtoms = doc.molecule().atomIds();
+    CHECK(allAtoms.size() == 5, "graft added exactly one new atom");
+    AtomId newAtom = -1;
+    for (AtomId id : allAtoms) { if (id != a1 && id != a2 && id != a3 && id != a4) newAtom = id; }
+    CHECK(newAtom != -1, "found the newly grafted atom");
+    double nx = 0, ny = 0;
+    doc.molecule().atomPos(newAtom, nx, ny);
+    // Rotation must be skipped for 3+ existing neighbors -- the grafted neighbor should land at
+    // the template's raw unrotated (1,0) direction, same as the 0-neighbor case.
+    CHECK(std::abs(nx - 1.0) < 0.01 && std::abs(ny - 0.0) < 0.01, "3-neighbor target: rotation correctly skipped, template's raw unrotated direction preserved");
+}
+
+static void test_graftAngleOrientation_multiBondAttachAtom() {
+    std::printf("--- Test: insertFunctionalGroup graft uses mean neighbor direction for a multi-bond attach atom ---\n");
+    // Regression test for the "first bonded neighbor" heuristic: the attach atom here has TWO
+    // template-internal bonds (to atoms at 0 degrees and 120 degrees from it), not one. Picking
+    // just the first of the two arbitrarily (whichever comes first in molfile atom order) was
+    // found to systematically place a grafted branch exactly on top of an already-existing bond
+    // at the target atom in the standard mid-chain (2-neighbors-120-degrees-apart) case. The fix
+    // uses the MEAN of all the attach atom's internal-bond directions instead, so neither grafted
+    // branch should land on (or very near) either of the target's pre-existing bond directions.
+    QString path = writeTempSdf(QString::fromUtf8(kTestTemplateTwoBondsAttach), QStringLiteral("test_graft_multibond"));
+    TemplateLibrary lib(path, path, path);
+
+    DocumentState doc;
+    AtomId a1 = doc.molecule().addAtom(QStringLiteral("C"), 0.0, 0.0);
+    AtomId a2 = doc.molecule().addAtom(QStringLiteral("C"), 1.0, 0.0);     // angle 0 from a1
+    AtomId a3 = doc.molecule().addAtom(QStringLiteral("C"), -0.5, 0.866); // angle 120 deg from a1
+    doc.molecule().addBond(a1, a2, 1);
+    doc.molecule().addBond(a1, a3, 1);
+
+    doc.insertFunctionalGroup(lib, QStringLiteral("TestFG"), 0.0, 0.0, a1, true);
+
+    QList<AtomId> allAtoms = doc.molecule().atomIds();
+    CHECK(allAtoms.size() == 5, "graft added exactly two new atoms (attach atom merged into a1)");
+
+    QList<AtomId> newAtoms;
+    for (AtomId id : allAtoms) { if (id != a1 && id != a2 && id != a3) newAtoms.append(id); }
+    CHECK(newAtoms.size() == 2, "found both newly grafted branch atoms");
+
+    double existingAngles[2] = { 0.0, 2.0 * M_PI / 3.0 }; // the target's two pre-existing bond directions
+    const double kMinSeparationRad = 25.0 * M_PI / 180.0; // ~25 degrees, per review's threshold
+
+    auto angularDistance = [](double a, double b) {
+        double d = std::fmod(std::abs(a - b), 2.0 * M_PI);
+        if (d > M_PI) d = 2.0 * M_PI - d;
+        return d;
+    };
+
+    for (AtomId id : newAtoms) {
+        double nx = 0, ny = 0;
+        doc.molecule().atomPos(id, nx, ny);
+        double angle = std::atan2(ny, nx);
+        double minDist = std::min(angularDistance(angle, existingAngles[0]), angularDistance(angle, existingAngles[1]));
+        CHECK(minDist > kMinSeparationRad, "grafted branch atom lands away from both existing bond directions (no overlap)");
+    }
+}
+
+static void test_graftAngleOrientation_undoRedoRoundTrip() {
+    std::printf("--- Test: insertFunctionalGroup graft rotation survives undo/redo ---\n");
+    QString path = writeTempSdf(QString::fromUtf8(kTestTemplateOneBond), QStringLiteral("test_graft_undoredo"));
+    TemplateLibrary lib(path, path, path);
+
+    DocumentState doc;
+    AtomId a1 = doc.molecule().addAtom(QStringLiteral("C"), 0.0, 0.0);
+    AtomId a2 = doc.molecule().addAtom(QStringLiteral("C"), 1.5, 0.0);
+    doc.molecule().addBond(a1, a2, 1);
+    int atomCountBeforeGraft = doc.molecule().atomIds().size();
+
+    doc.insertFunctionalGroup(lib, QStringLiteral("TestFG"), 0.0, 0.0, a1, true);
+
+    QList<AtomId> allAtoms = doc.molecule().atomIds();
+    CHECK(allAtoms.size() == 3, "graft added exactly one new atom");
+    AtomId newAtom = -1;
+    for (AtomId id : allAtoms) { if (id != a1 && id != a2) newAtom = id; }
+    CHECK(newAtom != -1, "found the newly grafted atom");
+    double origX = 0, origY = 0;
+    doc.molecule().atomPos(newAtom, origX, origY);
+
+    CHECK(doc.canUndo(), "graft pushed a history entry");
+    doc.undo();
+    CHECK(doc.molecule().atomIds().size() == atomCountBeforeGraft, "undo fully removes the grafted atom(s)");
+
+    CHECK(doc.canRedo(), "undo enables redo");
+    doc.redo();
+    QList<AtomId> allAtomsAfterRedo = doc.molecule().atomIds();
+    CHECK(allAtomsAfterRedo.size() == 3, "redo restores the grafted atom");
+    AtomId redoAtom = -1;
+    for (AtomId id : allAtomsAfterRedo) { if (id != a1 && id != a2) redoAtom = id; }
+    CHECK(redoAtom != -1, "found the re-grafted atom after redo");
+    double redoX = 0, redoY = 0;
+    doc.molecule().atomPos(redoAtom, redoX, redoY);
+    CHECK(std::abs(redoX - origX) < 0.01 && std::abs(redoY - origY) < 0.01,
+          "redo reproduces the exact same rotated position as the original graft (command replay is correctly snapshotted)");
 }
 
 static void test_insertFunctionalGroupLabel() {
@@ -3396,6 +3555,9 @@ int main() {
     test_graftAngleOrientation_twoNeighbors();
     test_graftAngleOrientation_noRotationCase();
     test_graftAngleOrientation_noTemplateInternalBonds();
+    test_graftAngleOrientation_threeNeighbors();
+    test_graftAngleOrientation_multiBondAttachAtom();
+    test_graftAngleOrientation_undoRedoRoundTrip();
     test_insertLibraryTemplateFused();
     test_toggleSgroupExpanded();
     test_rxnArrowLifecycle();

@@ -2336,6 +2336,7 @@ void DocumentState::insertFunctionalGroup(const TemplateLibrary& lib, const QStr
     }
 
     double minX = 0, maxX = 0, minY = 0, maxY = 0, attachX = 0, attachY = 0;
+    bool haveAttachPos = false;
     {
         bool any = false;
         int aIter = indigoIterateAtoms(fgHandle);
@@ -2351,7 +2352,7 @@ void DocumentState::insertFunctionalGroup(const TemplateLibrary& lib, const QStr
                         if (xyz[1] < minY) minY = xyz[1];
                         if (xyz[1] > maxY) maxY = xyz[1];
                     }
-                    if (indigoIndex(a) == templateAttachIdx) { attachX = xyz[0]; attachY = xyz[1]; }
+                    if (indigoIndex(a) == templateAttachIdx) { attachX = xyz[0]; attachY = xyz[1]; haveAttachPos = true; }
                 }
                 indigoFree(a);
             }
@@ -2359,15 +2360,26 @@ void DocumentState::insertFunctionalGroup(const TemplateLibrary& lib, const QStr
         }
     }
 
-    // Find the attach atom's first bonded neighbor within the template itself, to know which
-    // direction the template's own substituent "points" by default. Mirrors BondAngleSuggester's
-    // own "first bond direction" convention, so the angle this produces and the angle
-    // suggestAngle() produces for the target atom are computed the same way and can be compared.
+    // Find the attach atom's overall bonded-neighbor direction within the template itself, to
+    // know which direction the template's own substituent "points" by default. "First bonded
+    // neighbor" is only well-defined when the attach atom has exactly one template-internal bond;
+    // when it has two or more (common: 39/61 real templates), picking just the first one is
+    // arbitrary (whichever bond happens to come first in molfile atom order) and was found to
+    // systematically place a grafted branch on top of an already-existing bond at the target atom
+    // in many real cases -- defeating the point of this feature. Instead, accumulate ALL of the
+    // attach atom's internal-bond unit-vector directions and use their mean direction (average
+    // unit vector, re-normalized via atan2). With exactly one bond this reduces to the original
+    // single-bond direction; with 2+ bonds it points along the group's overall "bulk" direction
+    // instead of an arbitrary single bond.
     // std::nullopt (not 0.0) when the attach atom has no template-internal bonds at all -- a
     // genuinely atom-only template, no known real case, but this must not silently rotate by a
-    // meaningless 0-degree angle in that case.
+    // meaningless 0-degree angle in that case. Also std::nullopt if every neighbor direction
+    // happens to cancel out exactly (a symmetric case, unlikely but possible) -- translate-only
+    // is the safe fallback rather than dividing by ~zero into a meaningless angle.
     std::optional<double> templateAngle;
     if (templateAttachIdx >= 0) {
+        double sumX = 0, sumY = 0;
+        bool anyNeighbor = false;
         int bIter = indigoIterateBonds(fgHandle);
         if (bIter >= 0) {
             int b;
@@ -2380,13 +2392,19 @@ void DocumentState::insertFunctionalGroup(const TemplateLibrary& lib, const QStr
                 if (neighborAtomHandle >= 0) {
                     float* nxyz = indigoXYZ(neighborAtomHandle);
                     if (nxyz) {
-                        templateAngle = std::atan2(nxyz[1] - attachY, nxyz[0] - attachX);
+                        double a = std::atan2(nxyz[1] - attachY, nxyz[0] - attachX);
+                        sumX += std::cos(a);
+                        sumY += std::sin(a);
+                        anyNeighbor = true;
                     }
                 }
                 indigoFree(src); indigoFree(dst); indigoFree(b);
-                if (templateAngle.has_value()) break;
+                // do NOT break -- must visit every bond touching the attach atom, not just the first
             }
             indigoFree(bIter);
+        }
+        if (anyNeighbor && std::hypot(sumX, sumY) > 1e-6) {
+            templateAngle = std::atan2(sumY, sumX);
         }
     }
 
@@ -2402,6 +2420,16 @@ void DocumentState::insertFunctionalGroup(const TemplateLibrary& lib, const QStr
     // Reuse BondAngleSuggester::suggestAngle unchanged -- build its atomsById/bondsList inputs
     // from EditableMolecule directly (mol already has full graph access) rather than threading
     // V8Process's m_primitives down into DocumentState, which has no existing dependency on it.
+    //
+    // NOTE: this graft-path angle computation reads directly from EditableMolecule (the real,
+    // uncollapsed molecule graph), while the separate live-preview computation in
+    // AppController.cpp / V8Process::suggestFragmentAttachPoint reads from m_primitives (the
+    // rendered view, where a collapsed superatom group appears as a single synthetic atom at the
+    // group's centroid with no internal bonds/grandparents visible). These two views can disagree
+    // for a target atom adjacent to a collapsed group, so the live drag/hover preview angle and
+    // the actual committed graft angle can differ in that specific case. This is a known,
+    // currently-undocumented residual gap, not something this fix solves -- just something the
+    // next person touching this code needs to know about.
     std::optional<double> suggestedAngle;
     if (graft && templateAngle.has_value()) {
         QVariantMap atomsById;
@@ -2431,7 +2459,7 @@ void DocumentState::insertFunctionalGroup(const TemplateLibrary& lib, const QStr
     if (graft) { dx = targetX - attachX; dy = targetY - attachY; }
     else { dx = cx - (minX + maxX) / 2.0; dy = cy - (minY + maxY) / 2.0; }
 
-    bool useRotation = graft && templateAngle.has_value() && suggestedAngle.has_value();
+    bool useRotation = graft && templateAngle.has_value() && suggestedAngle.has_value() && haveAttachPos;
     double rotateBy = useRotation ? (*suggestedAngle - *templateAngle) : 0.0;
     double cosR = std::cos(rotateBy), sinR = std::sin(rotateBy);
 
