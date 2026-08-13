@@ -494,6 +494,22 @@ Item {
                 }
             }
 
+            // 3. Draw Reaction Plus signs
+            if (canvas.sketch.primitives.rxnPluses) {
+                for (let i = 0; i < canvas.sketch.primitives.rxnPluses.length; ++i) {
+                    const rp = canvas.sketch.primitives.rxnPluses[i]
+                    const p = canvas.chemToCanvas(rp.x, rp.y)
+                    const isSelected = canvas.sketch.selection.rxnPlus_ids && canvas.sketch.selection.rxnPlus_ids.indexOf(rp.id) >= 0
+                    const color = isSelected ? Theme.accent : Theme.textPrimary
+                    const fontSize = Math.max(14, 20 * root.scale)
+                    ctx.font = "bold " + fontSize + "px " + Theme.fontDisplayCss
+                    ctx.textAlign = "center"
+                    ctx.textBaseline = "middle"
+                    ctx.fillStyle = color
+                    ctx.fillText("+", p.x, p.y)
+                }
+            }
+
             // 5. Draw Multi-tail Branching Arrows
             if (canvas.sketch.primitives.multitailArrows) {
                 for (let i = 0; i < canvas.sketch.primitives.multitailArrows.length; ++i) {
