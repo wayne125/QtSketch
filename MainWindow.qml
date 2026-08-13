@@ -1921,9 +1921,16 @@ ApplicationWindow {
         } else if (fileStrEarly.endsWith(".rxn")) {
             const data = fileIO.read(fileUrl)
             if (data !== "" && activeSketch) {
-                activeSketch.importReaction(data)
-                window.centerViewOnPage()
-                setDocFile(DocumentManager.activeDocId, fileUrl)
+                if (activeCanvas) activeCanvas.clearCanvas()
+                const ok = activeSketch.importReaction(data)
+                if (ok) {
+                    window.centerViewOnPage()
+                    setDocFile(DocumentManager.activeDocId, fileUrl)
+                } else {
+                    messageDialogsGroup.workerErrorDialog.errorText = "Open Reaction: the file does not contain a valid reaction."
+                    messageDialogsGroup.workerErrorDialog.severe = false
+                    messageDialogsGroup.workerErrorDialog.open()
+                }
             }
             return
         }
