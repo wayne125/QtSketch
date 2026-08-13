@@ -115,9 +115,38 @@ bool AppController::handleDragEnd() {
 
             } else if (result.atoms.size() > 1) {
                 QList<QVariant> coords;
-                for (const auto& a : result.atoms) {
-                    coords.append(a.pos.x());
-                    coords.append(a.pos.y());
+                bool usedSmartCoords = false;
+                int startAtomId = m_previewManager->startAtomId();
+                if (startAtomId >= 0) {
+                    // Prefer the same largest-empty-angle spiro placement the click-fallback
+                    // path already gets (ChemCanvas.qml's "Fallback to click behavior" block,
+                    // via this exact same V8Process::getRingPreviewCoords call) instead of
+                    // FragmentPlacementEngine::compute's plain drag-direction grid-snap, which
+                    // ignores the existing atom graph entirely for the ring case. cx/cy are
+                    // unused by getRingPreviewCoords whenever hoverAtomId is valid (verified:
+                    // v8_process.cpp:977-996 derives geometry entirely from the atom's own
+                    // existing position), so passing 0.0 for both is harmless.
+                    QVariantList smartCoords = m_v8->getRingPreviewCoords(
+                        result.atoms.size(), 0.0, 0.0, startAtomId, QVariant());
+                    if (!smartCoords.isEmpty()) {
+                        for (const QVariant& pVar : smartCoords) {
+                            QVariantMap p = pVar.toMap();
+                            coords.append(p.value(QStringLiteral("x")).toDouble());
+                            coords.append(p.value(QStringLiteral("y")).toDouble());
+                        }
+                        usedSmartCoords = true;
+                    }
+                }
+                if (!usedSmartCoords) {
+                    // Ring dropped on empty canvas (no existing atom to be smart about -- the
+                    // drag direction is the only signal, and it's the right one there), or
+                    // getRingPreviewCoords defensively returned nothing for a stale atom id:
+                    // fall back to the drag preview's own already-computed coordinates exactly
+                    // as before this change.
+                    for (const auto& a : result.atoms) {
+                        coords.append(a.pos.x());
+                        coords.append(a.pos.y());
+                    }
                 }
                 // Only the benzene tool produces an aromatic (alternating) ring;
                 // numeric TEMPLATE_N tools place saturated rings.
