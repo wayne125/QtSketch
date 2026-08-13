@@ -430,6 +430,16 @@ public:
     // the page bounds first. No-ops (no history entry) on an empty or unparseable sourceMolfile.
     void insertStructureAt(const QString& sourceMolfile, double cx, double cy);
 
+    // Imports a full reaction ($RXN-format or reaction-SMILES ">>" text, both auto-detected
+    // by indigoLoadReactionFromString) as reactant fragments + a RxnArrow + RxnPlus entities
+    // between multiples, laid out left to right. Built as ONE hand-constructed EditCommand
+    // (mirroring insertStructureAt's own internal pattern -- calling EditableMolecule methods
+    // directly, not the DocumentState-level insertStructureAt/addRxnArrow/addRxnPlus wrappers,
+    // each of which would otherwise push its own separate undo entry) so the whole import
+    // undoes as one step. Returns false (no history entry, no partial state) if text can't be
+    // parsed as a reaction at all.
+    bool importReaction(const QString& text);
+
     // Ports 30-templates.js's insertLibraryTemplateFused. Maps the template's
     // designated fusion bond onto targetBondId via a 2-point similarity
     // transform, then reuses the EXISTING mergeOverlappingAtoms +

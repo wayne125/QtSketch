@@ -73,7 +73,14 @@ static QString sanitizeMolfileForAnalysis(const QString &molfile) {
 // value for a whole multi-molecule reaction scheme, so these are skipped
 // gracefully here rather than attempted — same treatment as an empty molfile.
 static bool isReactionFormat(const QString &data) {
-    return data.trimmed().startsWith(QLatin1String("$RXN"));
+    QString trimmed = data.trimmed();
+    // ">>" is reaction-SMILES's reactant/product separator. A real molfile's first four
+    // lines are a fixed structural header (never containing ">>"), and real molecule
+    // SMILES/InChI text essentially never contains a literal ">>" substring, so this check
+    // is safe as a pure widening -- every caller of isReactionFormat (checkStructure,
+    // calcProperties, renderReactionGridToFile, layout, and this task's new importReaction
+    // path) benefits identically.
+    return trimmed.startsWith(QLatin1String("$RXN")) || trimmed.contains(QLatin1String(">>"));
 }
 
 // The vendored indigo.dll silently crashes the whole process (not a catchable C++ exception --
