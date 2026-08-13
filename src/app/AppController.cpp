@@ -117,7 +117,21 @@ bool AppController::handleDragEnd() {
                 QList<QVariant> coords;
                 bool usedSmartCoords = false;
                 int startAtomId = m_previewManager->startAtomId();
-                if (startAtomId >= 0) {
+                // startAtomId >= 0 is not enough on its own: ChemCanvas.qml resolves a
+                // contracted-sgroup pill's hit-test id to its attachAtomId (a member atom
+                // *inside* the superatom) before calling handleDragStart, but
+                // RenderPrimitives.cpp deliberately excludes every sgroup member atom from
+                // atomsById (see "if (atomToSgroup.contains(id)) continue;"). If that id is
+                // looked up there anyway, getRingPreviewCoords's hoverAtomId branch silently
+                // fails and falls through to its free-floating-ring branch centered on
+                // whatever cx/cy was passed -- landing the ring far from the pill instead of
+                // near it. Guard on real presence in atomsById first, so the pill case takes
+                // the fallback path below (with real press-point coordinates) instead of a
+                // wrong "smart" one.
+                bool startAtomKnown = startAtomId >= 0 &&
+                    m_v8->primitives().value(QStringLiteral("atomsById")).toMap()
+                        .contains(QString::number(startAtomId));
+                if (startAtomKnown) {
                     // Prefer the same largest-empty-angle spiro placement the click-fallback
                     // path already gets (ChemCanvas.qml's "Fallback to click behavior" block,
                     // via this exact same V8Process::getRingPreviewCoords call) instead of
@@ -125,9 +139,11 @@ bool AppController::handleDragEnd() {
                     // ignores the existing atom graph entirely for the ring case. cx/cy are
                     // unused by getRingPreviewCoords whenever hoverAtomId is valid (verified:
                     // v8_process.cpp:977-996 derives geometry entirely from the atom's own
-                    // existing position), so passing 0.0 for both is harmless.
+                    // existing position), so passing the press point for both is just a
+                    // harmless, more sensible default for any future fallthrough.
                     QVariantList smartCoords = m_v8->getRingPreviewCoords(
-                        result.atoms.size(), 0.0, 0.0, startAtomId, QVariant());
+                        result.atoms.size(), m_previewManager->startChemPos().x(),
+                        m_previewManager->startChemPos().y(), startAtomId, QVariant());
                     if (!smartCoords.isEmpty()) {
                         for (const QVariant& pVar : smartCoords) {
                             QVariantMap p = pVar.toMap();
@@ -140,9 +156,15 @@ bool AppController::handleDragEnd() {
                 if (!usedSmartCoords) {
                     // Ring dropped on empty canvas (no existing atom to be smart about -- the
                     // drag direction is the only signal, and it's the right one there), or
-                    // getRingPreviewCoords defensively returned nothing for a stale atom id:
-                    // fall back to the drag preview's own already-computed coordinates exactly
-                    // as before this change.
+                    // startAtomId refers to an atom not present in atomsById -- e.g. a
+                    // contracted sgroup pill's attachAtomId, which RenderPrimitives.cpp
+                    // deliberately omits from atomsById (see comment above). Note this
+                    // fallback is never reached for a genuinely empty canvas: handleDragStart
+                    // only calls beginPreview when hitAtomId >= 0 (AppController.cpp:42), and
+                    // a true empty-canvas ring drag is committed entirely by ChemCanvas.qml's
+                    // own onPressed handler before this C++ code ever runs. Fall back to the
+                    // drag preview's own already-computed coordinates exactly as before this
+                    // change.
                     for (const auto& a : result.atoms) {
                         coords.append(a.pos.x());
                         coords.append(a.pos.y());
