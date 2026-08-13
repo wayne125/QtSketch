@@ -11,7 +11,7 @@ qt_policy(SET QTP0004 OLD)
 set_source_files_properties(Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 set_source_files_properties(StyleSheets.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
-qt_add_executable(sketch src/app/main.cpp src/app/IndigoService.h src/app/IndigoService.cpp src/app/IupacNamer.h src/app/IupacNamer.cpp src/app/ImagoService.h src/app/ImagoService.cpp src/v8_process.h src/v8_process.cpp src/app/FileIO.h src/app/PlacementEngines.h src/app/PlacementEngines.cpp src/app/BondAngleSuggester.h src/app/BondAngleSuggester.cpp src/app/PlacementPreviewManager.h src/app/PlacementPreviewManager.cpp src/app/AppController.h src/app/AppController.cpp src/app/DocumentManager.h src/app/DocumentManager.cpp)
+qt_add_executable(sketch src/app/main.cpp src/app/IndigoService.h src/app/IndigoService.cpp src/app/IupacNamer.h src/app/IupacNamer.cpp src/app/ImagoService.h src/app/ImagoService.cpp src/v8_process.h src/v8_process.cpp src/app/FileIO.h src/app/PlacementEngines.h src/app/PlacementEngines.cpp src/app/PlacementPreviewManager.h src/app/PlacementPreviewManager.cpp src/app/AppController.h src/app/AppController.cpp src/app/DocumentManager.h src/app/DocumentManager.cpp)
 # FusedRingOrientation/FusedRingDirectionDetector are NOT linked into this target:
 # IupacNamer.cpp has zero calls into them (confirmed 2026-07-29). They're real,
 # tested geometric-orientation modules meant for a future numbering-integration
@@ -242,6 +242,8 @@ add_library(molecule_model STATIC
     src/app/molecule/BiopolymerSequenceView.cpp
     src/app/molecule/RenderPrimitivesToVariant.h
     src/app/molecule/RenderPrimitivesToVariant.cpp
+    src/app/BondAngleSuggester.h
+    src/app/BondAngleSuggester.cpp
 )
 target_include_directories(molecule_model PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
