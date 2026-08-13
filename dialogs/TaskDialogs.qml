@@ -180,7 +180,14 @@ Item {
             const smi = smilesInput.text.trim()
             if (smi) {
                 win.isProcessing = true
-                win.indigoSvc.layout(smi)
+                const isRxn = smi.startsWith("$RXN") || smi.includes(">>")
+                if (isRxn && win.activeSketch) {
+                    win.activeSketch.importReaction(smi)
+                    win.isProcessing = false
+                    win.centerViewOnPage()
+                } else {
+                    win.indigoSvc.layout(smi)
+                }
             }
         }
     }
