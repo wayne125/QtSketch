@@ -479,6 +479,10 @@ QString V8Process::getStructure(const QString& fmt) {
 QString V8Process::serializeMol() {
     return getStructure("mol");
 }
+void V8Process::importReaction(const QString& text) {
+    if (!m_docState->importReaction(text)) return;
+    applyLocalState();
+}
 void V8Process::loadStructure(const QString& format, const QString& data, bool centerOnPage) {
     if (format == "mol") {
         m_docState->deserializeMol(data, centerOnPage);

@@ -1918,6 +1918,14 @@ ApplicationWindow {
             window.isProcessing = true
             indigoSvc.parseIndigoBatchFile(fileUrl, "cdx")
             return
+        } else if (fileStrEarly.endsWith(".rxn")) {
+            const data = fileIO.read(fileUrl)
+            if (data !== "" && activeSketch) {
+                activeSketch.importReaction(data)
+                window.centerViewOnPage()
+                setDocFile(DocumentManager.activeDocId, fileUrl)
+            }
+            return
         }
         const data = fileIO.read(fileUrl)
         if (data === "") return
