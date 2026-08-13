@@ -2455,6 +2455,126 @@ void DocumentState::insertStructureAt(const QString& sourceMolfile, double cx, d
     executeCommand(std::move(cmd));
 }
 
+namespace {
+struct Fragment {
+    QString molfile;
+    double width = 0;
+    double height = 0;
+};
+}
+
+bool DocumentState::importReaction(const QString& text) {
+    EditableMolecule& mol = m_molecule;
+
+    int rxn = indigoLoadReactionFromString(text.toUtf8().constData());
+    if (rxn < 0) return false;
+
+    QList<Fragment> reactants, products;
+    auto collect = [&](int iterHandle, QList<Fragment>& out) {
+        int comp;
+        while ((comp = indigoNext(iterHandle)) > 0) {
+            indigoLayout(comp);
+            const char* mf = indigoMolfile(comp);
+            if (!mf) { indigoFree(comp); continue; }
+            Fragment f;
+            f.molfile = QString::fromUtf8(mf);
+            double minX = 0, maxX = 0, minY = 0, maxY = 0;
+            bool any = false;
+            int aIter = indigoIterateAtoms(comp);
+            if (aIter >= 0) {
+                int a;
+                while ((a = indigoNext(aIter)) > 0) {
+                    float* xyz = indigoXYZ(a);
+                    if (xyz) {
+                        if (!any) { minX = maxX = xyz[0]; minY = maxY = xyz[1]; any = true; }
+                        else {
+                            if (xyz[0] < minX) minX = xyz[0];
+                            if (xyz[0] > maxX) maxX = xyz[0];
+                            if (xyz[1] < minY) minY = xyz[1];
+                            if (xyz[1] > maxY) maxY = xyz[1];
+                        }
+                    }
+                    indigoFree(a);
+                }
+                indigoFree(aIter);
+            }
+            if (any) {
+                f.width = maxX - minX;
+                f.height = maxY - minY;
+            }
+            out.append(f);
+            indigoFree(comp);
+        }
+    };
+    int reactantsIter = indigoIterateReactants(rxn);
+    if (reactantsIter >= 0) { collect(reactantsIter, reactants); indigoFree(reactantsIter); }
+    int productsIter = indigoIterateProducts(rxn);
+    if (productsIter >= 0) { collect(productsIter, products); indigoFree(productsIter); }
+    indigoFree(rxn);
+
+    if (reactants.isEmpty() && products.isEmpty()) return false;
+
+
+    // Compute a left-to-right layout: reactants, a gap for the arrow, products. All fragments
+    // share one vertical center (y=0 here; insertStructureAt's own translate-to-center pattern
+    // means each fragment's own internal y-spread is what matters, not an absolute page
+    // position -- the whole assembly gets clamped/placed like any other paste).
+    const double gap = kBondLength;
+    const double arrowGap = kBondLength * 2.5;   // matches DocumentState::addRxnArrow's own default span
+    QList<double> reactantCenters, productCenters;
+    double x = 0;
+    for (int i = 0; i < reactants.size(); ++i) {
+        if (i > 0) x += gap;
+        x += reactants[i].width / 2.0;
+        reactantCenters.append(x);
+        x += reactants[i].width / 2.0;
+    }
+    double reactantBlockEnd = x;
+    double arrowX1 = reactantBlockEnd + gap / 2.0;
+    double arrowX2 = arrowX1 + arrowGap;
+    x = arrowX2 + gap / 2.0;
+    for (int i = 0; i < products.size(); ++i) {
+        if (i > 0) x += gap;
+        x += products[i].width / 2.0;
+        productCenters.append(x);
+        x += products[i].width / 2.0;
+    }
+
+    auto createdAtoms = std::make_shared<QList<AtomId>>();
+    auto createdBonds = std::make_shared<QList<BondId>>();
+    auto createdSGroups = std::make_shared<QList<SGroupId>>();
+    auto createdArrows = std::make_shared<QList<RxnArrowId>>();
+    auto createdPluses = std::make_shared<QList<RxnPlusId>>();
+
+    EditCommand cmd;
+    cmd.execute = [&mol, reactants, products, reactantCenters, productCenters, arrowX1, arrowX2, gap,
+                   createdAtoms, createdBonds, createdSGroups, createdArrows, createdPluses]() {
+        auto placeFragment = [&](const Fragment& f, double cx) {
+            EditableMolecule::InsertResult r = mol.insertStructure(f.molfile, [cx](double ptX, double ptY) {
+                return QPointF(ptX + cx, ptY);   // f's own centroid-relative coords get re-centered at cx, y=0
+            });
+            *createdAtoms += r.createdAtoms;
+            *createdBonds += r.createdBonds;
+            *createdSGroups += r.createdSGroups;
+        };
+        for (int i = 0; i < reactants.size(); ++i) placeFragment(reactants[i], reactantCenters[i]);
+        for (int i = 0; i < products.size(); ++i) placeFragment(products[i], productCenters[i]);
+        for (int i = 1; i < reactantCenters.size(); ++i)
+            createdPluses->append(mol.addRxnPlus((reactantCenters[i-1] + reactantCenters[i]) / 2.0, 0));
+        for (int i = 1; i < productCenters.size(); ++i)
+            createdPluses->append(mol.addRxnPlus((productCenters[i-1] + productCenters[i]) / 2.0, 0));
+        createdArrows->append(mol.addRxnArrow(arrowX1, 0, arrowX2, 0));
+    };
+    cmd.invert = [&mol, createdArrows, createdPluses, createdBonds, createdAtoms]() {
+        for (RxnArrowId a : *createdArrows) mol.removeRxnArrow(a);
+        for (RxnPlusId p : *createdPluses) mol.removeRxnPlus(p);
+        for (BondId b : *createdBonds) mol.removeBond(b);
+        for (AtomId a : *createdAtoms) mol.removeAtom(a);
+    };
+    executeCommand(std::move(cmd));
+    return true;
+}
+
 void DocumentState::addBondAndAtom(AtomId startId, const QString& label, double x, double y, int type, int stereo) {
     EditableMolecule& mol = m_molecule;
     if (!mol.atomIds().contains(startId)) return;

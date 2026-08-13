@@ -1176,6 +1176,30 @@ static void test_addChain() {
     }
 }
 
+static void test_importReaction() {
+    std::printf("--- Test: importReaction ---\n");
+    DocumentState doc("");
+
+    bool ok = doc.importReaction(QStringLiteral("CCO>>CC=O"));
+    CHECK(ok, "importReaction succeeds on a valid reaction SMILES");
+    CHECK(doc.molecule().atomIds().size() >= 5, "importReaction created atoms for both sides");
+    CHECK(doc.molecule().rxnArrowIds().size() == 1, "importReaction added exactly one RxnArrow");
+    CHECK(doc.canUndo(), "importReaction pushes at least one history entry");
+
+    int atomsBefore = doc.molecule().atomIds().size();
+    int arrowsBefore = doc.molecule().rxnArrowIds().size();
+    doc.undo();
+    CHECK(doc.molecule().atomIds().size() == 0, "undo removes every atom importReaction created");
+    CHECK(doc.molecule().rxnArrowIds().size() == 0, "undo removes the RxnArrow too");
+    (void)atomsBefore; (void)arrowsBefore;
+
+    DocumentState doc2("");
+    bool ok2 = doc2.importReaction(QStringLiteral("not a reaction"));
+    CHECK(!ok2, "importReaction rejects unparseable text");
+    CHECK(doc2.molecule().atomIds().size() == 0, "failed importReaction leaves no partial atoms");
+    CHECK(!doc2.canUndo(), "failed importReaction pushes no history entry");
+}
+
 static void test_insertFunctionalGroup() {
     std::printf("--- Test 14: insertFunctionalGroup ---\n");
     TemplateLibrary lib(
@@ -3175,6 +3199,7 @@ int main() {
     test_dragStateResetOnUndoRedo();
     test_addRing();
     test_addChain();
+    test_importReaction();
     test_insertFunctionalGroup();
     test_insertLibraryTemplateFused();
     test_toggleSgroupExpanded();
