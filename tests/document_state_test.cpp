@@ -8,12 +8,23 @@
 #include "app/molecule/DocumentState.h"
 #include "app/molecule/TemplateLibrary.h"
 #include "indigo.h"
+#include <QFile>
+#include <QDir>
 
 static int g_pass = 0, g_fail = 0;
 #define CHECK(cond, name) do { \
     if (cond) { ++g_pass; std::printf("[PASS] %s\n", name); } \
     else { ++g_fail; std::printf("[FAIL] %s (line %d)\n", name, __LINE__); } \
 } while (0)
+
+static QString writeTempSdf(const QString& content, const QString& baseName) {
+    QString path = QDir::tempPath() + QStringLiteral("/") + baseName + QStringLiteral(".sdf");
+    QFile f(path);
+    f.open(QIODevice::WriteOnly | QIODevice::Text);
+    f.write(content.toUtf8());
+    f.close();
+    return path;
+}
 
 static void test_selectionStateBasics() {
     std::printf("--- Test 0: SelectionState basics ---\n");
@@ -1847,6 +1858,137 @@ static void test_deserializeMolCenterOnPage() {
     CHECK(doc3.molecule().atomIds().size() == 0, "empty input with centerOnPage=true does not crash");
 }
 
+static const char* kTestTemplateOneBond =
+    "TestFG\n"
+    "Ketcher 11161713142D 1   1.00000     0.00000     0\n"
+    "\n"
+    "  2  1  0  0  0  0  0  0  0  0999 V2000\n"
+    "    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n"
+    "    1.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
+    "  1  2  1  0  0  0  0\n"
+    "M  STY  1   1 SUP\n"
+    "M  SLB  1   1   1\n"
+    "M  SAL   1  2   1   2\n"
+    "M  SAP   1  1   1   0\n"
+    "M  SMT   1 TestFG\n"
+    "M  END\n";
+
+static const char* kTestTemplateNoBonds =
+    "TestFG\n"
+    "Ketcher 11161713142D 1   1.00000     0.00000     0\n"
+    "\n"
+    "  1  0  0  0  0  0  0  0  0  0999 V2000\n"
+    "    0.0000    0.0000    0.0000 F   0  0  0  0  0  0  0  0  0  0  0  0\n"
+    "M  STY  1   1 SUP\n"
+    "M  SLB  1   1   1\n"
+    "M  SAL   1  1   1\n"
+    "M  SAP   1  1   1   0\n"
+    "M  SMT   1 TestFG\n"
+    "M  END\n";
+
+static void test_graftAngleOrientation_oneNeighbor() {
+    std::printf("--- Test: insertFunctionalGroup graft rotates for 1-neighbor target ---\n");
+    QString path = writeTempSdf(QString::fromUtf8(kTestTemplateOneBond), QStringLiteral("test_graft_1n"));
+    TemplateLibrary lib(path, path, path);
+
+    DocumentState doc;
+    AtomId a1 = doc.molecule().addAtom(QStringLiteral("C"), 0.0, 0.0);
+    AtomId a2 = doc.molecule().addAtom(QStringLiteral("C"), 1.5, 0.0);
+    doc.molecule().addBond(a1, a2, 1);
+
+    doc.insertFunctionalGroup(lib, QStringLiteral("TestFG"), 0.0, 0.0, a1, true);
+
+    // Expect the same 60-degree kink BondAngleSuggester itself produces for a 1-neighbor atom:
+    // continuation of the a2->a1 bond (a2 is at angle 0 from a1, so continuation past a1 points
+    // along -x = PI) kinked by 60 degrees (PI/3). Find the newly grafted neighbor atom (the
+    // template's non-attach atom, now bonded to a1) and check its position angle from a1.
+    QList<AtomId> allAtoms = doc.molecule().atomIds();
+    CHECK(allAtoms.size() == 3, "graft added exactly one new atom (attach atom merged into a1)");
+    AtomId newAtom = -1;
+    for (AtomId id : allAtoms) { if (id != a1 && id != a2) newAtom = id; }
+    CHECK(newAtom != -1, "found the newly grafted atom");
+    double nx = 0, ny = 0;
+    doc.molecule().atomPos(newAtom, nx, ny);
+    double angle = std::atan2(ny, nx);
+    double expected = M_PI + M_PI / 3.0; // continuation (PI) + 60-degree kink, matching
+                                          // BondAngleSuggester's own default turn direction
+    while (angle < 0) angle += 2 * M_PI;
+    while (expected >= 2 * M_PI) expected -= 2 * M_PI;
+    CHECK(std::abs(angle - expected) < 0.01, "grafted neighbor lands at the 60-degree-kink angle, not the template's raw 0-degree direction");
+}
+
+static void test_graftAngleOrientation_twoNeighbors() {
+    std::printf("--- Test: insertFunctionalGroup graft rotates for 2-neighbor target (120-degree bisector) ---\n");
+    QString path = writeTempSdf(QString::fromUtf8(kTestTemplateOneBond), QStringLiteral("test_graft_2n"));
+    TemplateLibrary lib(path, path, path);
+
+    DocumentState doc;
+    AtomId a1 = doc.molecule().addAtom(QStringLiteral("C"), 0.0, 0.0);
+    AtomId a2 = doc.molecule().addAtom(QStringLiteral("C"), 1.0, 0.0);   // angle 0 from a1
+    AtomId a3 = doc.molecule().addAtom(QStringLiteral("C"), 0.0, 1.0);   // angle PI/2 from a1
+    doc.molecule().addBond(a1, a2, 1);
+    doc.molecule().addBond(a1, a3, 1);
+
+    doc.insertFunctionalGroup(lib, QStringLiteral("TestFG"), 0.0, 0.0, a1, true);
+
+    QList<AtomId> allAtoms = doc.molecule().atomIds();
+    CHECK(allAtoms.size() == 4, "graft added exactly one new atom");
+    AtomId newAtom = -1;
+    for (AtomId id : allAtoms) { if (id != a1 && id != a2 && id != a3) newAtom = id; }
+    CHECK(newAtom != -1, "found the newly grafted atom");
+    double nx = 0, ny = 0;
+    doc.molecule().atomPos(newAtom, nx, ny);
+    double angle = std::atan2(ny, nx);
+    // Existing neighbors at 0 and PI/2: the gap going counterclockwise from 0 to PI/2 is
+    // width PI/2; the gap going counterclockwise from PI/2 back around to 0 is width 3PI/2 --
+    // the larger gap, so the bisector sits at PI/2 + 3PI/2/2 = PI/2 + 3PI/4 = 5PI/4.
+    double expected = 5.0 * M_PI / 4.0;
+    while (angle < 0) angle += 2 * M_PI;
+    while (expected >= 2 * M_PI) expected -= 2 * M_PI;
+    CHECK(std::abs(angle - expected) < 0.01, "grafted neighbor bisects the larger gap between the two existing neighbors");
+}
+
+static void test_graftAngleOrientation_noRotationCase() {
+    std::printf("--- Test: insertFunctionalGroup graft does NOT rotate for 0-neighbor target ---\n");
+    QString path = writeTempSdf(QString::fromUtf8(kTestTemplateOneBond), QStringLiteral("test_graft_0n"));
+    TemplateLibrary lib(path, path, path);
+
+    DocumentState doc;
+    AtomId a1 = doc.molecule().addAtom(QStringLiteral("C"), 0.0, 0.0);  // zero existing neighbors
+
+    doc.insertFunctionalGroup(lib, QStringLiteral("TestFG"), 0.0, 0.0, a1, true);
+
+    QList<AtomId> allAtoms = doc.molecule().atomIds();
+    CHECK(allAtoms.size() == 2, "graft added exactly one new atom");
+    AtomId newAtom = -1;
+    for (AtomId id : allAtoms) { if (id != a1) newAtom = id; }
+    double nx = 0, ny = 0;
+    doc.molecule().atomPos(newAtom, nx, ny);
+    // Unrotated: template's raw neighbor offset (1,0) translated so attach atom (was at (0,0)
+    // in template space) lands on a1 (0,0) -- so the grafted neighbor should land at (1,0),
+    // the template's own unrotated direction, unchanged from pre-this-task behavior.
+    CHECK(std::abs(nx - 1.0) < 0.01 && std::abs(ny - 0.0) < 0.01, "0-neighbor target: template's raw unrotated direction preserved exactly");
+}
+
+static void test_graftAngleOrientation_noTemplateInternalBonds() {
+    std::printf("--- Test: insertFunctionalGroup graft with a bond-less attach atom falls back to translate-only ---\n");
+    // Single-atom template (the attach atom itself has no template-internal bonds at all) --
+    // templateAngle stays nullopt, rotation must not apply even if a suggested angle exists.
+    QString path = writeTempSdf(QString::fromUtf8(kTestTemplateNoBonds), QStringLiteral("test_graft_nobonds"));
+    TemplateLibrary lib(path, path, path);
+
+    DocumentState doc;
+    AtomId a1 = doc.molecule().addAtom(QStringLiteral("C"), 0.0, 0.0);
+    AtomId a2 = doc.molecule().addAtom(QStringLiteral("C"), 1.5, 0.0);
+    doc.molecule().addBond(a1, a2, 1);
+
+    // This should not crash and should complete via graftAtomOnto merging the single-atom
+    // template's only atom directly onto a1 -- no separate new atom, no rotation applied.
+    doc.insertFunctionalGroup(lib, QStringLiteral("TestFG"), 0.0, 0.0, a1, true);
+    QList<AtomId> allAtoms = doc.molecule().atomIds();
+    CHECK(allAtoms.size() == 2, "single-atom template's attach atom merges directly into a1, no new atom created, no crash");
+}
+
 static void test_insertFunctionalGroupLabel() {
     std::printf("--- Test: insertFunctionalGroup sets sgroup label ---\n");
     TemplateLibrary lib(
@@ -3250,6 +3392,10 @@ int main() {
     test_addChain();
     test_importReaction();
     test_insertFunctionalGroup();
+    test_graftAngleOrientation_oneNeighbor();
+    test_graftAngleOrientation_twoNeighbors();
+    test_graftAngleOrientation_noRotationCase();
+    test_graftAngleOrientation_noTemplateInternalBonds();
     test_insertLibraryTemplateFused();
     test_toggleSgroupExpanded();
     test_rxnArrowLifecycle();

@@ -10,6 +10,8 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include "indigo.h"
+#include <optional>
+#include "BondAngleSuggester.h"
 
 // RAII guard for m_inCommand: execute/undo/redo previously set the flag true, ran an
 // arbitrary EditCommand closure, then set it false -- if that closure ever threw (Indigo
@@ -2357,6 +2359,37 @@ void DocumentState::insertFunctionalGroup(const TemplateLibrary& lib, const QStr
         }
     }
 
+    // Find the attach atom's first bonded neighbor within the template itself, to know which
+    // direction the template's own substituent "points" by default. Mirrors BondAngleSuggester's
+    // own "first bond direction" convention, so the angle this produces and the angle
+    // suggestAngle() produces for the target atom are computed the same way and can be compared.
+    // std::nullopt (not 0.0) when the attach atom has no template-internal bonds at all -- a
+    // genuinely atom-only template, no known real case, but this must not silently rotate by a
+    // meaningless 0-degree angle in that case.
+    std::optional<double> templateAngle;
+    if (templateAttachIdx >= 0) {
+        int bIter = indigoIterateBonds(fgHandle);
+        if (bIter >= 0) {
+            int b;
+            while ((b = indigoNext(bIter)) > 0) {
+                int src = indigoSource(b), dst = indigoDestination(b);
+                int srcIdx = indigoIndex(src), dstIdx = indigoIndex(dst);
+                int neighborAtomHandle = -1;
+                if (srcIdx == templateAttachIdx) neighborAtomHandle = dst;
+                else if (dstIdx == templateAttachIdx) neighborAtomHandle = src;
+                if (neighborAtomHandle >= 0) {
+                    float* nxyz = indigoXYZ(neighborAtomHandle);
+                    if (nxyz) {
+                        templateAngle = std::atan2(nxyz[1] - attachY, nxyz[0] - attachX);
+                    }
+                }
+                indigoFree(src); indigoFree(dst); indigoFree(b);
+                if (templateAngle.has_value()) break;
+            }
+            indigoFree(bIter);
+        }
+    }
+
     // Last thing done against TemplateLibrary's session: capture the
     // structure as Molfile text. Everything from here on touches only `mol`
     // (a different session) and plain captured values.
@@ -2366,26 +2399,64 @@ void DocumentState::insertFunctionalGroup(const TemplateLibrary& lib, const QStr
     double targetX = 0, targetY = 0;
     if (graft) graft = mol.atomPos(targetAtomId, targetX, targetY);
 
+    // Reuse BondAngleSuggester::suggestAngle unchanged -- build its atomsById/bondsList inputs
+    // from EditableMolecule directly (mol already has full graph access) rather than threading
+    // V8Process's m_primitives down into DocumentState, which has no existing dependency on it.
+    std::optional<double> suggestedAngle;
+    if (graft && templateAngle.has_value()) {
+        QVariantMap atomsById;
+        for (AtomId id : mol.atomIds()) {
+            double x = 0, y = 0;
+            if (!mol.atomPos(id, x, y)) continue;
+            QVariantMap a;
+            a[QStringLiteral("x")] = x;
+            a[QStringLiteral("y")] = y;
+            atomsById[QString::number(id)] = a;
+        }
+        QVariantList bondsList;
+        for (BondId id : mol.bondIds()) {
+            AtomId a1 = -1, a2 = -1;
+            if (!mol.bondEndpoints(id, a1, a2)) continue;
+            QVariantMap b;
+            b[QStringLiteral("begin")] = a1;
+            b[QStringLiteral("end")] = a2;
+            bondsList.append(b);
+        }
+        suggestedAngle = BondAngleSuggester::suggestAngle(targetAtomId, atomsById, bondsList);
+    }
+
     // Compute the placement offset: align attach-atom-to-target if grafting,
     // else center the template's bounding box on (cx, cy).
     double dx = 0, dy = 0;
     if (graft) { dx = targetX - attachX; dy = targetY - attachY; }
     else { dx = cx - (minX + maxX) / 2.0; dy = cy - (minY + maxY) / 2.0; }
 
+    bool useRotation = graft && templateAngle.has_value() && suggestedAngle.has_value();
+    double rotateBy = useRotation ? (*suggestedAngle - *templateAngle) : 0.0;
+    double cosR = std::cos(rotateBy), sinR = std::sin(rotateBy);
+
     auto createdAtoms = std::make_shared<QList<AtomId>>();
     auto createdBonds = std::make_shared<QList<BondId>>();
     auto createdSGroups = std::make_shared<QList<SGroupId>>();
 
     EditCommand cmd;
-    cmd.execute = [&mol, fgMolfile, fgName, dx, dy, templateAttachIdx, graft, targetAtomId, fullStructure,
+    cmd.execute = [&mol, fgMolfile, fgName, dx, dy, useRotation, cosR, sinR, attachX, attachY,
+                   targetX, targetY, templateAttachIdx, graft, targetAtomId, fullStructure,
                    createdAtoms, createdBonds, createdSGroups]() {
         createdAtoms->clear();
         createdBonds->clear();
         createdSGroups->clear();
 
-        EditableMolecule::InsertResult result = mol.insertStructure(fgMolfile, [dx, dy](double x, double y) {
-            return QPointF(x + dx, y + dy);
-        });
+        EditableMolecule::InsertResult result = useRotation
+            ? mol.insertStructure(fgMolfile, [attachX, attachY, cosR, sinR, targetX, targetY](double x, double y) {
+                  double rx = x - attachX, ry = y - attachY;
+                  double rotX = rx * cosR - ry * sinR;
+                  double rotY = rx * sinR + ry * cosR;
+                  return QPointF(rotX + targetX, rotY + targetY);
+              })
+            : mol.insertStructure(fgMolfile, [dx, dy](double x, double y) {
+                  return QPointF(x + dx, y + dy);
+              });
         *createdAtoms = result.createdAtoms;
         *createdBonds = result.createdBonds;
         *createdSGroups = result.createdSGroups;
