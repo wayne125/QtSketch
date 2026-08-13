@@ -141,6 +141,14 @@ public:
     bool isValid() const { return m_mol >= 0; }
     QString lastError() const { return m_lastError; }
 
+    // Public wrapper around the private activateSession() (indigoSetSessionId(m_session)), for
+    // callers outside this class that need to make their own raw indigo* calls against this
+    // instance's session -- e.g. DocumentState::importReaction, which iterates reaction
+    // components via indigoNext/indigoIterateReactants directly rather than through a dedicated
+    // EditableMolecule method. Every EditableMolecule method already activates its own session
+    // internally before touching m_mol; this exists only for that one kind of external caller.
+    void ensureSession() const { activateSession(); }
+
     int atomCount() const;
     int bondCount() const;
     StringResult toMolfile() const;

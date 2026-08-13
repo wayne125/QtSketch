@@ -2469,6 +2469,13 @@ struct Fragment {
 
 bool DocumentState::importReaction(const QString& text) {
     EditableMolecule& mol = m_molecule;
+    // Every raw indigo* call below runs against mol's own session; activate it explicitly first
+    // since (unlike the rest of this class) this method calls indigo* directly instead of going
+    // through an EditableMolecule method that would activate its session for us. Without this,
+    // the thread-local "current session" is whatever a previous, possibly-since-destroyed
+    // EditableMolecule left behind (e.g. after DocumentManager::closeDocument releases one), and
+    // indigoLoadReactionFromString and everything after it would run under a stale session.
+    mol.ensureSession();
 
     int rxn = indigoLoadReactionFromString(text.toUtf8().constData());
     if (rxn < 0) return false;
@@ -2477,12 +2484,10 @@ bool DocumentState::importReaction(const QString& text) {
     auto collect = [&](int iterHandle, QList<Fragment>& out) {
         int comp;
         while ((comp = indigoNext(iterHandle)) > 0) {
-            // We lay out each component individually rather than calling indigoLayout(rxn) on the whole reaction.
-            // The prompt suspected this was due to the same session/handle-validity issue fixed in de7e111.
-            // However, that issue was caused by creating a new EditableMolecule (and thus a new indigo session)
-            // mid-loop. indigoLayout(rxn) would use the current session and wouldn't invalidate handles.
-            // The real reason for laying out individually is so we can compute our own custom left-to-right 
-            // packing with our own RxnPlus/RxnArrow spacing, rather than accepting Indigo's reaction layout spacing.
+            // Each component is laid out individually rather than calling indigoLayout(rxn) on the
+            // whole reaction so that this method can compute its own custom left-to-right packing,
+            // with this app's own RxnPlus/RxnArrow spacing, instead of accepting Indigo's built-in
+            // reaction layout spacing.
             indigoLayout(comp);
             const char* mf = indigoMolfile(comp);
             if (!mf) { indigoFree(comp); continue; }

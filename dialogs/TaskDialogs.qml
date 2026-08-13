@@ -182,9 +182,15 @@ Item {
                 win.isProcessing = true
                 const isRxn = smi.startsWith("$RXN") || smi.includes(">>")
                 if (isRxn && win.activeSketch) {
-                    win.activeSketch.importReaction(smi)
+                    const ok = win.activeSketch.importReaction(smi)
                     win.isProcessing = false
-                    win.centerViewOnPage()
+                    if (ok) {
+                        win.centerViewOnPage()
+                    } else {
+                        win.messageDialogsGroup.workerErrorDialog.errorText = "Load from SMILES: the text does not describe a valid reaction."
+                        win.messageDialogsGroup.workerErrorDialog.severe = false
+                        win.messageDialogsGroup.workerErrorDialog.open()
+                    }
                 } else {
                     win.indigoSvc.layout(smi)
                 }
