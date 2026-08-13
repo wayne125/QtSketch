@@ -961,6 +961,12 @@ EditableMolecule::InsertResult EditableMolecule::insertStructure(const QString& 
     // shared with anything), it's safe to mutate directly and free once done.
     int clone = indigoLoadMoleculeFromString(sourceMolfile.toUtf8().constData());
     if (clone < 0) return result;
+    // Record each clone atom's source index alongside the EXACT (float, post-transform) position
+    // it's about to be given -- used below to match destination atoms back to their true source
+    // index by position rather than by iteration order (see the comment further down on why order
+    // alone is not reliable).
+    QList<int> cloneSourceIdxByTransformedPos;
+    QList<QPointF> cloneTransformedPos;
     int atomIter = indigoIterateAtoms(clone);
     if (atomIter >= 0) {
         int a;
@@ -968,7 +974,10 @@ EditableMolecule::InsertResult EditableMolecule::insertStructure(const QString& 
             float* xyz = indigoXYZ(a);
             if (xyz) {
                 QPointF p = transform(xyz[0], xyz[1]);
-                indigoSetXYZ(a, static_cast<float>(p.x()), static_cast<float>(p.y()), 0.0f);
+                float fx = static_cast<float>(p.x()), fy = static_cast<float>(p.y());
+                indigoSetXYZ(a, fx, fy, 0.0f);
+                cloneSourceIdxByTransformedPos.append(indigoIndex(a));
+                cloneTransformedPos.append(QPointF(fx, fy));
             }
             indigoFree(a);
         }
@@ -1001,32 +1010,25 @@ EditableMolecule::InsertResult EditableMolecule::insertStructure(const QString& 
             indigoFree(iter);
         }
     }
-    // Also record the clone's own atom index -> its position, so after
-    // merging we can match destination atoms back to source indices by
-    // iteration order (confirmed stable by direct probe).
-    QList<int> cloneAtomIndicesInOrder;
-    {
-        int it = indigoIterateAtoms(clone);
-        if (it >= 0) {
-            int a;
-            while ((a = indigoNext(it)) > 0) { cloneAtomIndicesInOrder.append(indigoIndex(a)); indigoFree(a); }
-            indigoFree(it);
-        }
-    }
-
     int mergeRc = indigoMerge(m_mol, clone);
     indigoFree(clone);
     if (mergeRc < 0) { m_lastError = QString::fromUtf8(indigoGetLastError()); return result; }
 
     // New atoms: any post-merge indigo index not already tracked gets a
-    // fresh, never-reused AtomId (same assignment addAtom() uses). indigoMerge
-    // appends in the source's own order and leaves pre-existing atoms' own
-    // indices unchanged (confirmed by direct probe), so iterating m_mol in
-    // order and collecting just the untracked ones reproduces the source's
-    // relative atom order -- these are NOT the same absolute index VALUES as
-    // cloneAtomIndicesInOrder (the destination's own pre-existing atoms
-    // already occupy the low indices, shifting the merged-in ones), so the
-    // correspondence must be zipped POSITIONALLY, not matched by value.
+    // fresh, never-reused AtomId (same assignment addAtom() uses).
+    //
+    // Matching each new destination atom back to its ORIGINAL source (clone) index is done by
+    // exact position, not by iteration order. indigoMerge appends new atoms in the source's own
+    // order when the destination's index space has no gaps to fill -- but when earlier
+    // removeAtom() calls left freed index slots (e.g. undo of a previous graft, then redo:
+    // re-running this exact insertStructure call), indigo can fill those freed slots in a
+    // DIFFERENT relative order than the clone's own atom order (confirmed by direct probe: a
+    // 2-atom template's attach/branch atoms came back reversed on the second merge after the
+    // first merge's atoms were removed and the same molfile re-merged). Since each clone atom's
+    // position was set to its own final (transform-applied) value just above, and indigoMerge
+    // does not alter atom coordinates, every new destination atom's xyz is an exact match (same
+    // float bits) for exactly one clone atom's recorded transformed position -- a reliable,
+    // order-independent way to recover the true source index.
     QList<AtomId> newAtomIds;
     {
         int it = indigoIterateAtoms(m_mol);
@@ -1039,6 +1041,20 @@ EditableMolecule::InsertResult EditableMolecule::insertStructure(const QString& 
                     m_atomIdx.insert(id, idx);
                     m_idxToAtom.insert(idx, id);
                     newAtomIds.append(id);
+
+                    int sourceIdx = -1;
+                    float* xyz = indigoXYZ(a);
+                    if (xyz) {
+                        float ax = xyz[0], ay = xyz[1];
+                        for (int i = 0; i < cloneTransformedPos.size(); ++i) {
+                            if (static_cast<float>(cloneTransformedPos[i].x()) == ax &&
+                                static_cast<float>(cloneTransformedPos[i].y()) == ay) {
+                                sourceIdx = cloneSourceIdxByTransformedPos[i];
+                                break;
+                            }
+                        }
+                    }
+                    if (sourceIdx >= 0) result.sourceIndexToNewAtomId.insert(sourceIdx, id);
                 }
                 indigoFree(a);
             }
@@ -1046,9 +1062,6 @@ EditableMolecule::InsertResult EditableMolecule::insertStructure(const QString& 
         }
     }
     result.createdAtoms = newAtomIds;
-    for (int i = 0; i < newAtomIds.size() && i < cloneAtomIndicesInOrder.size(); ++i) {
-        result.sourceIndexToNewAtomId.insert(cloneAtomIndicesInOrder[i], newAtomIds[i]);
-    }
 
     // New bonds: same idea, using m_nextBondId.
     {

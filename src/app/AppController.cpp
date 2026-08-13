@@ -57,14 +57,22 @@ bool AppController::handleDragEnd() {
         PlacementResult result = m_previewManager->commitPreview();
 
         bool haveSmartPoint = false;
-        // Smart-angle placement only makes sense for FG_/SS_/LIB_ tools (whose templates
-        // have no SGroup attachment point, so without it the fragment would land directly
-        // on top of the clicked atom). ATOM_ tools have their own pre-existing plain-click
-        // gesture -- retype the clicked atom's element -- handled by ChemCanvas.qml's
-        // "Fallback to click behavior" block when handleDragEnd() returns false. Computing
-        // (and honoring) a smart point for ATOM_ tools here would make handleDragEnd()
-        // return true instead, which appends a new bonded atom and silently replaces the
-        // retype gesture with an append, so ATOM_ tools are excluded.
+        // Smart point computed here (cx/cy, below) is still used two ways: (1) as the
+        // actual insertion center for the non-graft/free-placement case (template has no
+        // SGroup attachment point, or the drop target isn't a real atom), where DocumentState
+        // just centers the template's bounding box on (cx, cy) as-is; and (2) purely as the
+        // gate for `haveSmartPoint` below, so a plain click (no measurable drag) still counts
+        // as "a smart point exists" and isn't discarded as a non-drag. For the common GRAFT
+        // case (template has an SGroup attachment point AND lands on a real existing atom),
+        // this (x, y) is NOT what determines the resulting placement angle -- that's computed
+        // separately, inside DocumentState::insertFunctionalGroup itself (via
+        // BondAngleSuggester::suggestAngle, reading EditableMolecule directly), which overrides
+        // the geometry this smart point would otherwise imply. ATOM_ tools have their own
+        // pre-existing plain-click gesture -- retype the clicked atom's element -- handled by
+        // ChemCanvas.qml's "Fallback to click behavior" block when handleDragEnd() returns
+        // false. Computing (and honoring) a smart point for ATOM_ tools here would make
+        // handleDragEnd() return true instead, which appends a new bonded atom and silently
+        // replaces the retype gesture with an append, so ATOM_ tools are excluded.
         QString smartPointToolId = m_previewManager->toolId();
         if (result.valid && m_v8 && result.atoms.size() == 1 && result.bonds.size() == 1
             && m_previewManager->startAtomId() >= 0 && !smartPointToolId.startsWith("ATOM_")) {
