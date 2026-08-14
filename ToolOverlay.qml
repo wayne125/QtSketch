@@ -287,6 +287,30 @@ Item {
                     }
                 }
                 ctx.restore();
+            } else if (canvas.currentTool && (canvas.currentTool.indexOf("FG_") === 0 || canvas.currentTool.indexOf("SS_") === 0 || canvas.currentTool.indexOf("LIB_") === 0) &&
+                       canvas.mouseArea.containsMouse && !canvas.mouseArea.isDragging && !canvas.mouseArea.movingImage &&
+                       !canvas.mouseArea.rotatingSelection && !canvas.mouseArea.resizingSelection) {
+                const cx = canvas.mouseArea.mouseX;
+                const cy = canvas.mouseArea.mouseY;
+                const chemPos = canvas.canvasToChem(cx, cy);
+                const preview = canvas.sketch.getFunctionalGroupPreview(
+                    canvas.currentTool, chemPos.x, chemPos.y, canvas.sketch.overlayState.hoverAtomId);
+
+                ctx.strokeStyle = Theme.accent;
+                ctx.lineWidth = Theme.clampStrokeWidth(Theme.bondWidth, root.scale);
+                ctx.setLineDash([4, 4]);
+                for (let i = 0; i < preview.length; i++) {
+                    const entry = preview[i];
+                    if (entry.isBond) {
+                        const p1 = canvas.chemToCanvas(entry.startX, entry.startY);
+                        const p2 = canvas.chemToCanvas(entry.endX, entry.endY);
+                        ctx.beginPath();
+                        ctx.moveTo(p1.x, p1.y);
+                        ctx.lineTo(p2.x, p2.y);
+                        ctx.stroke();
+                    }
+                }
+                ctx.setLineDash([]);
             }
 
             if (canvas.sketch.overlayState.previewBonds) {
@@ -452,12 +476,12 @@ Item {
     Connections {
         target: canvas ? canvas.mouseArea : null
         function onMouseXChanged() {
-            if (canvas && ((canvas.currentTool && canvas.currentTool.indexOf("TEMPLATE_") === 0) || (canvas.clipboardPreview && canvas.currentTool === "SELECT"))) {
+            if (canvas && ((canvas.currentTool && (canvas.currentTool.indexOf("TEMPLATE_") === 0 || canvas.currentTool.indexOf("FG_") === 0 || canvas.currentTool.indexOf("SS_") === 0 || canvas.currentTool.indexOf("LIB_") === 0)) || (canvas.clipboardPreview && canvas.currentTool === "SELECT"))) {
                 overlayCanvas.requestPaint()
             }
         }
         function onMouseYChanged() {
-            if (canvas && ((canvas.currentTool && canvas.currentTool.indexOf("TEMPLATE_") === 0) || (canvas.clipboardPreview && canvas.currentTool === "SELECT"))) {
+            if (canvas && ((canvas.currentTool && (canvas.currentTool.indexOf("TEMPLATE_") === 0 || canvas.currentTool.indexOf("FG_") === 0 || canvas.currentTool.indexOf("SS_") === 0 || canvas.currentTool.indexOf("LIB_") === 0)) || (canvas.clipboardPreview && canvas.currentTool === "SELECT"))) {
                 overlayCanvas.requestPaint()
             }
         }
