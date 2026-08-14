@@ -2658,34 +2658,27 @@ bool DocumentState::importReaction(const QString& text) {
         x += products[i].width / 2.0;
     }
 
-    // Recenter/clamp the whole assembly onto the page, the same way insertStructureAt clamps
-    // its own target point -- importReaction previously had NO page-bounds handling at all, so
-    // a wide multi-reactant/multi-product reaction could run off the page edge. No caller of
-    // importReaction supplies a target position today (confirmed: V8Process::importReaction is
-    // the only call site, always just the reaction text), so this always centers-then-clamps on
-    // page center; the explicit clamp on a literal 0.0 (rather than hardcoding the translation)
-    // keeps the door open for a future caller-supplied position without restructuring this
-    // block.
+    // Recenter the whole assembly's overall bounding box onto the page origin (0,0), using the
+    // same clamp-a-target-point pattern insertStructureAt uses for its own paste target. No
+    // caller of importReaction supplies a target position today (V8Process::importReaction is
+    // the only call site, and it always just passes the reaction text), so targetCx below always
+    // evaluates to a literal 0.0 -- the std::max(kPageMinX, std::min(kPageMaxX, ...)) clamp has
+    // no effect as currently called and exists only so a future caller-supplied target position
+    // would be honored without restructuring this block. This genuinely RECENTERS the assembly;
+    // it does NOT shrink or clamp an oversized assembly to fit within the page -- a reaction
+    // assembly wider than the page will still extend past both edges after recentering, just
+    // symmetrically around the origin instead of running off to one side starting at an
+    // arbitrary offset. Real shrink-to-fit clamping is a separate, out-of-scope feature.
     double assemblyMinX = reactants.isEmpty() ? arrowX1 : (reactantCenters.first() - reactants.first().width / 2.0);
     double assemblyMaxX = products.isEmpty() ? arrowX2 : (productCenters.last() + products.last().width / 2.0);
-    double assemblyMaxHalfHeight = 0.0;
-    for (const Fragment& f : reactants) assemblyMaxHalfHeight = std::max(assemblyMaxHalfHeight, f.height / 2.0);
-    for (const Fragment& f : products) assemblyMaxHalfHeight = std::max(assemblyMaxHalfHeight, f.height / 2.0);
-    (void)assemblyMaxHalfHeight;   // not consumed as a translation this task (the layout is
-                                     // already vertically centered on y=0 by construction) -- kept
-                                     // computed for symmetry with assemblyMinX/assemblyMaxX and to
-                                     // leave the value ready for a future vertical-clamping need.
+    // No vertical page-bounds handling is done here: the reaction layout is always vertically
+    // centered on y=0 by construction, so there is nothing to recenter or clamp on that axis.
     double targetCx = std::max(kPageMinX, std::min(kPageMaxX, 0.0));
-    double targetCy = std::max(kPageMinY, std::min(kPageMaxY, 0.0));
     double asmDx = targetCx - (assemblyMinX + assemblyMaxX) / 2.0;
-    double asmDy = targetCy - 0.0;   // fragments already share the y=0 centerline
 
     for (double& c : reactantCenters) c += asmDx;
     for (double& c : productCenters) c += asmDx;
     arrowX1 += asmDx; arrowX2 += asmDx;
-    (void)asmDy;   // always 0.0 today since the layout is already vertically centered on y=0;
-                    // kept named/computed for symmetry with asmDx and to document the reasoning,
-                    // not because it currently does anything.
 
     auto createdAtoms = std::make_shared<QList<AtomId>>();
     auto createdBonds = std::make_shared<QList<BondId>>();
