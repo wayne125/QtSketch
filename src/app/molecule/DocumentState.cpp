@@ -2674,8 +2674,15 @@ bool DocumentState::importReaction(const QString& text) {
     // laid out in their own left-to-right row, centered horizontally over the arrow's midpoint,
     // offset above it vertically. Negative Y renders "up" on screen in this app: ChemCanvas.qml's
     // offsetY = cy - chem.y * fNew has no sign flip, so increasing chem-space Y maps to increasing
-    // (downward) screen Y -- confirmed this session, not assumed.
-    const double catalystYOffset = -(kBondLength * 1.5);
+    // (downward) screen Y -- confirmed this session, not assumed. The offset also grows by the
+    // tallest catalyst fragment's own half-height (Fragment::height, already computed by collect()
+    // but previously unused) -- final review found the original fixed offset only worked by
+    // coincidence for the single-atom catalyst ([Pd], zero height) it was tested with; a
+    // realistic multi-atom catalyst/ligand extends far enough vertically to overlap the arrow and
+    // reactant/product row without this term.
+    double maxCatalystHalfHeight = 0.0;
+    for (const Fragment& f : catalysts) maxCatalystHalfHeight = std::max(maxCatalystHalfHeight, f.height / 2.0);
+    const double catalystYOffset = -(kBondLength * 1.5) - maxCatalystHalfHeight;
     QList<double> catalystCenters;
     {
         double catalystBlockWidth = 0;

@@ -1527,6 +1527,66 @@ static void test_importReactionWithCatalyst() {
     CHECK(!anyReactantOrProductBelowThreshold, "reactant/product atoms remain near the y=0 centerline, unaffected by the catalyst row");
 }
 
+static void test_importReactionWithMultiAtomCatalyst() {
+    std::printf("--- Test: importReaction keeps a tall multi-atom catalyst clear of the arrow/reactant row ---\n");
+    DocumentState doc("");
+    bool ok = doc.importReaction(QStringLiteral("CCO>P(c1ccccc1)(c1ccccc1)c1ccccc1>CC=O"));
+    CHECK(ok, "importReaction succeeds on a reaction with a multi-atom catalyst");
+
+    QList<QList<AtomId>> components;
+    QList<AtomId> unvisited = doc.molecule().atomIds();
+    while (!unvisited.isEmpty()) {
+        QList<AtomId> comp;
+        QList<AtomId> queue;
+        queue.append(unvisited.takeFirst());
+        while (!queue.isEmpty()) {
+            AtomId curr = queue.takeFirst();
+            comp.append(curr);
+            for (BondId bid : doc.molecule().bondIds()) {
+                AtomId a = -1, b = -1;
+                doc.molecule().bondEndpoints(bid, a, b);
+                AtomId neighbor = -1;
+                if (a == curr) neighbor = b;
+                else if (b == curr) neighbor = a;
+                if (neighbor != -1 && unvisited.contains(neighbor)) {
+                    unvisited.removeAll(neighbor);
+                    queue.append(neighbor);
+                }
+            }
+        }
+        components.append(comp);
+    }
+    CHECK(components.size() == 3, "three fragments total: ethanol, catalyst, acetaldehyde");
+
+    QList<AtomId> catalystComp;
+    QList<AtomId> reactantProductAtoms;
+    for (const QList<AtomId>& comp : components) {
+        bool isCatalyst = false;
+        for (AtomId id : comp) {
+            if (doc.molecule().atomSymbol(id) == QStringLiteral("P")) isCatalyst = true;
+        }
+        if (isCatalyst) catalystComp = comp;
+        else reactantProductAtoms += comp;
+    }
+    CHECK(!catalystComp.isEmpty(), "found the catalyst fragment (contains the P atom)");
+    CHECK(!reactantProductAtoms.isEmpty(), "found the reactant/product atoms");
+
+    double catalystMaxY = -1e9;
+    for (AtomId id : catalystComp) {
+        double x = 0, y = 0;
+        doc.molecule().atomPos(id, x, y);
+        catalystMaxY = std::max(catalystMaxY, y);
+    }
+    double reactantProductMinY = 1e9;
+    for (AtomId id : reactantProductAtoms) {
+        double x = 0, y = 0;
+        doc.molecule().atomPos(id, x, y);
+        reactantProductMinY = std::min(reactantProductMinY, y);
+    }
+    CHECK(catalystMaxY < reactantProductMinY,
+          "the catalyst row's lowest (closest-to-zero) atom stays strictly above the reactant/product row's highest atom -- no vertical overlap even for a tall multi-atom catalyst");
+}
+
 static void test_insertFunctionalGroup() {
     std::printf("--- Test 14: insertFunctionalGroup ---\n");
     TemplateLibrary lib(
@@ -3844,6 +3904,7 @@ int main() {
     test_importReactionRecentersOnPageOrigin();
     test_importReactionSingleReactantSingleProductRecentering();
     test_importReactionWithCatalyst();
+    test_importReactionWithMultiAtomCatalyst();
     test_insertFunctionalGroup();
     test_insertFunctionalGroupSGroupCleanupOnUndo();
     test_graftAngleOrientation_oneNeighbor();
