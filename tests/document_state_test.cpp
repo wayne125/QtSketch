@@ -1304,7 +1304,7 @@ static void test_importReactionRxnPlusGapCentering() {
 
     // Identify the two REACTANT fragments (the two leftmost by center-x) and compute each
     // one's own bounding box directly from its atoms' actual placed positions.
-    struct Frag { double minX, maxX, centerX; };
+    struct Frag { double minX, maxX, centerX, effectiveHalfWidth; };
     QList<Frag> frags;
     for (const QList<AtomId>& comp : components) {
         double minX = 0, maxX = 0;
@@ -1315,21 +1315,121 @@ static void test_importReactionRxnPlusGapCentering() {
             if (!any) { minX = maxX = x; any = true; }
             else { minX = std::min(minX, x); maxX = std::max(maxX, x); }
         }
-        frags.append({minX, maxX, (minX + maxX) / 2.0});
+        // DocumentState::kBondLength is a private member and not reachable from this free
+        // function, so its value (1.5, "chem-core's StandardBondLength", DocumentState.h) is
+        // hardcoded here directly, matching this test file's existing convention elsewhere of
+        // hardcoding the bond length literal rather than referencing the private constant.
+        double effectiveHalfWidth = std::max(maxX - minX, 1.5 * 0.6) / 2.0;
+        frags.append({minX, maxX, (minX + maxX) / 2.0, effectiveHalfWidth});
     }
     std::sort(frags.begin(), frags.end(), [](const Frag& a, const Frag& b) { return a.centerX < b.centerX; });
     const Frag& left = frags[0];
     const Frag& right = frags[1];
 
-    double correctGapMidpoint = (left.maxX + right.minX) / 2.0;
+    double leftEffectiveEdge = left.centerX + left.effectiveHalfWidth;
+    double rightEffectiveEdge = right.centerX - right.effectiveHalfWidth;
+    double correctGapMidpoint = (leftEffectiveEdge + rightEffectiveEdge) / 2.0;
     double naiveCenterMidpoint = (left.centerX + right.centerX) / 2.0;
-    CHECK(std::abs(correctGapMidpoint - naiveCenterMidpoint) > 0.5,
+    // This sanity check's threshold was originally calibrated against the raw atom-bounding-box
+    // edges (before the single-atom-fragment width floor existed), where the only source of
+    // divergence from naiveCenterMidpoint was benzene's own real half-width (~1.0 here). Now that
+    // correctGapMidpoint is computed from EFFECTIVE (floor-aware) edges to match production's own
+    // formula, water's own effective half-width (0.45, from the 0.9 floor) also contributes to
+    // leftEffectiveEdge, which legitimately narrows the gap between the two candidate formulas
+    // (measured here at ~0.275 with the real benzene geometry this test produces) -- this is the
+    // same width-floor change, not a new regression, so the threshold is lowered rather than the
+    // check being removed: 0.1 is still comfortably above zero, so this remains a genuine
+    // guard against the degenerate case where the two formulas would coincide by coincidence.
+    CHECK(std::abs(correctGapMidpoint - naiveCenterMidpoint) > 0.1,
           "setup sanity check: water (1 atom, narrow) and benzene (6 atoms, wide) are asymmetric enough that the two candidate formulas genuinely differ");
 
     double plusX = 0, plusY = 0;
     doc.molecule().rxnPlusPos(pluses[0], plusX, plusY);
     CHECK(std::abs(plusX - correctGapMidpoint) < 0.01,
           "RxnPlus sits at the true edge-to-edge gap midpoint, not the naive center-to-center midpoint");
+}
+
+static void test_importReactionRxnPlusGapCenteringSingleAtomFloor() {
+    std::printf("--- Test: importReaction's RxnPlus gap-centering respects the single-atom-fragment width floor ---\n");
+    DocumentState doc("");
+    bool ok = doc.importReaction(QStringLiteral("O.c1ccccc1>>CC=O"));
+    CHECK(ok, "importReaction succeeds on an asymmetric-width 2-reactant reaction");
+
+    QList<RxnPlusId> pluses = doc.molecule().rxnPlusIds();
+    CHECK(pluses.size() == 1, "exactly one RxnPlus between the two reactants");
+
+    // Group atoms into connected components (same BFS approach as
+    // test_importReactionRxnPlusGapCentering) to find benzene's own real placed bounding box.
+    QList<QList<AtomId>> components;
+    QList<AtomId> unvisited = doc.molecule().atomIds();
+    while (!unvisited.isEmpty()) {
+        QList<AtomId> comp;
+        QList<AtomId> queue;
+        queue.append(unvisited.takeFirst());
+        while (!queue.isEmpty()) {
+            AtomId curr = queue.takeFirst();
+            comp.append(curr);
+            for (BondId bid : doc.molecule().bondIds()) {
+                AtomId a = -1, b = -1;
+                doc.molecule().bondEndpoints(bid, a, b);
+                AtomId neighbor = -1;
+                if (a == curr) neighbor = b;
+                else if (b == curr) neighbor = a;
+                if (neighbor != -1 && unvisited.contains(neighbor)) {
+                    unvisited.removeAll(neighbor);
+                    queue.append(neighbor);
+                }
+            }
+        }
+        components.append(comp);
+    }
+    CHECK(components.size() == 3, "three fragments total: water, benzene, acetaldehyde");
+
+    // Water is a single atom: find the 1-atom component, and its own real placed X (a
+    // single-atom fragment's placement translation always lands the atom exactly at its own
+    // fragment center, regardless of what width value was used for spacing -- so this position
+    // alone doesn't reveal the floor; it's the input the algebra below needs).
+    double waterX = 0;
+    bool foundWater = false;
+    QList<AtomId> benzeneComp;
+    for (const QList<AtomId>& comp : components) {
+        if (comp.size() == 1) {
+            double x = 0, y = 0;
+            doc.molecule().atomPos(comp[0], x, y);
+            waterX = x;
+            foundWater = true;
+        } else if (comp.size() == 6) {
+            benzeneComp = comp;
+        }
+    }
+    CHECK(foundWater, "found the single-atom water fragment");
+    CHECK(!benzeneComp.isEmpty(), "found the 6-atom benzene fragment");
+
+    double benzeneMinX = 0, benzeneMaxX = 0;
+    bool any = false;
+    for (AtomId id : benzeneComp) {
+        double x = 0, y = 0;
+        doc.molecule().atomPos(id, x, y);
+        if (!any) { benzeneMinX = benzeneMaxX = x; any = true; }
+        else { benzeneMinX = std::min(benzeneMinX, x); benzeneMaxX = std::max(benzeneMaxX, x); }
+    }
+    double benzeneRightEdge = benzeneMinX;   // benzene sits to the RIGHT of water, so its LEFT
+                                              // edge (benzeneMinX) is the gap-formula's rightEdge
+
+    double plusX = 0, plusY = 0;
+    doc.molecule().rxnPlusPos(pluses[0], plusX, plusY);
+
+    // Gap formula: plusX = (leftEdge_water + rightEdge_benzene) / 2, where
+    // leftEdge_water = waterX + waterEffectiveWidth/2 (water's own placement always lands it
+    // exactly at its fragment center, so waterX IS reactantCenters[0] from the production code's
+    // own math). Solve for waterEffectiveWidth:
+    double leftEdgeWater = 2.0 * plusX - benzeneRightEdge;
+    double waterEffectiveWidth = 2.0 * (leftEdgeWater - waterX);
+
+    CHECK(waterEffectiveWidth > 0.5,
+          "water's effective width (implied by the real RxnPlus position and benzene's real bounding box) "
+          "reflects the minimum-width floor (~0.9), not the raw zero-width atom-coordinate bounding box "
+          "that would be implied without the fix");
 }
 
 static void test_importReactionRecentersOnPageOrigin() {
@@ -3714,6 +3814,7 @@ int main() {
     test_addChain();
     test_importReaction();
     test_importReactionRxnPlusGapCentering();
+    test_importReactionRxnPlusGapCenteringSingleAtomFloor();
     test_importReactionRecentersOnPageOrigin();
     test_importReactionSingleReactantSingleProductRecentering();
     test_importReactionWithCatalyst();
