@@ -1587,6 +1587,66 @@ static void test_importReactionWithMultiAtomCatalyst() {
           "the catalyst row's lowest (closest-to-zero) atom stays strictly above the reactant/product row's highest atom -- no vertical overlap even for a tall multi-atom catalyst");
 }
 
+static void test_importReactionWithTallReactant() {
+    std::printf("--- Test: importReaction keeps a tall reactant/product fragment clear of the catalyst row ---\n");
+    DocumentState doc("");
+    bool ok = doc.importReaction(QStringLiteral("P(c1ccccc1)(c1ccccc1)c1ccccc1>[Pd]>CC=O"));
+    CHECK(ok, "importReaction succeeds on a reaction with a tall reactant and an ordinary catalyst");
+
+    QList<QList<AtomId>> components;
+    QList<AtomId> unvisited = doc.molecule().atomIds();
+    while (!unvisited.isEmpty()) {
+        QList<AtomId> comp;
+        QList<AtomId> queue;
+        queue.append(unvisited.takeFirst());
+        while (!queue.isEmpty()) {
+            AtomId curr = queue.takeFirst();
+            comp.append(curr);
+            for (BondId bid : doc.molecule().bondIds()) {
+                AtomId a = -1, b = -1;
+                doc.molecule().bondEndpoints(bid, a, b);
+                AtomId neighbor = -1;
+                if (a == curr) neighbor = b;
+                else if (b == curr) neighbor = a;
+                if (neighbor != -1 && unvisited.contains(neighbor)) {
+                    unvisited.removeAll(neighbor);
+                    queue.append(neighbor);
+                }
+            }
+        }
+        components.append(comp);
+    }
+    CHECK(components.size() == 3, "three fragments total: PPh3 reactant, Pd catalyst, acetaldehyde product");
+
+    QList<AtomId> catalystComp;
+    QList<AtomId> otherAtoms;
+    for (const QList<AtomId>& comp : components) {
+        bool isCatalyst = (comp.size() == 1);
+        for (AtomId id : comp) {
+            if (doc.molecule().atomSymbol(id) == QStringLiteral("Pd")) isCatalyst = true;
+        }
+        if (isCatalyst) catalystComp = comp;
+        else otherAtoms += comp;
+    }
+    CHECK(!catalystComp.isEmpty(), "found the catalyst fragment (the single Pd atom)");
+    CHECK(!otherAtoms.isEmpty(), "found the reactant/product atoms");
+
+    double catalystMaxY = -1e9;
+    for (AtomId id : catalystComp) {
+        double x = 0, y = 0;
+        doc.molecule().atomPos(id, x, y);
+        catalystMaxY = std::max(catalystMaxY, y);
+    }
+    double otherMinY = 1e9;
+    for (AtomId id : otherAtoms) {
+        double x = 0, y = 0;
+        doc.molecule().atomPos(id, x, y);
+        otherMinY = std::min(otherMinY, y);
+    }
+    CHECK(catalystMaxY < otherMinY,
+          "the catalyst row stays strictly above even a tall reactant fragment -- no vertical overlap when the TALL fragment is in the reactant/product row instead of the catalyst row");
+}
+
 static void test_insertFunctionalGroup() {
     std::printf("--- Test 14: insertFunctionalGroup ---\n");
     TemplateLibrary lib(
@@ -3905,6 +3965,7 @@ int main() {
     test_importReactionSingleReactantSingleProductRecentering();
     test_importReactionWithCatalyst();
     test_importReactionWithMultiAtomCatalyst();
+    test_importReactionWithTallReactant();
     test_insertFunctionalGroup();
     test_insertFunctionalGroupSGroupCleanupOnUndo();
     test_graftAngleOrientation_oneNeighbor();
