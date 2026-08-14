@@ -19,6 +19,7 @@
 #include "TemplateLibrary.h"
 #include "EditCommand.h"
 #include "SelectionState.h"
+#include "PlacementEngines.h"
 #include <vector>
 
 class DocumentState {
@@ -424,6 +425,17 @@ public:
     void insertFunctionalGroup(const TemplateLibrary& lib, const QString& fgName,
                                 double cx, double cy, AtomId targetAtomId = -1, bool fullStructure = true);
 
+    // Non-mutating sibling of insertFunctionalGroup: computes the exact same placement geometry
+    // a commit would produce (translate-only when free-floating, or the same rotate-then-
+    // translate graft transform when targetAtomId is a real atom) without touching m_molecule or
+    // pushing any undo history. Used by both the hover-ghost preview and the drag-ghost preview
+    // for FG_/SS_/LIB_ tools, so neither can ever drift out of sync with what actually commits.
+    // Returns PlacementResult{valid=false} if the template can't be found or is structurally
+    // empty (mirrors insertFunctionalGroup's own single-placeholder-atom fallback condition, but
+    // this preview method does not attempt to synthesize a placeholder ghost for that case).
+    PlacementResult getFunctionalGroupPreview(const TemplateLibrary& lib, const QString& fgName,
+                                               double cx, double cy, AtomId targetAtomId);
+
     // Shared core for BOTH pasteSelection (source = copySelection()'s output) and
     // insertRecognizedStructure (source = an externally-recognized molfile string) -- the real
     // 30-templates.js's _insertStructAt is exactly this shared helper already. Clamps (cx, cy) to
@@ -462,6 +474,27 @@ public:
     void renameSGroup(SGroupId id, const QString& newLabel);
 
 private:
+    // Shared placement-computation core for insertFunctionalGroup (commits) and
+    // getFunctionalGroupPreview (read-only preview) -- everything insertFunctionalGroup used to
+    // compute inline before constructing its EditCommand, now returned as plain data so both
+    // callers can use it without duplicating ~140 lines of delicate Indigo-session-boundary-
+    // sensitive math. See insertFunctionalGroup's own body for why the ordering of raw indigo*
+    // calls against fgHandle (TemplateLibrary's own session) relative to calls into mol
+    // (EditableMolecule's session) matters -- this helper preserves that ordering exactly as it
+    // existed before extraction.
+    struct FunctionalGroupPlacement {
+        bool valid = false;
+        QString fgMolfile;
+        int templateAttachIdx = -1;
+        bool graft = false;
+        bool useRotation = false;
+        double cosR = 1.0, sinR = 0.0;
+        double attachX = 0, attachY = 0, targetX = 0, targetY = 0;
+        double dx = 0, dy = 0;
+    };
+    FunctionalGroupPlacement computeFunctionalGroupPlacement(
+        const TemplateLibrary& lib, const QString& fgName, double cx, double cy, AtomId targetAtomId);
+
     // Recenters the whole document's atom bounding box (plus any reaction arrows/pluses)
     // on the origin. Ports the real JS's loadMolfile(molStr, centerOnPage) recentering
     // step (src/worker/40-serialize.js:313-325) -- SMILES/InChI layout results and
