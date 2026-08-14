@@ -1927,7 +1927,7 @@ ApplicationWindow {
                     window.centerViewOnPage()
                     setDocFile(DocumentManager.activeDocId, fileUrl)
                 } else {
-                    messageDialogsGroup.workerErrorDialog.errorText = "Open Reaction: the file does not contain a valid reaction."
+                    messageDialogsGroup.workerErrorDialog.errorText = "Open Reaction: the file does not contain a valid reaction. The canvas was cleared before the import attempt -- press Ctrl+Z to restore your previous content."
                     messageDialogsGroup.workerErrorDialog.severe = false
                     messageDialogsGroup.workerErrorDialog.open()
                 }

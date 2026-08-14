@@ -2503,6 +2503,12 @@ void DocumentState::insertFunctionalGroup(const TemplateLibrary& lib, const QStr
             mol.setSGroupLabel(sg, fgName);
         }
     };
+    // createdSGroups is intentionally never swept here: EditableMolecule::removeAtom's
+    // rebuildIndexTables() cascade already prunes any m_sgroupIdx entry whose underlying Indigo
+    // superatom no longer exists, whenever every atom of that superatom is among createdAtoms
+    // (confirmed by test_insertFunctionalGroupSGroupCleanupOnUndo for this function's own graft
+    // path) -- this precondition holds here because the merged attach atom is explicitly removed
+    // from createdAtoms after graftAtomOnto, so undo's atom removals always cover the whole group.
     cmd.invert = [&mol, createdAtoms, createdBonds]() {
         for (BondId b : *createdBonds) mol.removeBond(b);
         for (AtomId a : *createdAtoms) mol.removeAtom(a);
@@ -2547,6 +2553,11 @@ void DocumentState::insertStructureAt(const QString& sourceMolfile, double cx, d
         *createdBonds = result.createdBonds;
         *createdSGroups = result.createdSGroups;
     };
+    // createdSGroups is intentionally never swept here, for the same reason as
+    // insertFunctionalGroup's cmd.invert (see that function's comment): removeAtom's
+    // rebuildIndexTables() cascade prunes stale SGroup bookkeeping automatically once every
+    // member atom is removed, and this function's plain-paste path never merges an inserted
+    // atom onto a pre-existing one, so createdAtoms always covers any SGroup's full membership.
     cmd.invert = [&mol, createdAtoms, createdBonds]() {
         for (BondId b : *createdBonds) mol.removeBond(b);
         for (AtomId a : *createdAtoms) mol.removeAtom(a);
@@ -2679,10 +2690,19 @@ bool DocumentState::importReaction(const QString& text) {
     // but previously unused) -- final review found the original fixed offset only worked by
     // coincidence for the single-atom catalyst ([Pd], zero height) it was tested with; a
     // realistic multi-atom catalyst/ligand extends far enough vertically to overlap the arrow and
-    // reactant/product row without this term.
+    // reactant/product row without this term. A later review pass found that fix was still
+    // one-sided: the reactant/product row is centered on y=0 but can itself extend upward (toward
+    // negative Y, toward the catalyst row) by up to its own tallest fragment's half-height, so a
+    // tall reactant/product fragment paired with an ordinary-height catalyst could still overlap
+    // even with the term above in place. The clearance below therefore also folds in the
+    // reactant/product row's own tallest half-height, so it accounts for BOTH rows' own vertical
+    // extent, not just the catalyst row's.
     double maxCatalystHalfHeight = 0.0;
     for (const Fragment& f : catalysts) maxCatalystHalfHeight = std::max(maxCatalystHalfHeight, f.height / 2.0);
-    const double catalystYOffset = -(kBondLength * 1.5) - maxCatalystHalfHeight;
+    double maxRowHalfHeight = 0.0;
+    for (const Fragment& f : reactants) maxRowHalfHeight = std::max(maxRowHalfHeight, f.height / 2.0);
+    for (const Fragment& f : products) maxRowHalfHeight = std::max(maxRowHalfHeight, f.height / 2.0);
+    const double catalystYOffset = -(kBondLength * 1.5) - maxCatalystHalfHeight - maxRowHalfHeight;
     QList<double> catalystCenters;
     {
         double catalystBlockWidth = 0;
@@ -2766,6 +2786,13 @@ bool DocumentState::importReaction(const QString& text) {
         }
         createdArrows->append(mol.addRxnArrow(arrowX1, 0, arrowX2, 0));
     };
+    // createdSGroups is intentionally never swept here either, for the same reason as
+    // insertFunctionalGroup's and insertStructureAt's cmd.invert (see those functions'
+    // comments) -- but note this function's own precondition is UNTESTED (unlike the other
+    // two): a reaction-SMILES import can never produce a superatom (SMILES has no such
+    // construct) so this path is moot in practice today, but a future .rxn-file import
+    // containing an SUP block would need the same "every member atom is in createdAtoms"
+    // property verified before relying on this comment's reasoning here specifically.
     cmd.invert = [&mol, createdArrows, createdPluses, createdBonds, createdAtoms]() {
         for (RxnArrowId a : *createdArrows) mol.removeRxnArrow(a);
         for (RxnPlusId p : *createdPluses) mol.removeRxnPlus(p);

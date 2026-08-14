@@ -188,7 +188,7 @@ Item {
                     if (ok) {
                         win.centerViewOnPage()
                     } else {
-                        win.messageDialogsGroup.workerErrorDialog.errorText = "Load from SMILES: the text does not describe a valid reaction."
+                        win.messageDialogsGroup.workerErrorDialog.errorText = "Load from SMILES: the text does not describe a valid reaction. The canvas was cleared before the import attempt -- press Ctrl+Z to restore your previous content."
                         win.messageDialogsGroup.workerErrorDialog.severe = false
                         win.messageDialogsGroup.workerErrorDialog.open()
                     }
