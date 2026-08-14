@@ -16,6 +16,7 @@ void PlacementPreviewManager::beginPreview(int startAtomId, const QPointF& start
     m_startAtomId = startAtomId;
     m_startPixelPos = startPixelPos;
     m_startChemPos = startChemPos;
+    m_lastChemPos = startChemPos;
     m_toolId = toolId;
     m_lastResult.valid = false;
     m_cachedAngles.clear();
@@ -48,7 +49,8 @@ void PlacementPreviewManager::updatePreview(const QPointF& currentMouse, double 
 
     QPointF currentChem(m_startChemPos.x() + (currentMouse.x() - m_startPixelPos.x()) / chemScale,
                         m_startChemPos.y() + (currentMouse.y() - m_startPixelPos.y()) / chemScale);
-    
+    m_lastChemPos = currentChem;
+
     QList<double> angles = getExistingAngles(m_startAtomId);
     
     if (m_toolId.startsWith("ATOM_")) {
