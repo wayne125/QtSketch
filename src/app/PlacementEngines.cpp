@@ -69,53 +69,38 @@ PlacementResult FragmentPlacementEngine::compute(const QPointF& startPos, const 
     double rawAngle = std::atan2(dy, dx);
     double snapInterval = PI / 6.0;
     double snappedAngle = std::round(rawAngle / snapInterval) * snapInterval;
-    
-    if (fragmentId.startsWith("TEMPLATE_")) {
-        int n = 6; // Default
-        if (fragmentId == "TEMPLATE_BENZENE") {
-            n = 6;
-        } else {
-            QString sizeStr = fragmentId.mid(9);
-            bool ok;
-            int parsed = sizeStr.toInt(&ok);
-            if (ok && parsed >= 3 && parsed <= 24) n = parsed;
-        }
-        
-        // Circumradius R = s / (2 * sin(PI / n))
-        double R = bondLength / (2.0 * std::sin(PI / n));
-        
-        // We want the attachment atom at startPos, and the center of the ring at startPos + direction * R
-        QPointF center(startPos.x() + std::cos(snappedAngle) * R,
-                       startPos.y() + std::sin(snappedAngle) * R);
-                       
-        // Generate the vertices of the regular n-gon
-        for (int i = 0; i < n; ++i) {
-            double a = snappedAngle + PI + (i * 2 * PI / n);
-            QPointF p(center.x() + std::cos(a) * R, center.y() + std::sin(a) * R);
-            res.atoms.append({p, "C"});
-        }
-        for (int i = 0; i < n; ++i) {
-            res.bonds.append({res.atoms[i].pos, res.atoms[(i+1)%n].pos});
-        }
-        res.valid = true;
+
+    // fragmentId is always a TEMPLATE_ id now -- PlacementPreviewManager::updatePreview routes
+    // FG_/SS_/LIB_ tool ids to V8Process::getFunctionalGroupPlacementResult instead (real
+    // template geometry, graft-aware), not to this function. The single-fake-atom fallback that
+    // used to live here for FG_/SS_/LIB_ ids has been removed.
+    int n = 6; // Default
+    if (fragmentId == "TEMPLATE_BENZENE") {
+        n = 6;
+    } else {
+        QString sizeStr = fragmentId.mid(9);
+        bool ok;
+        int parsed = sizeStr.toInt(&ok);
+        if (ok && parsed >= 3 && parsed <= 24) n = parsed;
     }
-    else {
-        // Fallback for simple FGs (e.g. FG_OMe, FG_CF3)
-        // Just place a single ghost atom with the FG name
-        QPointF newPos(startPos.x() + std::cos(snappedAngle) * bondLength, 
-                       startPos.y() + std::sin(snappedAngle) * bondLength);
-        
-        QString label = fragmentId;
-        if (label.startsWith("FG_") || label.startsWith("SS_")) {
-            label = label.mid(3);
-        } else if (label.startsWith("LIB_")) {
-            label = label.mid(4);
-        }
-        
-        res.atoms.append({newPos, label});
-        res.bonds.append({startPos, newPos});
-        res.valid = true;
+
+    // Circumradius R = s / (2 * sin(PI / n))
+    double R = bondLength / (2.0 * std::sin(PI / n));
+
+    // We want the attachment atom at startPos, and the center of the ring at startPos + direction * R
+    QPointF center(startPos.x() + std::cos(snappedAngle) * R,
+                   startPos.y() + std::sin(snappedAngle) * R);
+
+    // Generate the vertices of the regular n-gon
+    for (int i = 0; i < n; ++i) {
+        double a = snappedAngle + PI + (i * 2 * PI / n);
+        QPointF p(center.x() + std::cos(a) * R, center.y() + std::sin(a) * R);
+        res.atoms.append({p, "C"});
     }
+    for (int i = 0; i < n; ++i) {
+        res.bonds.append({res.atoms[i].pos, res.atoms[(i+1)%n].pos});
+    }
+    res.valid = true;
 
     return res;
 }
