@@ -182,6 +182,7 @@ Item {
                 win.isProcessing = true
                 const isRxn = smi.startsWith("$RXN") || smi.includes(">>")
                 if (isRxn && win.activeSketch) {
+                    if (win.activeCanvas) win.activeCanvas.clearCanvas()
                     const ok = win.activeSketch.importReaction(smi)
                     win.isProcessing = false
                     if (ok) {
