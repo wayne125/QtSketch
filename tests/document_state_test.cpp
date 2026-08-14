@@ -2472,6 +2472,61 @@ static void test_graftAngleOrientation_twoNeighbors() {
     CHECK(std::abs(angle - expected) < 0.01, "grafted neighbor bisects the larger gap between the two existing neighbors");
 }
 
+static void test_graftAngleOrientation_ringAtomTarget() {
+    std::printf("--- Test: insertFunctionalGroup graft on a RING atom points outward, away from ring center ---\n");
+    // BondAngleSuggester::suggestAngle has no ring/chain distinction anywhere in its code (pure
+    // neighbor-count + local-geometry bisection) -- every existing graft-angle test only ever
+    // builds an open-chain fixture, so this specific topology (target atom is a ring member with
+    // two ring-bond neighbors at a real ring's interior angle, not an arbitrary 90-degree chain
+    // fixture) has never actually been exercised end-to-end through insertFunctionalGroup.
+    QString path = writeTempSdf(QString::fromUtf8(kTestTemplateOneBond), QStringLiteral("test_graft_ring"));
+    TemplateLibrary lib(path, path, path);
+
+    DocumentState doc;
+    // A regular hexagon (real ring geometry, 120-degree interior angle at every vertex),
+    // vertices at 60-degree spacing around the origin, radius 1. Target the vertex at angle 0
+    // (position (1,0)) -- its two ring neighbors are the adjacent vertices at +/-60 degrees.
+    AtomId ring[6];
+    for (int i = 0; i < 6; ++i) {
+        double a = i * M_PI / 3.0;
+        ring[i] = doc.molecule().addAtom(QStringLiteral("C"), std::cos(a), std::sin(a));
+    }
+    for (int i = 0; i < 6; ++i) doc.molecule().addBond(ring[i], ring[(i + 1) % 6], 1);
+    AtomId target = ring[0]; // (1, 0) -- ring neighbors ring[1] (60 deg) and ring[5] (-60 deg)
+
+    doc.insertFunctionalGroup(lib, QStringLiteral("TestFG"), 2.0, 0.0, target, true);
+
+    QList<AtomId> allAtoms = doc.molecule().atomIds();
+    CHECK(allAtoms.size() == 7, "graft added exactly one new atom (attach atom merged into the ring vertex)");
+    AtomId newAtom = -1;
+    for (AtomId id : allAtoms) {
+        bool isRing = false;
+        for (int i = 0; i < 6; ++i) if (id == ring[i]) isRing = true;
+        if (!isRing) newAtom = id;
+    }
+    CHECK(newAtom != -1, "found the newly grafted substituent atom");
+    double nx = 0, ny = 0, tx = 0, ty = 0;
+    doc.molecule().atomPos(newAtom, nx, ny);
+    doc.molecule().atomPos(target, tx, ty);
+    double angleFromTarget = std::atan2(ny - ty, nx - tx);
+    // Ring neighbors sit at +60 and -60 degrees from the target; the larger gap (240 degrees,
+    // the arc swinging AWAY from the ring interior) is the one BondAngleSuggester bisects, and
+    // its midpoint is exactly 0 degrees -- i.e. straight out along the same radial direction as
+    // the target vertex itself (the target is at angle 0 from the ring's own center too). This
+    // is the geometrically correct "substituent points away from the ring, not into it" result.
+    while (angleFromTarget < 0) angleFromTarget += 2 * M_PI;
+    double expected = 0.0;
+    CHECK(std::abs(angleFromTarget - expected) < 0.01 || std::abs(angleFromTarget - 2 * M_PI) < 0.01,
+          "grafted substituent points radially outward from the ring center, not inward");
+    // Cross-check with an explicit dot product against the outward radial direction (redundant
+    // with the angle check above, but makes the "outward not inward" claim unambiguous even if
+    // the angle-wrapping arithmetic above were ever subtly wrong): the vector from the ring
+    // target atom to the grafted substituent should have a strongly positive component along
+    // the target's own radial (center-to-vertex) direction, which for this hexagon is (1, 0).
+    double outwardDot = (nx - tx) * 1.0 + (ny - ty) * 0.0;
+    CHECK(outwardDot > 0.5, "grafted substituent is on the outward side of the ring vertex, not the inward side");
+}
+
 static void test_graftAngleOrientation_noRotationCase() {
     std::printf("--- Test: insertFunctionalGroup graft does NOT rotate for 0-neighbor target ---\n");
     QString path = writeTempSdf(QString::fromUtf8(kTestTemplateOneBond), QStringLiteral("test_graft_0n"));
@@ -4056,6 +4111,7 @@ int main() {
     test_getFunctionalGroupPreviewGraft();
     test_graftAngleOrientation_oneNeighbor();
     test_graftAngleOrientation_twoNeighbors();
+    test_graftAngleOrientation_ringAtomTarget();
     test_graftAngleOrientation_noRotationCase();
     test_graftAngleOrientation_noTemplateInternalBonds();
     test_graftAngleOrientation_threeNeighbors();
