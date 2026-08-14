@@ -2613,7 +2613,15 @@ bool DocumentState::importReaction(const QString& text) {
                 indigoFree(aIter);
             }
             if (any) {
-                f.width = maxX - minX;
+                // A single-atom fragment (e.g. water, "O") has a zero-width atom-coordinate
+                // bounding box, but its rendered text label ("OH2") has real visual extent this
+                // class can't measure directly (DocumentState is headless/UI-independent, no
+                // QFontMetrics dependency) -- a defensible minimum-width floor keeps the RxnPlus
+                // gap-centering fix (sub-project 7) from placing a "+" sign right on top of a
+                // wide single-atom label. kBondLength * 0.6 is roughly the width a short 2-4
+                // character label occupies at default zoom, matching a real single-atom-fragment
+                // screenshot inspected in sub-project 7.
+                f.width = std::max(maxX - minX, kBondLength * 0.6);
                 f.height = maxY - minY;
                 f.minX = minX;
                 f.maxX = maxX;
