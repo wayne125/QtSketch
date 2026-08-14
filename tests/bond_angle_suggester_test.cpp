@@ -68,6 +68,66 @@ int main() {
         CHECK(!r.has_value(), "unknown fromAtomId returns nullopt");
     }
 
+    // Test 6: 1 existing neighbor WITH a grandparent -- turnSign should flip based on the
+    // existing zigzag direction, not default to +1. Chain A(0,0)-B(1.5,0)-C, where C is B's
+    // second bonded atom (target atom is C) placed via a 60-degree kink below the A-B line:
+    // C = B + 1.5*(cos(-60deg), sin(-60deg)).
+    // Hand-derived: existingAngle (C's angle to B) = atan2(0-Cy, 1.5-Cx) = 120 degrees.
+    // continuation = existingAngle + 180 = 300 degrees. dirIn (A's angle to B) = atan2(0,1.5) =
+    // 0 degrees. delta = dirOut(=continuation=300, i.e. -60) - dirIn(0) = -60 degrees ->
+    // turnSign = +1 (delta < 0). Expected = continuation + turnSign*60 = 300 + 60 = 360 = 0
+    // degrees. (A non-grandparent-aware implementation defaulting turnSign to +1 would ALSO get
+    // +1 here by coincidence of this geometry's sign -- Test 7 below is the one that actually
+    // distinguishes correct alternation from a stuck default.)
+    {
+        double bx = 1.5, by = 0.0;
+        double cx = bx + 1.5 * std::cos(-M_PI / 3.0);
+        double cy = by + 1.5 * std::sin(-M_PI / 3.0);
+        QVariantMap atomsById;
+        atomsById["1"] = atom(0.0, 0.0);   // A (grandparent)
+        atomsById["2"] = atom(bx, by);     // B (existing neighbor)
+        atomsById["3"] = atom(cx, cy);     // C (target atom, fromAtomId)
+        QVariantList bonds; bonds.append(bond(1, 2)); bonds.append(bond(2, 3));
+        auto r = BondAngleSuggester::suggestAngle(3, atomsById, bonds);
+        CHECK(r.has_value(), "1 neighbor with grandparent returns a value");
+        double expected = 0.0;
+        double got = r.has_value() ? *r : 0.0;
+        while (got > M_PI) got -= 2 * M_PI;
+        while (got < -M_PI) got += 2 * M_PI;
+        CHECK(r.has_value() && std::abs(got - expected) < 1e-6,
+              "grandparent-aware kink lands at the flat-zigzag-continuation angle");
+    }
+
+    // Test 7: same setup as Test 6, MIRRORED across the A-B line (C now above instead of
+    // below) -- this flips turnSign to -1 (the opposite branch from Test 6), and a
+    // non-grandparent-aware implementation stuck at turnSign=+1 would compute
+    // continuation + 60 = 60 + 60 = 120 degrees (curling toward a hexagon) instead of the
+    // correct 0 degrees -- this is the test that actually discriminates alternation from a
+    // stuck default, unlike Test 6 where +1 happens to be both the default AND the correct
+    // answer.
+    // Hand-derived: existingAngle = atan2(0-Cy, 1.5-Cx) = -120 degrees. continuation =
+    // -120+180 = 60 degrees. dirIn = 0 degrees (unchanged, A-B unchanged). delta = 60 - 0 = 60
+    // degrees -> turnSign = -1 (delta >= 0). Expected = continuation + turnSign*60 = 60 - 60 =
+    // 0 degrees.
+    {
+        double bx = 1.5, by = 0.0;
+        double cx = bx + 1.5 * std::cos(M_PI / 3.0);
+        double cy = by + 1.5 * std::sin(M_PI / 3.0);
+        QVariantMap atomsById;
+        atomsById["1"] = atom(0.0, 0.0);   // A (grandparent)
+        atomsById["2"] = atom(bx, by);     // B (existing neighbor)
+        atomsById["3"] = atom(cx, cy);     // C (target atom, fromAtomId)
+        QVariantList bonds; bonds.append(bond(1, 2)); bonds.append(bond(2, 3));
+        auto r = BondAngleSuggester::suggestAngle(3, atomsById, bonds);
+        CHECK(r.has_value(), "1 neighbor with mirrored grandparent returns a value");
+        double expected = 0.0;
+        double got = r.has_value() ? *r : 0.0;
+        while (got > M_PI) got -= 2 * M_PI;
+        while (got < -M_PI) got += 2 * M_PI;
+        CHECK(r.has_value() && std::abs(got - expected) < 1e-6,
+              "mirrored grandparent-aware kink lands at the flat-zigzag-continuation angle via the opposite turnSign branch");
+    }
+
     std::printf("\n%d failure(s)\n", failures);
     return failures == 0 ? 0 : 1;
 }
