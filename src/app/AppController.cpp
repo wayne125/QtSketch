@@ -55,6 +55,12 @@ void AppController::handleDrag(double mouseX, double mouseY, double chemScale, d
 bool AppController::handleDragEnd() {
     if (m_previewManager) {
         PlacementResult result = m_previewManager->commitPreview();
+        QString toolId = m_previewManager->toolId();
+        // Since Task 4's rewrite, FG_/SS_/LIB_ results are the tool's own real template
+        // geometry (size varies per template), not the old single-fake-atom placeholder this
+        // function's shape-based dispatch below was written around -- these tools must be
+        // routed by their own tool id, not by how many atoms/bonds the result happens to have.
+        bool isFgTool = toolId.startsWith("FG_") || toolId.startsWith("SS_") || toolId.startsWith("LIB_");
 
         bool haveSmartPoint = false;
         // Smart point computed here (cx/cy, below) is still used two ways: (1) as the
@@ -73,9 +79,13 @@ bool AppController::handleDragEnd() {
         // false. Computing (and honoring) a smart point for ATOM_ tools here would make
         // handleDragEnd() return true instead, which appends a new bonded atom and silently
         // replaces the retype gesture with an append, so ATOM_ tools are excluded.
+        // FG_/SS_/LIB_ tools are also excluded: their own result is now the real multi-atom
+        // template, and insertFunctionalGroup (below) computes its own graft angle internally
+        // via BondAngleSuggester -- overwriting result.atoms[0] here would corrupt an arbitrary
+        // template atom, not the drop point.
         QString smartPointToolId = m_previewManager->toolId();
         if (result.valid && m_v8 && result.atoms.size() == 1 && result.bonds.size() == 1
-            && m_previewManager->startAtomId() >= 0 && !smartPointToolId.startsWith("ATOM_")) {
+            && m_previewManager->startAtomId() >= 0 && !smartPointToolId.startsWith("ATOM_") && !isFgTool) {
             QVariantMap smart = m_v8->suggestFragmentAttachPoint(m_previewManager->startAtomId(),
                                                                   s_lastBondLength);
             if (!smart.isEmpty()) {
@@ -87,9 +97,17 @@ bool AppController::handleDragEnd() {
 
         if (result.valid && m_v8) {
             bool isRealDrag = false;
-            if (result.atoms.size() > 0) {
-                double dx = result.atoms[0].pos.x() - m_previewManager->startChemPos().x();
-                double dy = result.atoms[0].pos.y() - m_previewManager->startChemPos().y();
+            if (isFgTool) {
+                // result.atoms[0] is an arbitrary atom from the template's own molfile atom
+                // order for these tools, not the drag endpoint -- measure the drag distance
+                // from the tracked current chem position instead.
+                QPointF cur = m_previewManager->lastChemPos();
+                double dx = cur.x() - m_previewManager->startChemPos().x();
+                double dy = cur.y() - m_previewManager->startChemPos().y();
+                double screenDx = dx * s_lastChemScale;
+                double screenDy = dy * s_lastChemScale;
+                if (screenDx*screenDx + screenDy*screenDy > 4.0) isRealDrag = true;
+            } else if (result.atoms.size() > 0) {
                 // chemScale is pixels-per-chem-unit (ChemCanvas.qml), so a chem-space
                 // delta of (dx, dy) corresponds to an on-screen pixel delta of
                 // (dx*chemScale, dy*chemScale). Converting back to pixel space before
@@ -98,29 +116,25 @@ bool AppController::handleDragEnd() {
                 // pixel sensitivity swings with chemScale. 4 (px^2, i.e. ~2px) matches
                 // the equivalent real-drag-vs-click threshold already used for image
                 // dragging in ChemCanvas.qml.
+                double dx = result.atoms[0].pos.x() - m_previewManager->startChemPos().x();
+                double dy = result.atoms[0].pos.y() - m_previewManager->startChemPos().y();
                 double screenDx = dx * s_lastChemScale;
                 double screenDy = dy * s_lastChemScale;
                 if (screenDx*screenDx + screenDy*screenDy > 4.0) isRealDrag = true;
             }
             if (!isRealDrag && !haveSmartPoint) { m_previewManager->cancelPreview(); return false; }
             // Send IPC command to v8_worker to finalize addition
-            
-            // We'll create a generic bulk add operation, or use existing methods.
-            // For now, if it's just a single bond and atom:
-            // For FGs and Atoms, we just need a single bond
-            if (result.atoms.size() == 1 && result.bonds.size() == 1) {
+
+            if (isFgTool) {
+                QString fgName = toolId.startsWith("LIB_") ? toolId.mid(4) : toolId.mid(3);
+                QPointF cur = m_previewManager->lastChemPos();
+                m_v8->insertFunctionalGroup(fgName, cur.x(), cur.y(), m_previewManager->startAtomId(),
+                                             toolId.startsWith("FG_") ? m_fgFullStructure : false);
+            } else if (result.atoms.size() == 1 && result.bonds.size() == 1) {
                 QString label = result.atoms[0].label;
                 double x = result.atoms[0].pos.x();
                 double y = result.atoms[0].pos.y();
-                
-                QString toolId = m_previewManager->toolId();
-                if (toolId.startsWith("FG_") || toolId.startsWith("SS_") || toolId.startsWith("LIB_")) {
-                    QString fgName = toolId.startsWith("LIB_") ? toolId.mid(4) : toolId.mid(3);
-                    m_v8->insertFunctionalGroup(fgName, x, y, m_previewManager->startAtomId(), toolId.startsWith("FG_") ? m_fgFullStructure : false);
-                } else {
-                    m_v8->addBondAndAtom(m_previewManager->startAtomId(), label, x, y, 1, 0); 
-                }
-
+                m_v8->addBondAndAtom(m_previewManager->startAtomId(), label, x, y, 1, 0);
             } else if (result.atoms.size() > 1) {
                 QList<QVariant> coords;
                 bool usedSmartCoords = false;

@@ -289,12 +289,12 @@ Item {
                 ctx.restore();
             } else if (canvas.currentTool && (canvas.currentTool.indexOf("FG_") === 0 || canvas.currentTool.indexOf("SS_") === 0 || canvas.currentTool.indexOf("LIB_") === 0) &&
                        canvas.mouseArea.containsMouse && !canvas.mouseArea.isDragging && !canvas.mouseArea.movingImage &&
-                       !canvas.mouseArea.rotatingSelection && !canvas.mouseArea.resizingSelection) {
+                       !canvas.mouseArea.rotatingSelection && !canvas.mouseArea.resizingSelection && !canvas.mouseArea.isAppControllerDragging) {
                 const cx = canvas.mouseArea.mouseX;
                 const cy = canvas.mouseArea.mouseY;
                 const chemPos = canvas.canvasToChem(cx, cy);
                 const preview = canvas.sketch.getFunctionalGroupPreview(
-                    canvas.currentTool, chemPos.x, chemPos.y, canvas.sketch.overlayState.hoverAtomId);
+                    canvas.currentTool, chemPos.x, chemPos.y, canvas.resolveHitAtom(canvas.sketch.overlayState.hoverAtomId));
 
                 ctx.strokeStyle = Theme.accent;
                 ctx.lineWidth = Theme.clampStrokeWidth(Theme.bondWidth, root.scale);
