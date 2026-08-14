@@ -2579,7 +2579,7 @@ bool DocumentState::importReaction(const QString& text) {
     int rxn = indigoLoadReactionFromString(text.toUtf8().constData());
     if (rxn < 0) return false;
 
-    QList<Fragment> reactants, products;
+    QList<Fragment> reactants, products, catalysts;
     auto collect = [&](int iterHandle, QList<Fragment>& out) {
         int comp;
         while ((comp = indigoNext(iterHandle)) > 0) {
@@ -2628,6 +2628,8 @@ bool DocumentState::importReaction(const QString& text) {
     if (reactantsIter >= 0) { collect(reactantsIter, reactants); indigoFree(reactantsIter); }
     int productsIter = indigoIterateProducts(rxn);
     if (productsIter >= 0) { collect(productsIter, products); indigoFree(productsIter); }
+    int catalystsIter = indigoIterateCatalysts(rxn);
+    if (catalystsIter >= 0) { collect(catalystsIter, catalysts); indigoFree(catalystsIter); }
     indigoFree(rxn);
 
     if (reactants.isEmpty() && products.isEmpty()) return false;
@@ -2658,6 +2660,31 @@ bool DocumentState::importReaction(const QString& text) {
         x += products[i].width / 2.0;
     }
 
+    // Catalysts (Indigo's own name for what reaction-SMILES syntax calls "agents" -- the middle
+    // A>agent>B component; confirmed this session that Indigo fully parses and retains this via
+    // indigoIterateCatalysts, contrary to an earlier assumption that Indigo had no such API) are
+    // laid out in their own left-to-right row, centered horizontally over the arrow's midpoint,
+    // offset above it vertically. Negative Y renders "up" on screen in this app: ChemCanvas.qml's
+    // offsetY = cy - chem.y * fNew has no sign flip, so increasing chem-space Y maps to increasing
+    // (downward) screen Y -- confirmed this session, not assumed.
+    const double catalystYOffset = -(kBondLength * 1.5);
+    QList<double> catalystCenters;
+    {
+        double catalystBlockWidth = 0;
+        for (int i = 0; i < catalysts.size(); ++i) {
+            if (i > 0) catalystBlockWidth += gap;
+            catalystBlockWidth += catalysts[i].width;
+        }
+        double arrowMidX = (arrowX1 + arrowX2) / 2.0;
+        double cx = arrowMidX - catalystBlockWidth / 2.0;
+        for (int i = 0; i < catalysts.size(); ++i) {
+            if (i > 0) cx += gap;
+            cx += catalysts[i].width / 2.0;
+            catalystCenters.append(cx);
+            cx += catalysts[i].width / 2.0;
+        }
+    }
+
     // Recenter the whole assembly's overall bounding box onto the page origin (0,0), using the
     // same clamp-a-target-point pattern insertStructureAt uses for its own paste target. No
     // caller of importReaction supplies a target position today (V8Process::importReaction is
@@ -2671,6 +2698,12 @@ bool DocumentState::importReaction(const QString& text) {
     // arbitrary offset. Real shrink-to-fit clamping is a separate, out-of-scope feature.
     double assemblyMinX = reactants.isEmpty() ? arrowX1 : (reactantCenters.first() - reactants.first().width / 2.0);
     double assemblyMaxX = products.isEmpty() ? arrowX2 : (productCenters.last() + products.last().width / 2.0);
+    if (!catalysts.isEmpty()) {
+        double catalystMinX = catalystCenters.first() - catalysts.first().width / 2.0;
+        double catalystMaxX = catalystCenters.last() + catalysts.last().width / 2.0;
+        assemblyMinX = std::min(assemblyMinX, catalystMinX);
+        assemblyMaxX = std::max(assemblyMaxX, catalystMaxX);
+    }
     // No vertical page-bounds handling is done here: the reaction layout is always vertically
     // centered on y=0 by construction, so there is nothing to recenter or clamp on that axis.
     double targetCx = std::max(kPageMinX, std::min(kPageMaxX, 0.0));
@@ -2678,6 +2711,7 @@ bool DocumentState::importReaction(const QString& text) {
 
     for (double& c : reactantCenters) c += asmDx;
     for (double& c : productCenters) c += asmDx;
+    for (double& c : catalystCenters) c += asmDx;
     arrowX1 += asmDx; arrowX2 += asmDx;
 
     auto createdAtoms = std::make_shared<QList<AtomId>>();
@@ -2687,13 +2721,14 @@ bool DocumentState::importReaction(const QString& text) {
     auto createdPluses = std::make_shared<QList<RxnPlusId>>();
 
     EditCommand cmd;
-    cmd.execute = [&mol, reactants, products, reactantCenters, productCenters, arrowX1, arrowX2, gap,
+    cmd.execute = [&mol, reactants, products, catalysts, reactantCenters, productCenters, catalystCenters,
+                   catalystYOffset, arrowX1, arrowX2, gap,
                    createdAtoms, createdBonds, createdSGroups, createdArrows, createdPluses]() {
-        auto placeFragment = [&](const Fragment& f, double cx) {
+        auto placeFragment = [&](const Fragment& f, double cx, double cy = 0.0) {
             double centroidX = (f.minX + f.maxX) / 2.0;
             double centroidY = (f.minY + f.maxY) / 2.0;
             double dx = cx - centroidX;
-            double dy = 0.0 - centroidY;
+            double dy = cy - centroidY;
             EditableMolecule::InsertResult r = mol.insertStructure(f.molfile, [dx, dy](double ptX, double ptY) {
                 return QPointF(ptX + dx, ptY + dy);
             });
@@ -2703,6 +2738,7 @@ bool DocumentState::importReaction(const QString& text) {
         };
         for (int i = 0; i < reactants.size(); ++i) placeFragment(reactants[i], reactantCenters[i]);
         for (int i = 0; i < products.size(); ++i) placeFragment(products[i], productCenters[i]);
+        for (int i = 0; i < catalysts.size(); ++i) placeFragment(catalysts[i], catalystCenters[i], catalystYOffset);
         for (int i = 1; i < reactantCenters.size(); ++i) {
             double leftEdge = reactantCenters[i-1] + reactants[i-1].width / 2.0;
             double rightEdge = reactantCenters[i] - reactants[i].width / 2.0;

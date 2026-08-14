@@ -1392,6 +1392,41 @@ static void test_importReactionSingleReactantSingleProductRecentering() {
           "even the trivial 1-reactant/1-product case (no multi-fragment spacing math to exercise) is correctly recentered onto the page origin (0,0)");
 }
 
+static void test_importReactionWithCatalyst() {
+    std::printf("--- Test: importReaction places a real catalyst fragment above the arrow ---\n");
+    DocumentState doc("");
+    bool ok = doc.importReaction(QStringLiteral("CCO>[Pd]>CC=O"));
+    CHECK(ok, "importReaction succeeds on a reaction with a catalyst component");
+
+    // "CCO" (ethanol, 3 heavy atoms) + "[Pd]" (1 atom) + "CC=O" (acetaldehyde, 3 heavy atoms) --
+    // if the catalyst were silently dropped, only 6 atoms would exist; if it's genuinely placed,
+    // there are 7.
+    CHECK(doc.molecule().atomIds().size() == 7,
+          "catalyst atom is genuinely placed, not silently dropped (3 reactant + 1 catalyst + 3 product)");
+
+    // Find the catalyst atom: the one whose element symbol is "Pd" (unambiguous -- no other atom
+    // in this reaction is palladium).
+    AtomId catalystAtom = -1;
+    for (AtomId id : doc.molecule().atomIds()) {
+        if (doc.molecule().atomSymbol(id) == QStringLiteral("Pd")) catalystAtom = id;
+    }
+    CHECK(catalystAtom != -1, "found the catalyst atom by its element symbol");
+
+    double catX = 0, catY = 0;
+    doc.molecule().atomPos(catalystAtom, catX, catY);
+    CHECK(catY < -0.01, "catalyst is placed above the arrow (negative Y, per this app's Y-down screen convention)");
+
+    // Reactant/product atoms stay on the y=0 centerline (unaffected by the new catalyst row).
+    bool anyReactantOrProductBelowThreshold = false;
+    for (AtomId id : doc.molecule().atomIds()) {
+        if (id == catalystAtom) continue;
+        double x = 0, y = 0;
+        doc.molecule().atomPos(id, x, y);
+        if (std::abs(y) > 5.0) anyReactantOrProductBelowThreshold = true;   // sanity bound, not exact
+    }
+    CHECK(!anyReactantOrProductBelowThreshold, "reactant/product atoms remain near the y=0 centerline, unaffected by the catalyst row");
+}
+
 static void test_insertFunctionalGroup() {
     std::printf("--- Test 14: insertFunctionalGroup ---\n");
     TemplateLibrary lib(
@@ -3681,6 +3716,7 @@ int main() {
     test_importReactionRxnPlusGapCentering();
     test_importReactionRecentersOnPageOrigin();
     test_importReactionSingleReactantSingleProductRecentering();
+    test_importReactionWithCatalyst();
     test_insertFunctionalGroup();
     test_graftAngleOrientation_oneNeighbor();
     test_graftAngleOrientation_twoNeighbors();
