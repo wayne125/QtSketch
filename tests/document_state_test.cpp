@@ -1734,6 +1734,90 @@ static void test_insertFunctionalGroupSGroupCleanupOnUndo() {
           "SGroup-removal step");
 }
 
+static void test_getFunctionalGroupPreviewFreeFloating() {
+    std::printf("--- Test: getFunctionalGroupPreview matches insertFunctionalGroup's free-floating placement, without mutating the document ---\n");
+    TemplateLibrary lib(
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/fg.sdf"),
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/library.sdf"),
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/salts-and-solvents.sdf"));
+
+    DocumentState doc;
+    PlacementResult preview = doc.getFunctionalGroupPreview(lib, QStringLiteral("Ac"), 10.0, 10.0, -1);
+    CHECK(preview.valid, "preview is valid for a real template ('Ac')");
+    CHECK(preview.atoms.size() == 3, "preview has 3 atoms, matching 'Ac's real atom count");
+    CHECK(preview.bonds.size() == 2, "preview has 2 bonds, matching 'Ac's real bond count");
+
+    CHECK(doc.molecule().atomIds().isEmpty(), "the real document has zero atoms after computing a preview -- nothing was mutated");
+    CHECK(!doc.canUndo(), "no undo history was pushed by computing a preview");
+
+    // Commit the same call and confirm the committed atoms land at the same positions the
+    // preview predicted (both centered on (10,10), same relative shape).
+    doc.insertFunctionalGroup(lib, QStringLiteral("Ac"), 10.0, 10.0);
+    CHECK(doc.molecule().atomIds().size() == 3, "commit creates 3 atoms, matching the preview's own atom count");
+
+    double previewMinX = 1e9, previewMaxX = -1e9;
+    for (const PreviewAtom& a : preview.atoms) {
+        previewMinX = std::min(previewMinX, a.pos.x());
+        previewMaxX = std::max(previewMaxX, a.pos.x());
+    }
+    double committedMinX = 1e9, committedMaxX = -1e9;
+    for (AtomId id : doc.molecule().atomIds()) {
+        double x = 0, y = 0;
+        doc.molecule().atomPos(id, x, y);
+        committedMinX = std::min(committedMinX, x);
+        committedMaxX = std::max(committedMaxX, x);
+    }
+    CHECK(std::abs(previewMinX - committedMinX) < 0.01 && std::abs(previewMaxX - committedMaxX) < 0.01,
+          "preview's predicted X-extent matches the actually-committed structure's X-extent exactly");
+}
+
+static void test_getFunctionalGroupPreviewGraft() {
+    std::printf("--- Test: getFunctionalGroupPreview matches insertFunctionalGroup's graft-rotated placement, without mutating the document ---\n");
+    TemplateLibrary lib(
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/fg.sdf"),
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/library.sdf"),
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/salts-and-solvents.sdf"));
+
+    DocumentState doc;
+    AtomId a1 = doc.molecule().addAtom(QStringLiteral("C"), 0.0, 0.0);
+    AtomId a2 = doc.molecule().addAtom(QStringLiteral("C"), 1.5, 0.0);
+    doc.molecule().addBond(a1, a2, 1);
+
+    PlacementResult preview = doc.getFunctionalGroupPreview(lib, QStringLiteral("Ac"), 0.0, 0.0, a1);
+    CHECK(preview.valid, "preview is valid for a graft onto a real target atom");
+    CHECK(preview.atoms.size() == 3, "preview shows all 3 of 'Ac's atoms (including the not-yet-merged attach atom)");
+
+    CHECK(doc.molecule().atomIds().size() == 2, "the real document still has only its original 2 atoms -- preview did not mutate it");
+    CHECK(!doc.canUndo(), "no undo history was pushed by computing a preview");
+
+    // One of the preview's 3 atoms should sit exactly on a1's real position (0,0) -- the
+    // attach atom, which the real commit would fuse onto a1 via graftAtomOnto. Confirm the
+    // OTHER (non-attach) atom in the preview lands at the same position the real graft commits
+    // it to.
+    bool foundAttachOverlap = false;
+    for (const PreviewAtom& pa : preview.atoms) {
+        if (std::abs(pa.pos.x()) < 0.01 && std::abs(pa.pos.y()) < 0.01) foundAttachOverlap = true;
+    }
+    CHECK(foundAttachOverlap, "one preview atom lands exactly on the real target atom's position, matching what graftAtomOnto would fuse");
+
+    doc.insertFunctionalGroup(lib, QStringLiteral("Ac"), 0.0, 0.0, a1, true);
+    QList<AtomId> allAtoms = doc.molecule().atomIds();
+    CHECK(allAtoms.size() == 4, "commit: 2 pre-existing + 3 new - 1 fused (attach atom merged into a1) = 4 total");
+
+    // Every real committed non-attach atom's position should appear among the preview's 3 atom
+    // positions (the preview doesn't simulate the fuse-away of the attach atom, so it has one
+    // extra entry sitting on top of a1 -- but every OTHER position must match exactly).
+    for (AtomId id : allAtoms) {
+        if (id == a1 || id == a2) continue;
+        double cx = 0, cy = 0;
+        doc.molecule().atomPos(id, cx, cy);
+        bool foundMatch = false;
+        for (const PreviewAtom& pa : preview.atoms) {
+            if (std::abs(pa.pos.x() - cx) < 0.01 && std::abs(pa.pos.y() - cy) < 0.01) foundMatch = true;
+        }
+        CHECK(foundMatch, "every committed non-fused atom's position exactly matches one of the preview's predicted positions");
+    }
+}
 
 
 static void test_documentStateSelection() {
@@ -3968,6 +4052,8 @@ int main() {
     test_importReactionWithTallReactant();
     test_insertFunctionalGroup();
     test_insertFunctionalGroupSGroupCleanupOnUndo();
+    test_getFunctionalGroupPreviewFreeFloating();
+    test_getFunctionalGroupPreviewGraft();
     test_graftAngleOrientation_oneNeighbor();
     test_graftAngleOrientation_twoNeighbors();
     test_graftAngleOrientation_noRotationCase();

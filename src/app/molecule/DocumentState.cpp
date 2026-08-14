@@ -2289,26 +2289,20 @@ void DocumentState::addChain(double x1, double y1, double x2, double y2) {
     executeCommand(std::move(cmd));
 }
 
-void DocumentState::insertFunctionalGroup(const TemplateLibrary& lib, const QString& fgName,
-                                           double cx, double cy, AtomId targetAtomId, bool fullStructure) {
+DocumentState::FunctionalGroupPlacement DocumentState::computeFunctionalGroupPlacement(
+    const TemplateLibrary& lib, const QString& fgName, double cx, double cy, AtomId targetAtomId) {
     cx = std::max(kPageMinX, std::min(kPageMaxX, cx));
     cy = std::max(kPageMinY, std::min(kPageMaxY, cy));
+
+    FunctionalGroupPlacement result;
 
     int fgHandle = lib.functionalGroup(fgName);
     if (fgHandle < 0) fgHandle = lib.saltOrSolvent(fgName);
     if (fgHandle < 0) fgHandle = lib.libraryTemplate(fgName);
 
-    EditableMolecule& mol = m_molecule;
+    if (fgHandle < 0 || indigoCountAtoms(fgHandle) == 0) return result;   // valid stays false
 
-    if (fgHandle < 0 || indigoCountAtoms(fgHandle) == 0) {
-        // Fallback: a single placeholder atom labeled fgName.
-        auto idBox = std::make_shared<AtomId>(-1);
-        EditCommand cmd;
-        cmd.execute = [&mol, idBox, fgName, cx, cy]() { *idBox = mol.addAtom(fgName, cx, cy); };
-        cmd.invert = [&mol, idBox]() { mol.removeAtom(*idBox); };
-        executeCommand(std::move(cmd));
-        return;
-    }
+    EditableMolecule& mol = m_molecule;
 
     // IMPORTANT (see Global Constraints, "sequencing consequence for Tasks
     // 4/5"): TemplateLibrary owns its own Indigo session, separate from
@@ -2461,15 +2455,52 @@ void DocumentState::insertFunctionalGroup(const TemplateLibrary& lib, const QStr
 
     bool useRotation = graft && templateAngle.has_value() && suggestedAngle.has_value() && haveAttachPos;
     double rotateBy = useRotation ? (*suggestedAngle - *templateAngle) : 0.0;
-    double cosR = std::cos(rotateBy), sinR = std::sin(rotateBy);
+
+    result.valid = true;
+    result.fgMolfile = fgMolfile;
+    result.templateAttachIdx = templateAttachIdx;
+    result.graft = graft;
+    result.useRotation = useRotation;
+    result.cosR = std::cos(rotateBy);
+    result.sinR = std::sin(rotateBy);
+    result.attachX = attachX;
+    result.attachY = attachY;
+    result.targetX = targetX;
+    result.targetY = targetY;
+    result.dx = dx;
+    result.dy = dy;
+    return result;
+}
+
+void DocumentState::insertFunctionalGroup(const TemplateLibrary& lib, const QString& fgName,
+                                           double cx, double cy, AtomId targetAtomId, bool fullStructure) {
+    EditableMolecule& mol = m_molecule;
+    FunctionalGroupPlacement p = computeFunctionalGroupPlacement(lib, fgName, cx, cy, targetAtomId);
+
+    if (!p.valid) {
+        // Fallback: a single placeholder atom labeled fgName. Matches
+        // computeFunctionalGroupPlacement's own condition for returning valid=false (template not
+        // found or structurally empty). cx/cy re-clamped here since
+        // computeFunctionalGroupPlacement clamps its own local copy but does not return it.
+        double ccx = std::max(kPageMinX, std::min(kPageMaxX, cx));
+        double ccy = std::max(kPageMinY, std::min(kPageMaxY, cy));
+        auto idBox = std::make_shared<AtomId>(-1);
+        EditCommand cmd;
+        cmd.execute = [&mol, idBox, fgName, ccx, ccy]() { *idBox = mol.addAtom(fgName, ccx, ccy); };
+        cmd.invert = [&mol, idBox]() { mol.removeAtom(*idBox); };
+        executeCommand(std::move(cmd));
+        return;
+    }
 
     auto createdAtoms = std::make_shared<QList<AtomId>>();
     auto createdBonds = std::make_shared<QList<BondId>>();
     auto createdSGroups = std::make_shared<QList<SGroupId>>();
 
     EditCommand cmd;
-    cmd.execute = [&mol, fgMolfile, fgName, dx, dy, useRotation, cosR, sinR, attachX, attachY,
-                   targetX, targetY, templateAttachIdx, graft, targetAtomId, fullStructure,
+    cmd.execute = [&mol, fgMolfile = p.fgMolfile, fgName, dx = p.dx, dy = p.dy, useRotation = p.useRotation,
+                   cosR = p.cosR, sinR = p.sinR, attachX = p.attachX, attachY = p.attachY,
+                   targetX = p.targetX, targetY = p.targetY, templateAttachIdx = p.templateAttachIdx,
+                   graft = p.graft, targetAtomId, fullStructure,
                    createdAtoms, createdBonds, createdSGroups]() {
         createdAtoms->clear();
         createdBonds->clear();
@@ -2514,6 +2545,49 @@ void DocumentState::insertFunctionalGroup(const TemplateLibrary& lib, const QStr
         for (AtomId a : *createdAtoms) mol.removeAtom(a);
     };
     executeCommand(std::move(cmd));
+}
+
+PlacementResult DocumentState::getFunctionalGroupPreview(
+    const TemplateLibrary& lib, const QString& fgName, double cx, double cy, AtomId targetAtomId) {
+    FunctionalGroupPlacement p = computeFunctionalGroupPlacement(lib, fgName, cx, cy, targetAtomId);
+    PlacementResult result;
+    if (!p.valid) return result;
+
+    // Build a throwaway EditableMolecule from the SAME fgMolfile text and the SAME transform
+    // insertFunctionalGroup would commit -- mirrors insertStructureAt's own "EditableMolecule
+    // tmp(sourceMolfile)" idiom (DocumentState.cpp:2519) rather than hand-rolling a second,
+    // parallel Indigo atom/bond walk. tmp is never attached to m_molecule and is discarded when
+    // this function returns -- the real document is untouched.
+    EditableMolecule tmp;
+    auto transform = [&p](double x, double y) {
+        if (p.useRotation) {
+            double rx = x - p.attachX, ry = y - p.attachY;
+            double rotX = rx * p.cosR - ry * p.sinR;
+            double rotY = rx * p.sinR + ry * p.cosR;
+            return QPointF(rotX + p.targetX, rotY + p.targetY);
+        }
+        return QPointF(x + p.dx, y + p.dy);
+    };
+    tmp.insertStructure(p.fgMolfile, transform);
+
+    // No special-casing for the graft-merge step (graftAtomOnto, which the real commit path
+    // calls): the transform above already places the template's attach atom exactly at
+    // (targetX, targetY) -- the same point the real target atom already occupies -- so the ghost
+    // naturally overlaps it correctly with no extra logic needed.
+    for (AtomId id : tmp.atomIds()) {
+        double x = 0, y = 0;
+        if (!tmp.atomPos(id, x, y)) continue;
+        result.atoms.append({QPointF(x, y), tmp.atomSymbol(id)});
+    }
+    for (BondId id : tmp.bondIds()) {
+        AtomId a = -1, b = -1;
+        if (!tmp.bondEndpoints(id, a, b)) continue;
+        double x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+        if (!tmp.atomPos(a, x1, y1) || !tmp.atomPos(b, x2, y2)) continue;
+        result.bonds.append({QPointF(x1, y1), QPointF(x2, y2)});
+    }
+    result.valid = true;
+    return result;
 }
 
 void DocumentState::insertStructureAt(const QString& sourceMolfile, double cx, double cy) {
