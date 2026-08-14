@@ -54,7 +54,10 @@ void PlacementPreviewManager::updatePreview(const QPointF& currentMouse, double 
     if (m_toolId.startsWith("ATOM_")) {
         QString label = m_toolId.mid(5); 
         m_lastResult = AtomPlacementEngine::compute(m_startChemPos, currentChem, label, angles, bondLength);
-    } else if (m_toolId.startsWith("FG_") || m_toolId.startsWith("SS_") || m_toolId.startsWith("LIB_") || m_toolId.startsWith("TEMPLATE_")) {
+    } else if (m_toolId.startsWith("FG_") || m_toolId.startsWith("SS_") || m_toolId.startsWith("LIB_")) {
+        m_lastResult = m_v8 ? m_v8->getFunctionalGroupPlacementResult(m_toolId, currentChem.x(), currentChem.y(), m_startAtomId)
+                             : PlacementResult{};
+    } else if (m_toolId.startsWith("TEMPLATE_")) {
         m_lastResult = FragmentPlacementEngine::compute(m_startChemPos, currentChem, m_toolId, angles, bondLength);
     }
     
