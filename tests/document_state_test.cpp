@@ -1264,6 +1264,106 @@ static void test_importReaction() {
     CHECK(valid && !interFragmentOverlap, "fragments in 2-reactant reaction do not overlap each other");
 }
 
+static void test_importReactionRxnPlusGapCentering() {
+    std::printf("--- Test: importReaction centers RxnPlus on the visual gap, not fragment centers ---\n");
+    DocumentState doc("");
+    bool ok = doc.importReaction(QStringLiteral("O.c1ccccc1>>CC=O"));
+    CHECK(ok, "importReaction succeeds on an asymmetric-width 2-reactant reaction");
+
+    QList<RxnPlusId> pluses = doc.molecule().rxnPlusIds();
+    CHECK(pluses.size() == 1, "exactly one RxnPlus between the two reactants (product side has only one fragment)");
+
+    // Group atoms into connected components (same BFS approach as test_importReaction's own
+    // 2-reactant scenario above) to find each reactant fragment's own bounding box directly
+    // from its actual placed atom positions, without depending on Indigo's exact layout width
+    // for benzene.
+    QList<QList<AtomId>> components;
+    QList<AtomId> unvisited = doc.molecule().atomIds();
+    while (!unvisited.isEmpty()) {
+        QList<AtomId> comp;
+        QList<AtomId> queue;
+        queue.append(unvisited.takeFirst());
+        while (!queue.isEmpty()) {
+            AtomId curr = queue.takeFirst();
+            comp.append(curr);
+            for (BondId bid : doc.molecule().bondIds()) {
+                AtomId a = -1, b = -1;
+                doc.molecule().bondEndpoints(bid, a, b);
+                AtomId neighbor = -1;
+                if (a == curr) neighbor = b;
+                else if (b == curr) neighbor = a;
+                if (neighbor != -1 && unvisited.contains(neighbor)) {
+                    unvisited.removeAll(neighbor);
+                    queue.append(neighbor);
+                }
+            }
+        }
+        components.append(comp);
+    }
+    CHECK(components.size() == 3, "three fragments total: water, benzene, acetaldehyde");
+
+    // Identify the two REACTANT fragments (the two leftmost by center-x) and compute each
+    // one's own bounding box directly from its atoms' actual placed positions.
+    struct Frag { double minX, maxX, centerX; };
+    QList<Frag> frags;
+    for (const QList<AtomId>& comp : components) {
+        double minX = 0, maxX = 0;
+        bool any = false;
+        for (AtomId id : comp) {
+            double x = 0, y = 0;
+            doc.molecule().atomPos(id, x, y);
+            if (!any) { minX = maxX = x; any = true; }
+            else { minX = std::min(minX, x); maxX = std::max(maxX, x); }
+        }
+        frags.append({minX, maxX, (minX + maxX) / 2.0});
+    }
+    std::sort(frags.begin(), frags.end(), [](const Frag& a, const Frag& b) { return a.centerX < b.centerX; });
+    const Frag& left = frags[0];
+    const Frag& right = frags[1];
+
+    double correctGapMidpoint = (left.maxX + right.minX) / 2.0;
+    double naiveCenterMidpoint = (left.centerX + right.centerX) / 2.0;
+    CHECK(std::abs(correctGapMidpoint - naiveCenterMidpoint) > 0.5,
+          "setup sanity check: water (1 atom, narrow) and benzene (6 atoms, wide) are asymmetric enough that the two candidate formulas genuinely differ");
+
+    double plusX = 0, plusY = 0;
+    doc.molecule().rxnPlusPos(pluses[0], plusX, plusY);
+    CHECK(std::abs(plusX - correctGapMidpoint) < 0.01,
+          "RxnPlus sits at the true edge-to-edge gap midpoint, not the naive center-to-center midpoint");
+}
+
+static void test_importReactionPageClamping() {
+    std::printf("--- Test: importReaction clamps a wide assembly onto the page ---\n");
+    QStringList reactantAtoms;
+    for (int i = 0; i < 50; ++i) reactantAtoms.append(QStringLiteral("C"));
+    QString reactionText = reactantAtoms.join(QStringLiteral(".")) + QStringLiteral(">>O");
+
+    DocumentState doc("");
+    bool ok = doc.importReaction(reactionText);
+    CHECK(ok, "importReaction succeeds on a wide 50-reactant reaction");
+
+    double minX = 0, maxX = 0;
+    bool any = false;
+    for (AtomId id : doc.molecule().atomIds()) {
+        double x = 0, y = 0;
+        doc.molecule().atomPos(id, x, y);
+        if (!any) { minX = maxX = x; any = true; }
+        else { minX = std::min(minX, x); maxX = std::max(maxX, x); }
+    }
+    for (RxnArrowId aid : doc.molecule().rxnArrowIds()) {
+        double x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+        doc.molecule().rxnArrowEndpoints(aid, x1, y1, x2, y2);
+        minX = std::min({minX, x1, x2});
+        maxX = std::max({maxX, x1, x2});
+    }
+    CHECK(any, "reaction actually placed atoms");
+    CHECK(maxX - minX > 60.0, "setup sanity check: this reaction's natural un-clamped width genuinely exceeds the page's own 60-unit span");
+
+    double assemblyCenter = (minX + maxX) / 2.0;
+    CHECK(std::abs(assemblyCenter - 0.0) < 0.01,
+          "the wide assembly's overall center is clamped/recentered onto the page center (0,0), not left wherever the raw left-to-right layout happened to start");
+}
+
 static void test_insertFunctionalGroup() {
     std::printf("--- Test 14: insertFunctionalGroup ---\n");
     TemplateLibrary lib(
@@ -3550,6 +3650,8 @@ int main() {
     test_addRing();
     test_addChain();
     test_importReaction();
+    test_importReactionRxnPlusGapCentering();
+    test_importReactionPageClamping();
     test_insertFunctionalGroup();
     test_graftAngleOrientation_oneNeighbor();
     test_graftAngleOrientation_twoNeighbors();

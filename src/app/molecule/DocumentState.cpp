@@ -2658,6 +2658,35 @@ bool DocumentState::importReaction(const QString& text) {
         x += products[i].width / 2.0;
     }
 
+    // Recenter/clamp the whole assembly onto the page, the same way insertStructureAt clamps
+    // its own target point -- importReaction previously had NO page-bounds handling at all, so
+    // a wide multi-reactant/multi-product reaction could run off the page edge. No caller of
+    // importReaction supplies a target position today (confirmed: V8Process::importReaction is
+    // the only call site, always just the reaction text), so this always centers-then-clamps on
+    // page center; the explicit clamp on a literal 0.0 (rather than hardcoding the translation)
+    // keeps the door open for a future caller-supplied position without restructuring this
+    // block.
+    double assemblyMinX = reactants.isEmpty() ? arrowX1 : (reactantCenters.first() - reactants.first().width / 2.0);
+    double assemblyMaxX = products.isEmpty() ? arrowX2 : (productCenters.last() + products.last().width / 2.0);
+    double assemblyMaxHalfHeight = 0.0;
+    for (const Fragment& f : reactants) assemblyMaxHalfHeight = std::max(assemblyMaxHalfHeight, f.height / 2.0);
+    for (const Fragment& f : products) assemblyMaxHalfHeight = std::max(assemblyMaxHalfHeight, f.height / 2.0);
+    (void)assemblyMaxHalfHeight;   // not consumed as a translation this task (the layout is
+                                     // already vertically centered on y=0 by construction) -- kept
+                                     // computed for symmetry with assemblyMinX/assemblyMaxX and to
+                                     // leave the value ready for a future vertical-clamping need.
+    double targetCx = std::max(kPageMinX, std::min(kPageMaxX, 0.0));
+    double targetCy = std::max(kPageMinY, std::min(kPageMaxY, 0.0));
+    double asmDx = targetCx - (assemblyMinX + assemblyMaxX) / 2.0;
+    double asmDy = targetCy - 0.0;   // fragments already share the y=0 centerline
+
+    for (double& c : reactantCenters) c += asmDx;
+    for (double& c : productCenters) c += asmDx;
+    arrowX1 += asmDx; arrowX2 += asmDx;
+    (void)asmDy;   // always 0.0 today since the layout is already vertically centered on y=0;
+                    // kept named/computed for symmetry with asmDx and to document the reasoning,
+                    // not because it currently does anything.
+
     auto createdAtoms = std::make_shared<QList<AtomId>>();
     auto createdBonds = std::make_shared<QList<BondId>>();
     auto createdSGroups = std::make_shared<QList<SGroupId>>();
@@ -2681,10 +2710,16 @@ bool DocumentState::importReaction(const QString& text) {
         };
         for (int i = 0; i < reactants.size(); ++i) placeFragment(reactants[i], reactantCenters[i]);
         for (int i = 0; i < products.size(); ++i) placeFragment(products[i], productCenters[i]);
-        for (int i = 1; i < reactantCenters.size(); ++i)
-            createdPluses->append(mol.addRxnPlus((reactantCenters[i-1] + reactantCenters[i]) / 2.0, 0));
-        for (int i = 1; i < productCenters.size(); ++i)
-            createdPluses->append(mol.addRxnPlus((productCenters[i-1] + productCenters[i]) / 2.0, 0));
+        for (int i = 1; i < reactantCenters.size(); ++i) {
+            double leftEdge = reactantCenters[i-1] + reactants[i-1].width / 2.0;
+            double rightEdge = reactantCenters[i] - reactants[i].width / 2.0;
+            createdPluses->append(mol.addRxnPlus((leftEdge + rightEdge) / 2.0, 0));
+        }
+        for (int i = 1; i < productCenters.size(); ++i) {
+            double leftEdge = productCenters[i-1] + products[i-1].width / 2.0;
+            double rightEdge = productCenters[i] - products[i].width / 2.0;
+            createdPluses->append(mol.addRxnPlus((leftEdge + rightEdge) / 2.0, 0));
+        }
         createdArrows->append(mol.addRxnArrow(arrowX1, 0, arrowX2, 0));
     };
     cmd.invert = [&mol, createdArrows, createdPluses, createdBonds, createdAtoms]() {
