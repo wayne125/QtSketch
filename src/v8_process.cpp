@@ -1007,3 +1007,37 @@ QVariantList V8Process::getRingPreviewCoords(int n, double cx, double cy, const 
     return coords;
 }
 
+PlacementResult V8Process::getFunctionalGroupPlacementResult(const QString& toolId, double cx, double cy, int targetAtomId) {
+    QString fgName;
+    if (toolId.startsWith("LIB_")) fgName = toolId.mid(4);
+    else if (toolId.startsWith("FG_") || toolId.startsWith("SS_")) fgName = toolId.mid(3);
+    else return PlacementResult{};
+    if (!m_templateLibrary) return PlacementResult{};
+    return m_docState->getFunctionalGroupPreview(*m_templateLibrary, fgName, cx, cy, targetAtomId);
+}
+
+QVariantList V8Process::getFunctionalGroupPreview(const QString& toolId, double cx, double cy, const QVariant& hoverAtomId) {
+    int targetAtomId = -1;
+    if (!hoverAtomId.isNull() && hoverAtomId.isValid()) targetAtomId = hoverAtomId.toInt();
+    PlacementResult result = getFunctionalGroupPlacementResult(toolId, cx, cy, targetAtomId);
+
+    QVariantList coords;
+    for (const auto& a : result.atoms) {
+        QVariantMap amap;
+        amap["x"] = a.pos.x();
+        amap["y"] = a.pos.y();
+        amap["label"] = a.label;
+        coords.append(amap);
+    }
+    for (const auto& b : result.bonds) {
+        QVariantMap bmap;
+        bmap["startX"] = b.start.x();
+        bmap["startY"] = b.start.y();
+        bmap["endX"] = b.end.x();
+        bmap["endY"] = b.end.y();
+        bmap["isBond"] = true;   // distinguishes bond entries from atom entries in the flat list
+        coords.append(bmap);
+    }
+    return coords;
+}
+

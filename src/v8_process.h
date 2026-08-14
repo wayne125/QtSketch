@@ -9,6 +9,7 @@
 #include "app/molecule/DocumentState.h"
 #include "app/molecule/TemplateLibrary.h"
 #include "app/molecule/SdfBatch.h"
+#include "app/PlacementEngines.h"
 
 class V8Process : public QObject {
     Q_OBJECT
@@ -47,6 +48,8 @@ public:
     Q_INVOKABLE QVariantMap suggestFragmentAttachPoint(int fromAtomId, double bondLength);
     Q_INVOKABLE void addRing(const QVariantList& coords, bool aromatic = true);
     Q_INVOKABLE QVariantList getRingPreviewCoords(int n, double cx, double cy, const QVariant& hoverAtomId, const QVariant& hoverBondId);
+    PlacementResult getFunctionalGroupPlacementResult(const QString& toolId, double cx, double cy, int targetAtomId);
+    Q_INVOKABLE QVariantList getFunctionalGroupPreview(const QString& toolId, double cx, double cy, const QVariant& hoverAtomId);
     Q_INVOKABLE void deleteAtomById(int id);
     Q_INVOKABLE void deleteBondById(int id);
     Q_INVOKABLE void deleteSelection();
