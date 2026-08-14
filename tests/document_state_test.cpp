@@ -1589,6 +1589,32 @@ static void test_insertFunctionalGroup() {
     }
 }
 
+static void test_insertFunctionalGroupSGroupCleanupOnUndo() {
+    std::printf("--- Test: insertFunctionalGroup's SGroup is genuinely gone after undo, not left dangling ---\n");
+    TemplateLibrary lib(
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/fg.sdf"),
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/library.sdf"),
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/salts-and-solvents.sdf"));
+
+    DocumentState doc;
+    AtomId target = doc.molecule().addAtom(QStringLiteral("C"), 0.0, 0.0);
+    doc.insertFunctionalGroup(lib, QStringLiteral("Ac"), 0.0, 0.0, target, true);
+
+    CHECK(doc.molecule().sgroupIds().size() == 1, "graft created exactly one sgroup");
+
+    doc.undo();
+
+    // The pre-existing target atom survives undo (only the grafted template's own atoms/bonds
+    // are removed) -- matching test_insertFunctionalGroup's own established graft-undo pattern.
+    CHECK(doc.molecule().atomIds().size() == 1, "pre-existing target atom survives undo");
+    CHECK(doc.molecule().sgroupIds().isEmpty(),
+          "the sgroup created by the graft is genuinely gone after undo, not left dangling -- "
+          "confirms EditableMolecule::removeAtom's rebuildIndexTables() cascade already prunes "
+          "stale m_sgroupIdx entries correctly, with no need for cmd.invert to call an explicit "
+          "SGroup-removal step");
+}
+
+
 
 static void test_documentStateSelection() {
     std::printf("--- Test 4: DocumentState selection ---\n");
@@ -3819,6 +3845,7 @@ int main() {
     test_importReactionSingleReactantSingleProductRecentering();
     test_importReactionWithCatalyst();
     test_insertFunctionalGroup();
+    test_insertFunctionalGroupSGroupCleanupOnUndo();
     test_graftAngleOrientation_oneNeighbor();
     test_graftAngleOrientation_twoNeighbors();
     test_graftAngleOrientation_noRotationCase();
