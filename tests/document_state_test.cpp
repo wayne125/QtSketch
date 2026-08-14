@@ -1332,8 +1332,8 @@ static void test_importReactionRxnPlusGapCentering() {
           "RxnPlus sits at the true edge-to-edge gap midpoint, not the naive center-to-center midpoint");
 }
 
-static void test_importReactionPageClamping() {
-    std::printf("--- Test: importReaction clamps a wide assembly onto the page ---\n");
+static void test_importReactionRecentersOnPageOrigin() {
+    std::printf("--- Test: importReaction recenters a wide assembly onto the page origin (does not clamp/shrink it to fit) ---\n");
     QStringList reactantAtoms;
     for (int i = 0; i < 50; ++i) reactantAtoms.append(QStringLiteral("C"));
     QString reactionText = reactantAtoms.join(QStringLiteral(".")) + QStringLiteral(">>O");
@@ -1361,7 +1361,35 @@ static void test_importReactionPageClamping() {
 
     double assemblyCenter = (minX + maxX) / 2.0;
     CHECK(std::abs(assemblyCenter - 0.0) < 0.01,
-          "the wide assembly's overall center is clamped/recentered onto the page center (0,0), not left wherever the raw left-to-right layout happened to start");
+          "the wide assembly's overall center is recentered onto the page origin (0,0), not left wherever the raw left-to-right layout happened to start -- note this assembly is deliberately wider than the page and is NOT clamped/shrunk to fit; only its center is repositioned");
+}
+
+static void test_importReactionSingleReactantSingleProductRecentering() {
+    std::printf("--- Test: importReaction recenters even the trivial 1-reactant/1-product case ---\n");
+    DocumentState doc("");
+    bool ok = doc.importReaction(QStringLiteral("CCO>>CC=O"));
+    CHECK(ok, "importReaction succeeds on a simple 1-reactant/1-product reaction");
+    CHECK(doc.molecule().rxnPlusIds().isEmpty(), "no RxnPlus entities needed when there is only one fragment per side");
+
+    double minX = 0, maxX = 0;
+    bool any = false;
+    for (AtomId id : doc.molecule().atomIds()) {
+        double x = 0, y = 0;
+        doc.molecule().atomPos(id, x, y);
+        if (!any) { minX = maxX = x; any = true; }
+        else { minX = std::min(minX, x); maxX = std::max(maxX, x); }
+    }
+    for (RxnArrowId aid : doc.molecule().rxnArrowIds()) {
+        double x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+        doc.molecule().rxnArrowEndpoints(aid, x1, y1, x2, y2);
+        minX = std::min({minX, x1, x2});
+        maxX = std::max({maxX, x1, x2});
+    }
+    CHECK(any, "reaction actually placed atoms");
+
+    double assemblyCenter = (minX + maxX) / 2.0;
+    CHECK(std::abs(assemblyCenter - 0.0) < 0.01,
+          "even the trivial 1-reactant/1-product case (no multi-fragment spacing math to exercise) is correctly recentered onto the page origin (0,0)");
 }
 
 static void test_insertFunctionalGroup() {
@@ -3651,7 +3679,8 @@ int main() {
     test_addChain();
     test_importReaction();
     test_importReactionRxnPlusGapCentering();
-    test_importReactionPageClamping();
+    test_importReactionRecentersOnPageOrigin();
+    test_importReactionSingleReactantSingleProductRecentering();
     test_insertFunctionalGroup();
     test_graftAngleOrientation_oneNeighbor();
     test_graftAngleOrientation_twoNeighbors();
