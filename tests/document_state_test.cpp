@@ -1749,12 +1749,23 @@ static void test_insertFunctionalGroupSGroupCleanupOnUndo() {
 
 static void test_insertFunctionalGroupAllTemplatesConnectToTarget() {
     std::printf("--- Test: EVERY fg.sdf attachment-point template actually connects to its graft target ---\n");
-    // Regression test for a real bug found this session: 15 of these 62 templates had their
-    // M-block lines in an order (M SMT before M SAL/M SAP) that Indigo's molfile parser
-    // silently mishandles -- indigoIterateSGroupAttachmentPoints yields zero items, so
-    // templateAttachIdx never resolves, graft never happens, and the template silently falls
-    // back to free-floating placement instead of connecting to the target atom. This iterates
-    // every template fg.sdf claims has an attachment point and proves each one actually grafts.
+    // Regression test for a real bug found this session: the verified root cause is that
+    // several templates' "M  SAL" line had a fixed-column atom-count field one character
+    // short (MDL SGroup format requires it to be exactly 3 characters wide). Indigo's
+    // Scanner::readIntFix tolerates the resulting trailing whitespace instead of erroring on
+    // it -- instead every subsequent 3-wide atom-index field in that line gets read one
+    // column left of where it should be,
+    // and the loop's last readIntFix(3) over-runs past the line's newline. The SGroup
+    // handler's closing skipLine() then consumes the entire FOLLOWING line -- which is
+    // "M  SAP" -- instead of parsing it, so indigoIterateSGroupAttachmentPoints yields zero
+    // items, templateAttachIdx never resolves, graft never happens, and the template silently
+    // falls back to free-floating placement instead of connecting to the target atom. (The 15
+    // brief-listed templates were also given a M SMT/M SAL/M SAP reorder for consistency with
+    // the other 47 working templates; that reorder is real and worth keeping, but two of the
+    // 15 -- Cbz and TBDPS -- already had 3-digit SAL counts and were never actually broken by
+    // this bug, confirming the SAL field width, not M-block order, is the necessary-and-
+    // sufficient cause.) This iterates every template fg.sdf claims has an attachment point
+    // and proves each one actually grafts.
     TemplateLibrary lib(
         QStringLiteral(SKETCH_SOURCE_DIR "/templates/fg.sdf"),
         QStringLiteral(SKETCH_SOURCE_DIR "/templates/library.sdf"),
@@ -1806,7 +1817,7 @@ static void test_insertFunctionalGroupAllTemplatesConnectToTarget() {
 }
 
 static void test_insertFunctionalGroupConh2OneNeighborConnects() {
-    std::printf("--- Test: CONH2 graft onto a 1-neighbor target connects (regression pin for the M-block-order bug) ---\n");
+    std::printf("--- Test: CONH2 graft onto a 1-neighbor target connects (regression pin for the M SAL field-width bug) ---\n");
     TemplateLibrary lib(
         QStringLiteral(SKETCH_SOURCE_DIR "/templates/fg.sdf"),
         QStringLiteral(SKETCH_SOURCE_DIR "/templates/library.sdf"),
