@@ -1668,30 +1668,43 @@ static void test_insertFunctionalGroup() {
     }
 
     // Graft onto an existing atom: "Ac"'s attach atom (SUP attachment point
-    // at atom index 0, confirmed by direct file read) fuses onto the target,
-    // which survives with the template's remaining bonds attached.
+    // at atom index 0, confirmed by direct file read) sprouts a new bond to
+    // the target instead of fusing into it -- the target survives with
+    // exactly one new bond, and the attach atom survives as its own atom,
+    // still carrying both of its own original internal bonds.
     {
         DocumentState doc;
         AtomId target = doc.molecule().addAtom(QStringLiteral("C"), 0.0, 0.0);
         doc.insertFunctionalGroup(lib, QStringLiteral("Ac"), 0.0, 0.0, target, true);
 
-        // "Ac" has 3 atoms; grafting fuses its attach atom onto the
-        // pre-existing target, so 1 pre-existing + 3 new - 1 fused = 3 total.
-        CHECK(doc.molecule().atomCount() == 3, "graft: 1 pre-existing + 3 new - 1 fused = 3 total");
+        // "Ac" has 3 atoms; none are fused away anymore, so 1 pre-existing + 3 new = 4 total.
+        CHECK(doc.molecule().atomCount() == 4, "graft: 1 pre-existing + 3 new (none fused) = 4 total");
         CHECK(doc.molecule().atomSymbol(target) == QStringLiteral("C"), "target atom survives");
         int bondsFromTarget = 0;
+        AtomId attachAtom = -1;
         for (BondId bid : doc.molecule().bondIds()) {
             AtomId a = -1, b = -1;
             doc.molecule().bondEndpoints(bid, a, b);
-            if (a == target || b == target) ++bondsFromTarget;
+            if (a == target || b == target) { ++bondsFromTarget; attachAtom = (a == target) ? b : a; }
         }
-        // "Ac"'s attach atom (atom index 0, the carbonyl carbon) is bonded
-        // to BOTH other atoms within the fragment (bond block: "2 1 1" and
-        // "1 3 2", i.e. atom 1 = attach atom is bonded to atom 2 [CH3] and
-        // atom 3 [O]) -- confirmed by direct read of the real fg.sdf record,
-        // not assumed. graftAtomOnto rewires ALL of the attach atom's
-        // incident bonds onto the target, so the target gains 2 bonds, not 1.
-        CHECK(bondsFromTarget == 2, "target atom gained both of the grafted attach atom's bonds");
+        // "Ac"'s attach atom (atom index 0, the carbonyl carbon) is bonded to BOTH other atoms
+        // within the fragment (bond block: "2 1 1" and "1 3 2") -- but under sprout semantics
+        // those two bonds stay the attach atom's OWN, they are never rewired onto the target.
+        // The target gains exactly one new bond, to the attach atom itself.
+        CHECK(bondsFromTarget == 1, "target atom gained exactly one new bond, to the attach atom (no rewiring)");
+        CHECK(attachAtom != -1 && doc.molecule().atomSymbol(attachAtom) == QStringLiteral("C"),
+              "the attach atom (Ac's carbonyl carbon) is the one bonded to the target");
+        int attachBondCount = 0;
+        for (BondId bid : doc.molecule().bondIds()) {
+            AtomId a = -1, b = -1;
+            doc.molecule().bondEndpoints(bid, a, b);
+            if (a == attachAtom || b == attachAtom) ++attachBondCount;
+        }
+        CHECK(attachBondCount == 3, "attach atom keeps both of its own original template-internal bonds, plus the one new bond to the target");
+        double tx = 0, ty = 0, ax = 0, ay = 0;
+        doc.molecule().atomPos(target, tx, ty);
+        doc.molecule().atomPos(attachAtom, ax, ay);
+        CHECK(std::abs(std::hypot(ax - tx, ay - ty) - 1.5) < 0.01, "attach atom sits exactly one bond length (kBondLength) from the target");
         doc.undo();
         CHECK(doc.molecule().atomCount() == 1, "undo restores to just the pre-existing target atom");
     }
@@ -1772,7 +1785,7 @@ static void test_getFunctionalGroupPreviewFreeFloating() {
 }
 
 static void test_getFunctionalGroupPreviewGraft() {
-    std::printf("--- Test: getFunctionalGroupPreview matches insertFunctionalGroup's graft-rotated placement, without mutating the document ---\n");
+    std::printf("--- Test: getFunctionalGroupPreview matches insertFunctionalGroup's graft-sprout placement, without mutating the document ---\n");
     TemplateLibrary lib(
         QStringLiteral(SKETCH_SOURCE_DIR "/templates/fg.sdf"),
         QStringLiteral(SKETCH_SOURCE_DIR "/templates/library.sdf"),
@@ -1785,28 +1798,28 @@ static void test_getFunctionalGroupPreviewGraft() {
 
     PlacementResult preview = doc.getFunctionalGroupPreview(lib, QStringLiteral("Ac"), 0.0, 0.0, a1);
     CHECK(preview.valid, "preview is valid for a graft onto a real target atom");
-    CHECK(preview.atoms.size() == 3, "preview shows all 3 of 'Ac's atoms (including the not-yet-merged attach atom)");
+    CHECK(preview.atoms.size() == 3, "preview shows all 3 of 'Ac's atoms");
 
     CHECK(doc.molecule().atomIds().size() == 2, "the real document still has only its original 2 atoms -- preview did not mutate it");
     CHECK(!doc.canUndo(), "no undo history was pushed by computing a preview");
 
-    // One of the preview's 3 atoms should sit exactly on a1's real position (0,0) -- the
-    // attach atom, which the real commit would fuse onto a1 via graftAtomOnto. Confirm the
-    // OTHER (non-attach) atom in the preview lands at the same position the real graft commits
-    // it to.
-    bool foundAttachOverlap = false;
-    for (const PreviewAtom& pa : preview.atoms) {
-        if (std::abs(pa.pos.x()) < 0.01 && std::abs(pa.pos.y()) < 0.01) foundAttachOverlap = true;
+    // Under sprout semantics no preview atom sits on top of a1 anymore -- the attach atom is
+    // offset by one bond length. Instead, the preview's own new graft-bond ghost segment should
+    // connect a1's real position to the attach atom's predicted position.
+    bool foundGraftBond = false;
+    for (const PreviewBond& pb : preview.bonds) {
+        bool startsAtTarget = std::abs(pb.start.x()) < 0.01 && std::abs(pb.start.y()) < 0.01;
+        bool endsAtTarget = std::abs(pb.end.x()) < 0.01 && std::abs(pb.end.y()) < 0.01;
+        if (startsAtTarget || endsAtTarget) foundGraftBond = true;
     }
-    CHECK(foundAttachOverlap, "one preview atom lands exactly on the real target atom's position, matching what graftAtomOnto would fuse");
+    CHECK(foundGraftBond, "preview includes the not-yet-committed graft bond connecting a1's real position to the attach atom");
 
     doc.insertFunctionalGroup(lib, QStringLiteral("Ac"), 0.0, 0.0, a1, true);
     QList<AtomId> allAtoms = doc.molecule().atomIds();
-    CHECK(allAtoms.size() == 4, "commit: 2 pre-existing + 3 new - 1 fused (attach atom merged into a1) = 4 total");
+    CHECK(allAtoms.size() == 5, "commit: 2 pre-existing + 3 new (none fused) = 5 total");
 
-    // Every real committed non-attach atom's position should appear among the preview's 3 atom
-    // positions (the preview doesn't simulate the fuse-away of the attach atom, so it has one
-    // extra entry sitting on top of a1 -- but every OTHER position must match exactly).
+    // Every committed new atom's position should appear among the preview's 3 atom positions --
+    // this now holds for ALL 3 (including the attach atom, which no longer gets fused away).
     for (AtomId id : allAtoms) {
         if (id == a1 || id == a2) continue;
         double cx = 0, cy = 0;
@@ -1815,7 +1828,7 @@ static void test_getFunctionalGroupPreviewGraft() {
         for (const PreviewAtom& pa : preview.atoms) {
             if (std::abs(pa.pos.x() - cx) < 0.01 && std::abs(pa.pos.y() - cy) < 0.01) foundMatch = true;
         }
-        CHECK(foundMatch, "every committed non-fused atom's position exactly matches one of the preview's predicted positions");
+        CHECK(foundMatch, "every committed new atom's position exactly matches one of the preview's predicted positions");
     }
 }
 
@@ -2410,6 +2423,15 @@ static const char* kTestTemplateTwoBondsAttach =
     "M  SMT   1 TestFG\n"
     "M  END\n";
 
+static bool hasBond(DocumentState& doc, AtomId a, AtomId b) {
+    for (BondId id : doc.molecule().bondIds()) {
+        AtomId e1 = -1, e2 = -1;
+        if (!doc.molecule().bondEndpoints(id, e1, e2)) continue;
+        if ((e1 == a && e2 == b) || (e1 == b && e2 == a)) return true;
+    }
+    return false;
+}
+
 static void test_graftAngleOrientation_oneNeighbor() {
     std::printf("--- Test: insertFunctionalGroup graft rotates for 1-neighbor target ---\n");
     QString path = writeTempSdf(QString::fromUtf8(kTestTemplateOneBond), QStringLiteral("test_graft_1n"));
@@ -2424,21 +2446,36 @@ static void test_graftAngleOrientation_oneNeighbor() {
 
     // Expect the same 60-degree kink BondAngleSuggester itself produces for a 1-neighbor atom:
     // continuation of the a2->a1 bond (a2 is at angle 0 from a1, so continuation past a1 points
-    // along -x = PI) kinked by 60 degrees (PI/3). Find the newly grafted neighbor atom (the
-    // template's non-attach atom, now bonded to a1) and check its position angle from a1.
+    // along -x = PI) kinked by 60 degrees (PI/3). Under sprout semantics the attach atom (O)
+    // survives as its own atom one bond length from a1, and the far atom (C) continues in the
+    // same rotated direction, one more template-internal bond length out.
     QList<AtomId> allAtoms = doc.molecule().atomIds();
-    CHECK(allAtoms.size() == 3, "graft added exactly one new atom (attach atom merged into a1)");
-    AtomId newAtom = -1;
-    for (AtomId id : allAtoms) { if (id != a1 && id != a2) newAtom = id; }
-    CHECK(newAtom != -1, "found the newly grafted atom");
-    double nx = 0, ny = 0;
-    doc.molecule().atomPos(newAtom, nx, ny);
-    double angle = std::atan2(ny, nx);
+    CHECK(allAtoms.size() == 4, "graft added exactly two new atoms (attach atom survives, no longer merged into a1)");
+    AtomId attachAtom = -1, farAtom = -1;
+    for (AtomId id : allAtoms) {
+        if (id == a1 || id == a2) continue;
+        if (doc.molecule().atomSymbol(id) == QStringLiteral("O")) attachAtom = id;
+        else farAtom = id;
+    }
+    CHECK(attachAtom != -1 && farAtom != -1, "found both the surviving attach atom and the far template atom");
+    CHECK(hasBond(doc, a1, attachAtom), "target atom a1 is bonded directly to the attach atom");
+    CHECK(hasBond(doc, attachAtom, farAtom), "attach atom keeps its own original template-internal bond to the far atom");
+    CHECK(!hasBond(doc, a1, farAtom), "target atom a1 is NOT directly bonded to the far atom (no fusion, just one new bond)");
+
+    double ax = 0, ay = 0, fx = 0, fy = 0;
+    doc.molecule().atomPos(attachAtom, ax, ay);
+    doc.molecule().atomPos(farAtom, fx, fy);
     double expected = M_PI + M_PI / 3.0; // continuation (PI) + 60-degree kink, matching
                                           // BondAngleSuggester's own default turn direction
-    while (angle < 0) angle += 2 * M_PI;
+    double attachAngle = std::atan2(ay, ax);
+    double farAngle = std::atan2(fy, fx);
+    while (attachAngle < 0) attachAngle += 2 * M_PI;
+    while (farAngle < 0) farAngle += 2 * M_PI;
     while (expected >= 2 * M_PI) expected -= 2 * M_PI;
-    CHECK(std::abs(angle - expected) < 0.01, "grafted neighbor lands at the 60-degree-kink angle, not the template's raw 0-degree direction");
+    CHECK(std::abs(attachAngle - expected) < 0.01, "attach atom lands at the 60-degree-kink angle, not the template's raw 0-degree direction");
+    CHECK(std::abs(farAngle - expected) < 0.01, "far atom lands along the same rotated direction as the attach atom");
+    CHECK(std::abs(std::hypot(ax, ay) - 1.5) < 0.01, "attach atom sits exactly one bond length (kBondLength=1.5) from the target atom");
+    CHECK(std::abs(std::hypot(fx, fy) - 2.5) < 0.01, "far atom sits one template-internal bond length further out from the attach atom");
 }
 
 static void test_graftAngleOrientation_twoNeighbors() {
@@ -2456,20 +2493,33 @@ static void test_graftAngleOrientation_twoNeighbors() {
     doc.insertFunctionalGroup(lib, QStringLiteral("TestFG"), 0.0, 0.0, a1, true);
 
     QList<AtomId> allAtoms = doc.molecule().atomIds();
-    CHECK(allAtoms.size() == 4, "graft added exactly one new atom");
-    AtomId newAtom = -1;
-    for (AtomId id : allAtoms) { if (id != a1 && id != a2 && id != a3) newAtom = id; }
-    CHECK(newAtom != -1, "found the newly grafted atom");
-    double nx = 0, ny = 0;
-    doc.molecule().atomPos(newAtom, nx, ny);
-    double angle = std::atan2(ny, nx);
+    CHECK(allAtoms.size() == 5, "graft added exactly two new atoms (attach atom survives)");
+    AtomId attachAtom = -1, farAtom = -1;
+    for (AtomId id : allAtoms) {
+        if (id == a1 || id == a2 || id == a3) continue;
+        if (doc.molecule().atomSymbol(id) == QStringLiteral("O")) attachAtom = id;
+        else farAtom = id;
+    }
+    CHECK(attachAtom != -1 && farAtom != -1, "found both the surviving attach atom and the far template atom");
+    CHECK(hasBond(doc, a1, attachAtom), "target atom a1 is bonded directly to the attach atom");
+    CHECK(!hasBond(doc, a1, farAtom), "target atom a1 is NOT directly bonded to the far atom");
+
+    double ax = 0, ay = 0, fx = 0, fy = 0;
+    doc.molecule().atomPos(attachAtom, ax, ay);
+    doc.molecule().atomPos(farAtom, fx, fy);
+    double attachAngle = std::atan2(ay, ax);
+    double farAngle = std::atan2(fy, fx);
     // Existing neighbors at 0 and PI/2: the gap going counterclockwise from 0 to PI/2 is
     // width PI/2; the gap going counterclockwise from PI/2 back around to 0 is width 3PI/2 --
     // the larger gap, so the bisector sits at PI/2 + 3PI/2/2 = PI/2 + 3PI/4 = 5PI/4.
     double expected = 5.0 * M_PI / 4.0;
-    while (angle < 0) angle += 2 * M_PI;
+    while (attachAngle < 0) attachAngle += 2 * M_PI;
+    while (farAngle < 0) farAngle += 2 * M_PI;
     while (expected >= 2 * M_PI) expected -= 2 * M_PI;
-    CHECK(std::abs(angle - expected) < 0.01, "grafted neighbor bisects the larger gap between the two existing neighbors");
+    CHECK(std::abs(attachAngle - expected) < 0.01, "attach atom bisects the larger gap between the two existing neighbors");
+    CHECK(std::abs(farAngle - expected) < 0.01, "far atom lands along the same rotated direction as the attach atom");
+    CHECK(std::abs(std::hypot(ax, ay) - 1.5) < 0.01, "attach atom sits one bond length from the target atom");
+    CHECK(std::abs(std::hypot(fx, fy) - 2.5) < 0.01, "far atom sits one more template-internal bond length further out");
 }
 
 static void test_graftAngleOrientation_ringAtomTarget() {
@@ -2497,38 +2547,45 @@ static void test_graftAngleOrientation_ringAtomTarget() {
     doc.insertFunctionalGroup(lib, QStringLiteral("TestFG"), 2.0, 0.0, target, true);
 
     QList<AtomId> allAtoms = doc.molecule().atomIds();
-    CHECK(allAtoms.size() == 7, "graft added exactly one new atom (attach atom merged into the ring vertex)");
-    AtomId newAtom = -1;
+    CHECK(allAtoms.size() == 8, "graft added exactly two new atoms (attach atom survives, no longer fused into the ring vertex)");
+    AtomId attachAtom = -1, farAtom = -1;
     for (AtomId id : allAtoms) {
         bool isRing = false;
         for (int i = 0; i < 6; ++i) if (id == ring[i]) isRing = true;
-        if (!isRing) newAtom = id;
+        if (isRing) continue;
+        if (doc.molecule().atomSymbol(id) == QStringLiteral("O")) attachAtom = id;
+        else farAtom = id;
     }
-    CHECK(newAtom != -1, "found the newly grafted substituent atom");
-    double nx = 0, ny = 0, tx = 0, ty = 0;
-    doc.molecule().atomPos(newAtom, nx, ny);
+    CHECK(attachAtom != -1 && farAtom != -1, "found both the surviving attach atom and the far template atom");
+    CHECK(hasBond(doc, target, attachAtom), "ring target atom is bonded directly to the attach atom");
+    CHECK(hasBond(doc, attachAtom, farAtom), "attach atom keeps its own template-internal bond to the far atom");
+    CHECK(!hasBond(doc, target, farAtom), "ring target atom is NOT directly bonded to the far atom");
+    CHECK(!hasBond(doc, ring[1], attachAtom) && !hasBond(doc, ring[5], attachAtom),
+          "attach atom is not fused into the ring -- it has no bond to the target's OWN ring neighbors");
+
+    double ax = 0, ay = 0, fx = 0, fy = 0, tx = 0, ty = 0;
+    doc.molecule().atomPos(attachAtom, ax, ay);
+    doc.molecule().atomPos(farAtom, fx, fy);
     doc.molecule().atomPos(target, tx, ty);
-    double angleFromTarget = std::atan2(ny - ty, nx - tx);
     // Ring neighbors sit at +60 and -60 degrees from the target; the larger gap (240 degrees,
-    // the arc swinging AWAY from the ring interior) is the one BondAngleSuggester bisects, and
-    // its midpoint is exactly 0 degrees -- i.e. straight out along the same radial direction as
-    // the target vertex itself (the target is at angle 0 from the ring's own center too). This
-    // is the geometrically correct "substituent points away from the ring, not into it" result.
-    while (angleFromTarget < 0) angleFromTarget += 2 * M_PI;
-    double expected = 0.0;
-    CHECK(std::abs(angleFromTarget - expected) < 0.01 || std::abs(angleFromTarget - 2 * M_PI) < 0.01,
-          "grafted substituent points radially outward from the ring center, not inward");
-    // Cross-check with an explicit dot product against the outward radial direction (redundant
-    // with the angle check above, but makes the "outward not inward" claim unambiguous even if
-    // the angle-wrapping arithmetic above were ever subtly wrong): the vector from the ring
-    // target atom to the grafted substituent should have a strongly positive component along
-    // the target's own radial (center-to-vertex) direction, which for this hexagon is (1, 0).
-    double outwardDot = (nx - tx) * 1.0 + (ny - ty) * 0.0;
-    CHECK(outwardDot > 0.5, "grafted substituent is on the outward side of the ring vertex, not the inward side");
+    // the arc swinging AWAY from the ring interior) is the one bisected, landing at exactly 0
+    // degrees -- i.e. straight out along the same radial direction as the target vertex itself.
+    double attachAngle = std::atan2(ay - ty, ax - tx);
+    double farAngle = std::atan2(fy - ty, fx - tx);
+    while (attachAngle < 0) attachAngle += 2 * M_PI;
+    while (farAngle < 0) farAngle += 2 * M_PI;
+    CHECK(std::abs(attachAngle) < 0.01 || std::abs(attachAngle - 2 * M_PI) < 0.01,
+          "grafted attach atom points radially outward from the ring center, not inward");
+    CHECK(std::abs(farAngle) < 0.01 || std::abs(farAngle - 2 * M_PI) < 0.01,
+          "grafted far atom continues in the same outward direction");
+    CHECK(std::abs(std::hypot(ax - tx, ay - ty) - 1.5) < 0.01, "attach atom sits one bond length from the ring target atom");
+    CHECK(std::abs(std::hypot(fx - tx, fy - ty) - 2.5) < 0.01, "far atom sits one more template-internal bond length further out");
+    double outwardDot = (ax - tx) * 1.0 + (ay - ty) * 0.0;
+    CHECK(outwardDot > 0.5, "attach atom is on the outward side of the ring vertex, not the inward side");
 }
 
 static void test_graftAngleOrientation_noRotationCase() {
-    std::printf("--- Test: insertFunctionalGroup graft does NOT rotate for 0-neighbor target ---\n");
+    std::printf("--- Test: insertFunctionalGroup graft on an isolated (0-neighbor) target uses the largest-empty-angle fallback ---\n");
     QString path = writeTempSdf(QString::fromUtf8(kTestTemplateOneBond), QStringLiteral("test_graft_0n"));
     TemplateLibrary lib(path, path, path);
 
@@ -2538,25 +2595,36 @@ static void test_graftAngleOrientation_noRotationCase() {
     doc.insertFunctionalGroup(lib, QStringLiteral("TestFG"), 0.0, 0.0, a1, true);
 
     QList<AtomId> allAtoms = doc.molecule().atomIds();
-    CHECK(allAtoms.size() == 2, "graft added exactly one new atom");
-    AtomId newAtom = -1;
-    for (AtomId id : allAtoms) { if (id != a1) newAtom = id; }
-    double nx = 0, ny = 0;
-    doc.molecule().atomPos(newAtom, nx, ny);
-    // Unrotated: template's raw neighbor offset (1,0) translated so attach atom (was at (0,0)
-    // in template space) lands on a1 (0,0) -- so the grafted neighbor should land at (1,0),
-    // the template's own unrotated direction, unchanged from pre-this-task behavior.
-    CHECK(std::abs(nx - 1.0) < 0.01 && std::abs(ny - 0.0) < 0.01, "0-neighbor target: template's raw unrotated direction preserved exactly");
+    CHECK(allAtoms.size() == 3, "graft added exactly two new atoms (attach atom survives)");
+    AtomId attachAtom = -1, farAtom = -1;
+    for (AtomId id : allAtoms) {
+        if (id == a1) continue;
+        if (doc.molecule().atomSymbol(id) == QStringLiteral("O")) attachAtom = id;
+        else farAtom = id;
+    }
+    CHECK(attachAtom != -1 && farAtom != -1, "found both the surviving attach atom and the far template atom");
+    CHECK(hasBond(doc, a1, attachAtom), "target atom is bonded directly to the attach atom");
+
+    double ax = 0, ay = 0, fx = 0, fy = 0;
+    doc.molecule().atomPos(attachAtom, ax, ay);
+    doc.molecule().atomPos(farAtom, fx, fy);
+    // BondAngleSuggester::suggestAngle returns nullopt for a 0-neighbor target; the new
+    // suggestFallbackAngle fallback returns exactly angle 0 for that case (matching
+    // V8Process::getLargestEmptyAngle's own 0-neighbor branch), and the template's own
+    // templateAngle is also 0 for this fixture, so rotateBy is 0 -- the template's raw
+    // orientation happens to be preserved here, but now offset by a real bond length instead of
+    // exact overlap.
+    CHECK(std::abs(ax - 1.5) < 0.01 && std::abs(ay - 0.0) < 0.01, "attach atom lands one bond length (1.5) along the fallback angle (0 degrees)");
+    CHECK(std::abs(fx - 2.5) < 0.01 && std::abs(fy - 0.0) < 0.01, "far atom continues in the same direction, one more template-internal bond length out");
 }
 
 static void test_graftAngleOrientation_noTemplateInternalBonds() {
-    std::printf("--- Test: insertFunctionalGroup graft with a bond-less attach atom falls back to translate-only ---\n");
-    // Attach atom (F) has zero template-internal bonds (disconnected from the template's other
-    // atom) -- templateAngle stays nullopt, so rotation must not apply even though a suggested
-    // angle exists for the target. The template's second atom is NOT bonded to the attach atom,
-    // so graftAtomOnto does not merge it away -- it survives as a real, checkable atom, letting
-    // this test actually verify translate-only behavior instead of merely inferring it from an
-    // atom count.
+    std::printf("--- Test: insertFunctionalGroup graft with a bond-less attach atom skips rotation but still offsets by one bond length ---\n");
+    // Attach atom (F) has zero template-internal bonds -- templateAngle stays nullopt, so
+    // rotation must not apply even though a suggested angle exists for the target (this
+    // invariant is unchanged by the sprout-not-merge change). The disconnected second atom (C)
+    // is translated along with the attach atom (same dx,dy), preserving their raw relative
+    // template-space offset unrotated.
     QString path = writeTempSdf(QString::fromUtf8(kTestTemplateDisconnected), QStringLiteral("test_graft_nobonds"));
     TemplateLibrary lib(path, path, path);
 
@@ -2567,33 +2635,48 @@ static void test_graftAngleOrientation_noTemplateInternalBonds() {
 
     doc.insertFunctionalGroup(lib, QStringLiteral("TestFG"), 0.0, 0.0, a1, true);
 
-    // Attach atom (F, at template-local (0,0)) merges into a1; the disconnected second atom (C,
-    // at template-local (2,0)) is inserted as a genuinely new, non-merged atom.
     QList<AtomId> allAtoms = doc.molecule().atomIds();
-    CHECK(allAtoms.size() == 3, "graft added exactly one new atom (disconnected 2nd template atom); attach atom merged into a1");
-    AtomId newAtom = -1;
-    for (AtomId id : allAtoms) { if (id != a1 && id != a2) newAtom = id; }
-    CHECK(newAtom != -1, "found the newly grafted (disconnected) atom");
-    double nx = 0, ny = 0;
-    doc.molecule().atomPos(newAtom, nx, ny);
-    // Unrotated: template's raw offset from the attach atom (2,0) translated so the attach atom
-    // (was at (0,0) in template space) lands on a1 (0,0) -- so this atom should land at exactly
-    // (2,0), proving rotation was genuinely skipped rather than just "something happened".
-    CHECK(std::abs(nx - 2.0) < 0.01 && std::abs(ny - 0.0) < 0.01, "disconnected atom lands at the template's raw untransformed position -- rotation was skipped");
+    CHECK(allAtoms.size() == 4, "graft added exactly two new atoms (attach atom F now survives instead of merging into a1)");
+    AtomId attachAtom = -1, farAtom = -1;
+    for (AtomId id : allAtoms) {
+        if (id == a1 || id == a2) continue;
+        if (doc.molecule().atomSymbol(id) == QStringLiteral("F")) attachAtom = id;
+        else farAtom = id;
+    }
+    CHECK(attachAtom != -1 && farAtom != -1, "found both the surviving attach atom (F) and the disconnected template atom (C)");
+    CHECK(hasBond(doc, a1, attachAtom), "target atom a1 is bonded directly to the attach atom");
+    CHECK(!hasBond(doc, attachAtom, farAtom), "attach atom and the disconnected atom remain unbonded, matching the template's own topology");
+
+    double ax = 0, ay = 0, fx = 0, fy = 0;
+    doc.molecule().atomPos(attachAtom, ax, ay);
+    doc.molecule().atomPos(farAtom, fx, fy);
+    // 1-neighbor suggested angle: continuation (PI) + 60-degree kink (PI/3) = 4*PI/3, same
+    // formula as test_graftAngleOrientation_oneNeighbor. templateAngle is nullopt here (no
+    // internal bonds), so rotation is skipped -- but the attach atom still translates to land
+    // exactly one bond length (1.5) from a1 along that angle, and the disconnected atom moves
+    // by the same (dx, dy) translation, preserving its raw (2, 0) template-space offset from the
+    // attach atom's own new position.
+    double angle = 4.0 * M_PI / 3.0;
+    double expectedAttachX = 1.5 * std::cos(angle);
+    double expectedAttachY = 1.5 * std::sin(angle);
+    CHECK(std::abs(ax - expectedAttachX) < 0.01 && std::abs(ay - expectedAttachY) < 0.01,
+          "attach atom lands one bond length from a1 along the 1-neighbor suggested angle");
+    CHECK(std::abs(fx - (expectedAttachX + 2.0)) < 0.01 && std::abs(fy - expectedAttachY) < 0.01,
+          "disconnected atom keeps its raw (2,0) template-space offset from the attach atom's new position, unrotated");
 }
 
 static void test_graftAngleOrientation_threeNeighbors() {
-    std::printf("--- Test: insertFunctionalGroup graft does NOT rotate for 3-neighbor target ---\n");
-    // BondAngleSuggester::suggestAngle returns nullopt for 0-OR-3+-neighbor targets; only the
-    // 0-neighbor case had a test before this. This covers the 3-neighbor case.
+    std::printf("--- Test: insertFunctionalGroup graft on a 3-neighbor target uses the largest-empty-angle fallback ---\n");
+    // BondAngleSuggester::suggestAngle returns nullopt for 0-OR-3+-neighbor targets; the new
+    // suggestFallbackAngle takes over for exactly this case.
     QString path = writeTempSdf(QString::fromUtf8(kTestTemplateOneBond), QStringLiteral("test_graft_3n"));
     TemplateLibrary lib(path, path, path);
 
     DocumentState doc;
     AtomId a1 = doc.molecule().addAtom(QStringLiteral("C"), 0.0, 0.0);
-    AtomId a2 = doc.molecule().addAtom(QStringLiteral("C"), 1.0, 0.0);
-    AtomId a3 = doc.molecule().addAtom(QStringLiteral("C"), 0.0, 1.0);
-    AtomId a4 = doc.molecule().addAtom(QStringLiteral("C"), -1.0, 0.0);
+    AtomId a2 = doc.molecule().addAtom(QStringLiteral("C"), 1.0, 0.0);   // angle 0
+    AtomId a3 = doc.molecule().addAtom(QStringLiteral("C"), 0.0, 1.0);   // angle PI/2
+    AtomId a4 = doc.molecule().addAtom(QStringLiteral("C"), -1.0, 0.0);  // angle PI
     doc.molecule().addBond(a1, a2, 1);
     doc.molecule().addBond(a1, a3, 1);
     doc.molecule().addBond(a1, a4, 1);
@@ -2601,26 +2684,46 @@ static void test_graftAngleOrientation_threeNeighbors() {
     doc.insertFunctionalGroup(lib, QStringLiteral("TestFG"), 0.0, 0.0, a1, true);
 
     QList<AtomId> allAtoms = doc.molecule().atomIds();
-    CHECK(allAtoms.size() == 5, "graft added exactly one new atom");
-    AtomId newAtom = -1;
-    for (AtomId id : allAtoms) { if (id != a1 && id != a2 && id != a3 && id != a4) newAtom = id; }
-    CHECK(newAtom != -1, "found the newly grafted atom");
-    double nx = 0, ny = 0;
-    doc.molecule().atomPos(newAtom, nx, ny);
-    // Rotation must be skipped for 3+ existing neighbors -- the grafted neighbor should land at
-    // the template's raw unrotated (1,0) direction, same as the 0-neighbor case.
-    CHECK(std::abs(nx - 1.0) < 0.01 && std::abs(ny - 0.0) < 0.01, "3-neighbor target: rotation correctly skipped, template's raw unrotated direction preserved");
+    CHECK(allAtoms.size() == 6, "graft added exactly two new atoms (attach atom survives)");
+    AtomId attachAtom = -1, farAtom = -1;
+    for (AtomId id : allAtoms) {
+        if (id == a1 || id == a2 || id == a3 || id == a4) continue;
+        if (doc.molecule().atomSymbol(id) == QStringLiteral("O")) attachAtom = id;
+        else farAtom = id;
+    }
+    CHECK(attachAtom != -1 && farAtom != -1, "found both the surviving attach atom and the far template atom");
+    CHECK(hasBond(doc, a1, attachAtom), "target atom is bonded directly to the attach atom");
+
+    double ax = 0, ay = 0, fx = 0, fy = 0;
+    doc.molecule().atomPos(attachAtom, ax, ay);
+    doc.molecule().atomPos(farAtom, fx, fy);
+    // Existing neighbors at 0, PI/2, PI: gaps are PI/2 (0 to PI/2), PI/2 (PI/2 to PI), and PI
+    // (PI wrapping around back to 0) -- the largest gap is PI, bisected at PI + PI/2 = 3*PI/2.
+    double expected = 3.0 * M_PI / 2.0;
+    double attachAngle = std::atan2(ay, ax);
+    double farAngle = std::atan2(fy, fx);
+    while (attachAngle < 0) attachAngle += 2 * M_PI;
+    while (farAngle < 0) farAngle += 2 * M_PI;
+    while (expected >= 2 * M_PI) expected -= 2 * M_PI;
+    CHECK(std::abs(attachAngle - expected) < 0.01, "attach atom bisects the largest empty angle among the three existing neighbors");
+    CHECK(std::abs(farAngle - expected) < 0.01, "far atom lands along the same rotated direction as the attach atom");
+    CHECK(std::abs(std::hypot(ax, ay) - 1.5) < 0.01, "attach atom sits one bond length from the target atom");
+    CHECK(std::abs(std::hypot(fx, fy) - 2.5) < 0.01, "far atom sits one more template-internal bond length further out");
 }
 
 static void test_graftAngleOrientation_multiBondAttachAtom() {
     std::printf("--- Test: insertFunctionalGroup graft uses mean neighbor direction for a multi-bond attach atom ---\n");
     // Regression test for the "first bonded neighbor" heuristic: the attach atom here has TWO
     // template-internal bonds (to atoms at 0 degrees and 120 degrees from it), not one. Picking
-    // just the first of the two arbitrarily (whichever comes first in molfile atom order) was
-    // found to systematically place a grafted branch exactly on top of an already-existing bond
-    // at the target atom in the standard mid-chain (2-neighbors-120-degrees-apart) case. The fix
-    // uses the MEAN of all the attach atom's internal-bond directions instead, so neither grafted
-    // branch should land on (or very near) either of the target's pre-existing bond directions.
+    // just the first of the two arbitrarily would rotate the template by the wrong amount. This
+    // is checked directly: the template's own two internal branches, as seen FROM the surviving
+    // attach atom, must point along rotateBy + {0, 120} degrees, where rotateBy uses the MEAN of
+    // the attach atom's two internal-bond directions (60 degrees), not just the first (0
+    // degrees). This also exercises the core sprout-not-merge behavior for a multi-bond attach
+    // atom specifically: under the old fuse model, this attach atom's 2 internal bonds would
+    // have been rewired onto a1 (fusing a1 into the template's own branch structure); under
+    // sprout semantics a1 gains exactly one new bond (to the surviving attach atom), and the
+    // attach atom's own 2 original bonds stay entirely its own.
     QString path = writeTempSdf(QString::fromUtf8(kTestTemplateTwoBondsAttach), QStringLiteral("test_graft_multibond"));
     TemplateLibrary lib(path, path, path);
 
@@ -2634,27 +2737,41 @@ static void test_graftAngleOrientation_multiBondAttachAtom() {
     doc.insertFunctionalGroup(lib, QStringLiteral("TestFG"), 0.0, 0.0, a1, true);
 
     QList<AtomId> allAtoms = doc.molecule().atomIds();
-    CHECK(allAtoms.size() == 5, "graft added exactly two new atoms (attach atom merged into a1)");
+    CHECK(allAtoms.size() == 6, "graft added exactly three new atoms (attach atom N survives, plus its two original branch atoms)");
 
-    QList<AtomId> newAtoms;
-    for (AtomId id : allAtoms) { if (id != a1 && id != a2 && id != a3) newAtoms.append(id); }
-    CHECK(newAtoms.size() == 2, "found both newly grafted branch atoms");
+    AtomId attachAtom = -1;
+    QList<AtomId> branchAtoms;
+    for (AtomId id : allAtoms) {
+        if (id == a1 || id == a2 || id == a3) continue;
+        if (doc.molecule().atomSymbol(id) == QStringLiteral("N")) attachAtom = id;
+        else branchAtoms.append(id);
+    }
+    CHECK(attachAtom != -1, "found the surviving attach atom (N)");
+    CHECK(branchAtoms.size() == 2, "found both of the attach atom's original branch atoms");
+    CHECK(hasBond(doc, a1, attachAtom), "target atom a1 is bonded directly to the attach atom");
+    CHECK(hasBond(doc, attachAtom, branchAtoms[0]) && hasBond(doc, attachAtom, branchAtoms[1]),
+          "attach atom keeps both of its own original template-internal bonds");
+    CHECK(!hasBond(doc, a1, branchAtoms[0]) && !hasBond(doc, a1, branchAtoms[1]),
+          "target atom a1 is NOT directly bonded to either branch atom (no rewiring, just one new bond)");
 
-    double existingAngles[2] = { 0.0, 2.0 * M_PI / 3.0 }; // the target's two pre-existing bond directions
-    const double kMinSeparationRad = 25.0 * M_PI / 180.0; // ~25 degrees, per review's threshold
+    double ax = 0, ay = 0;
+    doc.molecule().atomPos(attachAtom, ax, ay);
+    // suggestedAngle for a1's own 2 neighbors (at 0 and 120 degrees): bisects the larger gap,
+    // landing at 4*PI/3 (240 degrees) -- same formula as test_graftAngleOrientation_twoNeighbors.
+    // templateAngle (mean of the attach atom's own two 0-and-120-degree internal bonds) is
+    // PI/3 (60 degrees). rotateBy = suggestedAngle - templateAngle = 4*PI/3 - PI/3 = PI.
+    double rotateBy = M_PI;
+    QList<double> expectedBranchAngles = { rotateBy, rotateBy + 2.0 * M_PI / 3.0 }; // rotated 0 deg and 120 deg
+    for (double& e : expectedBranchAngles) { while (e < 0) e += 2 * M_PI; while (e >= 2 * M_PI) e -= 2 * M_PI; }
 
-    auto angularDistance = [](double a, double b) {
-        double d = std::fmod(std::abs(a - b), 2.0 * M_PI);
-        if (d > M_PI) d = 2.0 * M_PI - d;
-        return d;
-    };
-
-    for (AtomId id : newAtoms) {
-        double nx = 0, ny = 0;
-        doc.molecule().atomPos(id, nx, ny);
-        double angle = std::atan2(ny, nx);
-        double minDist = std::min(angularDistance(angle, existingAngles[0]), angularDistance(angle, existingAngles[1]));
-        CHECK(minDist > kMinSeparationRad, "grafted branch atom lands away from both existing bond directions (no overlap)");
+    for (AtomId id : branchAtoms) {
+        double bx = 0, by = 0;
+        doc.molecule().atomPos(id, bx, by);
+        double angleFromAttach = std::atan2(by - ay, bx - ax);
+        while (angleFromAttach < 0) angleFromAttach += 2 * M_PI;
+        bool matchesEither = std::abs(angleFromAttach - expectedBranchAngles[0]) < 0.01
+                           || std::abs(angleFromAttach - expectedBranchAngles[1]) < 0.01;
+        CHECK(matchesEither, "branch atom's direction from the attach atom matches a rotation using the MEAN of both internal bond directions (60 degrees), not just the first (0 degrees)");
     }
 }
 
@@ -2671,29 +2788,44 @@ static void test_graftAngleOrientation_undoRedoRoundTrip() {
 
     doc.insertFunctionalGroup(lib, QStringLiteral("TestFG"), 0.0, 0.0, a1, true);
 
+    // AtomIds may be reassigned differently across an undo/redo cycle (freed index slots can
+    // refill in a different order), so re-identify both new atoms by symbol each time rather
+    // than assuming stable ids.
+    auto findBySymbol = [&doc, a1, a2](const QString& symbol) -> AtomId {
+        for (AtomId id : doc.molecule().atomIds()) {
+            if (id == a1 || id == a2) continue;
+            if (doc.molecule().atomSymbol(id) == symbol) return id;
+        }
+        return -1;
+    };
+
     QList<AtomId> allAtoms = doc.molecule().atomIds();
-    CHECK(allAtoms.size() == 3, "graft added exactly one new atom");
-    AtomId newAtom = -1;
-    for (AtomId id : allAtoms) { if (id != a1 && id != a2) newAtom = id; }
-    CHECK(newAtom != -1, "found the newly grafted atom");
-    double origX = 0, origY = 0;
-    doc.molecule().atomPos(newAtom, origX, origY);
+    CHECK(allAtoms.size() == 4, "graft added exactly two new atoms (attach atom survives)");
+    AtomId attachAtom = findBySymbol(QStringLiteral("O"));
+    AtomId farAtom = findBySymbol(QStringLiteral("C"));
+    CHECK(attachAtom != -1 && farAtom != -1, "found both the surviving attach atom and the far template atom");
+    double origAX = 0, origAY = 0, origFX = 0, origFY = 0;
+    doc.molecule().atomPos(attachAtom, origAX, origAY);
+    doc.molecule().atomPos(farAtom, origFX, origFY);
 
     CHECK(doc.canUndo(), "graft pushed a history entry");
     doc.undo();
-    CHECK(doc.molecule().atomIds().size() == atomCountBeforeGraft, "undo fully removes the grafted atom(s)");
+    CHECK(doc.molecule().atomIds().size() == atomCountBeforeGraft, "undo fully removes the grafted atoms");
 
     CHECK(doc.canRedo(), "undo enables redo");
     doc.redo();
     QList<AtomId> allAtomsAfterRedo = doc.molecule().atomIds();
-    CHECK(allAtomsAfterRedo.size() == 3, "redo restores the grafted atom");
-    AtomId redoAtom = -1;
-    for (AtomId id : allAtomsAfterRedo) { if (id != a1 && id != a2) redoAtom = id; }
-    CHECK(redoAtom != -1, "found the re-grafted atom after redo");
-    double redoX = 0, redoY = 0;
-    doc.molecule().atomPos(redoAtom, redoX, redoY);
-    CHECK(std::abs(redoX - origX) < 0.01 && std::abs(redoY - origY) < 0.01,
-          "redo reproduces the exact same rotated position as the original graft (command replay is correctly snapshotted)");
+    CHECK(allAtomsAfterRedo.size() == 4, "redo restores both grafted atoms");
+    AtomId redoAttachAtom = findBySymbol(QStringLiteral("O"));
+    AtomId redoFarAtom = findBySymbol(QStringLiteral("C"));
+    CHECK(redoAttachAtom != -1 && redoFarAtom != -1, "found both re-grafted atoms after redo");
+    double redoAX = 0, redoAY = 0, redoFX = 0, redoFY = 0;
+    doc.molecule().atomPos(redoAttachAtom, redoAX, redoAY);
+    doc.molecule().atomPos(redoFarAtom, redoFX, redoFY);
+    CHECK(std::abs(redoAX - origAX) < 0.01 && std::abs(redoAY - origAY) < 0.01,
+          "redo reproduces the exact same attach-atom position as the original graft (command replay is correctly snapshotted)");
+    CHECK(std::abs(redoFX - origFX) < 0.01 && std::abs(redoFY - origFY) < 0.01,
+          "redo reproduces the exact same far-atom position as the original graft");
 }
 
 static void test_insertFunctionalGroupLabel() {

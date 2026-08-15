@@ -2411,9 +2411,14 @@ DocumentState::FunctionalGroupPlacement DocumentState::computeFunctionalGroupPla
     double targetX = 0, targetY = 0;
     if (graft) graft = mol.atomPos(targetAtomId, targetX, targetY);
 
-    // Reuse BondAngleSuggester::suggestAngle unchanged -- build its atomsById/bondsList inputs
-    // from EditableMolecule directly (mol already has full graph access) rather than threading
-    // V8Process's m_primitives down into DocumentState, which has no existing dependency on it.
+    // Reuse BondAngleSuggester::suggestAngle (1-or-2-neighbor targets) or, when it returns
+    // nullopt (0-or-3-plus-neighbor targets), suggestFallbackAngle -- build both functions'
+    // atomsById/bondsList inputs from EditableMolecule directly (mol already has full graph
+    // access) rather than threading V8Process's m_primitives down into DocumentState, which has
+    // no existing dependency on it. This is needed whenever `graft` is true now, regardless of
+    // whether templateAngle has a value -- the placement-offset angle below no longer depends on
+    // templateAngle at all (only whether the TEMPLATE'S OWN SHAPE gets rotated, via useRotation,
+    // still does).
     //
     // NOTE: this graft-path angle computation reads directly from EditableMolecule (the real,
     // uncollapsed molecule graph), while the separate live-preview computation in
@@ -2425,7 +2430,7 @@ DocumentState::FunctionalGroupPlacement DocumentState::computeFunctionalGroupPla
     // currently-undocumented residual gap, not something this fix solves -- just something the
     // next person touching this code needs to know about.
     std::optional<double> suggestedAngle;
-    if (graft && templateAngle.has_value()) {
+    if (graft) {
         QVariantMap atomsById;
         for (AtomId id : mol.atomIds()) {
             double x = 0, y = 0;
@@ -2445,12 +2450,27 @@ DocumentState::FunctionalGroupPlacement DocumentState::computeFunctionalGroupPla
             bondsList.append(b);
         }
         suggestedAngle = BondAngleSuggester::suggestAngle(targetAtomId, atomsById, bondsList);
+        if (!suggestedAngle.has_value()) {
+            suggestedAngle = BondAngleSuggester::suggestFallbackAngle(targetAtomId, atomsById, bondsList);
+        }
     }
 
-    // Compute the placement offset: align attach-atom-to-target if grafting,
+    // The point the template's attach atom must actually land at: one bond length (kBondLength)
+    // away from the target along the placement angle above, NOT exactly on top of the target --
+    // sprout semantics, not fusion. Falls back to the target's own position (attachTargetX/Y ==
+    // targetX/Y) only if graft is false or somehow no angle at all is available (defensive; in
+    // practice suggestedAngle always has a value whenever graft is true, since
+    // suggestFallbackAngle never returns nullopt for a known atom).
+    double attachTargetX = targetX, attachTargetY = targetY;
+    if (graft && suggestedAngle.has_value()) {
+        attachTargetX = targetX + kBondLength * std::cos(*suggestedAngle);
+        attachTargetY = targetY + kBondLength * std::sin(*suggestedAngle);
+    }
+
+    // Compute the placement offset: align attach-atom-to-attachTarget if grafting,
     // else center the template's bounding box on (cx, cy).
     double dx = 0, dy = 0;
-    if (graft) { dx = targetX - attachX; dy = targetY - attachY; }
+    if (graft) { dx = attachTargetX - attachX; dy = attachTargetY - attachY; }
     else { dx = cx - (minX + maxX) / 2.0; dy = cy - (minY + maxY) / 2.0; }
 
     bool useRotation = graft && templateAngle.has_value() && suggestedAngle.has_value() && haveAttachPos;
@@ -2467,6 +2487,8 @@ DocumentState::FunctionalGroupPlacement DocumentState::computeFunctionalGroupPla
     result.attachY = attachY;
     result.targetX = targetX;
     result.targetY = targetY;
+    result.attachTargetX = attachTargetX;
+    result.attachTargetY = attachTargetY;
     result.dx = dx;
     result.dy = dy;
     return result;
@@ -2499,7 +2521,8 @@ void DocumentState::insertFunctionalGroup(const TemplateLibrary& lib, const QStr
     EditCommand cmd;
     cmd.execute = [&mol, fgMolfile = p.fgMolfile, fgName, dx = p.dx, dy = p.dy, useRotation = p.useRotation,
                    cosR = p.cosR, sinR = p.sinR, attachX = p.attachX, attachY = p.attachY,
-                   targetX = p.targetX, targetY = p.targetY, templateAttachIdx = p.templateAttachIdx,
+                   attachTargetX = p.attachTargetX, attachTargetY = p.attachTargetY,
+                   templateAttachIdx = p.templateAttachIdx,
                    graft = p.graft, targetAtomId, fullStructure,
                    createdAtoms, createdBonds, createdSGroups]() {
         createdAtoms->clear();
@@ -2507,11 +2530,11 @@ void DocumentState::insertFunctionalGroup(const TemplateLibrary& lib, const QStr
         createdSGroups->clear();
 
         EditableMolecule::InsertResult result = useRotation
-            ? mol.insertStructure(fgMolfile, [attachX, attachY, cosR, sinR, targetX, targetY](double x, double y) {
+            ? mol.insertStructure(fgMolfile, [attachX, attachY, cosR, sinR, attachTargetX, attachTargetY](double x, double y) {
                   double rx = x - attachX, ry = y - attachY;
                   double rotX = rx * cosR - ry * sinR;
                   double rotY = rx * sinR + ry * cosR;
-                  return QPointF(rotX + targetX, rotY + targetY);
+                  return QPointF(rotX + attachTargetX, rotY + attachTargetY);
               })
             : mol.insertStructure(fgMolfile, [dx, dy](double x, double y) {
                   return QPointF(x + dx, y + dy);
@@ -2523,9 +2546,15 @@ void DocumentState::insertFunctionalGroup(const TemplateLibrary& lib, const QStr
         if (graft && templateAttachIdx >= 0) {
             AtomId newAttachAtom = result.sourceIndexToNewAtomId.value(templateAttachIdx, -1);
             if (newAttachAtom >= 0) {
-                QList<BondId> rewired = mol.graftAtomOnto(newAttachAtom, targetAtomId);
-                createdAtoms->removeAll(newAttachAtom);
-                for (BondId b : rewired) createdBonds->append(b);
+                BondId newBond = mol.addBond(targetAtomId, newAttachAtom, 1);
+                if (newBond >= 0) createdBonds->append(newBond);
+                // newAttachAtom is NOT removed from createdAtoms -- it survives as its own real
+                // atom, connected to the target by one new single bond (sprout semantics), not
+                // fused away. For templates whose attach atom itself has 2+ internal bonds, this
+                // is a real, visible behavior change from the old fusion model: those used to
+                // fuse the target into the template's own ring/branch structure; now they always
+                // become a clean single-bond substituent, with the template's own internal
+                // multi-bond structure completely untouched.
             }
         }
 
@@ -2536,10 +2565,11 @@ void DocumentState::insertFunctionalGroup(const TemplateLibrary& lib, const QStr
     };
     // createdSGroups is intentionally never swept here: EditableMolecule::removeAtom's
     // rebuildIndexTables() cascade already prunes any m_sgroupIdx entry whose underlying Indigo
-    // superatom no longer exists, whenever every atom of that superatom is among createdAtoms
-    // (confirmed by test_insertFunctionalGroupSGroupCleanupOnUndo for this function's own graft
-    // path) -- this precondition holds here because the merged attach atom is explicitly removed
-    // from createdAtoms after graftAtomOnto, so undo's atom removals always cover the whole group.
+    // superatom no longer exists, whenever every atom of that superatom is among createdAtoms.
+    // Since the attach atom is never removed from createdAtoms at all now (it's never fused
+    // away), createdAtoms already covers literally every atom the template inserted -- the same
+    // "every member atom of the sgroup is in createdAtoms" precondition holds, even more simply
+    // than before this change.
     cmd.invert = [&mol, createdAtoms, createdBonds]() {
         for (BondId b : *createdBonds) mol.removeBond(b);
         for (AtomId a : *createdAtoms) mol.removeAtom(a);
@@ -2555,25 +2585,21 @@ PlacementResult DocumentState::getFunctionalGroupPreview(
 
     // Build a throwaway EditableMolecule from the SAME fgMolfile text and the SAME transform
     // insertFunctionalGroup would commit -- mirrors insertStructureAt's own "EditableMolecule
-    // tmp(sourceMolfile)" idiom (DocumentState.cpp:2519) rather than hand-rolling a second,
-    // parallel Indigo atom/bond walk. tmp is never attached to m_molecule and is discarded when
-    // this function returns -- the real document is untouched.
+    // tmp(sourceMolfile)" idiom rather than hand-rolling a second, parallel Indigo atom/bond
+    // walk. tmp is never attached to m_molecule and is discarded when this function returns --
+    // the real document is untouched.
     EditableMolecule tmp;
     auto transform = [&p](double x, double y) {
         if (p.useRotation) {
             double rx = x - p.attachX, ry = y - p.attachY;
             double rotX = rx * p.cosR - ry * p.sinR;
             double rotY = rx * p.sinR + ry * p.cosR;
-            return QPointF(rotX + p.targetX, rotY + p.targetY);
+            return QPointF(rotX + p.attachTargetX, rotY + p.attachTargetY);
         }
         return QPointF(x + p.dx, y + p.dy);
     };
     tmp.insertStructure(p.fgMolfile, transform);
 
-    // No special-casing for the graft-merge step (graftAtomOnto, which the real commit path
-    // calls): the transform above already places the template's attach atom exactly at
-    // (targetX, targetY) -- the same point the real target atom already occupies -- so the ghost
-    // naturally overlaps it correctly with no extra logic needed.
     for (AtomId id : tmp.atomIds()) {
         double x = 0, y = 0;
         if (!tmp.atomPos(id, x, y)) continue;
@@ -2585,6 +2611,17 @@ PlacementResult DocumentState::getFunctionalGroupPreview(
         double x1 = 0, y1 = 0, x2 = 0, y2 = 0;
         if (!tmp.atomPos(a, x1, y1) || !tmp.atomPos(b, x2, y2)) continue;
         result.bonds.append({QPointF(x1, y1), QPointF(x2, y2)});
+    }
+    // Under sprout semantics the attach atom no longer sits on top of the real target atom --
+    // it's offset by one bond length. The ghost's own bonds above only ever cover the template's
+    // OWN internal bonds (from tmp), so without this, the hover/drag ghost would show a floating
+    // gap between the target and the group instead of the real future connection. Add the
+    // not-yet-committed graft bond explicitly, using the same targetX/Y and attachTargetX/Y
+    // computeFunctionalGroupPlacement already computed -- both endpoints are guaranteed
+    // consistent with where tmp's own transformed attach atom actually landed, by construction
+    // (same transform, same inputs).
+    if (p.graft) {
+        result.bonds.append({QPointF(p.targetX, p.targetY), QPointF(p.attachTargetX, p.attachTargetY)});
     }
     result.valid = true;
     return result;

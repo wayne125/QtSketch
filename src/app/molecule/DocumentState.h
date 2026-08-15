@@ -490,6 +490,7 @@ private:
         bool useRotation = false;
         double cosR = 1.0, sinR = 0.0;
         double attachX = 0, attachY = 0, targetX = 0, targetY = 0;
+        double attachTargetX = 0, attachTargetY = 0;
         double dx = 0, dy = 0;
     };
     FunctionalGroupPlacement computeFunctionalGroupPlacement(
