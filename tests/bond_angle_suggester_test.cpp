@@ -128,6 +128,63 @@ int main() {
               "mirrored grandparent-aware kink lands at the flat-zigzag-continuation angle via the opposite turnSign branch");
     }
 
+    // Test 8: suggestFallbackAngle, 0 existing neighbors -> angle 0 (never nullopt for a known
+    // atom, unlike suggestAngle).
+    {
+        QVariantMap atomsById; atomsById["1"] = atom(0, 0);
+        auto r = BondAngleSuggester::suggestFallbackAngle(1, atomsById, QVariantList());
+        CHECK(r.has_value(), "suggestFallbackAngle: 0 neighbors returns a value (never nullopt for a known atom)");
+        CHECK(r.has_value() && std::abs(*r - 0.0) < 1e-9, "suggestFallbackAngle: 0 neighbors returns angle 0");
+    }
+
+    // Test 9: suggestFallbackAngle, 1 existing neighbor (atom 2 due east of atom 1) -> the
+    // RAW angle to that neighbor (0 degrees, not the continuation) plus 2.61799 radians (150
+    // degrees), matching V8Process::getLargestEmptyAngle's own 1-neighbor branch exactly --
+    // deliberately a different formula from suggestAngle's own 1-neighbor branch (which uses
+    // the continuation of the bond, not the raw angle to the neighbor).
+    {
+        QVariantMap atomsById; atomsById["1"] = atom(0, 0); atomsById["2"] = atom(1.5, 0);
+        QVariantList bonds; bonds.append(bond(1, 2));
+        auto r = BondAngleSuggester::suggestFallbackAngle(1, atomsById, bonds);
+        CHECK(r.has_value(), "suggestFallbackAngle: 1 neighbor returns a value");
+        double expected = 2.61799;
+        CHECK(r.has_value() && std::abs(*r - expected) < 1e-9, "suggestFallbackAngle: 1 neighbor returns angle-to-neighbor (0) + 2.61799 radians");
+    }
+
+    // Test 10: suggestFallbackAngle, 2 existing neighbors 90 degrees apart -- same geometry as
+    // suggestAngle's own Test 3, confirming the 2+-neighbor branch produces the identical
+    // bisect-the-larger-gap result.
+    {
+        QVariantMap atomsById; atomsById["1"] = atom(0, 0); atomsById["2"] = atom(1, 0); atomsById["3"] = atom(0, 1);
+        QVariantList bonds; bonds.append(bond(1, 2)); bonds.append(bond(1, 3));
+        auto r = BondAngleSuggester::suggestFallbackAngle(1, atomsById, bonds);
+        CHECK(r.has_value(), "suggestFallbackAngle: 2 neighbors returns a value");
+        double expected = M_PI / 4.0 + M_PI;
+        CHECK(r.has_value() && std::abs(*r - expected) < 1e-9, "suggestFallbackAngle: 2 neighbors bisects the larger gap, matching suggestAngle's own result for the same geometry");
+    }
+
+    // Test 11: suggestFallbackAngle, 3 existing neighbors -- the case this function actually
+    // exists for (suggestAngle itself returns nullopt here). Neighbors at 0, PI/2, PI: gaps are
+    // PI/2 (0 to PI/2), PI/2 (PI/2 to PI), and PI (PI wrapping back around to 0) -- the largest
+    // gap is PI, bisected at PI + PI/2 = 3*PI/2.
+    {
+        QVariantMap atomsById;
+        atomsById["1"] = atom(0, 0); atomsById["2"] = atom(1, 0);
+        atomsById["3"] = atom(0, 1); atomsById["4"] = atom(-1, 0);
+        QVariantList bonds; bonds.append(bond(1, 2)); bonds.append(bond(1, 3)); bonds.append(bond(1, 4));
+        auto r = BondAngleSuggester::suggestFallbackAngle(1, atomsById, bonds);
+        CHECK(r.has_value(), "suggestFallbackAngle: 3 neighbors returns a value (never nullopt for a known atom)");
+        double expected = 3.0 * M_PI / 2.0;
+        CHECK(r.has_value() && std::abs(*r - expected) < 1e-9, "suggestFallbackAngle: 3 neighbors bisects the largest empty gap");
+    }
+
+    // Test 12: suggestFallbackAngle, unknown fromAtomId -> nullopt.
+    {
+        QVariantMap atomsById; atomsById["1"] = atom(0, 0);
+        auto r = BondAngleSuggester::suggestFallbackAngle(99, atomsById, QVariantList());
+        CHECK(!r.has_value(), "suggestFallbackAngle: unknown fromAtomId returns nullopt");
+    }
+
     std::printf("\n%d failure(s)\n", failures);
     return failures == 0 ? 0 : 1;
 }
