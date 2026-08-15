@@ -179,9 +179,9 @@ Ketcher 11161713142D 1   1.00000     0.00000     0
 G    1  0
 M  STY  1   1 SUP
 M  SLB  1   1   1
-M  SMT   1 Cbz
 M  SAL   1 10   1   2   3   4   5   6   7   8   9  10
 M  SAP   1  1   9   0
+M  SMT   1 Cbz
 M  END
 
 >  <group>
@@ -277,9 +277,9 @@ Ketcher 11161713142D 1   1.00000     0.00000     0
 G    1  0
 M  STY  1   1 SUP
 M  SLB  1   1   1
-M  SMT   1 CN
-M  SAL   1 2   1   2
+M  SAL   1  2   1   2
 M  SAP   1  1   1   0
+M  SMT   1 CN
 M  END
 
 >  <group>
@@ -383,9 +383,9 @@ Ketcher 11161713142D 1   1.00000     0.00000     0
 G    1  0
 M  STY  1   1 SUP
 M  SLB  1   1   1
-M  SMT   1 CONH2
-M  SAL   1 3   1   2   3
+M  SAL   1  3   1   2   3
 M  SAP   1  1   1   0
+M  SMT   1 CONH2
 M  END
 
 >  <group>
@@ -570,7 +570,7 @@ Ketcher 11161713142D 1   1.00000     0.00000     0
 G    1  0
 M  STY  1   1 SUP
 M  SLB  1   1   1
-M  SAL   1 6   1   2   3   4   5   6
+M  SAL   1  6   1   2   3   4   5   6
 M  SAP   1  1   1   0
 M  SMT   1 Cy
 M  END
@@ -798,7 +798,7 @@ Ketcher 11161713142D 1   1.00000     0.00000     0
 G    1  0
 M  STY  1   1 SUP
 M  SLB  1   1   1
-M  SAL   1 8   1   2   3   4   5   6   7   8
+M  SAL   1  8   1   2   3   4   5   6   7   8
 M  SAP   1  1   8   0
 M  SMT   1 Mes
 M  END
@@ -935,9 +935,9 @@ M  CHG  2   1   1   3  -1
 G    1  0
 M  STY  1   1 SUP
 M  SLB  1   1   1
-M  SMT   1 NO2
-M  SAL   1 3   1   2   3
+M  SAL   1  3   1   2   3
 M  SAP   1  1   1   0
+M  SMT   1 NO2
 M  END
 
 >  <group>
@@ -962,9 +962,9 @@ Ketcher 11161713142D 1   1.00000     0.00000     0
 G    1  0
 M  STY  1   1 SUP
 M  SLB  1   1   1
-M  SMT   1 OAc
-M  SAL   1 4   1   2   3   4
+M  SAL   1  4   1   2   3   4
 M  SAP   1  1   1   0
+M  SMT   1 OAc
 M  END
 
 >  <group>
@@ -991,9 +991,9 @@ Ketcher 11161713142D 1   1.00000     0.00000     0
 G    1  0
 M  STY  1   1 SUP
 M  SLB  1   1   1
-M  SMT   1 OCF3
-M  SAL   1 5   1   2   3   4   5
+M  SAL   1  5   1   2   3   4   5
 M  SAP   1  1   1   0
+M  SMT   1 OCF3
 M  END
 
 >  <group>
@@ -1165,9 +1165,9 @@ Ketcher 11161713142D 1   1.00000     0.00000     0
 G    1  0
 M  STY  1   1 SUP
 M  SLB  1   1   1
-M  SMT   1 Piv
-M  SAL   1 6   1   2   3   4   5   6
+M  SAL   1  6   1   2   3   4   5   6
 M  SAP   1  1   1   0
+M  SMT   1 Piv
 M  END
 
 >  <group>
@@ -1246,9 +1246,9 @@ Ketcher 11161713142D 1   1.00000     0.00000     0
 G    1  0
 M  STY  1   1 SUP
 M  SLB  1   1   1
-M  SMT   1 PO3H2
-M  SAL   1 4   1   2   3   4
+M  SAL   1  4   1   2   3   4
 M  SAP   1  1   1   0
+M  SMT   1 PO3H2
 M  END
 
 >  <group>
@@ -1305,9 +1305,9 @@ Ketcher 11161713142D 1   1.00000     0.00000     0
 G    1  0
 M  STY  1   1 SUP
 M  SLB  1   1   1
-M  SMT   1 PO4H2
-M  SAL   1 5   1   2   3   4   5
+M  SAL   1  5   1   2   3   4   5
 M  SAP   1  1   5   0
+M  SMT   1 PO4H2
 M  END
 
 >  <group>
@@ -1459,9 +1459,9 @@ Ketcher 11161713142D 1   1.00000     0.00000     0
 G    1  0
 M  STY  1   1 SUP
 M  SLB  1   1   1
-M  SMT   1 SO2H
-M  SAL   1 3   1   2   3
+M  SAL   1  3   1   2   3
 M  SAP   1  1   1   0
+M  SMT   1 SO2H
 M  END
 
 >  <group>
@@ -1514,9 +1514,9 @@ Ketcher 11161713142D 1   1.00000     0.00000     0
 G    1  0
 M  STY  1   1 SUP
 M  SLB  1   1   1
-M  SMT   1 SO3H
-M  SAL   1 4   1   2   3   4
+M  SAL   1  4   1   2   3   4
 M  SAP   1  1   1   0
+M  SMT   1 SO3H
 M  END
 
 >  <group>
@@ -1573,9 +1573,9 @@ Ketcher 11161713142D 1   1.00000     0.00000     0
 G    1  0
 M  STY  1   1 SUP
 M  SLB  1   1   1
-M  SMT   1 SO4H
-M  SAL   1 5   1   2   3   4   5
+M  SAL   1  5   1   2   3   4   5
 M  SAP   1  1   5   0
+M  SMT   1 SO4H
 M  END
 
 >  <group>
@@ -1663,9 +1663,9 @@ Ketcher 11161713142D 1   1.00000     0.00000     0
 G    1  0
 M  STY  1   1 SUP
 M  SLB  1   1   1
-M  SMT   1 TBDMS
-M  SAL   1 7   1   2   3   4   5   6   7
+M  SAL   1  7   1   2   3   4   5   6   7
 M  SAP   1  1   1   0
+M  SMT   1 TBDMS
 M  END
 
 >  <group>
@@ -1718,9 +1718,9 @@ Ketcher 11161713142D 1   1.00000     0.00000     0
 G    1  0
 M  STY  1   1 SUP
 M  SLB  1   1   1
-M  SMT   1 TBDPS
 M  SAL   1 17   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17
 M  SAP   1  1   1   0
+M  SMT   1 TBDPS
 M  END
 
 >  <group>
@@ -1806,9 +1806,9 @@ Ketcher 11161713142D 1   1.00000     0.00000     0
 G    1  0
 M  STY  1   1 SUP
 M  SLB  1   1   1
-M  SMT   1 TMS
-M  SAL   1 4   1   2   3   4
+M  SAL   1  4   1   2   3   4
 M  SAP   1  1   1   0
+M  SMT   1 TMS
 M  END
 
 >  <group>
