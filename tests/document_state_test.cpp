@@ -1747,6 +1747,97 @@ static void test_insertFunctionalGroupSGroupCleanupOnUndo() {
           "SGroup-removal step");
 }
 
+static void test_insertFunctionalGroupAllTemplatesConnectToTarget() {
+    std::printf("--- Test: EVERY fg.sdf attachment-point template actually connects to its graft target ---\n");
+    // Regression test for a real bug found this session: 15 of these 62 templates had their
+    // M-block lines in an order (M SMT before M SAL/M SAP) that Indigo's molfile parser
+    // silently mishandles -- indigoIterateSGroupAttachmentPoints yields zero items, so
+    // templateAttachIdx never resolves, graft never happens, and the template silently falls
+    // back to free-floating placement instead of connecting to the target atom. This iterates
+    // every template fg.sdf claims has an attachment point and proves each one actually grafts.
+    TemplateLibrary lib(
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/fg.sdf"),
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/library.sdf"),
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/salts-and-solvents.sdf"));
+
+    const QStringList allAttachPointTemplates = {
+        QStringLiteral("Ac"), QStringLiteral("Bn"), QStringLiteral("Boc"), QStringLiteral("Bu"),
+        QStringLiteral("Bz"), QStringLiteral("Cbz"), QStringLiteral("C2H5"), QStringLiteral("CCl3"),
+        QStringLiteral("CF3"), QStringLiteral("CN"), QStringLiteral("CO2Et"), QStringLiteral("CO2H"),
+        QStringLiteral("CO2Me"), QStringLiteral("CONH2"), QStringLiteral("CO2Pr"), QStringLiteral("CO2tBu"),
+        QStringLiteral("Cp"), QStringLiteral("CPh3"), QStringLiteral("Cy"), QStringLiteral("Et"),
+        QStringLiteral("FMOC"), QStringLiteral("iBu"), QStringLiteral("Indole"), QStringLiteral("iPr"),
+        QStringLiteral("Me"), QStringLiteral("Mes"), QStringLiteral("Ms"), QStringLiteral("NCO"),
+        QStringLiteral("NCS"), QStringLiteral("NHPh"), QStringLiteral("NO2"), QStringLiteral("OAc"),
+        QStringLiteral("OCF3"), QStringLiteral("OCN"), QStringLiteral("OEt"), QStringLiteral("OMe"),
+        QStringLiteral("Ph"), QStringLiteral("PhCOOH"), QStringLiteral("Piv"), QStringLiteral("PO2"),
+        QStringLiteral("PO3"), QStringLiteral("PO3H2"), QStringLiteral("PO4"), QStringLiteral("PO4H2"),
+        QStringLiteral("Pr"), QStringLiteral("sBu"), QStringLiteral("SCN"), QStringLiteral("SO2"),
+        QStringLiteral("SO2Cl"), QStringLiteral("SO2H"), QStringLiteral("SO3"), QStringLiteral("SO3H"),
+        QStringLiteral("SO4"), QStringLiteral("SO4H"), QStringLiteral("ster"), QStringLiteral("TBDMS"),
+        QStringLiteral("TBDPS"), QStringLiteral("tBu"), QStringLiteral("Tf"), QStringLiteral("TMS"),
+        QStringLiteral("Tos"), QStringLiteral("Ts")
+    };
+    CHECK(allAttachPointTemplates.size() == 62, "test fixture lists all 62 known attachment-point templates");
+
+    int failCount = 0;
+    QStringList failedNames;
+    for (const QString& name : allAttachPointTemplates) {
+        DocumentState doc;
+        AtomId target = doc.molecule().addAtom(QStringLiteral("C"), 0.0, 0.0);
+        doc.insertFunctionalGroup(lib, name, 0.0, 0.0, target, true);
+
+        QList<AtomId> allAtoms = doc.molecule().atomIds();
+        bool connected = allAtoms.size() > 1; // at minimum, something was inserted
+        if (connected) {
+            int targetFragment = doc.molecule().atomFragmentIndex(target);
+            for (AtomId id : allAtoms) {
+                if (id == target) continue;
+                if (doc.molecule().atomFragmentIndex(id) != targetFragment) { connected = false; break; }
+            }
+        }
+        if (!connected) { ++failCount; failedNames.append(name); }
+    }
+    if (failCount > 0) {
+        std::printf("[FAIL DETAIL] templates that did not connect to their graft target: %s\n",
+                    failedNames.join(QStringLiteral(", ")).toUtf8().constData());
+    }
+    CHECK(failCount == 0, "every fg.sdf attachment-point template grafts into the SAME fragment as its target atom");
+}
+
+static void test_insertFunctionalGroupConh2OneNeighborConnects() {
+    std::printf("--- Test: CONH2 graft onto a 1-neighbor target connects (regression pin for the M-block-order bug) ---\n");
+    TemplateLibrary lib(
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/fg.sdf"),
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/library.sdf"),
+        QStringLiteral(SKETCH_SOURCE_DIR "/templates/salts-and-solvents.sdf"));
+
+    DocumentState doc;
+    AtomId a1 = doc.molecule().addAtom(QStringLiteral("C"), 0.0, 0.0);
+    AtomId a2 = doc.molecule().addAtom(QStringLiteral("C"), 1.5, 0.0);
+    doc.molecule().addBond(a1, a2, 1);
+
+    doc.insertFunctionalGroup(lib, QStringLiteral("CONH2"), 0.0, 0.0, a1, true);
+
+    QList<AtomId> allAtoms = doc.molecule().atomIds();
+    CHECK(allAtoms.size() == 5, "graft added exactly three new atoms (CONH2's C, O, N)");
+
+    bool a1GainedNewBond = false;
+    for (BondId id : doc.molecule().bondIds()) {
+        AtomId e1 = -1, e2 = -1;
+        doc.molecule().bondEndpoints(id, e1, e2);
+        if ((e1 == a1 || e2 == a1) && e1 != a2 && e2 != a2) a1GainedNewBond = true;
+    }
+    CHECK(a1GainedNewBond, "target atom a1 gained a new bond to the grafted CONH2 group (not just a2's pre-existing bond)");
+
+    int targetFragment = doc.molecule().atomFragmentIndex(a1);
+    bool allConnected = true;
+    for (AtomId id : allAtoms) {
+        if (doc.molecule().atomFragmentIndex(id) != targetFragment) { allConnected = false; break; }
+    }
+    CHECK(allConnected, "all 5 atoms (original chain + grafted CONH2) belong to the same fragment -- no disconnected group");
+}
+
 static void test_getFunctionalGroupPreviewFreeFloating() {
     std::printf("--- Test: getFunctionalGroupPreview matches insertFunctionalGroup's free-floating placement, without mutating the document ---\n");
     TemplateLibrary lib(
@@ -4239,6 +4330,8 @@ int main() {
     test_importReactionWithTallReactant();
     test_insertFunctionalGroup();
     test_insertFunctionalGroupSGroupCleanupOnUndo();
+    test_insertFunctionalGroupAllTemplatesConnectToTarget();
+    test_insertFunctionalGroupConh2OneNeighborConnects();
     test_getFunctionalGroupPreviewFreeFloating();
     test_getFunctionalGroupPreviewGraft();
     test_graftAngleOrientation_oneNeighbor();
