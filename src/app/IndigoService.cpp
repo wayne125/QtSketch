@@ -14,6 +14,7 @@
 #include "indigo-renderer.h"
 #include <QtConcurrent>
 #include <QPointer>
+#include <QPointF>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -162,6 +163,63 @@ static QString indigoBioExpand(int mol) {
     return result;
 }
 
+// indigoLayout/indigoClean2d relayout atoms around whatever origin the algorithm
+// picks internally (typically near 0,0), which silently relocates the whole
+// structure on the page even though only its geometry, not its position, was
+// asked to change. Averages atom xyz (molecule) or every reaction molecule's
+// atoms (reaction) into one centroid so callers can shift the result back.
+static QPointF indigoCentroid(int mol, bool isRxn) {
+    double sumX = 0, sumY = 0;
+    int count = 0;
+    auto accumulate = [&](int m) {
+        int it = indigoIterateAtoms(m);
+        if (it < 0) return;
+        int a;
+        while ((a = indigoNext(it)) > 0) {
+            float* xyz = indigoXYZ(a);
+            if (!xyz) continue;
+            sumX += xyz[0];
+            sumY += xyz[1];
+            count++;
+        }
+    };
+    if (isRxn) {
+        int mit = indigoIterateMolecules(mol);
+        if (mit >= 0) {
+            int m;
+            while ((m = indigoNext(mit)) > 0) accumulate(m);
+        }
+    } else {
+        accumulate(mol);
+    }
+    if (count == 0) return QPointF(0, 0);
+    return QPointF(sumX / count, sumY / count);
+}
+
+// Shifts every atom (and, for reactions, every molecule's atoms) by (dx, dy).
+static void indigoShiftAll(int mol, bool isRxn, double dx, double dy) {
+    if (dx == 0.0 && dy == 0.0) return;
+    auto shift = [&](int m) {
+        int it = indigoIterateAtoms(m);
+        if (it < 0) return;
+        int a;
+        while ((a = indigoNext(it)) > 0) {
+            float* xyz = indigoXYZ(a);
+            if (!xyz) continue;
+            indigoSetXYZ(a, xyz[0] + static_cast<float>(dx), xyz[1] + static_cast<float>(dy), xyz[2]);
+        }
+    };
+    if (isRxn) {
+        int mit = indigoIterateMolecules(mol);
+        if (mit >= 0) {
+            int m;
+            while ((m = indigoNext(mit)) > 0) shift(m);
+        }
+    } else {
+        shift(mol);
+    }
+}
+
 IndigoService::IndigoService(QObject *parent) : QObject(parent) {
     m_sessionId = indigoAllocSessionId();
 }
@@ -191,7 +249,10 @@ void IndigoService::layout(const QString &molfile) {
             int mol = isRxn ? indigoLoadReactionFromString(molfile.toUtf8().constData())
                             : indigoLoadMoleculeFromString(molfile.toUtf8().constData());
             if (mol >= 0) {
+                const QPointF oldCenter = indigoCentroid(mol, isRxn);
                 if (indigoLayout(mol) >= 0) {
+                    const QPointF newCenter = indigoCentroid(mol, isRxn);
+                    indigoShiftAll(mol, isRxn, oldCenter.x() - newCenter.x(), oldCenter.y() - newCenter.y());
                     const char* result = isRxn ? indigoRxnfile(mol) : indigoMolfile(mol);
                     if (result) {
                         resultMol = QString::fromUtf8(result);
@@ -244,7 +305,10 @@ void IndigoService::clean2d(const QString &molfile) {
             int mol = isRxn ? indigoLoadReactionFromString(molfile.toUtf8().constData())
                             : indigoLoadMoleculeFromString(molfile.toUtf8().constData());
             if (mol >= 0) {
+                const QPointF oldCenter = indigoCentroid(mol, isRxn);
                 if (indigoClean2d(mol) >= 0) {
+                    const QPointF newCenter = indigoCentroid(mol, isRxn);
+                    indigoShiftAll(mol, isRxn, oldCenter.x() - newCenter.x(), oldCenter.y() - newCenter.y());
                     const char* result = isRxn ? indigoRxnfile(mol) : indigoMolfile(mol);
                     if (result) {
                         resultMol = QString::fromUtf8(result);
@@ -1205,50 +1269,20 @@ void IndigoService::calcStereoDescriptors(const QString &molfile) {
                     indigoFree(iter);
                 }
 
-                // E/Z bond descriptors: this DAT-sgroup search is DEAD CODE for this
-                // app's actual call pattern (confirmed 2026-08-08 during the IUPAC
-                // namer's P-93.4 CIP-reuse fix -- see IUPAC Blue Book Coverage.md).
-                // indigoAddCIPSgroups (which emits "INDIGO_CIP_DESC" DAT sgroups) is
-                // only ever invoked from Indigo's molfile-save path, never from
-                // indigoJson/KET; this app never sets "molfile-saving-add-stereo-desc"
-                // anywhere, so bondMap below is always empty and MoleculeLayer.qml's
-                // bond-E/Z-label rendering has never actually displayed anything.
-                // src/app/IupacNamer.cpp's computeIndigoBondCIP found a working
-                // alternative: each bond object in the KET JSON carries its CIP
-                // label directly inline as a "cip" field ("cip":"E"/"cip":"Z") when
-                // json-saving-add-stereo-desc is set -- no DAT sgroup needed at all.
-                // TODO: replace this dead search with that direct-field read.
+                // E/Z bond descriptors: read via the same direct KET JSON "cip" bond-field
+                // helper IupacNamer.cpp's name generation already uses successfully. The
+                // previous DAT-sgroup search here was dead code -- indigoAddCIPSgroups
+                // (which emits "INDIGO_CIP_DESC" DAT sgroups) is only ever invoked from
+                // Indigo's molfile-save path, never from indigoJson/KET, so it never
+                // populated anything for this app's actual call pattern (confirmed
+                // 2026-08-08 during the IUPAC namer's P-93.4 CIP-reuse fix; DAT-sgroup
+                // hunt removed 2026-08-18 -- see IUPAC Blue Book Coverage.md item 8).
                 QJsonObject bondMap;
-                indigoSetOptionBool("json-saving-add-stereo-desc", 1);
-                const char* ketStr = indigoJson(mol);
-                if (ketStr) {
-                    QJsonDocument ketDoc = QJsonDocument::fromJson(QByteArray(ketStr));
-                    QJsonObject ketRoot = ketDoc.object();
-                    QJsonArray nodes = ketRoot.value("root").toObject().value("nodes").toArray();
-                    for (const QJsonValue &nodeVal : nodes) {
-                        QString ref = nodeVal.toObject().value("$ref").toString();
-                        if (ref.isEmpty()) continue;
-                        QJsonObject molObj = ketRoot.value(ref).toObject();
-                        if (molObj.value("type").toString() != "molecule") continue;
-                        const QJsonArray sgroups = molObj.value("sgroups").toArray();
-                        for (const QJsonValue &sgVal : sgroups) {
-                            QJsonObject sg = sgVal.toObject();
-                            if (sg.value("type").toString() != "DAT") continue;
-                            if (sg.value("fieldName").toString() != "INDIGO_CIP_DESC") continue;
-                            QJsonArray sgAtoms = sg.value("atoms").toArray();
-                            if (sgAtoms.size() != 2) continue; // atom (R/S) entries already covered above
-                            QString label = sg.value("fieldData").toString();
-                            label.remove('(');
-                            label.remove(')');
-                            if (label != "E" && label != "Z") continue;
-                            int a1 = sgAtoms.at(0).toInt();
-                            int a2 = sgAtoms.at(1).toInt();
-                            QString key = QString("%1-%2").arg(qMin(a1, a2)).arg(qMax(a1, a2));
-                            QJsonObject entry;
-                            entry["cipLabel"] = label;
-                            bondMap[key] = entry;
-                        }
-                    }
+                for (const auto &entry : computeIndigoBondCIP(mol)) {
+                    QString key = QString("%1-%2").arg(entry.first.first).arg(entry.first.second);
+                    QJsonObject bondEntry;
+                    bondEntry["cipLabel"] = QString(entry.second);
+                    bondMap[key] = bondEntry;
                 }
 
                 indigoFree(mol);
