@@ -180,7 +180,7 @@ Item {
             const smi = smilesInput.text.trim()
             if (smi) {
                 win.isProcessing = true
-                const isRxn = smi.startsWith("$RXN") || smi.includes(">>")
+                const isRxn = smi.startsWith("$RXN") || (smi.split(">").length - 1) === 2
                 if (isRxn && win.activeSketch) {
                     if (win.activeCanvas) win.activeCanvas.clearCanvas()
                     const ok = win.activeSketch.importReaction(smi)

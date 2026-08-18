@@ -477,11 +477,10 @@ ApplicationWindow {
             target: indigoSvc
             function onLayoutFinished(newMol, error) {
                 window.isProcessing = false
-                // true: layout() output (SMILES/InChI load, Clean/Layout op) has no
-                // meaningful page placement -- recenter it on the page.
+                // IndigoService::layout preserves the structure's original centroid,
+                // so no forced re-centering here -- don't disturb where the user had it.
                 if (newMol && activeCanvas) {
-                    activeCanvas.loadMolfile(newMol, true)
-                    window.centerViewOnPage()
+                    activeCanvas.loadMolfile(newMol)
                 } else if (error) {
                     messageDialogsGroup.workerErrorDialog.errorText = "Layout: " + error
                     messageDialogsGroup.workerErrorDialog.severe = false
@@ -758,6 +757,7 @@ ApplicationWindow {
                 save: (data) => fileIO.write(window.pendingSaveUrl, data),
                 render_svg: (data) => indigoSvc.renderToFile(data, window.pendingRenderUrl, "svg"),
                 render_pdf: (data) => indigoSvc.renderToFile(data, window.pendingRenderUrl, "pdf"),
+                render_png: (data) => indigoSvc.renderToFile(data, window.pendingRenderUrl, "png"),
                 render_grid: (data) => indigoSvc.renderReactionGridToFile(data, window.pendingRenderUrl, "pdf"),
                 automap: (data) => indigoSvc.autoMapReaction(data),
                 ionize: (data) => indigoSvc.ionizeAtPh(data, window.pendingIonizePh),
@@ -1431,11 +1431,6 @@ ApplicationWindow {
                                     }
                                 }
                                 color: Theme.surface
-                                clip: true
-                                border {
-                                    color: Theme.outline
-                                    width: 1
-                                }
                                 scale: window.zoomLevel
                                 transformOrigin: Item.TopLeft
                                 

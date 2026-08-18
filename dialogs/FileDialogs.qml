@@ -48,7 +48,8 @@ Item {
         onAccepted: {
             const fileStr = selectedFile.toString().toLowerCase()
             if (fileStr.endsWith(".png")) {
-                win.activeCanvas.exportPNG(selectedFile)
+                win.pendingRenderUrl = selectedFile
+                if (win.activeSketch) win.activeSketch.requestStructure("mol", "render_png")
                 return
             }
             if (fileStr.endsWith(".svg")) {
