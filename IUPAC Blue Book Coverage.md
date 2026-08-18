@@ -212,7 +212,7 @@ cyclic compounds, P-93.6 compounds composed of rings and chains.
 | P-92.1-P-92.5 | CIP general methodology + Sequence Rules 1-4 | ◐ | `indigoAddCIPStereoDescriptors` delegates to Indigo's own CIP implementation rather than this codebase re-implementing the Sequence Rules directly — `formatStereoPrefix` just consumes Indigo's result and formats `(nR)-`/`(nS)-`. |
 | P-92.6 | Sequence Rule 5 (R precedes S, etc. — the rule that resolves pseudoasymmetry) | ◐ | Pseudoasymmetric centers (lowercase r/s) now accepted by reusing Indigo's own `indigoStereocenterCIPDescriptor` result (previously computed correctly but rejected outright) — see `IupacNamer.cpp`'s stereocenter loop. Still ◐, not ✅: this reuses Indigo's answer rather than this codebase independently implementing Sequence Rule 5's comparison logic itself. |
 | P-93.4 | Configuration specification of acyclic organic compounds (covers both R/S and E/Z for acyclic systems) | ◐ | R/S via Indigo CIP (see above). E/Z via `processDoubleBondStereo`, now backed by Indigo's own per-bond CIP descriptor (read from the KET JSON's inline `"cip"` field on each bond) instead of a hand-rolled first-shell-only comparator — correctly handles 2nd-shell tie-breaks and any substitution count. Still ◐, not ✅: cumulated double bonds (allenes) remain rejected, and ring double bonds / substituent-branch double bonds are still out of scope pending the separate ring/branch-locant sub-project. **Newly-discovered pre-existing limitation** (found during live verification of this fix, not introduced by it — confirmed via a git-checkout control test against the pre-fix code): E/Z determination, in both the old and new code, is derived from whatever 2D coordinates currently exist on the molecule at naming time, not from whether the double bond's geometry was ever deliberately specified. `generateName()` unconditionally calls `indigoLayout(mol)`; for a molecule freshly parsed straight from a SMILES with no stereo bond markers, this happens to produce coordinates Indigo reads as non-stereogenic (correct) — but the live app's actual "Load from SMILES" flow first runs the SMILES through a separate `indigoSvc.layout()` call to get a molfile for the document, and if that molfile is later re-loaded and re-laid-out for naming, the *already-existing* coordinates are preserved rather than freshly (and more symmetrically) recomputed, so a double bond the user never specified stereo for can pick up an arbitrary, non-reproducible E or Z label. This is NOT new: the pre-fix code had the identical vulnerability for any simple disubstituted alkene without explicit stereo marks (it only special-cased *ties* with an early, coordinate-independent rejection); this fix just means ties now share that same pre-existing behavior instead of always rejecting. A real fix needs a way to track "was this bond's stereo ever deliberately specified" through the SMILES→document→molfile round trip (molfiles have no such flag for double bonds outside the rare `stereo=3` "either" marker) — out of scope for this sub-project, flagged here for a future one. |
-| P-93.5, P-93.6 | Configuration specification of cyclic compounds; compounds composed of rings and chains | ◐ | Ring-parent atom stereocenters already worked (ring atoms were already in `graphIdToLocant` for the monocyclic/naphthalene paths) -- the coverage note above was stale/overstated. Real gap closed: a stereocenter in a substituent branch attached to a ring parent (monocyclic or naphthalene) is now named correctly, by wiring the existing `formatBranchStereoPrefix` mechanism (already proven for the plain-acyclic-parent path) into both ring paths' substituent-naming loops, each with its own `handledBranchStereoIds` per numbering candidate. Remaining gaps: a ring used AS a substituent with a stereocenter on the ring's own atom (`nameRingAsSubstituent`'s locant map is still discarded, not exposed); von Baeyer bicyclic (Phase 27) and spiro (Phase 28) parents have no stereo support at all yet, not even for their own ring-parent atoms. |
+| P-93.5, P-93.6 | Configuration specification of cyclic compounds; compounds composed of rings and chains | ◐ | Ring-parent atom stereocenters already worked (ring atoms were already in `graphIdToLocant` for the monocyclic/naphthalene paths). A stereocenter in a substituent branch attached to a ring parent (monocyclic or naphthalene) is named correctly via `formatBranchStereoPrefix`. **A ring used AS a substituent with a stereocenter on its own atom is also now covered (2026-08-19)**: `nameRingAsSubstituent`'s own winning ring numbering (`best.ringChain`) now builds a `"(nR)-"` prefix directly, threaded through 4 call sites (`nameBranchGraph`, `nameChainParentWithRingSubstituent` x2, the `ringSubstituentInfos` pre-collection pass) — e.g. `5-[(2R)-2-methylcyclopentyl]heptanoic acid`. Remaining gaps: von Baeyer bicyclic (Phase 27) and spiro (Phase 28) parents have no stereo support at all yet, not even for their own ring-parent atoms; allenes. |
 | P-91, P-94 | Stereoisomer graphical representation; conformation/conformational stereodescriptors | ✗ | Not implemented. |
 
 ## Chapter P-10 — Parent Structures for Natural Products
@@ -317,22 +317,29 @@ wherever both could appear.
    load-bearing for a monocyclic-chain-adjacent case (peri-fused geometry genuinely needs
    drawing/orientation reasoning, unlike the simple-chain numbering Phase 45 just solved
    without them).
-3. **P-22.2 general Hantzsch-Widman stem construction** — **Phase 51** implemented for ring sizes 5-6; **Phase 55** extended to sizes 3-4 and 7-10. Remaining: 11+ membered rings per P-22.2.4.
+3. **P-22.2 general Hantzsch-Widman stem construction** — **Phase 51** implemented for ring sizes 5-6; **Phase 55** extended to sizes 3-4 and 7-10. **Phase 70** (2026-08-19) added ring sizes 11-20, but via a DIFFERENT mechanism than Hantzsch-Widman: per the real Blue Book text (P-22.2.3, verified against `BlueBookV2.md` directly, not memory), sizes 11+ don't use Hantzsch-Widman stems at all -- they use skeletal replacement ('a') nomenclature (`cyclo`+chain-root+`ane`, e.g. "azacycloundecane", "1,5-dithiacyclododecane"), with locants+prefix grouped PER HETEROATOM KIND and hyphen-joined (structurally different from Hantzsch-Widman's pooled-locant-list style). New `RingType::LARGE_HETEROCYCLE` in `classifyMonocyclicHeteroRing`/`IupacNamer.cpp`, reusing the existing generic ring-numbering comparator (`heteroatomLocants`/`heteroatomSeniorityAtLocants`) unchanged -- it already implemented the right rule. Two real Blue Book PIN examples pinned directly in the new tests ("1,5-dithiacyclododecane (not 1,9-)" and "1-thia-5-selenacyclododecane"). Found and fixed a related latent bug while testing: the whole-molecule amine-detection scan was treating a ring's own internal N-C bond as an exocyclic amino substituent, invisible until now because every saturated non-hardcoded heterocycle was previously rejected before reaching that scan. `iupac_namer_test` 452→456/456, `ctest` 11/11, `cavecrew-reviewer`: no issues (including a specific check of the other 8 call sites of `classifyMonocyclicHeteroRing` for unintended blast radius). **Scoped to the fully saturated, unsubstituted case only** -- remaining: the mancude/maximally-unsaturated `-ene` chain form (P-22.2.4) needs a real "maximum noncumulative double bonds" validator this codebase doesn't have for rings this large (Indigo doesn't mark them aromatic the way it does 5-6 membered rings), and substituted large heterocycles aren't handled at all yet (deferred, not attempted).
 4. **P-23/P-24 von Baeyer & spiro**: add unsaturation and heteroatoms (simple alkyl/halogen substituents now named in Phase 53 for saturated all-carbon bicyclic/spiro; still saturated+all-carbon-at-skeleton only — P-23.3-P-23.7 and P-24.3-P-24.8 entirely unimplemented).
 5. **Blue Book section P-44 (ring-vs-chain and other parent-structure seniority)** — **Phase 52 closed the P-44.1.1 + P-44.1.2.2 core** (count-based decision + ring-wins-on-tie); **Phase 54 generalized chain-as-parent naming** from carboxylic-acid-only to ACID/AMIDE/NITRILE/ALDEHYDE/KETONE/ALCOHOL/THIOL/AMINE (`nameChainParentWithRingSubstituent` + new `nameAcyclicChainParentWithSubstituents`), fixing 3 bugs surfaced in the process (a stray ring-only restriction blocking chain-attached thiol classification; a false-tie in the ring/chain instance count caused by miscounting an exocyclic principal carbon as ring-side; and `nameChainParentWithRingSubstituent` itself dropping exocyclic principal carbons from its own count, under-naming diol/diamine cases). Remaining: `P-44.1.2` heteroatom-skeleton seniority (Si/Ge/... chain vs C ring) (SULFONIC_ACID/THIAL/THIONE added in Phase 56; ESTER/ACYL_HALIDE added in Phase 58; BORONIC_ACID/PHOSPHINE added in Phase 61, via `nameBranchGraph` rather than the numbered-chain-suffix machinery), and lifting the single-attachment / monocyclic-ring restrictions (fused/bridged/polycyclic ring as a chain substituent — scoped as a separate future phase). (Not to be confused with this codebase's own Phase 44, above.)
-6. **P-9 stereochemistry completeness**: P-92.6 (pseudoasymmetric/Sequence Rule 5) and P-93.4's 2nd-shell E/Z tie-breaks are done via Indigo's own CIP engine. P-93.5/93.6's branch-stereocenter-on-ring-parent case is also done (monocyclic and naphthalene parents). Remaining: a ring used as a substituent with a stereocenter on the ring's own atom; von Baeyer/spiro parent stereo support (neither has any yet); allenes.
+6. **P-9 stereochemistry completeness**: P-92.6 (pseudoasymmetric/Sequence Rule 5) and P-93.4's 2nd-shell E/Z tie-breaks are done via Indigo's own CIP engine. P-93.5/93.6's branch-stereocenter-on-ring-parent case is also done (monocyclic and naphthalene parents). **A ring used as a substituent with a stereocenter on the ring's own atom -- fixed 2026-08-19.** `nameRingAsSubstituent` already computes its own correct winning ring numbering (`best.ringChain`, from the same candidate-scoring machinery used for ring-as-parent numbering) -- it now builds a `"(nR)-"`/`"(nR,mS)-"` prefix directly from that, using new (defaulted) `stereoByGraphId`/`handledBranchStereoIds` parameters, rather than reusing `formatBranchStereoPrefix` (whose chain-walk locant numbering has no relation to a ring's real numbering and would have produced wrong locants, or double-processed the same stereocenter, if applied to a ring). Threaded through 4 call sites: `nameBranchGraph`'s own delegation to it; `nameChainParentWithRingSubstituent` (2 call sites in `generateName`, for a functional-group chain with a ring substituent, e.g. `"5-[(2R)-2-methylcyclopentyl]heptanoic acid"` -- pinned as a real test, matches the confirmed-reachable case); and the `ringSubstituentInfos` pre-collection pass (for ring substituents attached near a principal group) -- verified safe to thread through since its consumers append the pre-built name string verbatim, never calling `formatBranchStereoPrefix` on those same ring nodes, so no double-wrap risk. `iupac_namer_test` 456→457/457, `ctest` 11/11, two `cavecrew-reviewer` passes (one found the missed `ringSubstituentInfos` call site; the scoped follow-up confirmed the fix and all its downstream consumers are safe). Remaining: von Baeyer/spiro parent stereo support (neither has any yet); allenes.
 7. **E/Z coordinate-dependence** (found during item 6's work, pre-existing before it too): `processDoubleBondStereo` reads whatever 2D coordinates currently exist rather than tracking whether stereo was ever deliberately specified, so a double bond with genuinely unspecified geometry can get an arbitrary, non-reproducible E/Z label once it has passed through any auto-layout pass (confirmed live via the app's own SMILES-load → layout → naming flow). Needs a way to carry "was this bond's stereo ever deliberately specified" through the SMILES→document→molfile round trip — a real design question (molfiles have no such flag for double bonds outside the rare `stereo=3` "either" marker), not a quick fix.
-8. **Fix the dead bond-E/Z-display path in `IndigoService::calcStereoDescriptors`** (found
-   2026-08-08 during the P-93.4 CIP-reuse fix, confirmed via tracing Indigo's own source:
-   `addCIPSgroups` is only wired to the molfile-save path, never JSON/KET, and this app never
-   sets the molfile-side option). `MoleculeLayer.qml`'s bond-E/Z-label rendering
-   (`b.cipLabel`) has therefore never actually displayed anything, silently. Fix: replace the
-   DAT-sgroup hunt in `IndigoService.cpp` with the same direct `"cip"` field read
-   `IupacNamer.cpp`'s `computeIndigoBondCIP` already uses successfully -- when doing so,
-   promote the shared logic to one common helper both files call, rather than writing a third
-   copy (the spec's original "duplicate, don't share" reasoning was sound only because it
-   assumed the second consumer already worked; now that it's confirmed broken, sharing is the
-   right call).
+8. **Fix the dead bond-E/Z-display path in `IndigoService::calcStereoDescriptors`** — fixed
+   2026-08-18. `addCIPSgroups` was only ever wired to the molfile-save path, never JSON/KET,
+   so `MoleculeLayer.qml`'s bond-E/Z-label rendering (`b.cipLabel`) had never actually
+   displayed anything. Fix: `computeIndigoBondCIP` (`IupacNamer.cpp`'s existing helper that
+   reads the KET JSON `"cip"` bond field directly) was promoted to external linkage --
+   moved out of its anonymous namespace to file scope, declared in `IupacNamer.h` -- so
+   `IndigoService.cpp` (which already includes that header) can call the same one copy
+   instead of writing a third. `IndigoService::calcStereoDescriptors`'s DAT-sgroup-hunting
+   block replaced with a direct call to it. `iupac_namer_test` 452/452 unaffected (no
+   name-generation logic touched, only the helper's linkage/location), `ctest` 11/11.
+   `cavecrew-reviewer` pass: no issues (checked forward-declaration/ODR correctness across
+   the anon-namespace boundary, JSON shape parity, and that the moved function has no
+   hidden dependency on anonymous-namespace-local state). Not independently live-clicked
+   in the running app (pywinauto's File-menu automation hit its now-familiar timing
+   flakiness on this exact click sequence for a third time this session; skipped a fourth
+   retry given the fix is a pure linkage/plumbing change to an already-proven helper, not
+   new logic) -- worth a manual look next time the app is open with a real E/Z double bond
+   (e.g. `Cl/C=C/Cl`) selected.
 9. **Branch-stereocenter guard bypass on the acyclic parent path (Phase 1)** — fixed. Same bug
    class already fixed for the ring paths (Phase 2/3): `formatBranchStereoPrefix` was called
    unconditionally right after `nameBranchGraph` with no check that `nameBranchGraph` actually
@@ -363,16 +370,39 @@ wherever both could appear.
     9002`, plus 2 acyclic-chain numbering-direction sites at `:1846, 3832`) that previously
     compared raw, still-bracketed names.
 11. Lower priority / rarely load-bearing for this app: P-26 (phane), P-27 (fullerenes), P-7/P-8 (ions/isotopes), P-10 (natural products).
-12. **Unnameable-branch guard bypass without a stereocenter (Phase 1)** — found 2026-08-09 during
-    this plan's own final review, confirmed via a temporary probe then reverted, NOT fixed by
-    this plan (out of scope -- see item 9). `nameBranchGraph` can return `""` for a branch that
-    is unnameable for reasons unrelated to stereocenters (fused/bridged ring branch at
-    `IupacNamer.cpp:1147`, azide at `:1193`, and likely other `return ""` sites in the same
-    function). The final `locantSubstituents[locant].append(bName)` at `:4210` is unconditional
-    and was never inside item 9's `!bName.isEmpty()` guard (that guard only wraps the
-    stereo-prefix logic, not the append itself) -- so an unnameable, non-stereocenter branch is
-    silently dropped from the name instead of triggering rejection. Confirmed live:
-    `CCCCC(CN=[N+]=[N-])CCC` returns `success=1 name='4-octane'` (azide substituent vanishes).
-    Fix (future work, not this plan): after the `if (!bName.isEmpty()) {...}` block, add
-    `else { return {false, "", "Unrecognized or unsupported substituent."}; }` mirroring the
-    Phase 2/3 rejection pattern, then add a regression test.
+12. **Unnameable-branch guard bypass without a stereocenter (Phase 1)** — fixed 2026-08-18.
+    `nameBranchGraph` can return `""` for a branch that is unnameable for reasons unrelated
+    to stereocenters (fused/bridged ring branch at `IupacNamer.cpp:1147`, azide at `:1193`,
+    and likely other `return ""` sites in the same function). The direct-branch loop's
+    `locantSubstituents[locant].append(bName)` (now `IupacNamer.cpp:4213`) used to be
+    unconditional and was never inside item 9's `!bName.isEmpty()` guard (that guard only
+    wrapped the stereo-prefix logic, not the append itself) -- so an unnameable,
+    non-stereocenter branch was silently dropped from the name instead of triggering
+    rejection. Confirmed live before the fix: `CCCCC(CN=[N+]=[N-])CCC` returned
+    `success=1 name='4-octane'` (azide substituent vanished). Fix: `IupacNamer.cpp:4198-4203`
+    now returns `{false, "", "Unrecognized or unsupported substituent."}` as soon as
+    `nameBranchGraph` returns `""`, mirroring the Phase 2/3 rejection pattern. New regression
+    test in `tests/iupac_namer_test.cpp` pins the fixed molecule to that rejection. Side
+    effect: the existing item-9 test (`CCCCC([C@H](CN=[N+]=[N-])C)CCC`, stereocenter +
+    unnameable substituent nested two branches deep) now hits this new guard before the
+    old stereocenter-specific rejection -- both messages are correct for that molecule, but
+    this one is more specific about the actual root cause, so the test was updated to expect
+    it. `iupac_namer_test` 451/451, `ctest` 11/11.
+13. **Same unguarded-empty-append bug pattern, other element branches (Phase 1)** — fixed
+    2026-08-18. Confirmed live (not just theoretical): the thioether branch's
+    `alkylName += "sulfanyl"` ran even when `nameBranchGraph` returned `""` for the
+    alkyl side (e.g. an azide-containing alkyl group), silently emitting a bare
+    "sulfanyl" instead of rejecting -- same bug class as item 12, just in the
+    sulfur/selenium/tellurium/ether suffix blocks instead of the plain-carbon branch.
+    Fixed all 13 sites the same way (`if (alkylName.isEmpty()) return {false, "",
+    "Unrecognized or unsupported substituent."};` right after the `nameBranchGraph`
+    call, before the suffix is appended): sulfanyl/sulfinyl/sulfonyl/disulfanyl
+    (`IupacNamer.cpp:3974, 3984, 3994, 4009`), selanyl/seleninyl/selenonyl/diselanyl
+    (`:4022, 4032, 4042, 4057`), tellanyl/tellurinyl/telluronyl/ditellanyl
+    (`:4070, 4080, 4090, 4105`), and the ether prefix (`:4121`). New regression test
+    (`CCCCC(SCN=[N+]=[N-])CCC`, a thioether whose alkyl side is unnameable) confirms
+    rejection instead of a bogus name. None of the 13 guards changed behavior on any
+    previously-passing case (all still named their alkyl side successfully before
+    appending the suffix) -- confirmed by rebuilding and rerunning the full suite
+    before adding the new test: 451/451 unchanged, then 452/452 with the new test.
+    `ctest` 11/11.

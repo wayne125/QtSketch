@@ -56,6 +56,13 @@ std::map<int, QString> computePeripheralNumbering3Ring(
 
 std::map<int, QString> computePeripheralNumberingForMol(int mol);
 
+// Maps each stereo-defined double bond (keyed by its two atom indices, min first)
+// to its E/Z CIP descriptor, read directly from Indigo's KET JSON "cip" bond field.
+// Declared here (external linkage) so IndigoService.cpp can share it too -- see
+// IUPAC Blue Book Coverage.md item 8. Defined below, outside the anonymous
+// namespace, right after IupacNamer::generateName's own file-scope block begins.
+std::map<std::pair<int,int>, QChar> computeIndigoBondCIP(int mol);
+
 namespace {
 
 enum class GroupType {
@@ -457,7 +464,7 @@ bool tryGeneralHeterocycle(const Graph &g, const std::vector<int> &ringHeteroNod
     return true;
 }
 
-enum class RingType { BENZENE, FURAN, THIOPHENE, SELENOPHENE, TELLUROPHENE, PYRROLE, PYRIDINE, PHOSPHININE, CYCLOALKANE, CYCLOALKENE, IMIDAZOLE, PYRIMIDINE, PYRAZOLE, OXAZOLE, ISOXAZOLE, THIAZOLE, ISOTHIAZOLE, SELENAZOLE, ISOSELENAZOLE, PYRIDAZINE, PYRAZINE, PIPERIDINE, PYRROLIDINE, TETRAHYDROFURAN, TETRAHYDROTHIOPHENE, GENERAL_HETEROCYCLE };
+enum class RingType { BENZENE, FURAN, THIOPHENE, SELENOPHENE, TELLUROPHENE, PYRROLE, PYRIDINE, PHOSPHININE, CYCLOALKANE, CYCLOALKENE, IMIDAZOLE, PYRIMIDINE, PYRAZOLE, OXAZOLE, ISOXAZOLE, THIAZOLE, ISOTHIAZOLE, SELENAZOLE, ISOSELENAZOLE, PYRIDAZINE, PYRAZINE, PIPERIDINE, PYRROLIDINE, TETRAHYDROFURAN, TETRAHYDROTHIOPHENE, GENERAL_HETEROCYCLE, LARGE_HETEROCYCLE };
 
 QString getFusionPrefixShared(RingType t) {
     if (t == RingType::FURAN) return "furo";
@@ -514,6 +521,32 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
         if (uIn && vIn) {
             if (gb.order != 4) heteroAromatic = false;
             if (gb.order != 1) allSingleInRing = false;
+        }
+    }
+
+    // P-22.2.3/P-22.2.4: heteromonocycles of 11-20 ring members use skeletal
+    // replacement ('a') nomenclature (cyclo+root+ane, or a mancude '-ene' chain)
+    // instead of Hantzsch-Widman stems, which only cover sizes 3-10 (P-22.2.2.1.1).
+    // Verified against the real Blue Book text (BlueBookV2.md), not memory.
+    // Scoped to the fully saturated, unsubstituted case only for this phase --
+    // the mancude/maximally-unsaturated '-ene' chain form (P-22.2.4) needs a real
+    // "maximum noncumulative double bonds" validator this codebase doesn't have
+    // yet for rings this large (Indigo doesn't mark them order-4 'aromatic' the
+    // way it does 5-6 membered rings), so it falls through to the existing
+    // rejection below, same as before this phase.
+    if (ringSize >= 11 && ringSize <= 20 && allSingleInRing) {
+        bool allSupportedElements = true;
+        for (int nIdx : ringHeteroNodes) {
+            if (hwSeniorityRank(g.nodes[nIdx].atomicNumber) == 99) { allSupportedElements = false; break; }
+        }
+        bool bareRing = true;
+        for (int nIdx : ringCycle) {
+            if (g.nodes[nIdx].neighbors.size() != 2) { bareRing = false; break; }
+        }
+        if (allSupportedElements && bareRing) {
+            outType = RingType::LARGE_HETEROCYCLE;
+            outNameRoot = "cyclo" + chainRoot(ringSize) + "ane";
+            return true;
         }
     }
 
@@ -662,11 +695,15 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
 // Forward declarations
 QString nameBranchGraph(const Graph &g, int rootIdx, int parentIdx,
                                const std::vector<std::set<int>> &allIndependentRings = {},
-                               const std::set<int> &forbiddenNodes = {});
+                               const std::set<int> &forbiddenNodes = {},
+                               const std::map<int, QChar> &stereoByGraphId = {},
+                               std::set<int> *handledBranchStereoIds = nullptr);
 
 QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, int attachmentNode, int parentLinkNode,
                                      const std::vector<std::set<int>> &allIndependentRings = {},
-                                     const std::set<int> &forbiddenNodes = {}) {
+                                     const std::set<int> &forbiddenNodes = {},
+                                     const std::map<int, QChar> &stereoByGraphId = {},
+                                     std::set<int> *handledBranchStereoIds = nullptr) {
     if (ringNodes.empty() || !ringNodes.count(attachmentNode)) return "";
     std::set<int> combinedForbidden = forbiddenNodes;
     for (int n : ringNodes) combinedForbidden.insert(n);
@@ -846,6 +883,7 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
         std::vector<int> sortedSubLocants;
         std::vector<std::pair<QString, int>> namedSubstituents;
         QString hwNameRoot; // for GENERAL_HETEROCYCLE: pre-built locant+prefix+stem string
+        std::vector<int> ringChain; // winning candidate's own ring-atom order, locant i+1 == cand[i]
     };
 
     std::vector<CandidateScore> validScores;
@@ -1000,6 +1038,7 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
 
         if (candValid) {
             std::sort(cs.sortedSubLocants.begin(), cs.sortedSubLocants.end());
+            cs.ringChain = cand;
             validScores.push_back(cs);
         }
     }
@@ -1057,6 +1096,31 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
         prefixPart = pStrs.join("-");
     }
 
+    // IUPAC Blue Book Coverage.md item 6: a stereocenter on the ring's OWN atom
+    // (as opposed to on a branch attached to a ring parent, P-93.5/93.6, already
+    // handled elsewhere via formatBranchStereoPrefix) -- that function's chain-walk
+    // numbering has no relation to a ring's real numbering, so it can't be reused
+    // here; this ring already computed its own correct winning locant scheme
+    // (best.ringChain), so it builds its own stereo prefix directly from that.
+    if (!stereoByGraphId.empty()) {
+        std::vector<std::pair<int, QChar>> locantStereo;
+        for (size_t i = 0; i < best.ringChain.size(); ++i) {
+            int nodeIdx = best.ringChain[i];
+            auto it = stereoByGraphId.find(nodeIdx);
+            if (it != stereoByGraphId.end()) {
+                locantStereo.push_back({static_cast<int>(i + 1), it->second});
+                if (handledBranchStereoIds) handledBranchStereoIds->insert(nodeIdx);
+            }
+        }
+        if (!locantStereo.empty()) {
+            std::sort(locantStereo.begin(), locantStereo.end(),
+                      [](const std::pair<int, QChar> &a, const std::pair<int, QChar> &b) { return a.first < b.first; });
+            QStringList parts;
+            for (const auto &p : locantStereo) parts.append(QString("%1%2").arg(p.first).arg(p.second));
+            prefixPart = QString("(%1)-").arg(parts.join(",")) + prefixPart;
+        }
+    }
+
     QString res;
     if (rType == RingType::BENZENE) {
         res = prefixPart.isEmpty() ? "phenyl" : (prefixPart + "phenyl");
@@ -1102,7 +1166,8 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
     return res;
 }
 
-QString nameBranchGraph(const Graph &g, int rootIdx, int parentIdx, const std::vector<std::set<int>> &allIndependentRings, const std::set<int> &forbiddenNodes) {
+QString nameBranchGraph(const Graph &g, int rootIdx, int parentIdx, const std::vector<std::set<int>> &allIndependentRings, const std::set<int> &forbiddenNodes,
+                         const std::map<int, QChar> &stereoByGraphId, std::set<int> *handledBranchStereoIds) {
     if (forbiddenNodes.count(rootIdx)) return "";
 
     if (!allIndependentRings.empty()) {
@@ -1148,7 +1213,7 @@ QString nameBranchGraph(const Graph &g, int rootIdx, int parentIdx, const std::v
 
                 std::set<int> combinedForbidden = forbiddenNodes;
                 for (int n : rNodes) combinedForbidden.insert(n);
-                return nameRingAsSubstituent(g, rNodes, rootIdx, parentIdx, allIndependentRings, combinedForbidden);
+                return nameRingAsSubstituent(g, rNodes, rootIdx, parentIdx, allIndependentRings, combinedForbidden, stereoByGraphId, handledBranchStereoIds);
             }
         }
     }
@@ -2016,7 +2081,9 @@ QString nameChainParentWithRingSubstituent(int mol, const std::map<int, int> &in
                                           const std::set<int> &ringNodeSet,
                                           const std::vector<std::set<int>> &allSSSRRings,
                                           const std::map<int, GroupType> &carbonGroup,
-                                          GroupType winningType) {
+                                          GroupType winningType,
+                                          const std::map<int, QChar> &stereoByGraphId = {},
+                                          std::set<int> *handledBranchStereoIds = nullptr) {
     // 1. Collect the pure-chain principal carbons of the winning class (carbons
     //    of winningType that are neither part of the ring nor exocyclic to it).
     //    These are the chain-parent's principal characteristic groups; the
@@ -2087,7 +2154,7 @@ QString nameChainParentWithRingSubstituent(int mol, const std::map<int, int> &in
 
     // 4. Name the ring as a substituent prefix (handles ring-borne substituents
     //    such as a methyl via its own locant). This is class-agnostic.
-    QString ringPrefix = nameRingAsSubstituent(g, ringNodeSet, ipsoRingNode, chainAttachCarbon, allSSSRRings, ringNodeSet);
+    QString ringPrefix = nameRingAsSubstituent(g, ringNodeSet, ipsoRingNode, chainAttachCarbon, allSSSRRings, ringNodeSet, stereoByGraphId, handledBranchStereoIds);
     if (ringPrefix.isEmpty()) return "";
 
     // 5. Build the chain-parent name with the ring injected as an extra
@@ -2285,44 +2352,6 @@ QString formatBranchStereoPrefix(
     return QString("(%1)-").arg(parts.join(","));
 }
 
-// Assumes generateName()'s multi-component rejection (indigoCountComponents(mol) > 1)
-// stays in place: Indigo's JSON saver gives each disconnected component its own,
-// separately-re-based "mol0"/"mol1"/... node with LOCAL atom indices, and this
-// function flattens every molecule node's bonds into one map keyed only by index --
-// if multi-component naming is ever supported, index collisions across components
-// would silently attach a wrong E/Z letter to the wrong bond.
-std::map<std::pair<int,int>, QChar> computeIndigoBondCIP(int mol) {
-    std::map<std::pair<int,int>, QChar> result;
-    // Assumes this runs in a dedicated/throwaway Indigo session (matching
-    // IndigoService.cpp's identical pattern) -- this option is process/session-global
-    // and is never reset, so setting it on the shared main session would make every
-    // future indigoJson()/toKetJson() call on that session also emit "cip" fields.
-    indigoSetOptionBool("json-saving-add-stereo-desc", 1);
-    const char* ketStr = indigoJson(mol);
-    if (!ketStr) return result;
-    QJsonDocument ketDoc = QJsonDocument::fromJson(QByteArray(ketStr));
-    QJsonObject ketRoot = ketDoc.object();
-    QJsonArray nodes = ketRoot.value("root").toObject().value("nodes").toArray();
-    for (const QJsonValue &nodeVal : nodes) {
-        QString ref = nodeVal.toObject().value("$ref").toString();
-        if (ref.isEmpty()) continue;
-        QJsonObject molObj = ketRoot.value(ref).toObject();
-        if (molObj.value("type").toString() != "molecule") continue;
-        const QJsonArray bonds = molObj.value("bonds").toArray();
-        for (const QJsonValue &bondVal : bonds) {
-            QJsonObject bondObj = bondVal.toObject();
-            QString label = bondObj.value("cip").toString();
-            if (label != "E" && label != "Z") continue;
-            QJsonArray bondAtoms = bondObj.value("atoms").toArray();
-            if (bondAtoms.size() != 2) continue;
-            int a1 = bondAtoms.at(0).toInt();
-            int a2 = bondAtoms.at(1).toInt();
-            result[{std::min(a1, a2), std::max(a1, a2)}] = label == "Z" ? QChar('Z') : QChar('E');
-        }
-    }
-    return result;
-}
-
 StereoResult processDoubleBondStereo(
     int mol,
     const Graph &g,
@@ -2391,6 +2420,46 @@ StereoResult processDoubleBondStereo(
 }
 
 } // anonymous namespace
+
+// Assumes generateName()'s multi-component rejection (indigoCountComponents(mol) > 1)
+// stays in place: Indigo's JSON saver gives each disconnected component its own,
+// separately-re-based "mol0"/"mol1"/... node with LOCAL atom indices, and this
+// function flattens every molecule node's bonds into one map keyed only by index --
+// if multi-component naming is ever supported, index collisions across components
+// would silently attach a wrong E/Z letter to the wrong bond.
+// External linkage deliberately (declared in IupacNamer.h) so IndigoService.cpp
+// can share it too -- see IUPAC Blue Book Coverage.md item 8.
+std::map<std::pair<int,int>, QChar> computeIndigoBondCIP(int mol) {
+    std::map<std::pair<int,int>, QChar> result;
+    // Assumes this runs in a dedicated/throwaway Indigo session (matching
+    // IndigoService.cpp's identical pattern) -- this option is process/session-global
+    // and is never reset, so setting it on the shared main session would make every
+    // future indigoJson()/toKetJson() call on that session also emit "cip" fields.
+    indigoSetOptionBool("json-saving-add-stereo-desc", 1);
+    const char* ketStr = indigoJson(mol);
+    if (!ketStr) return result;
+    QJsonDocument ketDoc = QJsonDocument::fromJson(QByteArray(ketStr));
+    QJsonObject ketRoot = ketDoc.object();
+    QJsonArray nodes = ketRoot.value("root").toObject().value("nodes").toArray();
+    for (const QJsonValue &nodeVal : nodes) {
+        QString ref = nodeVal.toObject().value("$ref").toString();
+        if (ref.isEmpty()) continue;
+        QJsonObject molObj = ketRoot.value(ref).toObject();
+        if (molObj.value("type").toString() != "molecule") continue;
+        const QJsonArray bonds = molObj.value("bonds").toArray();
+        for (const QJsonValue &bondVal : bonds) {
+            QJsonObject bondObj = bondVal.toObject();
+            QString label = bondObj.value("cip").toString();
+            if (label != "E" && label != "Z") continue;
+            QJsonArray bondAtoms = bondObj.value("atoms").toArray();
+            if (bondAtoms.size() != 2) continue;
+            int a1 = bondAtoms.at(0).toInt();
+            int a2 = bondAtoms.at(1).toInt();
+            result[{std::min(a1, a2), std::max(a1, a2)}] = label == "Z" ? QChar('Z') : QChar('E');
+        }
+    }
+    return result;
+}
 
 IupacResult IupacNamer::generateName(int mol) {
     if (mol < 0) {
@@ -3128,7 +3197,13 @@ IupacResult IupacNamer::generateName(int mol) {
             }
 
             if (hasPrincipalGroupOrMultipleRings) {
-                QString pName = nameRingAsSubstituent(g, rNodes, attachRingNode, foundAttachChainNode, allSSSRRings);
+                // IUPAC Blue Book Coverage.md item 6: pName is used verbatim by later
+                // consumers (a plain string append, no separate formatBranchStereoPrefix
+                // call on these ring nodes) -- passing stereo through here is safe, no
+                // double-processing risk, and lets a ring substituent's own stereocenter
+                // reach the name instead of being silently dropped.
+                std::set<int> ringInfoHandledStereoIds;
+                QString pName = nameRingAsSubstituent(g, rNodes, attachRingNode, foundAttachChainNode, allSSSRRings, {}, stereoByGraphId, &ringInfoHandledStereoIds);
                 if (!pName.isEmpty()) {
                     ringSubstituentInfos.push_back({rNodes, pName, foundAttachChainNode});
                 }
@@ -3972,6 +4047,7 @@ IupacResult IupacNamer::generateName(int mol) {
                         }
                         if (alkylNei != -1) {
                             QString alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
+                            if (alkylName.isEmpty()) return {false, "", "Unrecognized or unsupported substituent."};
                             alkylName += "sulfanyl";
                             locantSubstituents[locant].append(alkylName);
                         }
@@ -3982,6 +4058,7 @@ IupacResult IupacNamer::generateName(int mol) {
                         }
                         if (alkylNei != -1) {
                             QString alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
+                            if (alkylName.isEmpty()) return {false, "", "Unrecognized or unsupported substituent."};
                             alkylName += "sulfinyl";
                             locantSubstituents[locant].append(alkylName);
                         }
@@ -3992,6 +4069,7 @@ IupacResult IupacNamer::generateName(int mol) {
                         }
                         if (alkylNei != -1) {
                             QString alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
+                            if (alkylName.isEmpty()) return {false, "", "Unrecognized or unsupported substituent."};
                             alkylName += "sulfonyl";
                             locantSubstituents[locant].append(alkylName);
                         }
@@ -4007,6 +4085,7 @@ IupacResult IupacNamer::generateName(int mol) {
                             }
                             if (alkylNei != -1) {
                                 QString alkylName = nameBranchGraph(g, alkylNei, s2Nei, allSSSRRings);
+                                if (alkylName.isEmpty()) return {false, "", "Unrecognized or unsupported substituent."};
                                 alkylName += "disulfanyl";
                                 locantSubstituents[locant].append(alkylName);
                             }
@@ -4020,6 +4099,7 @@ IupacResult IupacNamer::generateName(int mol) {
                         }
                         if (alkylNei != -1) {
                             QString alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
+                            if (alkylName.isEmpty()) return {false, "", "Unrecognized or unsupported substituent."};
                             alkylName += "selanyl";
                             locantSubstituents[locant].append(alkylName);
                         }
@@ -4030,6 +4110,7 @@ IupacResult IupacNamer::generateName(int mol) {
                         }
                         if (alkylNei != -1) {
                             QString alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
+                            if (alkylName.isEmpty()) return {false, "", "Unrecognized or unsupported substituent."};
                             alkylName += "seleninyl";
                             locantSubstituents[locant].append(alkylName);
                         }
@@ -4040,6 +4121,7 @@ IupacResult IupacNamer::generateName(int mol) {
                         }
                         if (alkylNei != -1) {
                             QString alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
+                            if (alkylName.isEmpty()) return {false, "", "Unrecognized or unsupported substituent."};
                             alkylName += "selenonyl";
                             locantSubstituents[locant].append(alkylName);
                         }
@@ -4055,6 +4137,7 @@ IupacResult IupacNamer::generateName(int mol) {
                             }
                             if (alkylNei != -1) {
                                 QString alkylName = nameBranchGraph(g, alkylNei, se2Nei, allSSSRRings);
+                                if (alkylName.isEmpty()) return {false, "", "Unrecognized or unsupported substituent."};
                                 alkylName += "diselanyl";
                                 locantSubstituents[locant].append(alkylName);
                             }
@@ -4068,6 +4151,7 @@ IupacResult IupacNamer::generateName(int mol) {
                         }
                         if (alkylNei != -1) {
                             QString alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
+                            if (alkylName.isEmpty()) return {false, "", "Unrecognized or unsupported substituent."};
                             alkylName += "tellanyl";
                             locantSubstituents[locant].append(alkylName);
                         }
@@ -4078,6 +4162,7 @@ IupacResult IupacNamer::generateName(int mol) {
                         }
                         if (alkylNei != -1) {
                             QString alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
+                            if (alkylName.isEmpty()) return {false, "", "Unrecognized or unsupported substituent."};
                             alkylName += "tellurinyl";
                             locantSubstituents[locant].append(alkylName);
                         }
@@ -4088,6 +4173,7 @@ IupacResult IupacNamer::generateName(int mol) {
                         }
                         if (alkylNei != -1) {
                             QString alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
+                            if (alkylName.isEmpty()) return {false, "", "Unrecognized or unsupported substituent."};
                             alkylName += "telluronyl";
                             locantSubstituents[locant].append(alkylName);
                         }
@@ -4103,6 +4189,7 @@ IupacResult IupacNamer::generateName(int mol) {
                             }
                             if (alkylNei != -1) {
                                 QString alkylName = nameBranchGraph(g, alkylNei, te2Nei, allSSSRRings);
+                                if (alkylName.isEmpty()) return {false, "", "Unrecognized or unsupported substituent."};
                                 alkylName += "ditellanyl";
                                 locantSubstituents[locant].append(alkylName);
                             }
@@ -4119,6 +4206,7 @@ IupacResult IupacNamer::generateName(int mol) {
                             }
                             if (alkylNei != -1) {
                                 QString alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
+                                if (alkylName.isEmpty()) return {false, "", "Unrecognized or unsupported substituent."};
                                 if (alkylName.endsWith("yl")) {
                                     alkylName.chop(2); alkylName += "oxy";
                                 }
@@ -4195,16 +4283,31 @@ IupacResult IupacNamer::generateName(int mol) {
                             }
                         }
                     } else {
-                        QString bName = nameBranchGraph(g, nei, cNode, allSSSRRings);
-                        if (!bName.isEmpty()) {
-                            QString branchStereo = formatBranchStereoPrefix(g, nei, cNode, stereoByGraphId, handledBranchStereoIds);
-                            if (!branchStereo.isEmpty()) {
-                                if (bName.startsWith("(") && bName.endsWith(")")) {
-                                    QString inner = bName.mid(1, bName.length() - 2);
-                                    bName = QString("[%1%2]").arg(branchStereo, inner);
-                                } else {
-                                    bName = QString("[%1%2]").arg(branchStereo, bName);
-                                }
+                        // IUPAC Blue Book Coverage.md item 6: does nei lead into a ring? If so,
+                        // nameBranchGraph delegates to nameRingAsSubstituent, which now embeds
+                        // any stereocenter on the RING'S OWN atom directly (using the ring's
+                        // real numbering) -- formatBranchStereoPrefix's chain-walk numbering
+                        // has no relation to ring numbering and must not also run on it below,
+                        // or the same stereocenter could be found and wrapped a second time.
+                        bool neiIsInRing = false;
+                        for (const auto &r : allSSSRRings) {
+                            if (r.count(nei)) { neiIsInRing = true; break; }
+                        }
+                        QString bName = neiIsInRing
+                            ? nameBranchGraph(g, nei, cNode, allSSSRRings, {}, stereoByGraphId, &handledBranchStereoIds)
+                            : nameBranchGraph(g, nei, cNode, allSSSRRings);
+                        if (bName.isEmpty()) {
+                            // unnameable substituent (e.g. fused/bridged ring branch, azide) --
+                            // must fail the whole name, not silently drop the substituent
+                            return {false, "", "Unrecognized or unsupported substituent."};
+                        }
+                        QString branchStereo = neiIsInRing ? QString() : formatBranchStereoPrefix(g, nei, cNode, stereoByGraphId, handledBranchStereoIds);
+                        if (!branchStereo.isEmpty()) {
+                            if (bName.startsWith("(") && bName.endsWith(")")) {
+                                QString inner = bName.mid(1, bName.length() - 2);
+                                bName = QString("[%1%2]").arg(branchStereo, inner);
+                            } else {
+                                bName = QString("[%1%2]").arg(branchStereo, bName);
                             }
                         }
                         locantSubstituents[locant].append(bName);
@@ -7878,7 +7981,8 @@ IupacResult IupacNamer::generateName(int mol) {
                         return {true, fullName, ""};
                     }
                 } else if (isChainParentWithRingSubstituentSupported(combinedWinner)) {
-                    QString chainName = nameChainParentWithRingSubstituent(mol, indigoToGraphIdx, g, ringNodeSet, allSSSRRings, carbonGroup, combinedWinner);
+                    std::set<int> handledBranchStereoIds;
+                    QString chainName = nameChainParentWithRingSubstituent(mol, indigoToGraphIdx, g, ringNodeSet, allSSSRRings, carbonGroup, combinedWinner, stereoByGraphId, &handledBranchStereoIds);
                     if (!chainName.isEmpty()) return {true, chainName, ""};
                 }
                 return {false, "", "A chain-based principal group outranks the ring in this structure; chain-as-parent seniority (P-44.1.1) for this ring/class combination is not yet supported."};
@@ -8392,7 +8496,13 @@ IupacResult IupacNamer::generateName(int mol) {
                 else if (nZ == 7 && order == 1) {
                     bool isNitroIsoOrAzide = false;
                     if (carbonAzide.count(i) && std::find(carbonAzide[i].begin(), carbonAzide[i].end(), nei) != carbonAzide[i].end()) isNitroIsoOrAzide = true;
-                    if (!isNitroIsoOrAzide) singleN.push_back(nei);
+                    // Phase 70: a ring-internal N-C bond (both atoms in ringNodeSet) is
+                    // the ring itself, not an exocyclic amine substituent -- previously
+                    // unreachable because every saturated-heterocycle-as-parent case was
+                    // rejected before this scan could ever see one; LARGE_HETEROCYCLE's
+                    // saturated large heteromonocycles are the first to reach it.
+                    bool isRingBond = ringNodeSet.count(static_cast<int>(i)) && ringNodeSet.count(nei);
+                    if (!isNitroIsoOrAzide && !isRingBond) singleN.push_back(nei);
                 }
                 else if (nZ == 7 && order == 3) tripleN.push_back(nei);
                 else if ((nZ == 9 || nZ == 17 || nZ == 35 || nZ == 53) && order == 1) halogens.push_back(nei);
@@ -8623,7 +8733,8 @@ IupacResult IupacNamer::generateName(int mol) {
                     return {true, fullName, ""};
                 }
             } else if (isChainParentWithRingSubstituentSupported(combinedWinner)) {
-                QString chainName = nameChainParentWithRingSubstituent(mol, indigoToGraphIdx, g, ringNodeSet, allSSSRRings, carbonGroup, combinedWinner);
+                std::set<int> handledBranchStereoIds;
+                QString chainName = nameChainParentWithRingSubstituent(mol, indigoToGraphIdx, g, ringNodeSet, allSSSRRings, carbonGroup, combinedWinner, stereoByGraphId, &handledBranchStereoIds);
                 if (!chainName.isEmpty()) return {true, chainName, ""};
             }
             return {false, "", "A chain-based principal group outranks the ring in this structure; chain-as-parent seniority (P-44.1.1) for this ring/class combination is not yet supported."};
@@ -9103,6 +9214,59 @@ IupacResult IupacNamer::generateName(int mol) {
             // No indicated hydrogen needed
             parentNameRoot = locantPrefix + elemPrefixes + stem;
         }
+    } else if (rType == RingType::LARGE_HETEROCYCLE) {
+        // P-22.2.3.1/P-22.2.3.2 (fully saturated heteromonocycles, 11-20 ring members):
+        // locants+prefix are grouped PER HETEROATOM KIND and citation-joined with hyphens
+        // (e.g. "1-oxa-4,8,11-triazacyclotetradecane"), NOT pooled into one shared locant
+        // list the way Hantzsch-Widman (GENERAL_HETEROCYCLE, above) is. Verified against
+        // the real Blue Book text (BlueBookV2.md P-22.2.3), not memory. Citation-order
+        // seniority reuses hwSeniorityRank/citationOrder: P-22.2.3.1's real order is
+        // F > Cl > Br > I > O > S > Se > Te > N > P > As > Sb > Bi > Si > Ge > Sn > Pb >
+        // B > Al > Ga > In > Tl, but among the elements this namer actually supports as
+        // ring atoms (no halogens/Al/Ga/In/Tl), that's identical to hwSeniorityRank's
+        // order, so reusing it here is correct, not a shortcut.
+        static const int citationOrder[] = {8, 16, 34, 52, 7, 15, 33, 51, 83, 14, 32, 50, 82, 5};
+        static const int citationOrderLen = 14;
+
+        std::map<int, std::vector<int>> locantsByZ;
+        for (size_t i = 0; i < bestSig.ringChain.size(); ++i) {
+            int nodeIdx = bestSig.ringChain[i];
+            int z = g.nodes[nodeIdx].atomicNumber;
+            if (z != 6) locantsByZ[z].push_back(static_cast<int>(i + 1));
+        }
+
+        int totalHeteroCount = 0;
+        for (const auto &kv : locantsByZ) totalHeteroCount += static_cast<int>(kv.second.size());
+
+        if (totalHeteroCount == 1) {
+            // P-22.2.3.2.1: locant '1' for a sole heteroatom is omitted entirely in the
+            // saturated ('-ane') form (e.g. "thiacyclododecane") -- confirmed against the
+            // Blue Book's own example, unlike the mancude form which always shows it
+            // (not implemented in this phase; see classifyMonocyclicHeteroRing).
+            int soleZ = locantsByZ.begin()->first;
+            parentNameRoot = hwAPrefix(soleZ) + parentNameRoot;
+        } else {
+            QStringList chunks;
+            for (int k = 0; k < citationOrderLen; ++k) {
+                int z = citationOrder[k];
+                auto it = locantsByZ.find(z);
+                if (it == locantsByZ.end()) continue;
+                const std::vector<int> &locs = it->second;
+                QStringList locStrs;
+                for (int l : locs) locStrs.append(QString::number(l));
+                QString aPrefix = hwAPrefix(z);
+                QString prefixWord;
+                if (locs.size() == 1) {
+                    prefixWord = aPrefix;
+                } else {
+                    QString mp = multiPrefix(static_cast<int>(locs.size()));
+                    if (mp.endsWith('a') && isVowel(aPrefix[0])) mp.chop(1);
+                    prefixWord = mp + aPrefix;
+                }
+                chunks.append(locStrs.join(",") + "-" + prefixWord);
+            }
+            parentNameRoot = chunks.join("-") + parentNameRoot;
+        }
     }
     std::map<int, int> graphIdToLocant;
     for (size_t i = 0; i < bestSig.ringChain.size(); ++i) {
@@ -9198,7 +9362,7 @@ IupacResult IupacNamer::generateName(int mol) {
             rType == RingType::PYRAZINE || rType == RingType::GENERAL_HETEROCYCLE ||
             rType == RingType::SELENOPHENE || rType == RingType::TELLUROPHENE ||
             rType == RingType::PHOSPHININE || rType == RingType::SELENAZOLE ||
-            rType == RingType::ISOSELENAZOLE) {
+            rType == RingType::ISOSELENAZOLE || rType == RingType::LARGE_HETEROCYCLE) {
             fullName = prefixPart + rootStr;
         } else {
             fullName = prefixPart + rootStr + "e";
