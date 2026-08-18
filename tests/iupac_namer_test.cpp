@@ -1391,11 +1391,14 @@ int main() {
 
     {
         // Regression: acyclic (Phase 1) parent branch that is both a stereocenter AND
-        // contains an unnameable group (azide) must still cleanly reject. Phase 1 has no
-        // "Unrecognized or unsupported substituent" guard the way Phase 2/3 do -- instead,
-        // an unhandled branch stereocenter correctly falls through to the pre-existing
-        // "Stereocenters on substituent branches are not supported in this phase." rejection
-        // (the same message used for the already-tested "two-branches-deep" case).
+        // contains an unnameable group (azide) must still cleanly reject. Since the
+        // item-12 fix (see below), Phase 1's direct-branch loop now has its own
+        // "Unrecognized or unsupported substituent." guard (mirroring Phase 2/3) that
+        // fires as soon as nameBranchGraph returns "" for the branch -- which happens
+        // here regardless of the nested stereocenter, so this guard now fires before
+        // the stereocenter-specific rejection gets a chance to. Both messages are
+        // correct rejections of the same molecule; this one is more specific about
+        // the actual root cause (the azide), so it wins.
         int m = indigoLoadMoleculeFromString("CCCCC([C@H](CN=[N+]=[N-])C)CCC");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
@@ -1404,11 +1407,48 @@ int main() {
         // takes this code path. The live app's SMILES-load-then-molfile-round-trip path
         // can reject the same molecule earlier with a different (also correct) message;
         // see IUPAC Blue Book Coverage.md item 9.
-        if (!r.success && r.error.contains("Stereocenters on substituent branches are not supported in this phase.")) {
+        if (!r.success && r.error.contains("Unrecognized or unsupported substituent.")) {
             std::cout << "[PASS] Acyclic parent branch stereocenter + unnameable substituent correctly rejected: " << r.error.toStdString() << "\n";
             passed++;
         } else {
             std::cout << "[FAIL] Acyclic parent branch stereocenter + unnameable substituent -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Regression (IUPAC Blue Book Coverage.md item 13): the thioether branch
+        // (`z == 16`, thioetherSulfurs) had the same unguarded-empty-append bug as
+        // item 12's carbon branch -- `alkylName += "sulfanyl"` ran even when
+        // nameBranchGraph returned "" for the alkyl side, silently emitting a bare
+        // "sulfanyl" (missing the actual unnameable alkyl group) instead of rejecting.
+        // Same fix pattern applied to all 13 sulfur/selenium/tellurium/ether sites.
+        int m = indigoLoadMoleculeFromString("CCCCC(SCN=[N+]=[N-])CCC");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success && r.error.contains("Unrecognized or unsupported substituent.")) {
+            std::cout << "[PASS] Thioether branch with unnameable alkyl side correctly rejected: " << r.error.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Thioether branch with unnameable alkyl side -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Regression (IUPAC Blue Book Coverage.md item 12): an acyclic parent branch that
+        // is unnameable for a reason OTHER than a stereocenter (here, an azide -- see
+        // nameBranchGraph's `return ""` for azide) must still cleanly reject, not silently
+        // drop the substituent from the name. Before the fix, this returned success=1,
+        // name="4-octane" (the azide branch vanished instead of failing the name).
+        int m = indigoLoadMoleculeFromString("CCCCC(CN=[N+]=[N-])CCC");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success && r.error.contains("Unrecognized or unsupported substituent.")) {
+            std::cout << "[PASS] Acyclic parent branch with unnameable non-stereocenter substituent correctly rejected: " << r.error.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Acyclic parent branch with unnameable non-stereocenter substituent -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
             failed++;
         }
     }
@@ -3033,28 +3073,114 @@ int main() {
 
     // Rejection tests
     {
-        // Size 11: should be rejected (out of scope, P-22.2.4).
-        // Construct an 11-membered heterocyclic ring: C1CCCCCCCCCN1 (azocane? no, that's 11 atoms with N)
-        // This is a saturated heterocycle, so it should also hit the saturated rejection.
-        // But first, try an aromatic 11-membered: not feasible. Use a simple heterocyclic 11-ring.
-        // Actually, C1CCCCCCCCCN1 has 11 atoms but the ring has 11 atoms with one N.
-        // Since it's saturated, it should be rejected with the saturated message.
-        // For size 11+ rejection at the tryGeneralHeterocycle gate, we need an AROMATIC heterocycle.
-        // But aromatic 11-membered rings are rare. Let's use a hypothetical that won't be aromatic in Indigo
-        // and will hit the size gate. Actually, the gate is checked before aromaticity.
-        // So any heterocyclic 11-membered ring should be rejected at the gate.
-        // Use: c1nccccccccn1 (11 atoms: N,C,C,C,C,C,C,C,C,N,C - but this might be 10 connections)
-        // Simpler: just check that size 11 is rejected regardless.
-        // C1CCCCCCCCCN1 = cycloundecane with N? No, that's 11 carbons + N = 12 atoms.
-        // C1CCCCCCCCN1 = 10 carbons + N in ring = 11 atoms total.
-        int m_11 = indigoLoadMoleculeFromString("C1CCCCCCCCN1");
+        // Phase 70 (IUPAC Blue Book Coverage.md item 3, P-22.2.3): an 11-membered
+        // saturated heterocycle with a single N is now supported via skeletal
+        // replacement ('a') nomenclature -- Hantzsch-Widman (Phase 51/55) only
+        // covers sizes 3-10, but P-22.2.3 covers the saturated form for any size.
+        // C1CCCCCCCCCN1 = 10 carbons + N in the ring = 11 ring atoms total.
+        // Single heteroatom + saturated -> locant '1' omitted (P-22.2.3.2.1),
+        // confirmed against the real Blue Book text ("thiacyclododecane" example).
+        int m_11 = indigoLoadMoleculeFromString("C1CCCCCCCCCN1");
         IupacResult r_11 = IupacNamer::generateName(m_11);
         indigoFree(m_11);
-        if (!r_11.success) {
-            std::cout << "[PASS] Phase 55 rejection: 11-membered saturated heterocyclic ring -> " << r_11.error.toStdString() << "\n";
+        if (r_11.success && r_11.name == "azacycloundecane") {
+            std::cout << "[PASS] Phase 70: 11-membered saturated heterocycle -> " << r_11.name.toStdString() << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] Phase 55 rejection: 11-membered heterocyclic ring should reject, got success=" << r_11.success << " name='" << r_11.name.toStdString() << "'\n";
+            std::cout << "[FAIL] Phase 70: 11-membered saturated heterocycle -> got success=" << r_11.success << " name='" << r_11.name.toStdString() << "' err='" << r_11.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Phase 70: same-kind multiple heteroatoms (P-22.2.3.2.2) -- locants must be
+        // the LOWEST SET for the heteroatoms as a whole, pinned against the Blue
+        // Book's own real PIN example: "1,5-dithiacyclododecane (not
+        // 1,9-dithiacyclododecane)". 12-membered ring, S at two positions with a
+        // 3-carbon gap one way and a 7-carbon gap the other.
+        int m = indigoLoadMoleculeFromString("S1CCCSCCCCCCC1");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "1,5-dithiacyclododecane") {
+            std::cout << "[PASS] Phase 70: same-kind multi-heteroatom -> " << r.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Phase 70: same-kind multi-heteroatom -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Phase 70: mixed-kind heteroatoms (P-22.2.3.2.3) -- locant '1' goes to the
+        // most senior kind present (S outranks Se), pinned against the Blue Book's
+        // own real PIN example: "1-thia-5-selenacyclododecane". Per-kind locant+
+        // prefix chunks are hyphen-joined, NOT pooled into one shared locant list
+        // the way Hantzsch-Widman (GENERAL_HETEROCYCLE) is.
+        int m = indigoLoadMoleculeFromString("S1CCC[Se]CCCCCCC1");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "1-thia-5-selenacyclododecane") {
+            std::cout << "[PASS] Phase 70: mixed-kind heteroatoms -> " << r.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Phase 70: mixed-kind heteroatoms -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Phase 70 scope boundary: an UNSATURATED 11+ heterocycle must still reject
+        // cleanly (the mancude '-ene' chain form, P-22.2.4, is deliberately deferred
+        // to a future phase -- see classifyMonocyclicHeteroRing's comment).
+        int m = indigoLoadMoleculeFromString("C1=CCCCCCCCCN1");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success) {
+            std::cout << "[PASS] Phase 70 scope: unsaturated 11-membered heterocycle correctly rejected: " << r.error.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Phase 70 scope: unsaturated 11-membered heterocycle should reject, got name='" << r.name.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Phase 70 scope boundary: a SUBSTITUTED 11+ heterocycle must still reject
+        // cleanly (this phase only handles the bare, unsubstituted ring).
+        int m = indigoLoadMoleculeFromString("CC1CCCCCCCCCN1");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success) {
+            std::cout << "[PASS] Phase 70 scope: substituted 11-membered heterocycle correctly rejected: " << r.error.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Phase 70 scope: substituted 11-membered heterocycle should reject, got name='" << r.name.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // IUPAC Blue Book Coverage.md item 6: a stereocenter on a RING SUBSTITUENT'S
+        // own atom (as opposed to on a chain branch attached to a ring parent,
+        // P-93.5/93.6, already handled separately via formatBranchStereoPrefix).
+        // nameRingAsSubstituent now builds its own "(nR)-" prefix directly from its
+        // already-correct winning ring numbering -- formatBranchStereoPrefix's
+        // chain-walk locants have no relation to real ring numbering, so it's
+        // explicitly skipped for ring branches (both at this call site and
+        // internally) to avoid double-processing the same stereocenter.
+        // OC(=O)CCCC(C1[C@H](C)CCC1)CC: heptanoic acid, ring substituent at C5 is a
+        // cyclopentyl with a methyl-bearing stereocenter at the ring's own locant 2
+        // (immediately adjacent to the attachment point) -- the acid group forces
+        // the chain to be the parent (P-44.1.1), routing through
+        // nameChainParentWithRingSubstituent, the realistic case for this gap.
+        int m = indigoLoadMoleculeFromString("OC(=O)CCCC(C1[C@H](C)CCC1)CC");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "5-[(2R)-2-methylcyclopentyl]heptanoic acid") {
+            std::cout << "[PASS] Ring substituent with own stereocenter -> " << r.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Ring substituent with own stereocenter -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
             failed++;
         }
     }
