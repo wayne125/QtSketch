@@ -309,12 +309,6 @@ int main() {
         {"Cc1ccccc1CCC(=O)O", "3-(2-methylphenyl)propanoic acid"},
         {"CC1CCCCC1CCC(=O)O", "3-(2-methylcyclohexyl)propanoic acid"},
         {"CC1CCCCC1CC(=O)O", "2-(2-methylcyclohexyl)ethanoic acid"},
-        
-        // Phase 52 (P-44.1.2): Heteroatom-skeleton seniority.
-        // Even though the chain has the only principal group (alcohol), the ring contains a heteroatom (O)
-        // and the chain is plain carbon. Under P-44.1.2.1, the parent with the senior skeletal element wins
-        // outright before P-44.1.1 (instance count) is even checked. Thus, furan wins parenthood.
-        {"c1ccoc1CCCO", "2-3-hydroxypropylfuran"},
 
         // Phase 54 (P-44.1.1 generalized): chain-as-parent for non-acid principal classes.
         // Each test uses a ring with a methyl + principal-group chain (polysubstituted)
@@ -374,36 +368,36 @@ int main() {
         {"[CH2+]N=[N+]=[N-]", "", true, "Charged"},
 
         // Phase 14: Monosubstituted 5-membered heterocycles (furan, thiophene, pyrrole) as chain substituents
-        {"c1ccoc1CC(=O)O", "2-2,2-dihydroxyethylfuran"},
-        {"c1ccoc1CO", "furanol"},
-        {"c1(CC(=O)O)ccoc1", "3-2,2-dihydroxyethylfuran"},
-        {"c1(CO)ccoc1", "furanol"},
-        {"c1ccsc1CC(=O)O", "2-2,2-dihydroxyethylthiophene"},
-        {"c1ccsc1CO", "thiophenol"},
-        {"c1(CC(=O)O)ccsc1", "3-2,2-dihydroxyethylthiophene"},
-        {"c1(CO)ccsc1", "thiophenol"},
-        {"c1cc[nH]c1CC(=O)O", "2-2,2-dihydroxyethylpyrrole"},
-        {"c1cc[nH]c1CO", "pyrrolol"},
-        {"c1(CC(=O)O)cc[nH]c1", "3-2,2-dihydroxyethylpyrrole"},
-        {"c1(CO)cc[nH]c1", "pyrrolol"},
+        {"c1ccoc1CC(=O)O", "2-(furan-2-yl)ethanoic acid"},
+        {"c1ccoc1CO", "(furan-2-yl)methanol"},
+        {"c1(CC(=O)O)ccoc1", "2-(furan-3-yl)ethanoic acid"},
+        {"c1(CO)ccoc1", "(furan-3-yl)methanol"},
+        {"c1ccsc1CC(=O)O", "2-(thiophen-2-yl)ethanoic acid"},
+        {"c1ccsc1CO", "(thiophen-2-yl)methanol"},
+        {"c1(CC(=O)O)ccsc1", "2-(thiophen-3-yl)ethanoic acid"},
+        {"c1(CO)ccsc1", "(thiophen-3-yl)methanol"},
+        {"c1cc[nH]c1CC(=O)O", "2-(pyrrol-2-yl)ethanoic acid"},
+        {"c1cc[nH]c1CO", "(pyrrol-2-yl)methanol"},
+        {"c1(CC(=O)O)cc[nH]c1", "2-(pyrrol-3-yl)ethanoic acid"},
+        {"c1(CO)cc[nH]c1", "(pyrrol-3-yl)methanol"},
         {"c1ccoc1CC", "2-ethylfuran"},
         {"c1ccsc1CC", "2-ethylthiophene"},
         {"c1cc[se]c1CC", "2-ethylselenophene"},
         {"c1cc[te]c1CC", "2-ethyltellurophene"},
         {"c1cc[nH]c1CC", "2-ethylpyrrole"},
         // Phase 15: Monosubstituted 6-membered heterocycle (pyridine) as chain substituent
-        {"c1ccncc1CC(=O)O", "3-2,2-dihydroxyethylpyridine"},
-        {"n1c(CC(=O)O)cccc1", "2-2,2-dihydroxyethylpyridine"},
-        {"n1c(CO)cccc1", "pyridinol"},
-        {"n1cc(CC(=O)O)ccc1", "3-2,2-dihydroxyethylpyridine"},
-        {"n1cc(CO)ccc1", "pyridinol"},
-        {"n1ccc(CC(=O)O)cc1", "4-2,2-dihydroxyethylpyridine"},
-        {"n1ccc(CO)cc1", "pyridinol"},
+        {"c1ccncc1CC(=O)O", "2-(pyridin-3-yl)ethanoic acid"},
+        {"n1c(CC(=O)O)cccc1", "2-(pyridin-2-yl)ethanoic acid"},
+        {"n1c(CO)cccc1", "(pyridin-2-yl)methanol"},
+        {"n1cc(CC(=O)O)ccc1", "2-(pyridin-3-yl)ethanoic acid"},
+        {"n1cc(CO)ccc1", "(pyridin-3-yl)methanol"},
+        {"n1ccc(CC(=O)O)cc1", "2-(pyridin-4-yl)ethanoic acid"},
+        {"n1ccc(CO)cc1", "(pyridin-4-yl)methanol"},
         {"n1c(CC)cccc1", "2-ethylpyridine"},
         {"n1cc(CC)ccc1", "3-ethylpyridine"},
         {"n1ccc(CC)cc1", "4-ethylpyridine"},
-        {"Cc1nccc(CC(=O)O)c1", "4-2,2-dihydroxyethyl-2-methylpyridine"},
-        {"Cc1ccoc1CC(=O)O", "2-2,2-dihydroxyethyl-3-methylfuran"},
+        {"Cc1nccc(CC(=O)O)c1", "2-(2-methylpyridin-4-yl)ethanoic acid"},
+        {"Cc1ccoc1CC(=O)O", "2-(3-methylfuran-2-yl)ethanoic acid"},
 
         // Phase 16: Ring-as-parent losing ACID, ESTER, ACYL_HALIDE, SULFONIC_ACID, THIOL
         {"O=S(=O)(O)c1ccc(C(=O)O)cc1", "4-carboxybenzenesulfonic acid"},
@@ -3416,7 +3410,5 @@ int main() {
     indigoReleaseSessionId(sid);
     return (failed == 0) ? 0 : 1;
 }
-
-
 
 

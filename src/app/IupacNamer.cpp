@@ -3857,20 +3857,9 @@ IupacResult IupacNamer::generateName(int mol) {
             if (winningType != GroupType::NONE) break;
         }
 
-        bool ringHasHeteroatom = false;
-        if (ringSubstituentInfos.size() == 1) {
-            for (int n : ringSubstituentInfos[0].ringNodes) {
-                if (g.nodes[n].atomicNumber != 6) {
-                    ringHasHeteroatom = true;
-                    break;
-                }
-            }
-        }
-
-        if (ringSubstituentInfos.size() == 1 && (winningType == GroupType::NONE || ringHasHeteroatom)) {
-            // Non-ring portion has no principal group (e.g. plain ethylbenzene), or
-            // the ring has a heteroatom and thus outright beats the plain-carbon chain
-            // for parenthood (P-44.1.2.1). Fall through to ring path.
+        if (ringSubstituentInfos.size() == 1 && winningType == GroupType::NONE) {
+            // Non-ring portion has no principal group (e.g. plain ethylbenzene).
+            // Fall through to monocyclic path.
         } else {
         std::set<int> principalCarbons;
         if (winningType != GroupType::NONE) {
@@ -7685,21 +7674,14 @@ IupacResult IupacNamer::generateName(int mol) {
             }
         }
 
-        // Phase 52/P-44.1.2: Check heteroatom-skeleton seniority first.
-        // A ring with ANY heteroatom beats a plain-carbon chain outright (P-44.1.2.1).
-        // Since chains in this codebase are unconditionally plain-carbon, any ring heteroatom wins.
-        bool ringHasHeteroatom = false;
-        for (int n : ringNodeSet) {
-            if (g.nodes[n].atomicNumber != 6) {
-                ringHasHeteroatom = true;
-                break;
-            }
-        }
-
-        // If skeletal elements tie (both plain carbon), fall back to P-44.1.1 (instance count)
-        // and P-44.1.2.2 (ring wins ties).
+        // Phase 52 (P-44.1.1 + P-44.1.2.2): the principal characteristic group is the single
+        // most-senior class across ring-attached and chain-attached instances combined; the
+        // senior parent structure is the side with MORE occurrences of that winning class
+        // (P-44.1.1), ties broken in favour of the ring (P-44.1.2.2). P-44.1.2 (heteroatom-
+        // skeleton seniority) is out of scope: this code path only sees carbocyclic rings and
+        // carbon chains, so the simpler carbon-vs-carbon assumption stays.
         GroupType combinedWinner = (groupRank(winningRingGroup) <= groupRank(winningChainGroup)) ? winningRingGroup : winningChainGroup;
-        if (!ringHasHeteroatom && combinedWinner != GroupType::NONE) {
+        if (combinedWinner != GroupType::NONE) {
             int ringCount = 0, chainCount = 0, chainDeepCount = 0;
             for (const auto &pair : carbonGroup) {
                 if (pair.second != combinedWinner) continue;
@@ -8444,21 +8426,14 @@ IupacResult IupacNamer::generateName(int mol) {
         }
     }
 
-    // Phase 52/P-44.1.2: Check heteroatom-skeleton seniority first.
-    // A ring with ANY heteroatom beats a plain-carbon chain outright (P-44.1.2.1).
-    // Since chains in this codebase are unconditionally plain-carbon, any ring heteroatom wins.
-    bool ringHasHeteroatom = false;
-    for (int n : ringNodeSet) {
-        if (g.nodes[n].atomicNumber != 6) {
-            ringHasHeteroatom = true;
-            break;
-        }
-    }
-
-    // If skeletal elements tie (both plain carbon), fall back to P-44.1.1 (instance count)
-    // and P-44.1.2.2 (ring wins ties).
+    // Phase 52 (P-44.1.1 + P-44.1.2.2): the principal characteristic group is the single
+    // most-senior class across ring-attached and chain-attached instances combined; the
+    // senior parent structure is the side with MORE occurrences of that winning class
+    // (P-44.1.1), ties broken in favour of the ring (P-44.1.2.2). P-44.1.2 (heteroatom-
+    // skeleton seniority) is out of scope: this code path only sees carbocyclic rings and
+    // carbon chains, so the simpler carbon-vs-carbon assumption stays.
     GroupType combinedWinner = (groupRank(winningRingGroup) <= groupRank(winningChainGroup)) ? winningRingGroup : winningChainGroup;
-    if (!ringHasHeteroatom && combinedWinner != GroupType::NONE) {
+    if (combinedWinner != GroupType::NONE) {
         int ringCount = 0, chainCount = 0, chainDeepCount = 0;
         for (const auto &pair : carbonGroup) {
             if (pair.second != combinedWinner) continue;
