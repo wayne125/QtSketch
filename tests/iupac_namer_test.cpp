@@ -2611,7 +2611,7 @@ int main() {
 
         std::vector<Phase44Test> p44Tests = {
             {"o1ccc2nc3ccsc3cc12", "furo[3,2-b]thieno[2,3-e]pyridine", false, ""},
-            {"o1ccc2nc3ccsc3nc12", "furo[3,2-b]thieno[2,3-e]pyrazine", false, ""},
+            {"o1ccc2nc3ccsc3nc12", "furo[2,3-b]thieno[3,2-e]pyrazine", false, ""},
 
             // Mandatory rejection cases the original Phase 44 delegation omitted -
             // added directly, independently constructed and verified by hand-tracing
@@ -2720,7 +2720,11 @@ int main() {
 
         std::vector<TestCase> p48Tests = {
             // A 4-ring linear chain: Pyridine fused linearly 4 times.
-            {"N1=CC=C2C(=C1)N=CC3=C2N=CC4=C3N=CC=C4", "", true, "End ring as base in a 4-ring fusion chain requires third-order attached components, which are not supported."},
+            {"N1=CC=C2C(=C1)N=CC3=C2N=CC4=C3N=CC=C4", "pyrido[3,4-b]pyrido[6',5':4,5]pyrido[2,3-d]pyridine", false, ""},
+            // 5-ring pyridine chain
+            {"N1=CC=C2C(=C1)N=CC3=C2N=CC4=C3N=CC5=C4N=CC=C5", "pyrido[4',3':5,6]pyrido[4,3-b]pyrido[6',5':4,5]pyrido[2,3-d]pyridine", false, ""},
+            // 6-ring pyridine chain (forces doubly-primed)
+            {"N1=CC=C2C(=C1)N=CC3=C2N=CC4=C3N=CC5=C4N=CC6=C5N=CC=C6", "pyrido[4',3':5,6]pyrido[4,3-b]pyrido[6'',5'':4',5']pyrido[2',3':4,5]pyrido[2,3-d]pyridine", false, ""},
             {"o1ccc2nc3ncc4ccsc4c3nc12", "furo[2,3-b]thieno[2',3':4,5]pyrido[2,3-e]pyrazine", false, ""},
             // A rejection test: 3-branch system
             {"o1ccc2nc3ccsc3cc4cc[se]c4c12", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."}
