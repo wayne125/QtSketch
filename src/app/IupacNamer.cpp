@@ -531,11 +531,20 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
         for (int nIdx : ringHeteroNodes) {
             if (hwSeniorityRank(g.nodes[nIdx].atomicNumber) == 99) { allSupportedElements = false; break; }
         }
-        bool bareRing = true;
+        // A genuine simple monocycle has every ring atom with exactly 2
+        // ring-internal neighbors; a fusion/bridge/spiro atom has 3+. This
+        // permits exocyclic substituents (which don't count as ring-internal)
+        // while still rejecting non-monocyclic topologies, which belong to
+        // separate fused/bridged/spiro handling elsewhere in this file.
+        bool isSimpleMonocycle = true;
         for (int nIdx : ringCycle) {
-            if (g.nodes[nIdx].neighbors.size() != 2) { bareRing = false; break; }
+            int ringInternalDegree = 0;
+            for (int nb : g.nodes[nIdx].neighbors) {
+                if (std::find(ringCycle.begin(), ringCycle.end(), nb) != ringCycle.end()) ringInternalDegree++;
+            }
+            if (ringInternalDegree != 2) { isSimpleMonocycle = false; break; }
         }
-        if (allSupportedElements && bareRing) {
+        if (allSupportedElements && isSimpleMonocycle) {
             bool hasTriple = false;
             bool hasDouble = false;
             for (const auto &gb : g.bonds) {

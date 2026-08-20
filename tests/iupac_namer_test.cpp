@@ -3192,16 +3192,19 @@ int main() {
     }
 
     {
-        // Phase 70 scope boundary: a SUBSTITUTED 11+ heterocycle must still reject
-        // cleanly (this phase only handles the bare, unsubstituted ring).
+        // Phase 70 Part B: Substituted large heterocycle (2-methylazacycloundecane)
+        // The methyl-bearing ring carbon is directly ring-closure-bonded to N
+        // (SMILES "C1...N1"), so numbering N=1 in that direction gives the
+        // methyl carbon locant 2, the lowest available -- not 3.
         int m = indigoLoadMoleculeFromString("CC1CCCCCCCCCN1");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
-        if (!r.success) {
-            std::cout << "[PASS] Phase 70 scope: substituted 11-membered heterocycle correctly rejected: " << r.error.toStdString() << "\n";
+        std::string expected = "2-methylazacycloundecane";
+        if (r.success && r.name.toStdString() == expected) {
+            std::cout << "[PASS] Phase 70: " << expected << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] Phase 70 scope: substituted 11-membered heterocycle should reject, got name='" << r.name.toStdString() << "'\n";
+            std::cout << "[FAIL] Phase 70: expected '" << expected << "', got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
             failed++;
         }
     }
