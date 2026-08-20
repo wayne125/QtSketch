@@ -71,7 +71,7 @@ parent hydrides.
 | P-25.0 | Introduction | ◐ | Conceptual; see P-25.1-P-25.7 below for the actual implemented/gap breakdown. |
 | P-25.1 | Names of hydrocarbon parent ring components | ◐ | Naphthalene (Phase 3), pentalene (Phase 33) covered as retained names. General polyacene/polyaphene/polyalene/polyphenylene/polynaphthylene/polyhelicene systematic naming (P-25.1.2.x) not covered. |
 | P-25.2 | Names of heterocyclic parent ring components | ◐ | `classifyMonocyclicHeteroRing`'s curated set (as components) + purine (Phase 32) and pyrrolizine (Phase 34) as retained/special-cased systems. General heteromonocyclic/heteranthrene systematic component naming beyond the curated set not covered. |
-| **P-25.3.1** | Definitions, terminology, general principles (ortho-fused, ortho-and-peri-fused, spiro, bridged) | ◐ | Ortho-fused (shared-bond) detection via Indigo SSSR. Ortho-and-peri-fused (3 shared atoms across 2 rings) and bridged-fused relationships not detected/handled. |
+| **P-25.3.1** | Definitions, terminology, general principles (ortho-fused, ortho-and-peri-fused, spiro, bridged) | ◐ | Ortho-fused (shared-bond) detection via Indigo SSSR. Ortho-and-peri-fused (3 rings, common atom shared by all three) and bridged-fused (2 rings sharing 3+ atoms directly) relationships are now detected and cleanly rejected as of 2026-08-21 (commit `5173962`) — detection only, name construction still not implemented. |
 | **P-25.3.2** | Constructing two-component fusion names — **this is the Blue Book's own version of what this project's code comments call "FR-2.3"/"FR-3"** | ◐ | Base-component seniority: **all 10 official rules (a)-(j) implemented** (`getRankHetero`, `getVariety`, `getTopAltRank`, `getOwnLocants`, `getFusionLocants`) — verified against P-25.3.2.4's own worked examples during Phases 40-41. Rule (g) confirmed inapplicable for a strict 2-ring system; rules (i)/(j) confirmed unreachable by any of the 13 currently-supported ring types (rule (h) always resolves first) but implemented correctly per spec regardless. Still marked ◐ overall because `getFusionPrefix` + `[n,m-letter]` descriptor construction covers exactly one attached component only — multi-component/3+ ring selection not covered. |
 | **P-25.3.2.3** | Orientation of fused ring systems — **the Blue Book's own version of "FR-5.2"** | ◐ | Phase 42: standalone `computePreferredOrientation` (hex-grid embedding + 12-symmetry search, rules a-d). Phase 43: standalone `detectFusedRingDirections` now computes the real per-atom fusion directions this feeds on from an actual Indigo molecule (`dir_out = (dir_in + 3 + k) % 6`, k = outgoing bond's cyclic offset from incoming within the ring's own 6-atom cycle). 6/6 + 5/5 tests pass across both modules, verified on real anthracene/phenanthrene/naphthacene/chrysene/pentacene SMILES. **Still not wired into `generateName()`** — both modules exist and are proven correct standalone, but have no caller yet; extending base-component selection and the fusion-descriptor builder to 3+ rings is separate future work. |
 | **P-25.3.3** | Numbering of fused ring systems — **the Blue Book's own version of "FR-4"/"FR-5"** | ◐ | `computePeripheralNumbering` (2-ring) + Phase 45's `computePeripheralNumberingChain3` (exactly 3-ring chain) — both use the same candidate-enumeration + heteroatom-locant tie-break scheme (rules a/b/f from P-25.3.3.1.2), confirmed this correctly does NOT need Phases 42-43's orientation modules (a locant-minimization problem, not a drawing/orientation one). General N-ring (4+) and interior-atom numbering (P-25.3.3.2/.3, for peri-fused/bridged systems) not covered. |
@@ -80,8 +80,8 @@ parent hydrides.
 | P-25.3.6 | Identical attached components | ✗ | Not implemented. |
 | P-25.3.7 | Multiparent ring systems | ✗ | Not implemented. |
 | P-25.3.8 | Omission of locants in fusion descriptors | ✗ | Not implemented — locants are always cited in full. |
-| P-25.4 | Bridged fused ring systems | ✗ | Not implemented. |
-| P-25.5 | Limitations of fusion nomenclature: three components ortho- and peri-fused together | ✗ | Not implemented — 3+ SSSR rings rejected early unless mutually disjoint. |
+| P-25.4 | Bridged fused ring systems | ✗ | Detection + clean rejection only, 2026-08-21 (commit `5173962`) — name construction (bridge prefixes, bridge numbering) not implemented. |
+| P-25.5 | Limitations of fusion nomenclature: three components ortho- and peri-fused together | ✗ | Detection (heuristic: peri-fusion + 2+ centers or 4+ SSSR rings) + clean rejection only, 2026-08-21 (commit `5173962`) — name construction not implemented. |
 | P-25.6 | Fused ring systems with skeletal atoms with nonstandard bonding numbers | ✗ | Not implemented. |
 | P-25.7 | Double bonds, indicated hydrogen, and the λ-convention | ◐ | Indicated-hydrogen half covered (see P-14.7/FR-9 rows); the λ-convention (nonstandard bonding number notation) not covered at all. |
 | P-26 | Phane nomenclature | ✗ | Not implemented. |
@@ -258,8 +258,8 @@ sourced from the standalone `fusedring` site, not the local Blue Book PDF.
 | FR-5.4 | Choice among alternative numberings | ◐ | Heteroatom-lowest-locant-set tie-break used; the fuller (a)-(f) hierarchy is not fully applied. |
 | FR-5.5 | Interior numbering (peri-fused/bridged interior atoms) | ✗ | Not implemented. |
 | FR-6 | Multi-parent (more than 2 base components) systems | ✗ | ≈ Blue Book P-25.3.7. Not implemented. |
-| FR-7 | Three components ortho- and peri-fused together | ✗ | ≈ Blue Book P-25.5. Not implemented — 3+ SSSR rings are rejected early unless mutually disjoint. |
-| FR-8 | Bridged fused ring systems | ✗ | ≈ Blue Book P-25.4. Not implemented. |
+| FR-7 | Three components ortho- and peri-fused together | ✗ | ≈ Blue Book P-25.5. Detection + clean rejection only, 2026-08-21 (commit `5173962`) — name construction not implemented. |
+| FR-8 | Bridged fused ring systems | ✗ | ≈ Blue Book P-25.4. Detection + clean rejection only, 2026-08-21 (commit `5173962`) — name construction not implemented. |
 | FR-9 | Indicated hydrogen | ◐ | ≈ Blue Book P-14.7 and P-25.7. `preferIndicatedHydrogenLocant` branch in `computePeripheralNumbering` + Phase 35's `nH-` prefix for NH-bearing fused systems (pyrrole/imidazole/pyrazole). **Phase 60** extended to general monocyclic heterocycles (GENERAL_HETEROCYCLE path): `<locant>H-` prefix citation for saturated positions in odd-membered rings. General indicated-hydrogen for non-fusion, non-general-heterocycle cases not covered. |
 | Appendix 1/2 | Full seniority tables (hydrocarbon/heterocyclic components) | ◐ | Phase 47 added Se and Te; Phase 49 added P (phosphinine only — phosphole was scoped out as not reliably aromatic). N,O,S,Se,Te,P now covered, correctly ordered in both the primary rule-(a) order and the alternate rule-(f) order. Remaining elements (As,Sb,Bi,Si,Ge,Sn,Pb,B,Al,Ga,In,Tl) not implemented — most also have nonstandard bonding numbers requiring the λ-convention (P-25.3.2.5.2/P-14.1.3), a separate unimplemented piece. |
 
@@ -331,14 +331,46 @@ wherever both could appear.
    here (item 2's territory — the new code cleanly rejects any ring with 3+ fusion
    neighbors); identical-attached-component multiplying prefixes and multiparent names
    are separate, unaddressed gaps.
-2. **P-25.4/P-25.5 (peri-fused / bridged-fused / 3-component-limit systems)** — needs
-   `FusedRingOrientation`/`FusedRingDirectionDetector` extended beyond tree-only ring-
-   adjacency graphs, plus P-25.3.2.5.1's common-heteroatom-at-fusion rule
-   (`imidazo[2,1-b][1,3]thiazole`-style bridgehead-N systems) as a related sub-case. This
-   remains the actual point where Phases 42-43's orientation modules would first become
-   load-bearing for a monocyclic-chain-adjacent case (peri-fused geometry genuinely needs
-   drawing/orientation reasoning, unlike the simple-chain numbering Phase 45 just solved
-   without them).
+2. **P-25.4/P-25.5 (peri-fused / bridged-fused / 3-component-limit systems)** — **detection
+   + clean rejection fixed 2026-08-21** (commit `5173962`); actual name *construction* for
+   these topologies is still unimplemented and remains explicitly out of scope (see below).
+   Before this fix, a molecule with any of these three topologies silently fell through the
+   existing `shared.size() == 2` ortho-fusion checks into whatever generic code path
+   happened to run next — no crash, but no specific/accurate error either. Now:
+   - **True ortho-and-peri-fusion (P-25.3.1.1.2)** is detected as three unsaturated rings
+     with a common atom shared by all three (the real topology — e.g. acenaphthylene's
+     C8a, shared by both naphthalene rings and the added 5-ring — not merely two rings
+     sharing 3 atoms directly, which is a different topology, see below), and rejected with
+     `"ortho- and peri-fused ring systems (P-25.3.1.1.2) are not yet supported."`
+   - **P-25.4 bridged-fusion** is detected as a *pairwise* ring share of 3+ atoms (or a
+     disconnected multi-component shared-atom set) between two unsaturated rings — this is
+     the correct topology for a genuine bridge (two rings connected by more than one
+     bridgehead atom directly, e.g. a naphthalene with a methano bridge across peri
+     positions), distinct from the 3-ring peri-fusion case above — rejected with
+     `"bridged fused ring systems (P-25.4) are not yet supported."`
+   - **P-25.5** (three components mutually ortho-and-peri-fused, e.g. pyrene) is detected
+     heuristically as peri-fusion present with either 2+ distinct peri-fusion centers or
+     4+ total SSSR rings, and rejected with `"three-component ortho- and peri-fused
+     systems (P-25.5) are not yet supported."`
+   - All three checks are gated on both rings having at least one double/aromatic bond in
+     them, deliberately, to avoid colliding with the separate, unrelated von Baeyer
+     saturated-bicyclic/spiro code path (Phase 53) — a saturated bridged/peri system is a
+     von Baeyer naming problem, not a fusion-nomenclature one, and isn't touched by this
+     fix (still handled, or not, by whatever code already handled it).
+   - Verified: acenaphthylene, pyrene, and 1,4-methanonaphthalene each independently
+     rebuilt and confirmed to produce their specific expected rejection message (not a
+     generic one, not a crash, not a fabricated name). `iupac_namer_test` 459→462/462
+     (exactly +3, no regressions — every pre-existing case still passes unchanged),
+     `ctest` 11/11, independently rebuilt and re-run from a clean PowerShell +
+     `mingw32-make.exe` build after the commit, not taken on the implementer's self-report.
+   - **Still needed, unaddressed by this fix**: actual name *construction* for any of these
+     three topologies (fusion-descriptor building per P-25.3.1.3's multi-letter/no-comma
+     rule, interior-atom peripheral numbering per P-25.3.3.2/.3, bridge-prefix nomenclature
+     per P-25.4.2, and P-25.5's fallback procedures) — this fix only makes the current
+     "can't do it" outcome honest and specific instead of silent/generic. `imidazo[2,1-
+     b][1,3]thiazole`-style common-heteroatom-at-a-fusion-point naming (P-25.3.2.5.1) is a
+     separate, unrelated sub-rule (heteroatom *sharing* within an otherwise-normal
+     ortho-fused system, not peri-fusion) not touched here either.
 3. **P-22.2 general Hantzsch-Widman stem construction** — **Phase 51** implemented for ring sizes 5-6; **Phase 55** extended to sizes 3-4 and 7-10. **Phase 70** (2026-08-19) added ring sizes 11-20, but via a DIFFERENT mechanism than Hantzsch-Widman: per the real Blue Book text (P-22.2.3, verified against `BlueBookV2.md` directly, not memory), sizes 11+ don't use Hantzsch-Widman stems at all -- they use skeletal replacement ('a') nomenclature (`cyclo`+chain-root+`ane`, e.g. "azacycloundecane", "1,5-dithiacyclododecane"), with locants+prefix grouped PER HETEROATOM KIND and hyphen-joined (structurally different from Hantzsch-Widman's pooled-locant-list style). New `RingType::LARGE_HETEROCYCLE` in `classifyMonocyclicHeteroRing`/`IupacNamer.cpp`, reusing the existing generic ring-numbering comparator (`heteroatomLocants`/`heteroatomSeniorityAtLocants`) unchanged -- it already implemented the right rule. Two real Blue Book PIN examples pinned directly in the new tests ("1,5-dithiacyclododecane (not 1,9-)" and "1-thia-5-selenacyclododecane"). Found and fixed a related latent bug while testing: the whole-molecule amine-detection scan was treating a ring's own internal N-C bond as an exocyclic amino substituent, invisible until now because every saturated non-hardcoded heterocycle was previously rejected before reaching that scan. `iupac_namer_test` 452→456/456, `ctest` 11/11, `cavecrew-reviewer`: no issues (including a specific check of the other 8 call sites of `classifyMonocyclicHeteroRing` for unintended blast radius). **Scoped to the fully saturated, unsubstituted case only** -- remaining: the mancude/maximally-unsaturated `-ene` chain form (P-22.2.4) needs a real "maximum noncumulative double bonds" validator this codebase doesn't have for rings this large (Indigo doesn't mark them aromatic the way it does 5-6 membered rings), and substituted large heterocycles aren't handled at all yet (deferred, not attempted).
 4. **P-23/P-24 von Baeyer & spiro**: add unsaturation and heteroatoms (simple alkyl/halogen substituents now named in Phase 53 for saturated all-carbon bicyclic/spiro; still saturated+all-carbon-at-skeleton only — P-23.3-P-23.7 and P-24.3-P-24.8 entirely unimplemented).
 5. **Blue Book section P-44 (ring-vs-chain and other parent-structure seniority)** — **Phase 52 closed the P-44.1.1 + P-44.1.2.2 core** (count-based decision + ring-wins-on-tie); **Phase 54 generalized chain-as-parent naming** from carboxylic-acid-only to ACID/AMIDE/NITRILE/ALDEHYDE/KETONE/ALCOHOL/THIOL/AMINE (`nameChainParentWithRingSubstituent` + new `nameAcyclicChainParentWithSubstituents`), fixing 3 bugs surfaced in the process (a stray ring-only restriction blocking chain-attached thiol classification; a false-tie in the ring/chain instance count caused by miscounting an exocyclic principal carbon as ring-side; and `nameChainParentWithRingSubstituent` itself dropping exocyclic principal carbons from its own count, under-naming diol/diamine cases). Remaining: `P-44.1.2` heteroatom-skeleton seniority (Si/Ge/... chain vs C ring) (SULFONIC_ACID/THIAL/THIONE added in Phase 56; ESTER/ACYL_HALIDE added in Phase 58; BORONIC_ACID/PHOSPHINE added in Phase 61, via `nameBranchGraph` rather than the numbered-chain-suffix machinery), and lifting the single-attachment / monocyclic-ring restrictions (fused/bridged/polycyclic ring as a chain substituent — scoped as a separate future phase). (Not to be confused with this codebase's own Phase 44, above.)
