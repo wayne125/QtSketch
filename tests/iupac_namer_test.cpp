@@ -3133,17 +3133,60 @@ int main() {
     }
 
     {
-        // Phase 70 scope boundary: an UNSATURATED 11+ heterocycle must still reject
-        // cleanly (the mancude '-ene' chain form, P-22.2.4, is deliberately deferred
-        // to a future phase -- see classifyMonocyclicHeteroRing's comment).
-        int m = indigoLoadMoleculeFromString("C1=CCCCCCCCCN1");
+        // Phase 70 Part A: Mancude large heterocycle (1-oxacycloundeca-2,4,6,8,10-pentaene)
+        int m = indigoLoadMoleculeFromString("O1C=CC=CC=CC=CC=C1");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        std::string expected = "1-oxacycloundeca-2,4,6,8,10-pentaene";
+        if (r.success && r.name.toStdString() == expected) {
+            std::cout << "[PASS] Phase 70: " << expected << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Phase 70: expected '" << expected << "', got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Phase 70 Part A: Mancude 18-ring with 2 O's
+        int m = indigoLoadMoleculeFromString("O1C=CC=CC=COC=CC=CC=CC=CC=C1");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        std::string expected = "1,8-dioxacyclooctadeca-2,4,6,9,11,13,15,17-octaene";
+        if (r.success && r.name.toStdString() == expected) {
+            std::cout << "[PASS] Phase 70: " << expected << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Phase 70: expected '" << expected << "', got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Phase 70 Part A: Mancude 14-ring with 1 N
+        int m = indigoLoadMoleculeFromString("N1=CC=CC=CC=CC=CC=CC=C1");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        std::string expected = "1-azacyclotetradeca-1,3,5,7,9,11,13-heptaene";
+        if (r.success && r.name.toStdString() == expected) {
+            std::cout << "[PASS] Phase 70: " << expected << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Phase 70: expected '" << expected << "', got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Phase 70 Part A: Mancude rejection due to parity failure (odd run between two divalent heteroatoms)
+        int m = indigoLoadMoleculeFromString("O1COC=CC=CC=CC=C1");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
         if (!r.success) {
-            std::cout << "[PASS] Phase 70 scope: unsaturated 11-membered heterocycle correctly rejected: " << r.error.toStdString() << "\n";
+            std::cout << "[PASS] Phase 70 scope: parity-failing mancude heterocycle correctly rejected: " << r.error.toStdString() << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] Phase 70 scope: unsaturated 11-membered heterocycle should reject, got name='" << r.name.toStdString() << "'\n";
+            std::cout << "[FAIL] Phase 70 scope: parity-failing mancude heterocycle should reject, got name='" << r.name.toStdString() << "'\n";
             failed++;
         }
     }

@@ -526,15 +526,7 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
 
     // P-22.2.3/P-22.2.4: heteromonocycles of 11-20 ring members use skeletal
     // replacement ('a') nomenclature (cyclo+root+ane, or a mancude '-ene' chain)
-    // instead of Hantzsch-Widman stems, which only cover sizes 3-10 (P-22.2.2.1.1).
-    // Verified against the real Blue Book text (BlueBookV2.md), not memory.
-    // Scoped to the fully saturated, unsubstituted case only for this phase --
-    // the mancude/maximally-unsaturated '-ene' chain form (P-22.2.4) needs a real
-    // "maximum noncumulative double bonds" validator this codebase doesn't have
-    // yet for rings this large (Indigo doesn't mark them order-4 'aromatic' the
-    // way it does 5-6 membered rings), so it falls through to the existing
-    // rejection below, same as before this phase.
-    if (ringSize >= 11 && ringSize <= 20 && allSingleInRing) {
+    if (ringSize >= 11 && ringSize <= 20) {
         bool allSupportedElements = true;
         for (int nIdx : ringHeteroNodes) {
             if (hwSeniorityRank(g.nodes[nIdx].atomicNumber) == 99) { allSupportedElements = false; break; }
@@ -544,9 +536,123 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
             if (g.nodes[nIdx].neighbors.size() != 2) { bareRing = false; break; }
         }
         if (allSupportedElements && bareRing) {
-            outType = RingType::LARGE_HETEROCYCLE;
-            outNameRoot = "cyclo" + chainRoot(ringSize) + "ane";
-            return true;
+            bool hasTriple = false;
+            bool hasDouble = false;
+            for (const auto &gb : g.bonds) {
+                bool uIn = (std::find(ringCycle.begin(), ringCycle.end(), gb.u) != ringCycle.end());
+                bool vIn = (std::find(ringCycle.begin(), ringCycle.end(), gb.v) != ringCycle.end());
+                if (uIn && vIn) {
+                    if (gb.order == 3) hasTriple = true;
+                    if (gb.order == 2) hasDouble = true;
+                }
+            }
+
+            if (hasTriple) {
+                outErrorMsg = "Large heterocycles with triple bonds are not supported.";
+                return false;
+            }
+
+            bool validMancude = false;
+            if (!allSingleInRing && (hasDouble || heteroAromatic)) {
+                std::vector<int> spareValence(ringSize);
+                int zeroSpareCount = 0;
+                for (int i = 0; i < ringSize; ++i) {
+                    int z = g.nodes[ringCycle[i]].atomicNumber;
+                    if (z == 8 || z == 16 || z == 34 || z == 52) {
+                        spareValence[i] = 0;
+                        zeroSpareCount++;
+                    } else {
+                        spareValence[i] = 1;
+                    }
+                }
+
+                bool parityCheckOk = true;
+                int maxDoubleBonds = 0;
+                if (zeroSpareCount > 0) {
+                    int startIdx = 0;
+                    while (spareValence[startIdx] != 0) startIdx++;
+
+                    int runLength = 0;
+                    for (int i = 1; i <= ringSize; ++i) {
+                        int idx = (startIdx + i) % ringSize;
+                        if (spareValence[idx] == 1) {
+                            runLength++;
+                        } else {
+                            if (runLength > 0) {
+                                if (runLength % 2 != 0) {
+                                    parityCheckOk = false;
+                                    break;
+                                }
+                                maxDoubleBonds += runLength / 2;
+                            }
+                            runLength = 0;
+                        }
+                    }
+                } else {
+                    if (ringSize % 2 != 0) {
+                        parityCheckOk = false;
+                    } else {
+                        maxDoubleBonds = ringSize / 2;
+                    }
+                }
+
+                if (parityCheckOk) {
+                    if (heteroAromatic) {
+                        validMancude = true;
+                    } else {
+                        int actualDoubleBonds = 0;
+                        bool validBonding = true;
+                        for (int i = 0; i < ringSize; ++i) {
+                            int u = ringCycle[i];
+                            int v = ringCycle[(i + 1) % ringSize];
+                            int bondOrder = 1;
+                            for (const auto &gb : g.bonds) {
+                                if ((gb.u == u && gb.v == v) || (gb.u == v && gb.v == u)) {
+                                    bondOrder = gb.order;
+                                    break;
+                                }
+                            }
+                            if (bondOrder == 2) {
+                                actualDoubleBonds++;
+                                if (spareValence[i] == 0 || spareValence[(i + 1) % ringSize] == 0) {
+                                    validBonding = false;
+                                }
+                            }
+                        }
+
+                        for (int i = 0; i < ringSize; ++i) {
+                            int u = ringCycle[(i - 1 + ringSize) % ringSize];
+                            int v = ringCycle[i];
+                            int w = ringCycle[(i + 1) % ringSize];
+                            int bo1 = 1, bo2 = 1;
+                            for (const auto &gb : g.bonds) {
+                                if ((gb.u == u && gb.v == v) || (gb.u == v && gb.v == u)) bo1 = gb.order;
+                                if ((gb.u == v && gb.v == w) || (gb.u == w && gb.v == v)) bo2 = gb.order;
+                            }
+                            if (bo1 == 2 && bo2 == 2) validBonding = false;
+                        }
+
+                        if (validBonding && actualDoubleBonds == maxDoubleBonds) {
+                            validMancude = true;
+                        } else if (validBonding && actualDoubleBonds > 0) {
+                            outErrorMsg = "Partially saturated large heterocycles are not supported.";
+                            return false;
+                        } else if (!validBonding) {
+                            outErrorMsg = "Invalid double bond arrangement for mancude form.";
+                            return false;
+                        }
+                    }
+                } else {
+                    outErrorMsg = "Ring composition cannot support a valid mancude form due to parity failure.";
+                    return false;
+                }
+            }
+
+            if (allSingleInRing || validMancude) {
+                outType = RingType::LARGE_HETEROCYCLE;
+                outNameRoot = "cyclo" + chainRoot(ringSize); // Defer the "ane" / "ene" ending
+                return true;
+            }
         }
     }
 
@@ -8456,6 +8562,51 @@ IupacResult IupacNamer::generateName(int mol) {
                 }
             }
             std::sort(sig.doubleBondLocants.begin(), sig.doubleBondLocants.end());
+        } else if (rType == RingType::LARGE_HETEROCYCLE) {
+            bool hasDoubleOrArom = false;
+            for (const auto &rb : ringBonds) {
+                if (rb.order == 2 || rb.order == 4) hasDoubleOrArom = true;
+            }
+            if (hasDoubleOrArom) {
+                std::vector<int> spareValence(ringSize);
+                int zeroSpareCount = 0;
+                for (int i = 0; i < ringSize; ++i) {
+                    int z = g.nodes[cand[i]].atomicNumber;
+                    if (z == 8 || z == 16 || z == 34 || z == 52) {
+                        spareValence[i] = 0;
+                        zeroSpareCount++;
+                    } else {
+                        spareValence[i] = 1;
+                    }
+                }
+                
+                if (zeroSpareCount > 0) {
+                    int startIdx = 0;
+                    while (spareValence[startIdx] != 0) startIdx++;
+                    
+                    int runLength = 0;
+                    for (int i = 1; i <= ringSize; ++i) {
+                        int idx = (startIdx + i) % ringSize;
+                        if (spareValence[idx] == 1) {
+                            runLength++;
+                        } else {
+                            if (runLength > 0) {
+                                int runStart = (idx - runLength + ringSize) % ringSize;
+                                for (int k = 0; k < runLength / 2; ++k) {
+                                    int dbIdx = (runStart + 2 * k) % ringSize;
+                                    sig.doubleBondLocants.push_back(dbIdx + 1);
+                                }
+                            }
+                            runLength = 0;
+                        }
+                    }
+                } else {
+                    for (int k = 0; k < ringSize / 2; ++k) {
+                        sig.doubleBondLocants.push_back(1 + 2 * k);
+                    }
+                }
+                std::sort(sig.doubleBondLocants.begin(), sig.doubleBondLocants.end());
+            }
         }
 
         for (int i = 0; i < ringSize; ++i) {
@@ -8768,8 +8919,13 @@ IupacResult IupacNamer::generateName(int mol) {
             // saturated ('-ane') form (e.g. "thiacyclododecane") -- confirmed against the
             // Blue Book's own example, unlike the mancude form which always shows it
             // (not implemented in this phase; see classifyMonocyclicHeteroRing).
-            int soleZ = locantsByZ.begin()->first;
-            parentNameRoot = hwAPrefix(soleZ) + parentNameRoot;
+            if (bestSig.doubleBondLocants.empty()) {
+                int z = locantsByZ.begin()->first;
+                parentNameRoot = hwAPrefix(z) + parentNameRoot;
+            } else {
+                int z = locantsByZ.begin()->first;
+                parentNameRoot = "1-" + hwAPrefix(z) + parentNameRoot;
+            }
         } else {
             QStringList chunks;
             for (int k = 0; k < citationOrderLen; ++k) {
@@ -8864,6 +9020,16 @@ IupacResult IupacNamer::generateName(int mol) {
             QStringList lStrs;
             for (int l : dbLocs) lStrs.append(QString::number(l));
             rootStr += QString("-%1-%2en").arg(lStrs.join(","), multiPrefix(static_cast<int>(dbLocs.size())));
+        }
+    } else if (rType == RingType::LARGE_HETEROCYCLE) {
+        std::vector<int> dbLocs = bestSig.doubleBondLocants;
+        if (dbLocs.empty()) {
+            rootStr += "ane";
+        } else {
+            rootStr += "a";
+            QStringList lStrs;
+            for (int l : dbLocs) lStrs.append(QString::number(l));
+            rootStr += QString("-%1-%2ene").arg(lStrs.join(","), multiPrefix(static_cast<int>(dbLocs.size())));
         }
     }
 
