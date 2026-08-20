@@ -272,7 +272,7 @@ sourced from the standalone `fusedring` site, not the local Blue Book PDF.
 - **E/Z coordinate-dependence (found during P-93.4's CIP-reuse fix, pre-existing in the code before that fix too)**: `processDoubleBondStereo` determines E/Z purely from whatever 2D coordinates exist on the molecule when `generateName()` runs, with no way to tell "the user deliberately drew this geometry" from "a layout algorithm had to put these atoms somewhere." A double bond with genuinely unspecified stereo can receive an arbitrary, non-reproducible E/Z label if it reaches naming after already having real (non-collinear) coordinates from an earlier, unrelated layout pass — confirmed live via the app's own "Load from SMILES" → auto-layout → "Generate IUPAC Name" flow for `CC=C(C)CC` (3-methylpent-2-ene with no stereo bonds), which produced `(2E)-3-methylpent-2-ene` live despite the direct unit-test path (parsing the bare SMILES fresh, no prior layout) correctly producing the unprefixed `3-methylpent-2-ene`. Confirmed via a git-checkout control test that this exact vulnerability class predates the P-93.4 CIP-reuse fix (the old code had it too for any non-tie disubstituted alkene without explicit stereo marks — it only specifically protected *tied* substituents with an early, coordinate-independent rejection). A real fix needs to track "was this bond's stereo ever deliberately specified" across the SMILES→document→molfile round trip; out of scope here, needs its own future sub-project.
 - Multi-component (disconnected) molecules rejected outright (P-72/P-73/P-77 charged/salt forms out of scope entirely).
 - 3+ SSSR rings rejected unless all mutually disjoint (no fused/bridged/spiro combination beyond the specific phases listed above; P-25.4/P-25.5/P-25.6 all out of scope).
-- **Phase 59**: `CC1CCCCC1CCC(=O)Oc1ccccc1` (phenyl ester of 3-(2-methylcyclohexyl)propanoic acid — a molecule with 2 separate, non-fused monocyclic rings joined only by an acyclic ester linkage) now correctly produces `success=true, name="phenyl 3-(2-methylcyclohexyl)propanoate"`. Fix: added early guard at start of `ringCount == 2` dispatch sequence (before biphenyl detection at line 2661) that detects when the two SSSR rings are fully disjoint (no shared atoms and no direct bond between them) and marks `twoRingsAreDisjoint=true`; then modified ring-substituent detection condition (line 2852) from `mainChainExoCount == 1` to `mainChainExoCount == 1 || twoRingsAreDisjoint` to allow both disjoint rings to be treated as ring substituents and funneled into the P-44 acyclic path, where Phase 58's ester logic correctly names both the phenyl ester alkyl group and the methylcyclohexyl-substituted acid chain.
+- **Phase 59**: `CC1CCCCC1CCC(=O)Oc1ccccc1` (phenyl ester of 3-(2-methylcyclohexyl)propanoic acid — a molecule with 2 separate, non-fused monocyclic rings joined only by an acyclic ester linkage) now correctly produces `success=true, name="phenyl 3-(2-methylcyclohexyl)propanoate"`. Fix: added early guard at start of `ringCount == 2` dispatch sequence (before biphenyl detection at line 3004) that detects when the two SSSR rings are fully disjoint (no shared atoms and no direct bond between them) and marks `twoRingsAreDisjoint=true`; then modified ring-substituent detection condition (line 3173) from `mainChainExoCount == 1` to `mainChainExoCount == 1 || twoRingsAreDisjoint` to allow both disjoint rings to be treated as ring substituents and funneled into the P-44 acyclic path, where Phase 58's ester logic correctly names both the phenyl ester alkyl group and the methylcyclohexyl-substituted acid chain.
 
 ## Numbers still needing verification
 
@@ -343,13 +343,15 @@ wherever both could appear.
 9. **Branch-stereocenter guard bypass on the acyclic parent path (Phase 1)** — fixed. Same bug
    class already fixed for the ring paths (Phase 2/3): `formatBranchStereoPrefix` was called
    unconditionally right after `nameBranchGraph` with no check that `nameBranchGraph` actually
-   produced a name. Fixed by gating the call behind `!bName.isEmpty()` (now at `IupacNamer.cpp:4198-4210`),
-   identical in shape to the Phase 2/3 fix at `IupacNamer.cpp:8071` and `:8962`. **Scope note:**
+   produced a name. Fixed by gating the call behind `!bName.isEmpty()` (superseded by item 12's
+   later rewrite into an early-return reject; the equivalent guard now lives at
+   `IupacNamer.cpp:4296-4304`), identical in shape to the Phase 2/3 fix at `IupacNamer.cpp:8173`
+   and `:9071`. **Scope note:**
    this only fixes the case where the unnameable branch ALSO carries a stereocenter (the disclosed
    bug). A confirmed, separate, pre-existing bug remains for unnameable branches WITHOUT a
    stereocenter: `nameBranchGraph` can return `""` for other reasons (e.g. a fused/bridged ring
-   branch at `IupacNamer.cpp:1147`, or an azide at `:1193`) and the final
-   `locantSubstituents[locant].append(bName)` at `:4210` still unconditionally appends the empty
+   branch at `IupacNamer.cpp:1212`, or an azide at `:1257`) and the final
+   `locantSubstituents[locant].append(bName)` at `:4313` still unconditionally appends the empty
    string, producing a malformed but "successful" name -- confirmed live via a temporary probe:
    `CCCCC(CN=[N+]=[N-])CCC` (no stereocenter) returns `success=1 name='4-octane'` (the azide
    substituent is silently dropped instead of triggering rejection). This predates and is
@@ -357,7 +359,7 @@ wherever both could appear.
    tracked as new item 12 below, not fixed by this plan. Live-UI note: for the specific regression
    molecule (`CCCCC([C@H](CN=[N+]=[N-])C)CCC`), the app's SMILES-load-then-molfile-round-trip
    path rejects earlier, with "Charged atoms are not supported in Phase 1." (the early
-   reject-early charge check at `IupacNamer.cpp:~2517`, well upstream of this fix) rather than
+   reject-early charge check at `IupacNamer.cpp:~2586`, well upstream of this fix) rather than
    the unit test's direct-SMILES-load "Stereocenters on substituent branches are not supported
    in this phase." — both are correct rejections (no malformed success either way); the
    difference traces to the azide's exact bond-order/charge pattern not surviving the
@@ -366,20 +368,20 @@ wherever both could appear.
     (`IupacNamer.cpp`, near `multiPrefix`) now strips wrapping brackets, stereo-descriptor
     parentheticals, and locant-digit prefixes before alphabetizing, used at both the
     substituent-citation-order sort-key sites (6) and the numbering/path-direction tiebreak
-    sites (6: 4 ring/spiro/naphthalene-numbering sites at `IupacNamer.cpp:4666, 4977, 8107,
-    9002`, plus 2 acyclic-chain numbering-direction sites at `:1846, 3832`) that previously
+    sites (6: 4 ring/spiro/naphthalene-numbering sites at `IupacNamer.cpp:4769, 5080, 8211,
+    9113`, plus 2 acyclic-chain numbering-direction sites at `:1911, 3907`) that previously
     compared raw, still-bracketed names.
 11. Lower priority / rarely load-bearing for this app: P-26 (phane), P-27 (fullerenes), P-7/P-8 (ions/isotopes), P-10 (natural products).
 12. **Unnameable-branch guard bypass without a stereocenter (Phase 1)** — fixed 2026-08-18.
     `nameBranchGraph` can return `""` for a branch that is unnameable for reasons unrelated
-    to stereocenters (fused/bridged ring branch at `IupacNamer.cpp:1147`, azide at `:1193`,
+    to stereocenters (fused/bridged ring branch at `IupacNamer.cpp:1212`, azide at `:1257`,
     and likely other `return ""` sites in the same function). The direct-branch loop's
-    `locantSubstituents[locant].append(bName)` (now `IupacNamer.cpp:4213`) used to be
+    `locantSubstituents[locant].append(bName)` (now `IupacNamer.cpp:4313`) used to be
     unconditional and was never inside item 9's `!bName.isEmpty()` guard (that guard only
     wrapped the stereo-prefix logic, not the append itself) -- so an unnameable,
     non-stereocenter branch was silently dropped from the name instead of triggering
     rejection. Confirmed live before the fix: `CCCCC(CN=[N+]=[N-])CCC` returned
-    `success=1 name='4-octane'` (azide substituent vanished). Fix: `IupacNamer.cpp:4198-4203`
+    `success=1 name='4-octane'` (azide substituent vanished). Fix: `IupacNamer.cpp:4299-4302`
     now returns `{false, "", "Unrecognized or unsupported substituent."}` as soon as
     `nameBranchGraph` returns `""`, mirroring the Phase 2/3 rejection pattern. New regression
     test in `tests/iupac_namer_test.cpp` pins the fixed molecule to that rejection. Side
@@ -397,9 +399,9 @@ wherever both could appear.
     Fixed all 13 sites the same way (`if (alkylName.isEmpty()) return {false, "",
     "Unrecognized or unsupported substituent."};` right after the `nameBranchGraph`
     call, before the suffix is appended): sulfanyl/sulfinyl/sulfonyl/disulfanyl
-    (`IupacNamer.cpp:3974, 3984, 3994, 4009`), selanyl/seleninyl/selenonyl/diselanyl
-    (`:4022, 4032, 4042, 4057`), tellanyl/tellurinyl/telluronyl/ditellanyl
-    (`:4070, 4080, 4090, 4105`), and the ether prefix (`:4121`). New regression test
+    (`IupacNamer.cpp:4050, 4061, 4072, 4088`), selanyl/seleninyl/selenonyl/diselanyl
+    (`:4102, 4113, 4124, 4140`), tellanyl/tellurinyl/telluronyl/ditellanyl
+    (`:4154, 4165, 4176, 4192`), and the ether prefix (`:4209`). New regression test
     (`CCCCC(SCN=[N+]=[N-])CCC`, a thioether whose alkyl side is unnameable) confirms
     rejection instead of a bogus name. None of the 13 guards changed behavior on any
     previously-passing case (all still named their alkyl side successfully before
