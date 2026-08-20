@@ -1795,15 +1795,71 @@ int main() {
     }
 
     {
-        // Phase 27: Heteroatom bicyclic falls through to naphthalene rejection message
+        // Item 4: von Baeyer heteroatom bicyclic (7-oxabicyclo[2.2.1]heptane, the
+        // real oxanorbornane skeleton -- locant 7 is fixed by the standard
+        // bicyclo[2.2.1]heptane numbering, the single-atom-bridge position).
         int m = indigoLoadMoleculeFromString("C1CC2CCC1O2");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
-        if (!r.success && r.error == "Fused ring systems other than naphthalene are not supported in this phase.") {
-            std::cout << "[PASS] Phase 27 heteroatom bicyclic rejection -> " << r.error.toStdString() << "\n";
+        if (r.success && r.name == "7-oxabicyclo[2.2.1]heptane") {
+            std::cout << "[PASS] 7-oxabicyclo[2.2.1]heptane -> " << r.name.toStdString() << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] Phase 27 heteroatom bicyclic rejection -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            std::cout << "[FAIL] 7-oxabicyclo[2.2.1]heptane -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Item 4: von Baeyer, P-23.3.2.2 seniority tie-break (O senior to S).
+        // Skeleton bicyclo[3.2.1]octane; O and S flank the middle carbon of the
+        // 3-atom bridge (positions 2 and 4), a genuine locant-set tie {2,4}
+        // regardless of direction -- only heteroatom seniority picks the winner.
+        int m = indigoLoadMoleculeFromString("C12OCSC(C2)CC1");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "2-oxa-4-thiabicyclo[3.2.1]octane") {
+            std::cout << "[PASS] 2-oxa-4-thiabicyclo[3.2.1]octane -> " << r.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] 2-oxa-4-thiabicyclo[3.2.1]octane -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Item 4: von Baeyer, P-23.3.2.1 lowest-locant-set example (real Blue
+        // Book PIN, must NOT come out as 3,7,9-...). Skeleton bicyclo[3.2.2]nonane
+        // (two equal-length 2-atom bridges), O at the middle of the 3-atom bridge.
+        // Von Baeyer numbering walks consecutive bridges in alternating direction
+        // (the "second" bridge is numbered Other->S, the "third" S->Other), so the
+        // low-locant end of a 2-atom bridge alternates which physical bridgehead
+        // it's adjacent to between bridge roles -- the two O's must be adjacent to
+        // OPPOSITE bridgeheads (one per bridge), not the same one, to both land on
+        // the low-locant end simultaneously.
+        int m = indigoLoadMoleculeFromString("C12COCC(CO1)(OC2)");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "3,6,8-trioxabicyclo[3.2.2]nonane") {
+            std::cout << "[PASS] 3,6,8-trioxabicyclo[3.2.2]nonane -> " << r.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] 3,6,8-trioxabicyclo[3.2.2]nonane -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Item 4: von Baeyer, unsupported ring-skeletal element (Al) must reject
+        // cleanly, not crash or guess.
+        int m = indigoLoadMoleculeFromString("C1CC2CCC1[Al]2");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success) {
+            std::cout << "[PASS] von Baeyer unsupported ring element rejected: " << r.error.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] von Baeyer unsupported ring element should reject, got name='" << r.name.toStdString() << "'\n";
             failed++;
         }
     }

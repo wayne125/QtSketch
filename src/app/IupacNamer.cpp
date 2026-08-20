@@ -296,6 +296,46 @@ static QString hwAPrefix(int z) {
 // P-22.2.2.1.6: For 6-membered rings, find least-senior heteroatom present.
 // Group A (O,S,Se,Te,Bi) and Group B (N,Si,Ge,Sn,Pb) -> mancude stem '-ine'.
 // Group C (P,As,Sb,B) -> mancude stem '-inine'.
+
+// Build a skeletal replacement prefix chunk (e.g. "2,4-dioxa-6-aza") for a set of heteroatoms.
+// Reuses hwSeniorityRank/hwAPrefix and citation order from LARGE_HETEROCYCLE.
+static QString buildSkeletalReplacementPrefix(const std::map<int, std::vector<int>> &locantsByZ, bool omitSingleLocant) {
+    int totalHeteroCount = 0;
+    for (const auto &kv : locantsByZ) totalHeteroCount += static_cast<int>(kv.second.size());
+    if (totalHeteroCount == 0) return "";
+    
+    if (omitSingleLocant && totalHeteroCount == 1) {
+        return hwAPrefix(locantsByZ.begin()->first);
+    }
+    
+    static const int citationOrder[] = {8, 16, 34, 52, 7, 15, 33, 51, 83, 14, 32, 50, 82, 5};
+    static const int citationOrderLen = 14;
+    
+    QStringList chunks;
+    for (int k = 0; k < citationOrderLen; ++k) {
+        int z = citationOrder[k];
+        auto it = locantsByZ.find(z);
+        if (it == locantsByZ.end()) continue;
+        
+        std::vector<int> locs = it->second;
+        std::sort(locs.begin(), locs.end());
+        QStringList locStrs;
+        for (int l : locs) locStrs.append(QString::number(l));
+        
+        QString aPrefix = hwAPrefix(z);
+        QString prefixWord;
+        if (locs.size() == 1) {
+            prefixWord = aPrefix;
+        } else {
+            QString mp = multiPrefix(static_cast<int>(locs.size()));
+            if (mp.endsWith('a') && isVowel(aPrefix[0])) mp.chop(1);
+            prefixWord = mp + aPrefix;
+        }
+        chunks.append(locStrs.join(",") + "-" + prefixWord);
+    }
+    return chunks.join("-");
+}
+
 static QString hwSixMemberStem(const std::vector<int> &heteroAtomicNumbers) {
     // Find the element with the highest (least-senior) rank
     int leastSeniorRank = -1;
@@ -4674,9 +4714,9 @@ IupacResult IupacNamer::generateName(int mol) {
                 // rather than a guessed name.
                 bool validPreconditions = true;
 
-                // Every ring-union atom must be carbon (no skeletal heteroatoms in scope).
+                // Skeletal heteroatoms must be supported by hwSeniorityRank.
                 for (int n : ringUnionNodes) {
-                    if (g.nodes[n].atomicNumber != 6) { validPreconditions = false; break; }
+                    if (g.nodes[n].atomicNumber != 6 && hwSeniorityRank(g.nodes[n].atomicNumber) == 99) { validPreconditions = false; break; }
                 }
 
                 // No bond within the ring union may have an invalid order (aromaticity out of scope,
@@ -4803,6 +4843,8 @@ IupacResult IupacNamer::generateName(int mol) {
                                 // elsewhere in this file.
                                 struct NumberingCand {
                                     std::map<int,int> locantOf;
+                                    std::vector<int> heteroatomLocants;
+                                    std::vector<int> heteroatomSeniorityLocants;
                                     std::vector<int> doubleBondLocants;
                                     std::vector<int> tripleBondLocants;
                                     std::vector<int> subLocants;
@@ -4845,6 +4887,27 @@ IupacResult IupacNamer::generateName(int mol) {
 
                                         if ((int)cand.locantOf.size() != totalCarbons) continue;
 
+                                        for (int n : ringUnionNodes) {
+                                            if (g.nodes[n].atomicNumber != 6) {
+                                                cand.heteroatomLocants.push_back(cand.locantOf[n]);
+                                            }
+                                        }
+                                        std::sort(cand.heteroatomLocants.begin(), cand.heteroatomLocants.end());
+                                        
+                                        // P-23.3.2.2: low locants assigned by decreasing heteroatom seniority
+                                        // To implement this, we can group locants by seniority rank (which is already 0=O, 1=S etc)
+                                        // and then concatenate them. Comparing these vectors lexicographically will perfectly match the rule.
+                                        std::map<int, std::vector<int>> locsByRank;
+                                        for (int n : ringUnionNodes) {
+                                            if (g.nodes[n].atomicNumber != 6) {
+                                                locsByRank[hwSeniorityRank(g.nodes[n].atomicNumber)].push_back(cand.locantOf[n]);
+                                            }
+                                        }
+                                        for (auto &kv : locsByRank) {
+                                            std::sort(kv.second.begin(), kv.second.end());
+                                            for (int l : kv.second) cand.heteroatomSeniorityLocants.push_back(l);
+                                        }
+
                                         for (const auto &rs : ringSubstituents) {
                                             auto it = cand.locantOf.find(rs.first);
                                             if (it == cand.locantOf.end()) { cand.subLocants.clear(); break; }
@@ -4876,6 +4939,8 @@ IupacResult IupacNamer::generateName(int mol) {
                                 if (!cands.empty()) {
                                     auto bestIt = std::min_element(cands.begin(), cands.end(),
                                         [](const NumberingCand &a, const NumberingCand &b) {
+                                            if (a.heteroatomLocants != b.heteroatomLocants) return a.heteroatomLocants < b.heteroatomLocants;
+                                            if (a.heteroatomSeniorityLocants != b.heteroatomSeniorityLocants) return a.heteroatomSeniorityLocants < b.heteroatomSeniorityLocants;
                                             if (a.doubleBondLocants != b.doubleBondLocants) return a.doubleBondLocants < b.doubleBondLocants;
                                             if (a.tripleBondLocants != b.tripleBondLocants) return a.tripleBondLocants < b.tripleBondLocants;
                                             if (a.subLocants != b.subLocants) return a.subLocants < b.subLocants;
@@ -4924,6 +4989,18 @@ IupacResult IupacNamer::generateName(int mol) {
                                         QStringList pStrs;
                                         for (const auto &pg : pGroups) pStrs.append(pg.formattedStr);
                                         prefixPart = pStrs.join("-");
+                                    }
+
+                                    std::map<int, std::vector<int>> locantsByZ;
+                                    for (int n : ringUnionNodes) {
+                                        if (g.nodes[n].atomicNumber != 6) {
+                                            locantsByZ[g.nodes[n].atomicNumber].push_back(best.locantOf[n]);
+                                        }
+                                    }
+                                    QString heteroPrefix = buildSkeletalReplacementPrefix(locantsByZ, false);
+                                    if (!heteroPrefix.isEmpty()) {
+                                        if (prefixPart.isEmpty()) prefixPart = heteroPrefix;
+                                        else prefixPart = heteroPrefix + "-" + prefixPart;
                                     }
 
                                     std::vector<int> dbLocs = best.doubleBondLocants;
@@ -8910,9 +8987,6 @@ IupacResult IupacNamer::generateName(int mol) {
         // B > Al > Ga > In > Tl, but among the elements this namer actually supports as
         // ring atoms (no halogens/Al/Ga/In/Tl), that's identical to hwSeniorityRank's
         // order, so reusing it here is correct, not a shortcut.
-        static const int citationOrder[] = {8, 16, 34, 52, 7, 15, 33, 51, 83, 14, 32, 50, 82, 5};
-        static const int citationOrderLen = 14;
-
         std::map<int, std::vector<int>> locantsByZ;
         for (size_t i = 0; i < bestSig.ringChain.size(); ++i) {
             int nodeIdx = bestSig.ringChain[i];
@@ -8920,42 +8994,10 @@ IupacResult IupacNamer::generateName(int mol) {
             if (z != 6) locantsByZ[z].push_back(static_cast<int>(i + 1));
         }
 
-        int totalHeteroCount = 0;
-        for (const auto &kv : locantsByZ) totalHeteroCount += static_cast<int>(kv.second.size());
-
-        if (totalHeteroCount == 1) {
-            // P-22.2.3.2.1: locant '1' for a sole heteroatom is omitted entirely in the
-            // saturated ('-ane') form (e.g. "thiacyclododecane") -- confirmed against the
-            // Blue Book's own example, unlike the mancude form which always shows it
-            // (not implemented in this phase; see classifyMonocyclicHeteroRing).
-            if (bestSig.doubleBondLocants.empty()) {
-                int z = locantsByZ.begin()->first;
-                parentNameRoot = hwAPrefix(z) + parentNameRoot;
-            } else {
-                int z = locantsByZ.begin()->first;
-                parentNameRoot = "1-" + hwAPrefix(z) + parentNameRoot;
-            }
-        } else {
-            QStringList chunks;
-            for (int k = 0; k < citationOrderLen; ++k) {
-                int z = citationOrder[k];
-                auto it = locantsByZ.find(z);
-                if (it == locantsByZ.end()) continue;
-                const std::vector<int> &locs = it->second;
-                QStringList locStrs;
-                for (int l : locs) locStrs.append(QString::number(l));
-                QString aPrefix = hwAPrefix(z);
-                QString prefixWord;
-                if (locs.size() == 1) {
-                    prefixWord = aPrefix;
-                } else {
-                    QString mp = multiPrefix(static_cast<int>(locs.size()));
-                    if (mp.endsWith('a') && isVowel(aPrefix[0])) mp.chop(1);
-                    prefixWord = mp + aPrefix;
-                }
-                chunks.append(locStrs.join(",") + "-" + prefixWord);
-            }
-            parentNameRoot = chunks.join("-") + parentNameRoot;
+        bool omitSingle = bestSig.doubleBondLocants.empty();
+        QString heteroPrefix = buildSkeletalReplacementPrefix(locantsByZ, omitSingle);
+        if (!heteroPrefix.isEmpty()) {
+            parentNameRoot = heteroPrefix + parentNameRoot;
         }
     }
     std::map<int, int> graphIdToLocant;
