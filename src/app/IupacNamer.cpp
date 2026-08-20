@@ -5163,6 +5163,95 @@ IupacResult IupacNamer::generateName(int mol) {
         }
     }
 
+    // --- Detect unsupported fusion topologies (P-25.3.1.1.2, P-25.4, P-25.5) ---
+    {
+        int N_rings = allSSSRRings.size();
+        bool hasBridged = false;
+        bool hasPeri = false;
+        bool hasP25_5 = false;
+        
+        // 1. Detect P-25.4 Bridged-Fused: Any pair of rings sharing > 2 atoms or disconnected components
+        for (int i = 0; i < N_rings; ++i) {
+            bool ring1HasDouble = false;
+            for (int n : allSSSRRings[i]) {
+                for (int order : g.nodes[n].bondOrders) if (order == 2 || order == 4) ring1HasDouble = true;
+            }
+            for (int j = i + 1; j < N_rings; ++j) {
+                bool ring2HasDouble = false;
+                for (int n : allSSSRRings[j]) {
+                    for (int order : g.nodes[n].bondOrders) if (order == 2 || order == 4) ring2HasDouble = true;
+                }
+                std::vector<int> shared;
+                for (int n : allSSSRRings[i]) if (allSSSRRings[j].count(n)) shared.push_back(n);
+                
+                if (shared.size() >= 2 && ring1HasDouble && ring2HasDouble) {
+                    int components = 0;
+                    std::set<int> visited;
+                    for (int startNode : shared) {
+                        if (!visited.count(startNode)) {
+                            components++;
+                            std::vector<int> q = {startNode};
+                            visited.insert(startNode);
+                            size_t head = 0;
+                            while (head < q.size()) {
+                                int curr = q[head++];
+                                for (int nei : g.nodes[curr].neighbors) {
+                                    if (std::find(shared.begin(), shared.end(), nei) != shared.end() && !visited.count(nei)) {
+                                        visited.insert(nei);
+                                        q.push_back(nei);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (components > 1 || shared.size() >= 3) {
+                        hasBridged = true;
+                    }
+                }
+            }
+        }
+        
+        // 2. Detect True Peri-Fusion (P-25.3.1.1.2): 3 rings sharing a central atom
+        std::set<int> periCenters;
+        for (int i = 0; i < N_rings; ++i) {
+            bool riDouble = false; for (int n : allSSSRRings[i]) { for (int order : g.nodes[n].bondOrders) if (order == 2 || order == 4) riDouble = true; }
+            for (int j = i + 1; j < N_rings; ++j) {
+                bool rjDouble = false; for (int n : allSSSRRings[j]) { for (int order : g.nodes[n].bondOrders) if (order == 2 || order == 4) rjDouble = true; }
+                for (int k = j + 1; k < N_rings; ++k) {
+                    bool rkDouble = false; for (int n : allSSSRRings[k]) { for (int order : g.nodes[n].bondOrders) if (order == 2 || order == 4) rkDouble = true; }
+                    
+                    if (riDouble && rjDouble && rkDouble) {
+                        std::vector<int> common;
+                        for (int n : allSSSRRings[i]) {
+                            if (allSSSRRings[j].count(n) && allSSSRRings[k].count(n)) common.push_back(n);
+                        }
+                        if (!common.empty()) {
+                            hasPeri = true;
+                            for (int c : common) periCenters.insert(c);
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 3. Detect P-25.5 (3-component peri-fusion): > 1 peri center, or 4 rings involved in peri fusion
+        if (hasPeri && periCenters.size() >= 2) {
+            hasP25_5 = true;
+        } else if (hasPeri && N_rings >= 4) {
+            hasP25_5 = true;
+        }
+        
+        if (hasBridged) {
+            return {false, "", "bridged fused ring systems (P-25.4) are not yet supported."};
+        }
+        if (hasP25_5) {
+            return {false, "", "three-component ortho- and peri-fused systems (P-25.5) are not yet supported."};
+        }
+        if (hasPeri) {
+            return {false, "", "ortho- and peri-fused ring systems (P-25.3.1.1.2) are not yet supported."};
+        }
+    }
+
     // --- Phase 31: Benzo-fused Heterobicyclic Ring Systems (ringCount == 2) ---
     if (ringCount == 2) {
         int sssrIter = indigoIterateSSSR(mol);
@@ -9322,5 +9411,10 @@ std::map<int, QString> computePeripheralNumberingForMol(int mol) {
 
     return computePeripheralNumbering(g, ring1Nodes, ring2Nodes, bhA, bhB);
 }
+
+
+
+
+
 
 
