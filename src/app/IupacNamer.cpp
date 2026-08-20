@@ -5059,7 +5059,10 @@ IupacResult IupacNamer::generateName(int mol) {
                                             infix = QString("-%1-%2").arg(dPart, tPart);
                                         }
 
-                                        QString fullName = prefixPart + QString("bicyclo[%1.%2.%3]%4%5")
+                                        StereoResult stereoRes = formatStereoPrefix(stereoByGraphId, best.locantOf, std::set<int>());
+                                        if (!stereoRes.ok) return {false, "", stereoRes.error};
+
+                                        QString fullName = stereoRes.prefix + prefixPart + QString("bicyclo[%1.%2.%3]%4%5")
                                             .arg(lengths[0]).arg(lengths[1]).arg(lengths[2]).arg(root).arg(infix);
 
                                         return {true, fullName, ""};
@@ -5399,7 +5402,10 @@ IupacResult IupacNamer::generateName(int mol) {
                                 infix = QString("-%1-%2").arg(dPart, tPart);
                             }
 
-                            QString fullName = prefixPart + QString("spiro[%1.%2]%3%4")
+                            StereoResult stereoRes = formatStereoPrefix(stereoByGraphId, best.locantOf, std::set<int>());
+                            if (!stereoRes.ok) return {false, "", stereoRes.error};
+
+                            QString fullName = stereoRes.prefix + prefixPart + QString("spiro[%1.%2]%3%4")
                                 .arg(sizeA).arg(sizeB).arg(root).arg(infix);
                             return {true, fullName, ""};
                         }
