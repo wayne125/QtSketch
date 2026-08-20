@@ -3857,8 +3857,28 @@ IupacResult IupacNamer::generateName(int mol) {
             if (winningType != GroupType::NONE) break;
         }
 
-        if (ringSubstituentInfos.size() == 1 && winningType == GroupType::NONE) {
-            // Non-ring portion has no principal group (e.g. plain ethylbenzene).
+        // P-44.1.2: a ring containing any skeletal heteroatom outright beats a
+        // plain-carbon chain (this codebase's chains are always plain-carbon), but
+        // only as a competition between candidates that can actually bear the
+        // winning group -- if the ring has zero instances of winningType, forcing
+        // ring-as-parent here would strand the principal group with no suffix-
+        // bearing parent, which is wrong regardless of heteroatom seniority.
+        bool ringHasWinningTypeAndHeteroatom = false;
+        if (ringSubstituentInfos.size() == 1 && winningType != GroupType::NONE) {
+            bool ringHasHeteroatom = false;
+            bool ringHasWinningType = false;
+            for (int n : ringSubstituentInfos[0].ringNodes) {
+                if (g.nodes[n].atomicNumber != 6) ringHasHeteroatom = true;
+                auto it = carbonGroup.find(n);
+                if (it != carbonGroup.end() && it->second == winningType) ringHasWinningType = true;
+            }
+            ringHasWinningTypeAndHeteroatom = ringHasHeteroatom && ringHasWinningType;
+        }
+
+        if (ringSubstituentInfos.size() == 1 && (winningType == GroupType::NONE || ringHasWinningTypeAndHeteroatom)) {
+            // Non-ring portion has no principal group (e.g. plain ethylbenzene), or
+            // the ring itself genuinely bears the winning principal group AND has a
+            // heteroatom, so it outright beats the plain-carbon chain (P-44.1.2.1).
             // Fall through to monocyclic path.
         } else {
         std::set<int> principalCarbons;
@@ -7674,12 +7694,19 @@ IupacResult IupacNamer::generateName(int mol) {
             }
         }
 
-        // Phase 52 (P-44.1.1 + P-44.1.2.2): the principal characteristic group is the single
-        // most-senior class across ring-attached and chain-attached instances combined; the
-        // senior parent structure is the side with MORE occurrences of that winning class
-        // (P-44.1.1), ties broken in favour of the ring (P-44.1.2.2). P-44.1.2 (heteroatom-
-        // skeleton seniority) is out of scope: this code path only sees carbocyclic rings and
-        // carbon chains, so the simpler carbon-vs-carbon assumption stays.
+        // Phase 52 (P-44.1.1 + P-44.1.2.2) / P-44.1.2: the principal characteristic group is
+        // the single most-senior class across ring-attached and chain-attached instances
+        // combined; among structures that genuinely bear an instance of that winning class,
+        // the senior parent is chosen first by skeletal-atom seniority (P-44.1.2: a ring
+        // containing any heteroatom outright beats a plain-carbon chain -- this codebase's
+        // chains are always plain-carbon, so any ring heteroatom decides it), falling back to
+        // instance count (P-44.1.1) with the ring winning ties (P-44.1.2.2) only when the ring
+        // and chain tie on skeletal-atom seniority (both plain carbon, today's only other case).
+        // P-44.1.2 only applies as a competition between candidates that can actually bear the
+        // winning group as a suffix -- if the ring has ZERO instances of combinedWinner, it is
+        // not a real candidate regardless of heteroatom seniority, and instance count alone
+        // (which will correctly favour the chain) must decide, or the principal group would be
+        // stranded off the chosen parent with no way to cite it as the required suffix.
         GroupType combinedWinner = (groupRank(winningRingGroup) <= groupRank(winningChainGroup)) ? winningRingGroup : winningChainGroup;
         if (combinedWinner != GroupType::NONE) {
             int ringCount = 0, chainCount = 0, chainDeepCount = 0;
@@ -7695,7 +7722,13 @@ IupacResult IupacNamer::generateName(int mol) {
                 }
                 if (isOnOrExocyclic) ++ringCount; else ++chainCount;
             }
-            if (chainCount > ringCount || (chainCount == ringCount && chainDeepCount > 0)) {
+            bool ringHasHeteroatom = false;
+            if (ringCount > 0) {
+                for (int n : ringNodeSet) {
+                    if (g.nodes[n].atomicNumber != 6) { ringHasHeteroatom = true; break; }
+                }
+            }
+            if (!ringHasHeteroatom && (chainCount > ringCount || (chainCount == ringCount && chainDeepCount > 0))) {
                 // Chain is the senior parent structure. Name it as parent with the ring cited
                 // as a substituent prefix. Phase 54: this is no longer acid-only -- the
                 // supported classes (ACID, AMIDE, NITRILE, ALDEHYDE, KETONE, ALCOHOL, THIOL,
@@ -8426,12 +8459,19 @@ IupacResult IupacNamer::generateName(int mol) {
         }
     }
 
-    // Phase 52 (P-44.1.1 + P-44.1.2.2): the principal characteristic group is the single
-    // most-senior class across ring-attached and chain-attached instances combined; the
-    // senior parent structure is the side with MORE occurrences of that winning class
-    // (P-44.1.1), ties broken in favour of the ring (P-44.1.2.2). P-44.1.2 (heteroatom-
-    // skeleton seniority) is out of scope: this code path only sees carbocyclic rings and
-    // carbon chains, so the simpler carbon-vs-carbon assumption stays.
+    // Phase 52 (P-44.1.1 + P-44.1.2.2) / P-44.1.2: the principal characteristic group is
+    // the single most-senior class across ring-attached and chain-attached instances
+    // combined; among structures that genuinely bear an instance of that winning class,
+    // the senior parent is chosen first by skeletal-atom seniority (P-44.1.2: a ring
+    // containing any heteroatom outright beats a plain-carbon chain -- this codebase's
+    // chains are always plain-carbon, so any ring heteroatom decides it), falling back to
+    // instance count (P-44.1.1) with the ring winning ties (P-44.1.2.2) only when the ring
+    // and chain tie on skeletal-atom seniority (both plain carbon, today's only other case).
+    // P-44.1.2 only applies as a competition between candidates that can actually bear the
+    // winning group as a suffix -- if the ring has ZERO instances of combinedWinner, it is
+    // not a real candidate regardless of heteroatom seniority, and instance count alone
+    // (which will correctly favour the chain) must decide, or the principal group would be
+    // stranded off the chosen parent with no way to cite it as the required suffix.
     GroupType combinedWinner = (groupRank(winningRingGroup) <= groupRank(winningChainGroup)) ? winningRingGroup : winningChainGroup;
     if (combinedWinner != GroupType::NONE) {
         int ringCount = 0, chainCount = 0, chainDeepCount = 0;
@@ -8447,7 +8487,13 @@ IupacResult IupacNamer::generateName(int mol) {
             }
             if (isOnOrExocyclic) ++ringCount; else ++chainCount;
         }
-        if (chainCount > ringCount || (chainCount == ringCount && chainDeepCount > 0)) {
+        bool ringHasHeteroatom = false;
+        if (ringCount > 0) {
+            for (int n : ringNodeSet) {
+                if (g.nodes[n].atomicNumber != 6) { ringHasHeteroatom = true; break; }
+            }
+        }
+        if (!ringHasHeteroatom && (chainCount > ringCount || (chainCount == ringCount && chainDeepCount > 0))) {
             // Chain is the senior parent structure. Name it as parent with the ring cited
             // as a substituent prefix. Phase 54: this is no longer acid-only -- the
             // supported classes (ACID, AMIDE, NITRILE, ALDEHYDE, KETONE, ALCOHOL, THIOL,
