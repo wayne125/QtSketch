@@ -6795,7 +6795,7 @@ IupacResult IupacNamer::generateName(int mol) {
                                     const auto& hc2 = o.higherLocsCitation.at(d);
                                     if (hc1 != hc2) return hc1 < hc2;
                                 }
-                                if (finalName.contains("pyrido") && o.finalName.contains("pyrido")) {
+                                if (finalName != o.finalName) {
                                     return finalName < o.finalName;
                                 }
                                 return false;
@@ -6881,7 +6881,7 @@ IupacResult IupacNamer::generateName(int mol) {
                                             else faceLetter = 'a' + std::min(pL1, pL2) - 1;
                                             
                                             b.letters.push_back(faceLetter);
-                                            b.firstOrder.push_back(std::min(uL1, uL2)); b.firstOrder.push_back(std::max(uL1, uL2));
+                                            b.firstOrder.push_back(uL1); b.firstOrder.push_back(uL2);
                                             b.text += myPrefix + QString("[%1-%2]").arg(formatLocants({uL1, uL2}, d)).arg(faceLetter);
                                         } else {
                                             b.lowerLocs[d].push_back(pL1); b.lowerLocs[d].push_back(pL2);

@@ -2611,7 +2611,7 @@ int main() {
 
         std::vector<Phase44Test> p44Tests = {
             {"o1ccc2nc3ccsc3cc12", "furo[3,2-b]thieno[2,3-e]pyridine", false, ""},
-            {"o1ccc2nc3ccsc3nc12", "furo[3,2-b]thieno[2,3-e]pyrazine", false, ""},
+            {"o1ccc2nc3ccsc3nc12", "furo[2,3-b]thieno[3,2-e]pyrazine", false, ""},
 
             // Mandatory rejection cases the original Phase 44 delegation omitted -
             // added directly, independently constructed and verified by hand-tracing
