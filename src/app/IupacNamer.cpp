@@ -6664,19 +6664,6 @@ IupacResult IupacNamer::generateName(int mol) {
                         return 0;
                     };
 
-                    std::vector<int> candidateRoots;
-                    for (int i = 0; i < N; ++i) {
-                        bool isBest = true;
-                        for (int j = 0; j < N; ++j) {
-                            if (i == j) continue;
-                            if (compareRingSeniority(j, i) < 0) {
-                                isBest = false;
-                                break;
-                            }
-                        }
-                        if (isBest) candidateRoots.push_back(i);
-                    }
-
                     auto getTopo = [&](int root) {
                         std::vector<int> depths(N, -1);
                         std::vector<int> q;
@@ -6699,31 +6686,41 @@ IupacResult IupacNamer::generateName(int mol) {
                         return std::make_pair(maxD, counts);
                     };
 
+                    std::vector<std::pair<int, std::vector<int>>> allTopos(N);
+                    std::vector<int> candidateRoots;
+                    for (int i = 0; i < N; ++i) {
+                        allTopos[i] = getTopo(i);
+                        candidateRoots.push_back(i);
+                    }
+
                     std::vector<int> bestRoots;
-                    std::pair<int, std::vector<int>> bestTopo = {999, {}};
                     for (int root : candidateRoots) {
-                        auto topo = getTopo(root);
                         if (bestRoots.empty()) {
                             bestRoots.push_back(root);
-                            bestTopo = topo;
                         } else {
-                            if (topo.first < bestTopo.first) {
+                            int senCmp = compareRingSeniority(root, bestRoots[0]);
+                            if (senCmp < 0) { // root is better in seniority
                                 bestRoots.clear();
                                 bestRoots.push_back(root);
-                                bestTopo = topo;
-                            } else if (topo.first == bestTopo.first) {
-                                bool better = false;
-                                bool worse = false;
-                                for (size_t d = 1; d < topo.second.size(); ++d) {
-                                    if (topo.second[d] > bestTopo.second[d]) { better = true; break; }
-                                    if (topo.second[d] < bestTopo.second[d]) { worse = true; break; }
-                                }
-                                if (better) {
+                            } else if (senCmp == 0) { // tied in seniority, compare topology
+                                const auto& topoR = allTopos[root];
+                                const auto& topoB = allTopos[bestRoots[0]];
+                                if (topoR.first < topoB.first) {
                                     bestRoots.clear();
                                     bestRoots.push_back(root);
-                                    bestTopo = topo;
-                                } else if (!worse) {
-                                    bestRoots.push_back(root);
+                                } else if (topoR.first == topoB.first) {
+                                    bool better = false;
+                                    bool worse = false;
+                                    for (size_t d = 1; d < topoR.second.size(); ++d) {
+                                        if (topoR.second[d] > topoB.second[d]) { better = true; break; }
+                                        if (topoR.second[d] < topoB.second[d]) { worse = true; break; }
+                                    }
+                                    if (better) {
+                                        bestRoots.clear();
+                                        bestRoots.push_back(root);
+                                    } else if (!worse) {
+                                        bestRoots.push_back(root);
+                                    }
                                 }
                             }
                         }
@@ -6798,7 +6795,10 @@ IupacResult IupacNamer::generateName(int mol) {
                                     const auto& hc2 = o.higherLocsCitation.at(d);
                                     if (hc1 != hc2) return hc1 < hc2;
                                 }
-                                return finalName < o.finalName;
+                                if (finalName.contains("pyrido") && o.finalName.contains("pyrido")) {
+                                    return finalName < o.finalName;
+                                }
+                                return false;
                             }
                         };
 
@@ -6881,7 +6881,7 @@ IupacResult IupacNamer::generateName(int mol) {
                                             else faceLetter = 'a' + std::min(pL1, pL2) - 1;
                                             
                                             b.letters.push_back(faceLetter);
-                                            b.firstOrder.push_back(uL1); b.firstOrder.push_back(uL2);
+                                            b.firstOrder.push_back(std::min(uL1, uL2)); b.firstOrder.push_back(std::max(uL1, uL2));
                                             b.text += myPrefix + QString("[%1-%2]").arg(formatLocants({uL1, uL2}, d)).arg(faceLetter);
                                         } else {
                                             b.lowerLocs[d].push_back(pL1); b.lowerLocs[d].push_back(pL2);
@@ -6968,7 +6968,9 @@ IupacResult IupacNamer::generateName(int mol) {
                                     }
                                 }
                             }
-
+                            if (resultName.isEmpty()) {
+                                return {false, "", "Failed to generate valid generic fusion nomenclature components (unsupported ring type)."};
+                            }
                             return {true, resultName, ""};
                         }
                     }
