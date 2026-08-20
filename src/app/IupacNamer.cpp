@@ -5099,9 +5099,9 @@ IupacResult IupacNamer::generateName(int mol) {
                     // --- Phase 53: substituent-aware spiro gate (P-24.2.1) ---
                     bool validPreconditions = true;
 
-                    // Every ring-union atom must be carbon (no skeletal heteroatoms).
+                    // Every ring-union atom must be carbon or a supported skeletal heteroatom.
                     for (int n : ringUnionNodes) {
-                        if (g.nodes[n].atomicNumber != 6) { validPreconditions = false; break; }
+                        if (g.nodes[n].atomicNumber != 6 && hwSeniorityRank(g.nodes[n].atomicNumber) == 99) { validPreconditions = false; break; }
                     }
 
                     // Ring-membership degrees: spiro atom ring-degree 4, all others 2.
@@ -5197,6 +5197,8 @@ IupacResult IupacNamer::generateName(int mol) {
                         // used by PathSignature / RingSignature and the bicyclic path.
                         struct NumberingCand {
                             std::map<int,int> locantOf;
+                            std::vector<int> heteroatomLocants;
+                            std::vector<int> heteroatomSeniorityLocants;
                             std::vector<int> doubleBondLocants;
                             std::vector<int> tripleBondLocants;
                             std::vector<int> subLocants;
@@ -5232,6 +5234,24 @@ IupacResult IupacNamer::generateName(int mol) {
 
                                     if ((int)cand.locantOf.size() != totalCarbons) continue;
 
+                                    for (int n : ringUnionNodes) {
+                                        if (g.nodes[n].atomicNumber != 6) {
+                                            cand.heteroatomLocants.push_back(cand.locantOf[n]);
+                                        }
+                                    }
+                                    std::sort(cand.heteroatomLocants.begin(), cand.heteroatomLocants.end());
+
+                                    std::map<int, std::vector<int>> locsByRank;
+                                    for (int n : ringUnionNodes) {
+                                        if (g.nodes[n].atomicNumber != 6) {
+                                            locsByRank[hwSeniorityRank(g.nodes[n].atomicNumber)].push_back(cand.locantOf[n]);
+                                        }
+                                    }
+                                    for (auto &kv : locsByRank) {
+                                        std::sort(kv.second.begin(), kv.second.end());
+                                        for (int l : kv.second) cand.heteroatomSeniorityLocants.push_back(l);
+                                    }
+
                                     for (const auto &rs : ringSubstituents) {
                                         auto it = cand.locantOf.find(rs.first);
                                         if (it == cand.locantOf.end()) { cand.subLocants.clear(); break; }
@@ -5264,6 +5284,8 @@ IupacResult IupacNamer::generateName(int mol) {
                         if (!cands.empty()) {
                             auto bestIt = std::min_element(cands.begin(), cands.end(),
                                 [](const NumberingCand &a, const NumberingCand &b) {
+                                    if (a.heteroatomLocants != b.heteroatomLocants) return a.heteroatomLocants < b.heteroatomLocants;
+                                    if (a.heteroatomSeniorityLocants != b.heteroatomSeniorityLocants) return a.heteroatomSeniorityLocants < b.heteroatomSeniorityLocants;
                                     if (a.doubleBondLocants != b.doubleBondLocants) return a.doubleBondLocants < b.doubleBondLocants;
                                     if (a.tripleBondLocants != b.tripleBondLocants) return a.tripleBondLocants < b.tripleBondLocants;
                                     if (a.subLocants != b.subLocants) return a.subLocants < b.subLocants;
@@ -5311,6 +5333,18 @@ IupacResult IupacNamer::generateName(int mol) {
                                 QStringList pStrs;
                                 for (const auto &pg : pGroups) pStrs.append(pg.formattedStr);
                                 prefixPart = pStrs.join("-");
+                            }
+
+                            std::map<int, std::vector<int>> locantsByZ;
+                            for (int n : ringUnionNodes) {
+                                if (g.nodes[n].atomicNumber != 6) {
+                                    locantsByZ[g.nodes[n].atomicNumber].push_back(best.locantOf[n]);
+                                }
+                            }
+                            QString heteroPrefix = buildSkeletalReplacementPrefix(locantsByZ, false);
+                            if (!heteroPrefix.isEmpty()) {
+                                if (prefixPart.isEmpty()) prefixPart = heteroPrefix;
+                                else prefixPart = heteroPrefix + "-" + prefixPart;
                             }
 
                             std::vector<int> dbLocs = best.doubleBondLocants;

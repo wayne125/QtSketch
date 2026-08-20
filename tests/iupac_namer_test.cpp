@@ -1671,15 +1671,60 @@ int main() {
     }
 
     {
-        // Phase 28: Heteroatom spiro compound rejection
-        int m = indigoLoadMoleculeFromString("C1COC2(CC1)CCCCC2");
+        // Spiro heteroatom (P-24.2.4.1.1): single heteroatom, must get low locant
+        // 6-oxaspiro[4.5]decane
+        int m = indigoLoadMoleculeFromString("C1CCC2(C1)OCCCC2");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
-        if (!r.success && r.error == "Fused ring systems other than naphthalene are not supported in this phase.") {
-            std::cout << "[PASS] Phase 28 heteroatom spiro rejection -> " << r.error.toStdString() << "\n";
+        if (r.success && r.name == "6-oxaspiro[4.5]decane") {
+            std::cout << "[PASS] 6-oxaspiro[4.5]decane -> " << r.name.toStdString() << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] Phase 28 heteroatom spiro rejection -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            std::cout << "[FAIL] 6-oxaspiro[4.5]decane -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Spiro heteroatom (P-24.2.4.1.2a): lowest locant set regardless of kind
+        // 9-oxa-6-azaspiro[4.5]decane
+        int m = indigoLoadMoleculeFromString("C1CCC2(C1)NCCOC2");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "9-oxa-6-azaspiro[4.5]decane") {
+            std::cout << "[PASS] 9-oxa-6-azaspiro[4.5]decane -> " << r.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] 9-oxa-6-azaspiro[4.5]decane -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Spiro heteroatom (P-24.2.4.1.2b): seniority tie-break
+        // 7-thia-9-azaspiro[4.5]decane
+        int m = indigoLoadMoleculeFromString("C1CCC2(C1)CSCNC2");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "7-thia-9-azaspiro[4.5]decane") {
+            std::cout << "[PASS] 7-thia-9-azaspiro[4.5]decane -> " << r.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] 7-thia-9-azaspiro[4.5]decane -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Spiro heteroatom: unsupported skeletal element should reject
+        int m = indigoLoadMoleculeFromString("C1CCC2(C1)CCCC[Al]2");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success) {
+            std::cout << "[PASS] Spiro unsupported ring element rejected -> " << r.error.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Spiro unsupported ring element should reject, got name='" << r.name.toStdString() << "'\n";
             failed++;
         }
     }
