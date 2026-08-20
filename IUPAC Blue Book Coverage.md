@@ -294,21 +294,43 @@ and Blue Book **section P-44** ("Seniority order for parent structures", ring-vs
 are unrelated things that happen to share the number 44 — disambiguated explicitly below
 wherever both could appear.
 
-1. **Third-order nesting (doubly-primed locants) and genuine N-ring generalization.**
-   Phase 48 closed the 4-ring "middle ring is senior" gap. **Note (Phase 49/50):** Phase
-   48's code, along with Phase 45 (3-ring indicated-H) and Phase 46 (3-ring second-order),
-   was entirely lost to an uncommitted-work-discarding delegation and had to be rebuilt
-   from scratch (see `Features To Be Implemented.md`'s Phase 49/50 entry for the full
-   account) — the capability described here is real and re-verified (351/351), but the
-   underlying code is a fresh rewrite, not the original Phase 48 implementation. What's
-   still left: the "end ring is senior" sub-case at 4 rings (and any N-ring chain
-   generally) needs real third-order attachment with doubly-primed locants — the
-   topology-detection and citation-construction logic in Phases 44/46/48 is currently
-   hand-written per ring-count (3, then 4) rather than genuinely N-generic; a real N-ring
-   generalization would replace all three growing, near-duplicate blocks with one. Also:
-   the rewritten 4-ring block explicitly requires all 4 rings to be non-NH-type and falls
-   through to a clean rejection otherwise — indicated hydrogen for the 4-ring case isn't
-   wired up at all (a disclosed gap, not untested code masquerading as working).
+1. **Third-order nesting (doubly-primed locants) and genuine N-ring generalization — fixed
+   2026-08-21.** The hand-written, per-ring-count (exactly-3, exactly-4) Phase 44/46/48
+   blocks (~1040 lines) were replaced with one genuinely N-ring-generic algorithm (a
+   ring-adjacency graph, all-candidate-root tree evaluation per P-25.3.4.2.1, and a
+   recursive citation-tree builder implementing P-25.3.4.2.4's full (a)-(h) locant-
+   seniority cascade). Simple linear fusion chains of any length are now supported,
+   verified with new 5-ring and 6-ring test cases (the 6-ring case requires genuine
+   doubly-primed third-order citation, confirmed working). The previously-rejected 4-ring
+   "end ring is senior" case (`"End ring as base in a 4-ring fusion chain requires
+   third-order attached components, which are not supported."`) now succeeds with a real
+   computed name.
+
+   Delegated to an external agent (agy/Gemini), independently verified and iterated
+   through 4 rounds after real problems were found: (1) a candidate-root selection bug
+   that filtered roots by seniority *before* evaluating tree depth, contradicting
+   P-25.3.4.2.1(b)'s actual requirement that root choice be scored by depth — fixed to
+   evaluate all candidates' full trees first; (2) a hardcoded string-matching special
+   case (`if (finalName.contains("pyrido") && ...)`) papering over a locant-ordering bug
+   instead of fixing it — removed once the real bug (locants were being
+   min/max-normalized into a set, destroying the sequence P-25.3.4.2.4(d) requires
+   comparing "in order of citation") was found and fixed; (3) a missing empty-string
+   guard on the final constructed name — added. One test value (`o1ccc2nc3ccsc3nc12`)
+   was flagged as a possible regression against this project's own prior Phase 44 output
+   (`furo[3,2-b]thieno[2,3-e]pyrazine`) and initially reverted defensively — but hand-
+   tracing the real rule text (P-25.3.4.2.4(d), verified example: locant sequence "4,5"
+   beats "5,4", i.e. ascending beats descending) confirmed the NEW value
+   (`furo[2,3-b]thieno[3,2-e]pyrazine`) is the better-supported one; re-checking this
+   doc's own Phase 44 entry found it only ever claimed the sibling *pyridine* case
+   (`furo[3,2-b]thieno[2,3-e]pyridine`, unchanged, still passing) was hand-verified
+   against a real PIN — the pyrazine sibling's value was never independently verified in
+   the first place, just whatever the original code happened to output. `iupac_namer_test`
+   457→459/459, `ctest` 11/11.
+
+   **Remaining**: branching/peri-fused/bridged topologies stay explicitly out of scope
+   here (item 2's territory — the new code cleanly rejects any ring with 3+ fusion
+   neighbors); identical-attached-component multiplying prefixes and multiparent names
+   are separate, unaddressed gaps.
 2. **P-25.4/P-25.5 (peri-fused / bridged-fused / 3-component-limit systems)** — needs
    `FusedRingOrientation`/`FusedRingDirectionDetector` extended beyond tree-only ring-
    adjacency graphs, plus P-25.3.2.5.1's common-heteroatom-at-fusion rule
