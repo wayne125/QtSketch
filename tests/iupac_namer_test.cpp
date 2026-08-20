@@ -1654,6 +1654,34 @@ int main() {
     }
 
     {
+        // Phase 27: Stereocenters (bicyclo[2.2.1]heptane substituted asymmetrically)
+        int m = indigoLoadMoleculeFromString("Br[C@H]1C[C@@H]2CC[C@H]1C2");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "(1S,2S,4R)-2-bromobicyclo[2.2.1]heptane") {
+            std::cout << "[PASS] Phase 27 stereo -> " << r.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Phase 27 stereo -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Phase 28: Stereocenter (spiro[3.5]nonane)
+        int m = indigoLoadMoleculeFromString("Br[C@H]1CC2(C1)CCCCC2");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "(2R)-2-bromospiro[3.5]nonane") {
+            std::cout << "[PASS] Phase 28 stereo -> " << r.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Phase 28 stereo -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
         // Phase 28: Substituted spiro compound -- is now NAMED (was a silent rejection
         // before Phase 53). SMILES is two 6-membered rings sharing the spiro carbon
         // with one methyl; hand-derived numbering (P-24.2.1) puts the methyl on the
