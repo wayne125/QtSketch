@@ -3234,23 +3234,21 @@ IupacResult IupacNamer::generateName(int mol) {
                     int locant = subName.mid(prevDash + 1, lastDash - prevDash - 1).toInt(&ok);
                     if (!ok) return {"", -1};
 
+                    // Every bare monocyclic heterocycle parent name this codebase produces ends
+                    // in a terminal "e" (pyridine, thiophene, pyrrole, oxazole, ... and every
+                    // hwGeneralRingStem() form: irine/irene/ete/ole/ine/inine/epine/ocine/onine/
+                    // ecine) EXCEPT the furan family (furan, tetrahydrofuran, ...), which never
+                    // had one to begin with. A whitelist of specific curated ring-name endings
+                    // would silently produce a wrong (missing-e) name for any general Hantzsch-
+                    // Widman heterocycle not in the list (e.g. an uncommon-element or 7-10
+                    // membered ring) -- restoring "e" by default and excluding only the one real
+                    // exception is robust to every ring type nameRingAsSubstituent can produce,
+                    // not just the ones this task happened to test.
                     QString stem = subName.left(prevDash);
                     QString parentName = stem;
-                    if (parentName.endsWith("pyridin")) parentName += "e";
-                    else if (parentName.endsWith("piperidin")) parentName += "e";
-                    else if (parentName.endsWith("pyrrolidin")) parentName += "e";
-                    else if (parentName.endsWith("thiophen")) parentName += "e";
-                    else if (parentName.endsWith("pyrrol")) parentName += "e";
-                    else if (parentName.endsWith("imidazol")) parentName += "e";
-                    else if (parentName.endsWith("pyrazol")) parentName += "e";
-                    else if (parentName.endsWith("pyrimidin")) parentName += "e";
-                    else if (parentName.endsWith("pyridazin")) parentName += "e";
-                    else if (parentName.endsWith("pyrazin")) parentName += "e";
-                    else if (parentName.endsWith("oxazol")) parentName += "e";
-                    else if (parentName.endsWith("isoxazol")) parentName += "e";
-                    else if (parentName.endsWith("thiazol")) parentName += "e";
-                    else if (parentName.endsWith("isothiazol")) parentName += "e";
-                    else if (parentName.endsWith("tetrahydrothiophen")) parentName += "e";
+                    if (!parentName.endsWith("furan") && !parentName.endsWith("e")) {
+                        parentName += "e";
+                    }
 
                     return {parentName, locant};
                 };
