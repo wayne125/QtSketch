@@ -414,11 +414,15 @@ wherever both could appear.
    possibly-elided stem once, before branching, instead of only in the now-narrower omit-locant
    branch. `iupac_namer_test` 473→476/476, `ctest` 11/11.
 
-   **Still not fixed, deliberately out of scope for the above**: the "phenol" retained name for
-   substituted hydroxybenzene (this codebase produces the valid-but-non-preferred systematic
-   `benzen-1-ol`/`4-methylbenzen-1-ol` rather than the retained PIN `phenol`/`4-methylphenol`) —
-   a distinct, lower-priority enhancement needing its own scoped look at how other retained
-   ring-parent names (naphthalene, pentalene) are already handled in this file.
+   **"phenol" retained name — fixed 2026-08-21** (commit `ba129b4`): benzene ring + sole OH
+   (`RingType::BENZENE && winningType == GroupType::ALCOHOL && pCount == 1`) now assembles
+   `prefixPart + "phenol"` directly instead of the systematic `benzen-1-ol` form, e.g.
+   `4-methylphenol`, `2-propylphenol` (substituent locants unaffected, already correctly numbered
+   relative to the OH-bearing carbon as position 1). Scoped narrowly to the sole-OH case only —
+   dihydroxybenzene retained names (catechol/resorcinol/hydroquinone, position-keyed to which
+   dihydroxy isomer) are a separate, larger piece of work, deliberately not attempted; the
+   existing systematic `diol` form is unchanged for `pCount > 1`. `iupac_namer_test` 476→478/478,
+   `ctest` 11/11.
 
    **Sub-task B (polycyclic ring as chain substituent) explicitly deferred, not attempted**:
    lifting the single-attachment / monocyclic-ring restriction (fused/bridged/polycyclic ring as
