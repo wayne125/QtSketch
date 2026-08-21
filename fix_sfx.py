@@ -1,15 +1,40 @@
-import re
+import sys
 
-with open('src/app/IupacNamer.cpp', 'r') as f:
-    content = f.read()
+def apply_patch(file_path):
+    with open(file_path, "r", encoding="utf-8") as f:
+        content = f.read()
 
-sfx_old = """else if (winningType == GroupType::AMIDE) sfx = (pCount == 1) ? "carboxamide" : "dicarboxamide";\n                else if (winningType == GroupType::NITRILE)"""
-sfx_new = """else if (winningType == GroupType::AMIDE) sfx = (pCount == 1) ? "carboxamide" : "dicarboxamide";\n                else if (winningType == GroupType::HYDRAZIDE) sfx = (pCount == 1) ? "carbohydrazide" : "dicarbohydrazide";\n                else if (winningType == GroupType::NITRILE)"""
-content = content.replace(sfx_old, sfx_new)
+    old_sfx1 = """    } else if (winningType == GroupType::SULFINYL_HALIDE) {
+        QString hName;
+        int hz = sulfinylHalideZ.empty() ? 17 : sulfinylHalideZ.begin()->second;
+        for (int pc : principalCarbons) {
+            if (sulfinylHalideZ.count(pc)) { hz = sulfinylHalideZ[pc]; break; }
+        }
+        hName = halogenSuffixWord(hz);
+        if (pCount == 1) {
+            sfx = (k <= 2) ? QString("sulfinyl %1").arg(hName)
+                           : QString("-%1-sulfinyl %2").arg(principalLocants[0], hName);
+        } else {
+            sfx = QString("-%1-%2sulfinyl %3").arg(lStrs.join(","), multiPrefix(pCount), hName);
+        }
+    } else if (winningType == GroupType::SULFINIC_ACID) {"""
+    
+    new_sfx1 = """    } else if (winningType == GroupType::SULFINYL_HALIDE) {
+        QString hName = halogenSuffixWord(acylHalideHalogenZ);
+        if (pCount == 1) {
+            sfx = (k <= 2) ? QString("sulfinyl %1").arg(hName)
+                           : QString("-%1-sulfinyl %2").arg(principalLocants[0]).arg(hName);
+        } else {
+            QStringList lStrs;
+            for (int l : principalLocants) lStrs.append(QString::number(l));
+            sfx = QString("-%1-%2sulfinyl %3").arg(lStrs.join(","), multiPrefix(pCount), hName);
+        }
+    } else if (winningType == GroupType::SULFINIC_ACID) {"""
 
-sfx2_old = """else if (winningType == GroupType::AMIDE) sfx = (pCount == 1) ? "carboxamide" : "dicarboxamide";\n            else if (winningType == GroupType::NITRILE)"""
-sfx2_new = """else if (winningType == GroupType::AMIDE) sfx = (pCount == 1) ? "carboxamide" : "dicarboxamide";\n            else if (winningType == GroupType::HYDRAZIDE) sfx = (pCount == 1) ? "carbohydrazide" : "dicarbohydrazide";\n            else if (winningType == GroupType::NITRILE)"""
-content = content.replace(sfx2_old, sfx2_new)
+    content = content.replace(old_sfx1, new_sfx1)
 
-with open('src/app/IupacNamer.cpp', 'w') as f:
-    f.write(content)
+    with open("src/app/IupacNamer.cpp", "w", encoding="utf-8") as f:
+        f.write(content)
+
+if __name__ == "__main__":
+    apply_patch("src/app/IupacNamer.cpp")
