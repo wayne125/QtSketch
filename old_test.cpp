@@ -50,14 +50,6 @@ int main() {
     indigoSetSessionId(sid);
 
     std::vector<TestCase> tests = {
-
-        // Rootless acyl carbon / multiple halogen fixes
-        {"ClC(=O)Cl", "", true, "Carbonic acid halides with multiple halogens are not supported in this phase."},
-        {"ClC(=O)Br", "", true, "Carbonic acid halides with multiple halogens are not supported in this phase."},
-        {"NC(=O)Cl", "", true, "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."},
-        {"COC(=O)OC", "", true, "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."},
-        {"O=C(OC)OCC", "", true, "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."},
-        {"COC(=O)Cl", "", true, "Esters with a coexisting halogen on the acyl carbon (chloroformate-type structures) are not supported in this phase."},
         // Straight-chain alkanes C1-C10
         {"C", "methane"},
         {"CC", "ethane"},
@@ -126,14 +118,6 @@ int main() {
         {"c1ccccc1", "benzene"},
         {"C1CCCCC1", "cyclohexane"},
         {"C1CCCCC1O", "cyclohexanol"},
-        // New tests for locant omission bug fix -- the terminal "e" elides before
-        // the vowel-initial "-ol" suffix even with a locant in between, matching
-        // this file's own already-correct "naphthalen-1-ol"/"propan-1-ol" precedent.
-        {"Oc1ccccc1CCC", "2-propylphenol"},
-        {"Oc1ccccc1", "phenol"},
-        {"Oc1ccc(C)cc1", "4-methylphenol"},
-        {"Oc1cccnc1CCC", "2-propylpyridin-3-ol"},
-        {"Oc1cccnc1", "pyridin-3-ol"},
         {"C1CCCCC1C(=O)O", "cyclohexanecarboxylic acid"},
         {"Cc1ccccc1", "methylbenzene"},
         {"Clc1ccccc1", "chlorobenzene"},
@@ -211,17 +195,14 @@ int main() {
         {"C1CCCCC1S(=O)(=O)O", "cyclohexanesulfonic acid"},
         // Phase 62: Ring-attached phosphonic acid
         {"c1ccccc1P(=O)(O)O", "benzenephosphonic acid"},
-        {"c1ccccc1[As](=O)(O)O", "benzenarsonic acid"},
         {"C1CCCCC1P(=O)(O)O", "cyclohexanephosphonic acid"},
-        {"C1CCCCC1[As](=O)(O)O", "cyclohexanarsonic acid"},
-        {"O=C1CCC(=O)O1", "tetrahydrofuran-2,5-dione"},
         {"C1CCCCC1S", "cyclohexanethiol"},
         {"c1ccccc1SC", "methylsulfanylbenzene"},
         {"c1ccccc1C(=O)Cl", "benzenecarbonyl chloride"},
         {"C1CCCCC1C(=O)Cl", "cyclohexanecarbonyl chloride"},
         {"c1ccc2cc(S(=O)(=O)O)ccc2c1", "naphthalene-2-sulfonic acid"},
         {"Sc1cccc2ccccc12", "naphthalene-1-thiol"},
-        {"Oc1ccccc1S(=O)(=O)O", "2-hydroxybenzene-1-sulfonic acid"},
+        {"Oc1ccccc1S(=O)(=O)O", "2-hydroxybenzenesulfonic acid"},
 
         // Phase 6: New functional groups
         {"CC(=O)Cl", "ethanoyl chloride"},
@@ -230,11 +211,9 @@ int main() {
         {"OC(=O)CS(=O)(=O)O", "2-carboxyethanesulfonic acid"},
         // Phase 62: Phosphonic acid
         {"CP(=O)(O)O", "methanephosphonic acid"},
-        {"C[As](=O)(O)O", "methanarsonic acid"},
         {"CCCP(=O)(O)O", "propane-1-phosphonic acid"},
-        {"CCC[As](=O)(O)O", "propan-1-arsonic acid"},
         // Phase 62: regression tests
-        {"Oc1ccccc1S(=O)(=O)O", "2-hydroxybenzene-1-sulfonic acid"}, // regression test for existing sulfonic acid
+        {"Oc1ccccc1S(=O)(=O)O", "2-hydroxybenzenesulfonic acid"}, // regression test for existing sulfonic acid
         {"CS(=O)(=O)O", "methanesulfonic acid"}, // regression test for existing sulfonic acid
         // Phase 63: Sulfinic acid
         {"CS(=O)O", "methanesulfinic acid"},
@@ -246,7 +225,7 @@ int main() {
         // Sulfoxide regression (should still work, not be misclassified as sulfinic acid)
         {"CS(=O)C", "methylsulfinylmethane"},
         // SULFINIC_ACID regression tests
-        {"Oc1ccccc1S(=O)O", "2-hydroxybenzene-1-sulfinic acid"},
+        {"Oc1ccccc1S(=O)O", "2-hydroxybenzenesulfinic acid"},
         {"CS(=O)(=O)O", "methanesulfonic acid"}, // regression test for existing sulfonic acid
         {"CCP", "ethylphosphine"}, // regression test for existing phosphine
         {"CCB(O)O", "ethylboronic acid"}, // regression test for existing boronic acid
@@ -364,7 +343,6 @@ int main() {
         {"Cc1ccccc1CCCS(=O)(=O)O", "3-(2-methylphenyl)propane-1-sulfonic acid"},
         // Phosphonic acid chain-wins (Phase 62):
         {"Cc1ccccc1CCCP(=O)(O)O", "3-(2-methylphenyl)propane-1-phosphonic acid"},
-        {"Cc1ccccc1CCC[As](=O)(O)O", "3-(2-methylphenyl)propan-1-arsonic acid"},
         // Regression test for an existing Phase 54 chain-wins example (amide):
         {"Cc1ccccc1CCC(=O)N", "3-(2-methylphenyl)propanamide"},
         
@@ -422,8 +400,8 @@ int main() {
         {"Cc1ccoc1CC(=O)O", "2-(3-methylfuran-2-yl)ethanoic acid"},
 
         // Phase 16: Ring-as-parent losing ACID, ESTER, ACYL_HALIDE, SULFONIC_ACID, THIOL
-        {"O=S(=O)(O)c1ccc(C(=O)O)cc1", "4-carboxybenzene-1-sulfonic acid"},
-        {"O=S(=O)(O)C1CCC(C(=O)O)CC1", "4-carboxycyclohexane-1-sulfonic acid"},
+        {"O=S(=O)(O)c1ccc(C(=O)O)cc1", "4-carboxybenzenesulfonic acid"},
+        {"O=S(=O)(O)C1CCC(C(=O)O)CC1", "4-carboxycyclohexanesulfonic acid"},
         {"COC(=O)C1CCC(C(=O)O)CC1", "4-methoxycarbonylcyclohexanecarboxylic acid"},
         {"ClC(=O)C1CCC(C(=O)O)CC1", "4-chlorocarbonylcyclohexanecarboxylic acid"},
         {"O=S(=O)(O)c1cccc2c(C(=O)O)cccc12", "5-carboxynaphthalene-1-sulfonic acid"},
@@ -439,34 +417,7 @@ int main() {
         // Phase 19: Mixed and substituted/branched acid anhydrides
         {"CCCC(=O)OC(=O)C", "butanoic ethanoic anhydride"},
         {"CC(Cl)C(=O)OC(=O)C(Cl)C", "2-chloropropanoic anhydride"},
-        {"CC(C)C(=O)OC(=O)CC", "2-methylpropanoic propanoic anhydride"},
-
-        // HYDRAZIDE tests
-        {"CCCCC(=O)NN", "pentanehydrazide"},
-        {"NNC(=O)C1CCCCC1", "cyclohexanecarbohydrazide"},
-        // Amide wins seniority over hydrazide (per the real suffix table, amide
-        // outranks hydrazide), demoting the non-principal hydrazide carbon to a
-        // substituent -- but this codebase has no "hydrazino"/"hydrazinocarbonyl"
-        // prefix, and the generic amino-substituent fallback only correctly
-        // represents a plain, unsubstituted -NH2 (calling a hydrazide's chained
-        // -NH-NH2 group "amino" would silently drop its outer nitrogen from the
-        // name entirely). Must reject cleanly rather than produce an incomplete
-        // name missing an atom.
-        {"NNC(=O)CCCC(=O)N", "", true, "Substituted amine/hydrazine substituents are not supported in this phase."},
-
-        {"CCCC(=O)N=[N+]=[N-]", "", true, "Acyl pseudohalides"},
-        {"CCCC(=O)C#N", "", true, "Acyl pseudohalides"},
-        {"CCCC(=O)N=C=O", "", true, "Acyl pseudohalides"},
-
-        // Acyl isocyanate on ring-substituent classification paths that the
-        // original acyl-pseudohalide fix's carbonIsocyanate map didn't reach
-        // (that map is scoped only to the plain-acyclic-chain region) --
-        // must also reject cleanly, not fall through to a wrong AMIDE name.
-        {"O=C(N=C=O)C1CCCCCCCCCN1", "", true, "Acyl pseudohalides"},
-        {"O=C(N=C=O)c1ccc2ccccc2c1", "", true, "Acyl pseudohalides"},
-
-        {"CC(=O)OO", "", true, "Peroxycarboxylic acids"},
-        {"OOC(=O)c1ccccc1", "", true, "Peroxycarboxylic acids"}
+        {"CC(C)C(=O)OC(=O)CC", "2-methylpropanoic propanoic anhydride"}
     };
 
     int passed = 0;
@@ -812,48 +763,6 @@ int main() {
             passed++;
         } else {
             std::cout << "[FAIL] Bicyclohexyl -> got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
-            failed++;
-        }
-    }
-
-    {
-        int m = indigoLoadMoleculeFromString("n1ccccc1-c2ncccc2");
-        IupacResult r = IupacNamer::generateName(m);
-        indigoFree(m);
-        std::string n = r.name.toStdString();
-        if (r.success && n == "2,2-bipyridine") {
-            std::cout << "[PASS] 2,2-bipyridine -> " << n << "\n";
-            passed++;
-        } else {
-            std::cout << "[FAIL] 2,2-bipyridine -> got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
-            failed++;
-        }
-    }
-
-    {
-        int m = indigoLoadMoleculeFromString("c1ccoc1-c2ccoc2");
-        IupacResult r = IupacNamer::generateName(m);
-        indigoFree(m);
-        std::string n = r.name.toStdString();
-        if (r.success && n == "2,3-bifuran") {
-            std::cout << "[PASS] 2,3-bifuran -> " << n << "\n";
-            passed++;
-        } else {
-            std::cout << "[FAIL] 2,3-bifuran -> got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
-            failed++;
-        }
-    }
-
-    {
-        int m = indigoLoadMoleculeFromString("c1c(csc1)c2c(csc2)");
-        IupacResult r = IupacNamer::generateName(m);
-        indigoFree(m);
-        std::string n = r.name.toStdString();
-        if (r.success && n == "3,3-bithiophene") {
-            std::cout << "[PASS] 3,3-bithiophene -> " << n << "\n";
-            passed++;
-        } else {
-            std::cout << "[FAIL] 3,3-bithiophene -> got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
             failed++;
         }
     }
@@ -1252,20 +1161,7 @@ int main() {
             std::cout << "[PASS] Unsupported P pattern (CP(C)C) correctly rejected: " << r.error.toStdString() << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] Unsupported P pattern (CP(C)C) not rejected properly: " << r.name.toStdString() << " " << r.error.toStdString() << "\n";
-            failed++;
-        }
-    }
-
-    {
-        int m = indigoLoadMoleculeFromString("C[As](C)C");
-        IupacResult r = IupacNamer::generateName(m);
-        indigoFree(m);
-        if (!r.success && r.error.contains("Arsenic-containing groups other than arsonic acid are not supported")) {
-            std::cout << "[PASS] Unsupported As pattern (C[As](C)C) correctly rejected: " << r.error.toStdString() << "\n";
-            passed++;
-        } else {
-            std::cout << "[FAIL] Unsupported As pattern (C[As](C)C) not rejected properly: " << r.name.toStdString() << " " << r.error.toStdString() << "\n";
+            std::cout << "[FAIL] Unsupported P pattern -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
             failed++;
         }
     }
@@ -1758,34 +1654,6 @@ int main() {
     }
 
     {
-        // Phase 27: Stereocenters (bicyclo[2.2.1]heptane substituted asymmetrically)
-        int m = indigoLoadMoleculeFromString("Br[C@H]1C[C@@H]2CC[C@H]1C2");
-        IupacResult r = IupacNamer::generateName(m);
-        indigoFree(m);
-        if (r.success && r.name == "(1S,2S,4R)-2-bromobicyclo[2.2.1]heptane") {
-            std::cout << "[PASS] Phase 27 stereo -> " << r.name.toStdString() << "\n";
-            passed++;
-        } else {
-            std::cout << "[FAIL] Phase 27 stereo -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
-            failed++;
-        }
-    }
-
-    {
-        // Phase 28: Stereocenter (spiro[3.5]nonane)
-        int m = indigoLoadMoleculeFromString("Br[C@H]1CC2(C1)CCCCC2");
-        IupacResult r = IupacNamer::generateName(m);
-        indigoFree(m);
-        if (r.success && r.name == "(2R)-2-bromospiro[3.5]nonane") {
-            std::cout << "[PASS] Phase 28 stereo -> " << r.name.toStdString() << "\n";
-            passed++;
-        } else {
-            std::cout << "[FAIL] Phase 28 stereo -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
-            failed++;
-        }
-    }
-
-    {
         // Phase 28: Substituted spiro compound -- is now NAMED (was a silent rejection
         // before Phase 53). SMILES is two 6-membered rings sharing the spiro carbon
         // with one methyl; hand-derived numbering (P-24.2.1) puts the methyl on the
@@ -1803,60 +1671,15 @@ int main() {
     }
 
     {
-        // Spiro heteroatom (P-24.2.4.1.1): single heteroatom, must get low locant
-        // 6-oxaspiro[4.5]decane
-        int m = indigoLoadMoleculeFromString("C1CCC2(C1)OCCCC2");
+        // Phase 28: Heteroatom spiro compound rejection
+        int m = indigoLoadMoleculeFromString("C1COC2(CC1)CCCCC2");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
-        if (r.success && r.name == "6-oxaspiro[4.5]decane") {
-            std::cout << "[PASS] 6-oxaspiro[4.5]decane -> " << r.name.toStdString() << "\n";
+        if (!r.success && r.error == "Fused ring systems other than naphthalene are not supported in this phase.") {
+            std::cout << "[PASS] Phase 28 heteroatom spiro rejection -> " << r.error.toStdString() << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] 6-oxaspiro[4.5]decane -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
-            failed++;
-        }
-    }
-
-    {
-        // Spiro heteroatom (P-24.2.4.1.2a): lowest locant set regardless of kind
-        // 9-oxa-6-azaspiro[4.5]decane
-        int m = indigoLoadMoleculeFromString("C1CCC2(C1)NCCOC2");
-        IupacResult r = IupacNamer::generateName(m);
-        indigoFree(m);
-        if (r.success && r.name == "9-oxa-6-azaspiro[4.5]decane") {
-            std::cout << "[PASS] 9-oxa-6-azaspiro[4.5]decane -> " << r.name.toStdString() << "\n";
-            passed++;
-        } else {
-            std::cout << "[FAIL] 9-oxa-6-azaspiro[4.5]decane -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
-            failed++;
-        }
-    }
-
-    {
-        // Spiro heteroatom (P-24.2.4.1.2b): seniority tie-break
-        // 7-thia-9-azaspiro[4.5]decane
-        int m = indigoLoadMoleculeFromString("C1CCC2(C1)CSCNC2");
-        IupacResult r = IupacNamer::generateName(m);
-        indigoFree(m);
-        if (r.success && r.name == "7-thia-9-azaspiro[4.5]decane") {
-            std::cout << "[PASS] 7-thia-9-azaspiro[4.5]decane -> " << r.name.toStdString() << "\n";
-            passed++;
-        } else {
-            std::cout << "[FAIL] 7-thia-9-azaspiro[4.5]decane -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
-            failed++;
-        }
-    }
-
-    {
-        // Spiro heteroatom: unsupported skeletal element should reject
-        int m = indigoLoadMoleculeFromString("C1CCC2(C1)CCCC[Al]2");
-        IupacResult r = IupacNamer::generateName(m);
-        indigoFree(m);
-        if (!r.success) {
-            std::cout << "[PASS] Spiro unsupported ring element rejected -> " << r.error.toStdString() << "\n";
-            passed++;
-        } else {
-            std::cout << "[FAIL] Spiro unsupported ring element should reject, got name='" << r.name.toStdString() << "'\n";
+            std::cout << "[FAIL] Phase 28 heteroatom spiro rejection -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
             failed++;
         }
     }
@@ -1972,71 +1795,15 @@ int main() {
     }
 
     {
-        // Item 4: von Baeyer heteroatom bicyclic (7-oxabicyclo[2.2.1]heptane, the
-        // real oxanorbornane skeleton -- locant 7 is fixed by the standard
-        // bicyclo[2.2.1]heptane numbering, the single-atom-bridge position).
+        // Phase 27: Heteroatom bicyclic falls through to naphthalene rejection message
         int m = indigoLoadMoleculeFromString("C1CC2CCC1O2");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
-        if (r.success && r.name == "7-oxabicyclo[2.2.1]heptane") {
-            std::cout << "[PASS] 7-oxabicyclo[2.2.1]heptane -> " << r.name.toStdString() << "\n";
+        if (!r.success && r.error == "Fused ring systems other than naphthalene are not supported in this phase.") {
+            std::cout << "[PASS] Phase 27 heteroatom bicyclic rejection -> " << r.error.toStdString() << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] 7-oxabicyclo[2.2.1]heptane -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
-            failed++;
-        }
-    }
-
-    {
-        // Item 4: von Baeyer, P-23.3.2.2 seniority tie-break (O senior to S).
-        // Skeleton bicyclo[3.2.1]octane; O and S flank the middle carbon of the
-        // 3-atom bridge (positions 2 and 4), a genuine locant-set tie {2,4}
-        // regardless of direction -- only heteroatom seniority picks the winner.
-        int m = indigoLoadMoleculeFromString("C12OCSC(C2)CC1");
-        IupacResult r = IupacNamer::generateName(m);
-        indigoFree(m);
-        if (r.success && r.name == "2-oxa-4-thiabicyclo[3.2.1]octane") {
-            std::cout << "[PASS] 2-oxa-4-thiabicyclo[3.2.1]octane -> " << r.name.toStdString() << "\n";
-            passed++;
-        } else {
-            std::cout << "[FAIL] 2-oxa-4-thiabicyclo[3.2.1]octane -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
-            failed++;
-        }
-    }
-
-    {
-        // Item 4: von Baeyer, P-23.3.2.1 lowest-locant-set example (real Blue
-        // Book PIN, must NOT come out as 3,7,9-...). Skeleton bicyclo[3.2.2]nonane
-        // (two equal-length 2-atom bridges), O at the middle of the 3-atom bridge.
-        // Von Baeyer numbering walks consecutive bridges in alternating direction
-        // (the "second" bridge is numbered Other->S, the "third" S->Other), so the
-        // low-locant end of a 2-atom bridge alternates which physical bridgehead
-        // it's adjacent to between bridge roles -- the two O's must be adjacent to
-        // OPPOSITE bridgeheads (one per bridge), not the same one, to both land on
-        // the low-locant end simultaneously.
-        int m = indigoLoadMoleculeFromString("C12COCC(CO1)(OC2)");
-        IupacResult r = IupacNamer::generateName(m);
-        indigoFree(m);
-        if (r.success && r.name == "3,6,8-trioxabicyclo[3.2.2]nonane") {
-            std::cout << "[PASS] 3,6,8-trioxabicyclo[3.2.2]nonane -> " << r.name.toStdString() << "\n";
-            passed++;
-        } else {
-            std::cout << "[FAIL] 3,6,8-trioxabicyclo[3.2.2]nonane -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
-            failed++;
-        }
-    }
-
-    {
-        // Item 4: von Baeyer, unsupported ring-skeletal element (Al) must reject
-        // cleanly, not crash or guess.
-        int m = indigoLoadMoleculeFromString("C1CC2CCC1[Al]2");
-        IupacResult r = IupacNamer::generateName(m);
-        indigoFree(m);
-        if (!r.success) {
-            std::cout << "[PASS] von Baeyer unsupported ring element rejected: " << r.error.toStdString() << "\n";
-            passed++;
-        } else {
-            std::cout << "[FAIL] von Baeyer unsupported ring element should reject, got name='" << r.name.toStdString() << "'\n";
+            std::cout << "[FAIL] Phase 27 heteroatom bicyclic rejection -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
             failed++;
         }
     }
@@ -2178,40 +1945,43 @@ int main() {
     }
 
     {
+        // Phase 29: Aromaticity gate rejection - Tetrahydrofuran
         int m = indigoLoadMoleculeFromString("C1CCOC1");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
-        if (r.success && r.name == "tetrahydrofuran") {
-            std::cout << "[PASS] Tetrahydrofuran -> " << r.name.toStdString() << "\n";
+        if (!r.success && r.error == "Saturated or partially unsaturated heterocycles are not yet supported; only the fully aromatic (maximally unsaturated) forms are supported in this phase.") {
+            std::cout << "[PASS] Tetrahydrofuran rejection -> " << r.error.toStdString() << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] Tetrahydrofuran -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            std::cout << "[FAIL] Tetrahydrofuran rejection -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
             failed++;
         }
     }
 
     {
+        // Phase 29: Aromaticity gate rejection - Pyrrolidine
         int m = indigoLoadMoleculeFromString("C1CCNC1");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
-        if (r.success && r.name == "pyrrolidine") {
-            std::cout << "[PASS] Pyrrolidine -> " << r.name.toStdString() << "\n";
+        if (!r.success && r.error == "Saturated or partially unsaturated heterocycles are not yet supported; only the fully aromatic (maximally unsaturated) forms are supported in this phase.") {
+            std::cout << "[PASS] Pyrrolidine rejection -> " << r.error.toStdString() << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] Pyrrolidine -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            std::cout << "[FAIL] Pyrrolidine rejection -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
             failed++;
         }
     }
 
     {
+        // Phase 29: Aromaticity gate rejection - Piperidine
         int m = indigoLoadMoleculeFromString("C1CCNCC1");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
-        if (r.success && r.name == "piperidine") {
-            std::cout << "[PASS] Piperidine -> " << r.name.toStdString() << "\n";
+        if (!r.success && r.error == "Saturated or partially unsaturated heterocycles are not yet supported; only the fully aromatic (maximally unsaturated) forms are supported in this phase.") {
+            std::cout << "[PASS] Piperidine rejection -> " << r.error.toStdString() << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] Piperidine -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            std::cout << "[FAIL] Piperidine rejection -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
             failed++;
         }
     }
@@ -2841,7 +2611,7 @@ int main() {
 
         std::vector<Phase44Test> p44Tests = {
             {"o1ccc2nc3ccsc3cc12", "furo[3,2-b]thieno[2,3-e]pyridine", false, ""},
-            {"o1ccc2nc3ccsc3nc12", "furo[2,3-b]thieno[3,2-e]pyrazine", false, ""},
+            {"o1ccc2nc3ccsc3nc12", "furo[3,2-b]thieno[2,3-e]pyrazine", false, ""},
 
             // Mandatory rejection cases the original Phase 44 delegation omitted -
             // added directly, independently constructed and verified by hand-tracing
@@ -2950,11 +2720,7 @@ int main() {
 
         std::vector<TestCase> p48Tests = {
             // A 4-ring linear chain: Pyridine fused linearly 4 times.
-            {"N1=CC=C2C(=C1)N=CC3=C2N=CC4=C3N=CC=C4", "pyrido[3,4-b]pyrido[6',5':4,5]pyrido[2,3-d]pyridine", false, ""},
-            // 5-ring pyridine chain
-            {"N1=CC=C2C(=C1)N=CC3=C2N=CC4=C3N=CC5=C4N=CC=C5", "pyrido[4',3':5,6]pyrido[4,3-b]pyrido[6',5':4,5]pyrido[2,3-d]pyridine", false, ""},
-            // 6-ring pyridine chain (forces doubly-primed)
-            {"N1=CC=C2C(=C1)N=CC3=C2N=CC4=C3N=CC5=C4N=CC6=C5N=CC=C6", "pyrido[4',3':5,6]pyrido[4,3-b]pyrido[6'',5'':4',5']pyrido[2',3':4,5]pyrido[2,3-d]pyridine", false, ""},
+            {"N1=CC=C2C(=C1)N=CC3=C2N=CC4=C3N=CC=C4", "", true, "End ring as base in a 4-ring fusion chain requires third-order attached components, which are not supported."},
             {"o1ccc2nc3ncc4ccsc4c3nc12", "furo[2,3-b]thieno[2',3':4,5]pyrido[2,3-e]pyrazine", false, ""},
             // A rejection test: 3-branch system
             {"o1ccc2nc3ccsc3cc4cc[se]c4c12", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."}
@@ -2999,41 +2765,6 @@ int main() {
         }
     }
 
-
-    struct Phase26CageTest { std::string smiles, expected; bool shouldFail; std::string err; };
-    std::vector<Phase26CageTest> phase26CageTests = {
-        {"C1C2CC3CC1CC(C2)C3", "adamantane", false, ""},
-        {"C12C3C4C1C5C2C3C45", "cubane", false, ""},
-        {"OC12CC3CC(CC(C1)C3)C2", "adamantan-1-ol", false, ""},
-        {"ClC12CC3CC(CC(C1)C3)C2", "1-chloroadamantane", false, ""},
-        {"O=C1C2CC3CC(C2)CC1C3", "adamantan-2-one", false, ""},
-        {"ClC12C3C4C1C5C2C3C45", "1-chlorocubane", false, ""},
-        {"C1CCC2CCCCC2C1", "bicyclo[4.4.0]decane", false, ""},
-        {"C1CN2CCC1CC2", "1-azabicyclo[2.2.2]octane", false, ""}
-    };
-    for (const auto& t : phase26CageTests) {
-        int m = indigoLoadMoleculeFromString(t.smiles.c_str());
-        IupacResult r = IupacNamer::generateName(m);
-        indigoFree(m);
-        if (!t.shouldFail) {
-            if (r.success && r.name == QString::fromStdString(t.expected)) {
-                std::cout << "[PASS] Phase 26 Cage " << t.expected << " (" << t.smiles << ") -> " << r.name.toStdString() << "\n";
-                passed++;
-            } else {
-                std::cout << "[FAIL] Phase 26 Cage " << t.expected << " (" << t.smiles << ") -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
-                failed++;
-            }
-        } else {
-            if (!r.success && (t.err.empty() || r.error.toStdString().find(t.err) != std::string::npos)) {
-                std::cout << "[PASS] Phase 26 Cage rejection (" << t.smiles << ") -> " << r.error.toStdString() << "\n";
-                passed++;
-            } else {
-                std::cout << "[FAIL] Phase 26 Cage rejection (" << t.smiles << ") -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
-                failed++;
-            }
-        }
-    }
-
     // Phase 39 Generalized Ring-as-Substituent Tests
     {
         struct P39TestCase {
@@ -3062,7 +2793,7 @@ int main() {
             {"c1ccc2c(c1)CCCC2CC(=O)O", "", true, "Fused ring systems other than naphthalene are not supported in this phase."},
 
             // 6. Rejection: Fused/bridged/spiro parent > limit unaffected:
-            {"C1C2CC3CC1CC(C2)C3", "adamantane", false, ""}
+            {"C1C2CC3CC1CC(C2)C3", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."}
         };
 
         for (const auto &t : p39Tests) {
@@ -3398,78 +3129,32 @@ int main() {
     }
 
     {
-        // Phase 70 Part A: Mancude large heterocycle (1-oxacycloundeca-2,4,6,8,10-pentaene)
-        int m = indigoLoadMoleculeFromString("O1C=CC=CC=CC=CC=C1");
-        IupacResult r = IupacNamer::generateName(m);
-        indigoFree(m);
-        std::string expected = "1-oxacycloundeca-2,4,6,8,10-pentaene";
-        if (r.success && r.name.toStdString() == expected) {
-            std::cout << "[PASS] Phase 70: " << expected << "\n";
-            passed++;
-        } else {
-            std::cout << "[FAIL] Phase 70: expected '" << expected << "', got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
-            failed++;
-        }
-    }
-
-    {
-        // Phase 70 Part A: Mancude 18-ring with 2 O's
-        int m = indigoLoadMoleculeFromString("O1C=CC=CC=COC=CC=CC=CC=CC=C1");
-        IupacResult r = IupacNamer::generateName(m);
-        indigoFree(m);
-        std::string expected = "1,8-dioxacyclooctadeca-2,4,6,9,11,13,15,17-octaene";
-        if (r.success && r.name.toStdString() == expected) {
-            std::cout << "[PASS] Phase 70: " << expected << "\n";
-            passed++;
-        } else {
-            std::cout << "[FAIL] Phase 70: expected '" << expected << "', got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
-            failed++;
-        }
-    }
-
-    {
-        // Phase 70 Part A: Mancude 14-ring with 1 N
-        int m = indigoLoadMoleculeFromString("N1=CC=CC=CC=CC=CC=CC=C1");
-        IupacResult r = IupacNamer::generateName(m);
-        indigoFree(m);
-        std::string expected = "1-azacyclotetradeca-1,3,5,7,9,11,13-heptaene";
-        if (r.success && r.name.toStdString() == expected) {
-            std::cout << "[PASS] Phase 70: " << expected << "\n";
-            passed++;
-        } else {
-            std::cout << "[FAIL] Phase 70: expected '" << expected << "', got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
-            failed++;
-        }
-    }
-
-    {
-        // Phase 70 Part A: Mancude rejection due to parity failure (odd run between two divalent heteroatoms)
-        int m = indigoLoadMoleculeFromString("O1COC=CC=CC=CC=C1");
+        // Phase 70 scope boundary: an UNSATURATED 11+ heterocycle must still reject
+        // cleanly (the mancude '-ene' chain form, P-22.2.4, is deliberately deferred
+        // to a future phase -- see classifyMonocyclicHeteroRing's comment).
+        int m = indigoLoadMoleculeFromString("C1=CCCCCCCCCN1");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
         if (!r.success) {
-            std::cout << "[PASS] Phase 70 scope: parity-failing mancude heterocycle correctly rejected: " << r.error.toStdString() << "\n";
+            std::cout << "[PASS] Phase 70 scope: unsaturated 11-membered heterocycle correctly rejected: " << r.error.toStdString() << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] Phase 70 scope: parity-failing mancude heterocycle should reject, got name='" << r.name.toStdString() << "'\n";
+            std::cout << "[FAIL] Phase 70 scope: unsaturated 11-membered heterocycle should reject, got name='" << r.name.toStdString() << "'\n";
             failed++;
         }
     }
 
     {
-        // Phase 70 Part B: Substituted large heterocycle (2-methylazacycloundecane)
-        // The methyl-bearing ring carbon is directly ring-closure-bonded to N
-        // (SMILES "C1...N1"), so numbering N=1 in that direction gives the
-        // methyl carbon locant 2, the lowest available -- not 3.
+        // Phase 70 scope boundary: a SUBSTITUTED 11+ heterocycle must still reject
+        // cleanly (this phase only handles the bare, unsubstituted ring).
         int m = indigoLoadMoleculeFromString("CC1CCCCCCCCCN1");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
-        std::string expected = "2-methylazacycloundecane";
-        if (r.success && r.name.toStdString() == expected) {
-            std::cout << "[PASS] Phase 70: " << expected << "\n";
+        if (!r.success) {
+            std::cout << "[PASS] Phase 70 scope: substituted 11-membered heterocycle correctly rejected: " << r.error.toStdString() << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] Phase 70: expected '" << expected << "', got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            std::cout << "[FAIL] Phase 70 scope: substituted 11-membered heterocycle should reject, got name='" << r.name.toStdString() << "'\n";
             failed++;
         }
     }
@@ -3502,21 +3187,15 @@ int main() {
 
     {
         // Saturated 7-membered ring with N: should be rejected with the existing saturated message.
-        // Azocane (saturated 8-membered with NH -- the comment previously
-        // mislabeled this "7-membered"; C1CCCCCCN1 has 7 carbons + 1 N = 8
-        // ring atoms). Saturated general heterocycles of sizes 7-10 are now
-        // supported (skeletal-replacement 'a' nomenclature, matching the
-        // already-working PIPERIDINE/PYRROLIDINE/THF/THT precedent for 5/6
-        // and LARGE_HETEROCYCLE's own saturated form for 11-20), so this
-        // must now succeed instead of reject.
+        // Azepane (saturated 7-membered with NH): C1CCCCCCN1
         int m_sat7 = indigoLoadMoleculeFromString("C1CCCCCCN1");
         IupacResult r_sat7 = IupacNamer::generateName(m_sat7);
         indigoFree(m_sat7);
-        if (r_sat7.success && r_sat7.name == "azocane") {
-            std::cout << "[PASS] azocane -> " << r_sat7.name.toStdString() << "\n";
+        if (!r_sat7.success && r_sat7.error.contains("Saturated or partially unsaturated")) {
+            std::cout << "[PASS] Phase 55 rejection: saturated 7-membered N ring -> " << r_sat7.error.toStdString() << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] azocane -> got success=" << r_sat7.success << " name='" << r_sat7.name.toStdString() << "' err='" << r_sat7.error.toStdString() << "'\n";
+            std::cout << "[FAIL] Phase 55 rejection: saturated 7-membered N ring should reject with saturated message, got success=" << r_sat7.success << " name='" << r_sat7.name.toStdString() << "' err='" << r_sat7.error.toStdString() << "'\n";
             failed++;
         }
     }
@@ -3535,135 +3214,6 @@ int main() {
         }
     }
 
-
-    {
-        // Phase XY: Acenaphthylene (ortho- and peri-fused, P-25.3.1.1.2)
-        int m = indigoLoadMoleculeFromString("C1=CC2=C3C1=CC=CC3=CC=C2");
-        IupacResult r = IupacNamer::generateName(m);
-        indigoFree(m);
-        if (!r.success && r.error.contains("ortho- and peri-fused ring systems (P-25.3.1.1.2)")) {
-            std::cout << "[PASS] Acenaphthylene rejected as P-25.3.1.1.2\n";
-            passed++;
-        } else {
-            std::cout << "[FAIL] Acenaphthylene should reject as P-25.3.1.1.2, got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
-            failed++;
-        }
-    }
-    {
-        // Phase XY: Pyrene (three-component ortho- and peri-fused, P-25.5)
-        int m = indigoLoadMoleculeFromString("C1=CC2=C3C1=CC=C4C3=C(C=C2)C=C4");
-        IupacResult r = IupacNamer::generateName(m);
-        indigoFree(m);
-        if (!r.success && r.error.contains("three-component ortho- and peri-fused systems (P-25.5)")) {
-            std::cout << "[PASS] Pyrene rejected as P-25.5\n";
-            passed++;
-        } else {
-            std::cout << "[FAIL] Pyrene should reject as P-25.5, got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
-            failed++;
-        }
-    }
-    {
-        // Phase XY: 1,4-methanonaphthalene (bridged fused, P-25.4)
-        int m = indigoLoadMoleculeFromString("C1C2C=CC1C3=CC=CC=C23");
-        IupacResult r = IupacNamer::generateName(m);
-        indigoFree(m);
-        if (!r.success && r.error.contains("bridged fused ring systems (P-25.4)")) {
-            std::cout << "[PASS] 1,4-methanonaphthalene rejected as P-25.4\n";
-            passed++;
-        } else {
-            std::cout << "[FAIL] 1,4-methanonaphthalene should reject as P-25.4, got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
-            failed++;
-        }
-    }
-
-    {
-        // P-29.5.1 complex substituted substituent group worked example (real Blue
-        // Book PIN prefix "6-(3-methylbutyl)undecyl", embedded here as an amine) --
-        // confirms Phase 39's existing nesting mechanism already satisfies this
-        // rule without any new code.
-        int m = indigoLoadMoleculeFromString("NCCCCCC(CCC(C)C)CCCCC");
-        IupacResult r = IupacNamer::generateName(m);
-        indigoFree(m);
-        if (r.success && r.name == "6-(3-methylbutyl)undecan-1-amine") {
-            std::cout << "[PASS] P-29.5.1 -> " << r.name.toStdString() << "\n";
-            passed++;
-        } else {
-            std::cout << "[FAIL] P-29.5.1 -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
-            failed++;
-        }
-    }
-
-    {
-        int m = indigoLoadMoleculeFromString("O=C1CCC(=O)N1");
-        IupacResult r = IupacNamer::generateName(m);
-        indigoFree(m);
-        if (r.success && r.name == "pyrrolidine-2,5-dione") {
-            std::cout << "[PASS] Succinimide -> " << r.name.toStdString() << "\n";
-            passed++;
-        } else {
-            std::cout << "[FAIL] Succinimide -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
-            failed++;
-        }
-    }
-
-    {
-        int m = indigoLoadMoleculeFromString("C1CC(O)CCN1");
-        IupacResult r = IupacNamer::generateName(m);
-        indigoFree(m);
-        if (r.success && r.name == "piperidin-4-ol") {
-            std::cout << "[PASS] Piperidin-4-ol -> " << r.name.toStdString() << "\n";
-            passed++;
-        } else {
-            std::cout << "[FAIL] Piperidin-4-ol -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
-            failed++;
-        }
-    }
-
-    {
-        // P-64.3.1's own worked example: pyrrolidin-2-one (a lactam, cyclic
-        // amide), already correctly nameable via the saturated-heterocycle-
-        // ring-parent fix (commit 309d411) -- a single ring-carbon ketone-type
-        // suffix position on pyrrolidine, no new code needed for this specific
-        // case.
-        int m = indigoLoadMoleculeFromString("O=C1CCCN1");
-        IupacResult r = IupacNamer::generateName(m);
-        indigoFree(m);
-        if (r.success && r.name == "pyrrolidin-2-one") {
-            std::cout << "[PASS] pyrrolidin-2-one -> " << r.name.toStdString() << "\n";
-            passed++;
-        } else {
-            std::cout << "[FAIL] pyrrolidin-2-one -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
-            failed++;
-        }
-    }
-
-    {
-        // Saturated general heterocycles, ring sizes 7-10 (skeletal-replacement
-        // 'a' nomenclature): bare azepane (sole heteroatom, locant correctly
-        // omitted) and azepan-2-one (P-64.3.1's own worked example -- a lactam
-        // on a 7-ring, locant still omitted for the heteroatom even with the
-        // suffix's own locant present, matching the piperidin-4-ol precedent).
-        int m1 = indigoLoadMoleculeFromString("C1CCCCCN1");
-        IupacResult r1 = IupacNamer::generateName(m1);
-        indigoFree(m1);
-        if (r1.success && r1.name == "azepane") {
-            std::cout << "[PASS] azepane -> " << r1.name.toStdString() << "\n";
-            passed++;
-        } else {
-            std::cout << "[FAIL] azepane -> got success=" << r1.success << " name='" << r1.name.toStdString() << "' err='" << r1.error.toStdString() << "'\n";
-            failed++;
-        }
-        int m2 = indigoLoadMoleculeFromString("O=C1CCCCCN1");
-        IupacResult r2 = IupacNamer::generateName(m2);
-        indigoFree(m2);
-        if (r2.success && r2.name == "azepan-2-one") {
-            std::cout << "[PASS] azepan-2-one -> " << r2.name.toStdString() << "\n";
-            passed++;
-        } else {
-            std::cout << "[FAIL] azepan-2-one -> got success=" << r2.success << " name='" << r2.name.toStdString() << "' err='" << r2.error.toStdString() << "'\n";
-            failed++;
-        }
-    }
 
     std::cout << "\nSummary: " << passed << " passed, " << failed << " failed.\n";
     indigoReleaseSessionId(sid);

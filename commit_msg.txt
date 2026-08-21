@@ -1,0 +1,20 @@
+IUPAC namer: fix stereo-bracket alphabetization (citation order + numbering tiebreak)
+
+The sort key used to alphabetize substituent citation order only
+stripped one leading bracket character, so a stereo-bracketed name
+like "[(1R)-1-chloroethyl]" always sorted first (since '[' and '('
+sort below every lowercase letter) regardless of true alphabetical
+position. A separate mechanism, the firstAlpha numbering-tiebreak
+comparator used when scoring competing ring-numbering candidates, had
+the identical defect -- meaning it could assign the wrong physical
+atom the lower locant number, not just cite substituent names in the
+wrong string order. Both mechanisms (6 sites each, 12 total) shared
+the same root cause: comparing a substituent's raw, still-bracketed
+name instead of its true alphabetic root. Fix: one new shared
+alphabetizationKey() helper, used at all 12 sites, that strips
+wrapping brackets, a leading stereo-descriptor parenthetical, and a
+leading locant-digit-hyphen sequence down to the true alphabetic root.
+Verified against real molecules across all three parent-structure
+phases before writing this plan; e.g. BrC1CCCCC1[C@H](C)Cl now
+correctly produces 1-bromo-2-[(1S)-1-chloroethyl]cyclohexane instead
+of 2-bromo-1-[(1S)-1-chloroethyl]cyclohexane.

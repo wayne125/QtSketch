@@ -1,0 +1,15 @@
+--- tests/iupac_namer_test.cpp
++++ tests/iupac_namer_test.cpp
+@@ -442,7 +442,12 @@
+     };
+ 
+     int passed = 0;
+     int failed = 0;
+ 
+     for (size_t i = 0; i < tests.size(); ++i) {
+         const auto &tc = tests[i];
++        if (tc.smiles != "O=C1CCC(=O)O1") {
++            continue;
++        }
+         int mol = indigoLoadMoleculeFromString(tc.smiles.c_str());
+         if (mol < 0) {

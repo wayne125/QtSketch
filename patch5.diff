@@ -1,0 +1,26 @@
+--- src/app/IupacNamer.cpp
++++ src/app/IupacNamer.cpp
+@@ -3562,7 +3562,10 @@
+                     if (nZ == 8 && order == 2) doubleO.push_back(nei);
+                   else if (nZ == 16 && order == 2) doubleS.push_back(nei);
+                   else if (nZ == 7 && order == 2) doubleN.push_back(nei);
+-                    else if (nZ == 8 && order == 1) singleO.push_back(nei);
++                    else if (nZ == 8 && order == 1) {
++                        bool isRingBond = ringNodeSet.count(static_cast<int>(i)) && ringNodeSet.count(nei);
++                        if (!isRingBond) singleO.push_back(nei);
++                    }
+                     else if (nZ == 7 && order == 1) {
+                         bool isNitroIsoOrAzide = false;
+                         if (carbonNitro.count(i) && std::find(carbonNitro[i].begin(), carbonNitro[i].end(), nei) != carbonNitro[i].end()) isNitroIsoOrAzide = true;
+@@ -8644,7 +8647,10 @@
+                 if (nZ == 8 && order == 2) doubleO.push_back(nei);
+                   else if (nZ == 16 && order == 2) doubleS.push_back(nei);
+                   else if (nZ == 7 && order == 2) doubleN.push_back(nei);
+-                else if (nZ == 8 && order == 1) singleO.push_back(nei);
++                else if (nZ == 8 && order == 1) {
++                    bool isRingBond = ringNodeSet.count(static_cast<int>(i)) && ringNodeSet.count(nei);
++                    if (!isRingBond) singleO.push_back(nei);
++                }
+                 else if (nZ == 7 && order == 1) {
+                     bool isNitroIsoOrAzide = false;
+                     if (carbonAzide.count(i) && std::find(carbonAzide[i].begin(), carbonAzide[i].end(), nei) != carbonAzide[i].end()) isNitroIsoOrAzide = true;

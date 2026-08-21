@@ -1,0 +1,325 @@
+<title>Architecture Map — Sketch</title>
+<style>
+:root{
+  --bg:#eef1f6;
+  --bg-panel:#ffffff;
+  --ink:#1b2130;
+  --ink-soft:#545d70;
+  --ink-faint:#8891a3;
+  --accent:#463c8c;
+  --accent-soft:#e9e6f7;
+  --node:#a3611a;
+  --node-soft:#f7ecdd;
+  --qml:#1f6f7a;
+  --qml-soft:#e1f0f2;
+  --cpp:#7a3f5e;
+  --cpp-soft:#f5e6ee;
+  --indigo:#463c8c;
+  --indigo-soft:#e9e6f7;
+  --border:#d7dce4;
+  --code-bg:#f5f6f9;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#11141c; --bg-panel:#171b26; --ink:#e7e9f0; --ink-soft:#a2aac0; --ink-faint:#6d7690;
+    --accent:#a79bef; --accent-soft:#241f3d;
+    --node:#e2a256; --node-soft:#332512;
+    --qml:#5fc2cf; --qml-soft:#122a2d;
+    --cpp:#d98cb3; --cpp-soft:#301f28;
+    --indigo:#a79bef; --indigo-soft:#241f3d;
+    --border:#2b3040; --code-bg:#1c202c;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#11141c; --bg-panel:#171b26; --ink:#e7e9f0; --ink-soft:#a2aac0; --ink-faint:#6d7690;
+  --accent:#a79bef; --accent-soft:#241f3d;
+  --node:#e2a256; --node-soft:#332512;
+  --qml:#5fc2cf; --qml-soft:#122a2d;
+  --cpp:#d98cb3; --cpp-soft:#301f28;
+  --indigo:#a79bef; --indigo-soft:#241f3d;
+  --border:#2b3040; --code-bg:#1c202c;
+}
+:root[data-theme="light"]{
+  --bg:#eef1f6; --bg-panel:#ffffff; --ink:#1b2130; --ink-soft:#545d70; --ink-faint:#8891a3;
+  --accent:#463c8c; --accent-soft:#e9e6f7;
+  --node:#a3611a; --node-soft:#f7ecdd;
+  --qml:#1f6f7a; --qml-soft:#e1f0f2;
+  --cpp:#7a3f5e; --cpp-soft:#f5e6ee;
+  --indigo:#463c8c; --indigo-soft:#e9e6f7;
+  --border:#d7dce4; --code-bg:#f5f6f9;
+}
+
+*{box-sizing:border-box;}
+body{ margin:0; background:var(--bg); color:var(--ink); font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; line-height:1.55; }
+::selection{ background:var(--accent-soft); }
+.page{ max-width:1040px; margin:0 auto; padding:3rem 1.5rem 5rem; }
+
+h1,h2,h3{ font-family:Georgia,"Iowan Old Style","Palatino Linotype",serif; font-weight:600; text-wrap:balance; color:var(--ink); }
+h1{ font-size:1.9rem; letter-spacing:-0.01em; margin:0 0 0.3rem; }
+h2{ font-size:1.3rem; margin:0 0 0.2rem; }
+h3{ font-size:1rem; margin:0 0 0.3rem; color:var(--ink); font-weight:600; }
+code{ font-family:ui-monospace,"SFMono-Regular",Consolas,"Liberation Mono",monospace; font-size:0.86em; background:var(--code-bg); padding:0.1em 0.35em; border-radius:4px; }
+
+.masthead .kicker{ font-size:0.72rem; letter-spacing:0.11em; text-transform:uppercase; color:var(--accent); font-weight:600; margin:0 0 0.6rem; }
+.masthead p.dek{ max-width:66ch; color:var(--ink-soft); font-size:1rem; margin:0.6rem 0 0; }
+
+/* ===== diagram ===== */
+.diagram{ margin:2.4rem 0; display:flex; flex-direction:column; gap:0; }
+.tier{ display:grid; gap:0.9rem; }
+.tier.qml{ grid-template-columns:1fr; }
+.tier.host{ grid-template-columns:1.6fr 1fr; }
+.tier.runtime{ grid-template-columns:1.6fr 1fr; }
+@media (max-width:680px){ .tier.host, .tier.runtime{ grid-template-columns:1fr; } }
+
+.arrowrow{ display:grid; grid-template-columns:1.6fr 1fr; gap:0.9rem; padding:0.35rem 0; }
+@media (max-width:680px){ .arrowrow{ grid-template-columns:1fr; } }
+.arrowrow .lane{ display:flex; align-items:center; justify-content:center; gap:0.5rem; font-size:0.74rem; color:var(--ink-faint); text-align:center; }
+.arrowrow .lane .glyph{ font-size:1.1rem; line-height:1; }
+
+.box{
+  border:1px solid var(--border);
+  border-radius:8px;
+  background:var(--bg-panel);
+  padding:0.9rem 1.05rem;
+  border-top:3px solid var(--layer-color, var(--border));
+}
+.box .taglabel{
+  font-size:0.68rem; letter-spacing:0.09em; text-transform:uppercase; font-weight:700;
+  color:var(--layer-color, var(--ink-faint)); margin-bottom:0.45rem; display:block;
+}
+.box.qml-c{ --layer-color:var(--qml); }
+.box.cpp-c{ --layer-color:var(--cpp); }
+.box.node-c{ --layer-color:var(--node); }
+.box.indigo-c{ --layer-color:var(--indigo); }
+
+.subgrid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:0.6rem; margin-top:0.5rem; }
+.chip{
+  border:1px solid var(--border); border-radius:6px; background:var(--bg);
+  padding:0.5rem 0.65rem; font-size:0.82rem; color:var(--ink-soft);
+}
+.chip b{ color:var(--ink); font-weight:600; display:block; font-size:0.83rem; margin-bottom:0.15rem; }
+.chip .f{ font-family:ui-monospace,Consolas,monospace; font-size:0.76rem; color:var(--ink-faint); }
+
+.note{ font-size:0.85rem; color:var(--ink-soft); margin-top:0.9rem; padding-top:0.7rem; border-top:1px dashed var(--border); }
+
+/* ===== seams ===== */
+.seams{ display:grid; grid-template-columns:1fr 1fr; gap:1.1rem; margin:1.6rem 0 2.2rem; }
+@media (max-width:720px){ .seams{ grid-template-columns:1fr; } }
+.seam{ border:1px solid var(--border); border-radius:8px; background:var(--bg-panel); padding:1.1rem 1.2rem; border-top:3px solid var(--sc, var(--accent)); }
+.seam.node-seam{ --sc:var(--node); }
+.seam.indigo-seam{ --sc:var(--indigo); }
+.seam h3{ color:var(--sc); }
+.seam ol{ margin:0.6rem 0 0; padding-left:1.2rem; font-size:0.87rem; color:var(--ink-soft); }
+.seam ol li{ margin-bottom:0.3rem; }
+
+/* ===== feature mapping ===== */
+section.report{ margin-top:2.6rem; }
+section.report .head{ display:flex; align-items:baseline; justify-content:space-between; gap:1rem; flex-wrap:wrap; border-bottom:2px solid var(--ink); padding-bottom:0.5rem; }
+section.report > p.lede{ color:var(--ink-soft); max-width:70ch; margin:0.8rem 0 0; font-size:0.92rem; }
+
+table.map{ width:100%; border-collapse:collapse; margin-top:1rem; font-size:0.86rem; }
+table.map th{ text-align:left; font-size:0.7rem; letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-faint); font-weight:600; padding:0.4rem 0.6rem; border-bottom:1px solid var(--border); }
+table.map td{ padding:0.55rem 0.6rem; border-bottom:1px solid var(--border); vertical-align:top; color:var(--ink-soft); }
+table.map tr:last-child td{ border-bottom:none; }
+table.map td.feature{ color:var(--ink); font-weight:600; }
+table.map td.seamtag{ white-space:nowrap; }
+.tag{ display:inline-block; font-size:0.7rem; font-weight:700; padding:0.15em 0.55em; border-radius:99px; }
+.tag.node{ background:var(--node-soft); color:var(--node); }
+.tag.indigo{ background:var(--indigo-soft); color:var(--indigo); }
+.tag.qml{ background:var(--qml-soft); color:var(--qml); }
+.tag.mixed{ background:var(--cpp-soft); color:var(--cpp); }
+
+footer{ margin-top:3rem; padding-top:1.2rem; border-top:1px solid var(--border); font-size:0.8rem; color:var(--ink-faint); }
+</style>
+
+<div class="page">
+
+  <header class="masthead">
+    <p class="kicker">Sketch — system map</p>
+    <h1>Where the next features actually plug in</h1>
+    <p class="dek">The current three-layer hybrid, and the two structurally separate integration seams every item in <code>Features To Be Implemented.md</code> falls into.</p>
+  </header>
+
+  <!-- ================= DIAGRAM ================= -->
+  <div class="diagram">
+
+    <div class="tier qml">
+      <div class="box qml-c">
+        <span class="taglabel">QML UI · Qt Quick</span>
+        <div class="subgrid">
+          <div class="chip"><b>MainWindow.qml</b>Shell — tabs, toolbars, menus, dialogs, shared <code>IndigoService</code> instance</div>
+          <div class="chip"><b>ChemCanvas.qml</b>× one per open document — owns tool state, zoom/pan, keyboard shortcuts</div>
+          <div class="chip"><b>Rendering layers</b><span class="f">MoleculeLayer · SelectionLayer · LabelLayer · ToolOverlay</span></div>
+          <div class="chip"><b>ToolPanel / PropertyPanel</b>Left tool grid, right property editor</div>
+          <div class="chip"><b>components/</b><span class="f">IconCell · AnchoredPicker · TaskDialog · SegmentedControl …</span></div>
+          <div class="chip"><b>Theme.qml / StyleSheets.qml</b>Design-token singletons</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrowrow">
+      <div class="lane"><span class="glyph">↓ ↑</span>&nbsp;Q_INVOKABLE calls · property bindings · signals</div>
+      <div class="lane"><span class="glyph">↓ ↑</span>&nbsp;Q_INVOKABLE calls · *Finished signals</div>
+    </div>
+
+    <div class="tier host">
+      <div class="box cpp-c">
+        <span class="taglabel">C++ Host · Qt6</span>
+        <div class="subgrid">
+          <div class="chip"><b>DocumentManager</b><span class="f">QML_SINGLETON</span> — owns <code>docId → V8Process*</code></div>
+          <div class="chip"><b>V8Process</b>× one per document — the <code>Sketch</code> bridge: ~90 Q_INVOKABLE methods, spawns/owns one Node child process each</div>
+          <div class="chip"><b>AppController / PlacementEngines / PlacementPreviewManager</b>Drag-placement preview, synchronous, no IPC</div>
+        </div>
+      </div>
+      <div class="box indigo-c">
+        <span class="taglabel">C++ Host · shared instance</span>
+        <div class="subgrid">
+          <div class="chip"><b>IndigoService</b><span class="f">QML_ELEMENT</span>, one instance for the whole window, always acts on <code>activeCanvas</code>. Every heavy call runs via <code>QtConcurrent::run</code> on a thread-pool worker with its own <code>indigoAllocSessionId()</code></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrowrow">
+      <div class="lane"><span class="glyph">↓ ↑</span>&nbsp;newline-delimited JSON over stdin/stdout, one child process per open tab</div>
+      <div class="lane"><span class="glyph">↓ ↑</span>&nbsp;direct C calls, in-process</div>
+    </div>
+
+    <div class="tier runtime">
+      <div class="box node-c">
+        <span class="taglabel">Node.js worker process</span>
+        <div class="subgrid">
+          <div class="chip"><b>src/v8_worker.js</b>× one per document — holds the live <code>_struct</code>, dispatches <code>{cmd,args}</code> via an if/else chain, wraps every mutation in <code>makeCmd</code> for undo/redo, then <code>buildRenderPrimitives</code></div>
+          <div class="chip"><b>chem-core.js</b><code>eval()</code>'d once per worker — 72 exports, 22 used (see audit)</div>
+        </div>
+      </div>
+      <div class="box indigo-c">
+        <span class="taglabel">Native DLL</span>
+        <div class="subgrid">
+          <div class="chip"><b>indigo.dll</b>517 C functions, 51 used (see audit). Linked only into the C++ host — the Node worker never touches it</div>
+        </div>
+      </div>
+    </div>
+
+    <p class="note"><strong>The re-entry loop:</strong> when <code>IndigoService</code> finishes a job (e.g. <code>layoutFinished</code>), <code>MainWindow.qml</code>'s <code>Connections</code> block calls <code>activeCanvas.loadMolfile(...)</code> — which re-enters the V8Process → worker path above. Indigo never holds state; every result gets funneled back into the worker's <code>_struct</code> as the one source of truth.</p>
+  </div>
+
+  <!-- ================= SEAMS ================= -->
+  <h2>Two integration seams</h2>
+  <p class="dek" style="margin-bottom:0">Every backlog item is chemistry-model work (touches <code>_struct</code>, wants undo/redo, needs to render) or toolkit work (a computed result handed back once) — never both. That split is exactly the chem-core.js / Indigo divide, and it decides which files a new feature touches.</p>
+
+  <div class="seams">
+    <div class="seam node-seam">
+      <h3>① The worker seam</h3>
+      <p>For anything built on an unused <b>chem-core.js</b> export — biopolymer drawing, image embedding, native multitail arrows, R-group attachment helpers.</p>
+      <ol>
+        <li>Add the operation to <code>src/v8_worker.js</code>, calling the already-loaded <code>CoreLib.ChemCore.X</code> — follow the <code>addText</code>/<code>addChain</code> shape (build the object, wrap the mutation in <code>makeCmd</code>, call <code>executeCommand</code>)</li>
+        <li>Register the new <code>cmd</code> string in the if/else dispatch (~line 3193)</li>
+        <li>Add a matching <code>Q_INVOKABLE</code> to <code>v8_process.h</code>/<code>.cpp</code> that calls <code>sendCommand(...)</code></li>
+        <li>Extend <code>buildRenderPrimitives</code> if the new entity needs to reach the canvas, then teach <code>MoleculeLayer</code>/<code>LabelLayer</code>/<code>SelectionLayer</code> to draw and hit-test it</li>
+        <li>Add the tool/menu entry in <code>ToolPanel.qml</code> or <code>MainWindow.qml</code>, reusing <code>IconCell</code>/<code>AnchoredPicker</code>/<code>TaskDialog</code></li>
+      </ol>
+    </div>
+    <div class="seam indigo-seam">
+      <h3>② The Indigo seam</h3>
+      <p>For anything built on an unused <b>Indigo C function</b> — similarity search, SMARTS matching, InChI, native rendering, SDF/RDF batch browsing, scaffold decomposition, reaction enumeration, auto-AAM/pKa.</p>
+      <ol>
+        <li>Add a method to <code>IndigoService.h</code>/<code>.cpp</code> following the existing <code>layout()</code>/<code>calcProperties()</code> shape — <code>QtConcurrent::run</code>, own <code>indigoAllocSessionId()</code>, emit a <code>*Finished</code>/<code>*Ready</code> signal</li>
+        <li>Wire a handler in <code>MainWindow.qml</code>'s <code>Connections { target: indigoSvc }</code> block</li>
+        <li>Feed the result back to the model either via <code>activeCanvas.loadMolfile(...)</code> (structural result) or straight into a QML panel (a computed value, e.g. a similarity score or InChIKey string)</li>
+        <li>This path <b>never touches</b> <code>v8_worker.js</code> — the worker is the passive supplier of the molfile string Indigo is handed</li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- ================= FEATURE MAP ================= -->
+  <section class="report">
+    <div class="head"><h2>Backlog → integration point</h2></div>
+    <p class="lede">Every item from <code>Features To Be Implemented.md</code>, mapped to the seam and files it would actually touch.</p>
+
+    <table class="map">
+      <thead><tr><th>Feature</th><th>Seam</th><th>Touches</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="feature">Word-style rulers &amp; alignment icons</td>
+          <td class="seamtag"><span class="tag qml">QML-only</span></td>
+          <td><code>MainWindow.qml</code> (<code>topRuler</code>/<code>leftRuler</code>, align/distribute buttons). No backend change — <code>alignAtoms</code>/<code>distributeAtoms</code> Q_INVOKABLEs already exist.</td>
+        </tr>
+        <tr>
+          <td class="feature">Library-template ring fusion</td>
+          <td class="seamtag"><span class="tag node">① Worker</span></td>
+          <td>New <code>insertLibraryTemplateFused()</code> in <code>v8_worker.js</code> + <code>V8Process::insertLibraryTemplateFused</code> + <code>ChemCanvas.qml</code>'s existing <code>hitBond</code> value. Fully designed in <code>calm-launching-kettle.md</code>.</td>
+        </tr>
+        <tr>
+          <td class="feature">Reaction structure validation</td>
+          <td class="seamtag"><span class="tag indigo">② Indigo</span></td>
+          <td><code>IndigoService::checkStructure</code> (<code>IndigoService.cpp:452</code>) — replace the reaction early-return with a real <code>indigoLoadReactionFromString</code> + <code>indigoCheckObj</code> path, mirroring the molecule branch just above it.</td>
+        </tr>
+        <tr>
+          <td class="feature">Native biopolymer drawing engine</td>
+          <td class="seamtag"><span class="tag node">① Worker</span></td>
+          <td><code>DrawingEntitiesManager</code>/<code>Entities</code>/monomer helpers already sit unused in <code>chem-core.js</code>; would need a new worker-side monomer struct, new canvas render layer, new tool set. The biggest single item in the backlog.</td>
+        </tr>
+        <tr>
+          <td class="feature">Image embedding on canvas</td>
+          <td class="seamtag"><span class="tag node">① Worker</span></td>
+          <td><code>IMAGE_KEY</code>/<code>IMAGE_SERIALIZE_KEY</code> already reserved in chem-core.js's KET schema — worker needs an <code>_struct.images</code> pool (same shape as the existing <code>_struct.texts</code> pool added for text annotations) plus canvas rendering.</td>
+        </tr>
+        <tr>
+          <td class="feature">R-group variable attachment points</td>
+          <td class="seamtag"><span class="tag node">① Worker</span></td>
+          <td><code>getAttachmentPointLabel</code>/<code>getNextFreeAttachmentPoint</code> etc. unused in chem-core.js; would extend the existing native <code>struct.rgroups</code> R-group implementation, not replace it.</td>
+        </tr>
+        <tr>
+          <td class="feature">IUPAC nomenclature, 3D viewer, spectral prediction, macros</td>
+          <td class="seamtag"><span class="tag mixed">External</span></td>
+          <td>None of these are latent in either vendored library — all need a new dependency or licensed engine, so no existing seam applies yet.</td>
+        </tr>
+        <tr>
+          <td class="feature">Similarity / fingerprint search</td>
+          <td class="seamtag"><span class="tag indigo">② Indigo</span></td>
+          <td>New <code>IndigoService::similarityTo(molA, molB)</code>-style method; natural UI home is the Library popup (compare against <code>templates/library.sdf</code> entries).</td>
+        </tr>
+        <tr>
+          <td class="feature">Substructure / SMARTS search</td>
+          <td class="seamtag"><span class="tag indigo">② Indigo</span></td>
+          <td>New <code>IndigoService</code> method around <code>indigoSubstructureMatcher</code>/<code>indigoMatch</code>; result would highlight atoms back on the active canvas (needs a "highlight by atom id list" hook — <code>_struct</code> already tracks per-atom <code>checkWarning</code> flags the same way).</td>
+        </tr>
+        <tr>
+          <td class="feature">InChI / InChIKey generation</td>
+          <td class="seamtag"><span class="tag indigo">② Indigo</span></td>
+          <td>New methods on <code>IndigoService</code> against <code>indigo-inchi.h</code> (a separate plugin header/lib — check it's linked in <code>CMakeLists.txt</code> alongside <code>indigo.dll</code>). UI: alongside the existing SMILES copy-to-clipboard action.</td>
+        </tr>
+        <tr>
+          <td class="feature">Native structure rendering (PNG/SVG/PDF)</td>
+          <td class="seamtag"><span class="tag indigo">② Indigo</span></td>
+          <td>Would replace <code>AppController::exportPdf</code>'s canvas-screenshot approach with <code>indigoRenderToFile</code> via <code>indigo-renderer.h</code> — same print/export menu entry in <code>MainWindow.qml</code>, different implementation underneath.</td>
+        </tr>
+        <tr>
+          <td class="feature">SDF/RDF batch file browsing</td>
+          <td class="seamtag"><span class="tag indigo">② Indigo</span></td>
+          <td>New <code>IndigoService</code> method around <code>indigoIterateSDF</code>; needs a new QML popup (a paging list, similar to <code>AnchoredPicker</code> + <code>ThumbnailGridItem</code> already used for the Library popup) rather than a single-shot Q_INVOKABLE/signal pair.</td>
+        </tr>
+        <tr>
+          <td class="feature">R-Group deconvolution / scaffold analysis</td>
+          <td class="seamtag"><span class="tag indigo">② Indigo</span></td>
+          <td>New <code>IndigoService</code> method around <code>indigoDecomposeMolecules</code>/<code>indigoExtractCommonScaffold</code>; a batch-input feature (multiple molecules in), so it doesn't fit the single-<code>activeCanvas</code> model as cleanly — likely wants its own dialog rather than reusing the toolbar.</td>
+        </tr>
+        <tr>
+          <td class="feature">Reaction product enumeration</td>
+          <td class="seamtag"><span class="tag indigo">② Indigo</span></td>
+          <td>New <code>IndigoService</code> method around <code>indigoReactionProductEnumerate</code>, taking the active canvas's reaction (reactants/products already split via <code>rxnArrows</code>) plus a reactant-set input dialog.</td>
+        </tr>
+        <tr>
+          <td class="feature">Automatic atom-mapping / pKa prediction</td>
+          <td class="seamtag"><span class="tag indigo">② Indigo</span></td>
+          <td><code>indigoAutomap</code> could replace/augment the worker's manual click-to-increment AAM (<code>atom.aam</code> field) — this one is unusual in that its *result* (mapping numbers) would need to flow back through the ① worker seam via <code>setAtomMapping</code>, one of the few features that crosses both seams.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <footer>
+    Signatures verified against <code>src/v8_process.h</code> (90 Q_INVOKABLE methods), <code>src/app/IndigoService.h</code>, <code>src/app/DocumentManager.h</code>, and the dispatch chain in <code>src/v8_worker.js:3193+</code>. Companion documents: <code>Features To Be Implemented.md</code> and the chem-core.js/Indigo coverage audit artifact.
+  </footer>
+
+</div>
