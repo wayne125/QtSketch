@@ -203,7 +203,9 @@ int main() {
         {"C1CCCCC1S(=O)(=O)O", "cyclohexanesulfonic acid"},
         // Phase 62: Ring-attached phosphonic acid
         {"c1ccccc1P(=O)(O)O", "benzenephosphonic acid"},
+        {"c1ccccc1[As](=O)(O)O", "benzenarsonic acid"},
         {"C1CCCCC1P(=O)(O)O", "cyclohexanephosphonic acid"},
+        {"C1CCCCC1[As](=O)(O)O", "cyclohexanarsonic acid"},
         {"O=C1CCC(=O)O1", "tetrahydrofuran-2,5-dione"},
         {"C1CCCCC1S", "cyclohexanethiol"},
         {"c1ccccc1SC", "methylsulfanylbenzene"},
@@ -220,7 +222,9 @@ int main() {
         {"OC(=O)CS(=O)(=O)O", "2-carboxyethanesulfonic acid"},
         // Phase 62: Phosphonic acid
         {"CP(=O)(O)O", "methanephosphonic acid"},
+        {"C[As](=O)(O)O", "methanarsonic acid"},
         {"CCCP(=O)(O)O", "propane-1-phosphonic acid"},
+        {"CCC[As](=O)(O)O", "propan-1-arsonic acid"},
         // Phase 62: regression tests
         {"Oc1ccccc1S(=O)(=O)O", "2-hydroxybenzene-1-sulfonic acid"}, // regression test for existing sulfonic acid
         {"CS(=O)(=O)O", "methanesulfonic acid"}, // regression test for existing sulfonic acid
@@ -352,6 +356,7 @@ int main() {
         {"Cc1ccccc1CCCS(=O)(=O)O", "3-(2-methylphenyl)propane-1-sulfonic acid"},
         // Phosphonic acid chain-wins (Phase 62):
         {"Cc1ccccc1CCCP(=O)(O)O", "3-(2-methylphenyl)propane-1-phosphonic acid"},
+        {"Cc1ccccc1CCC[As](=O)(O)O", "3-(2-methylphenyl)propan-1-arsonic acid"},
         // Regression test for an existing Phase 54 chain-wins example (amide):
         {"Cc1ccccc1CCC(=O)N", "3-(2-methylphenyl)propanamide"},
         
@@ -1225,7 +1230,20 @@ int main() {
             std::cout << "[PASS] Unsupported P pattern (CP(C)C) correctly rejected: " << r.error.toStdString() << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] Unsupported P pattern -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            std::cout << "[FAIL] Unsupported P pattern (CP(C)C) not rejected properly: " << r.name.toStdString() << " " << r.error.toStdString() << "\n";
+            failed++;
+        }
+    }
+
+    {
+        int m = indigoLoadMoleculeFromString("C[As](C)C");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success && r.error.contains("Arsenic-containing groups other than arsonic acid are not supported")) {
+            std::cout << "[PASS] Unsupported As pattern (C[As](C)C) correctly rejected: " << r.error.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Unsupported As pattern (C[As](C)C) not rejected properly: " << r.name.toStdString() << " " << r.error.toStdString() << "\n";
             failed++;
         }
     }
