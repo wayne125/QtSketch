@@ -9245,7 +9245,14 @@ IupacResult IupacNamer::generateName(int mol) {
             else if (winningType == GroupType::AMINE) sfx = (pCount == 1) ? "amine" : "diamine";
             else if (winningType == GroupType::IMINE) sfx = (pCount == 1) ? "imine" : "diimine";
 
-            if (pCount == 1) {
+            bool allCarbon = true;
+            for (int n : ringNodeSet) {
+                if (g.nodes[n].atomicNumber != 6) {
+                    allCarbon = false;
+                    break;
+                }
+            }
+            if (pCount == 1 && prefixPart.isEmpty() && allCarbon) {
                 QString stem = rootStr;
                 if (stem.endsWith("e") && !sfx.isEmpty() && isVowel(sfx[0])) stem.chop(1);
                 fullName = prefixPart + stem + sfx;
