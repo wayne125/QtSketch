@@ -118,10 +118,12 @@ int main() {
         {"c1ccccc1", "benzene"},
         {"C1CCCCC1", "cyclohexane"},
         {"C1CCCCC1O", "cyclohexanol"},
-        // New tests for locant omission bug fix
-        {"Oc1ccccc1CCC", "2-propylbenzene-1-ol"},
-        {"Oc1cccnc1CCC", "2-propylpyridine-3-ol"},
-        {"Oc1cccnc1", "pyridine-3-ol"},
+        // New tests for locant omission bug fix -- the terminal "e" elides before
+        // the vowel-initial "-ol" suffix even with a locant in between, matching
+        // this file's own already-correct "naphthalen-1-ol"/"propan-1-ol" precedent.
+        {"Oc1ccccc1CCC", "2-propylbenzen-1-ol"},
+        {"Oc1cccnc1CCC", "2-propylpyridin-3-ol"},
+        {"Oc1cccnc1", "pyridin-3-ol"},
         {"C1CCCCC1C(=O)O", "cyclohexanecarboxylic acid"},
         {"Cc1ccccc1", "methylbenzene"},
         {"Clc1ccccc1", "chlorobenzene"},

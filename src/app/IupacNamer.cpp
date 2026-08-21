@@ -9252,14 +9252,14 @@ IupacResult IupacNamer::generateName(int mol) {
                     break;
                 }
             }
+            QString stem = rootStr;
+            if (stem.endsWith("e") && !sfx.isEmpty() && isVowel(sfx[0])) stem.chop(1);
             if (pCount == 1 && prefixPart.isEmpty() && allCarbon) {
-                QString stem = rootStr;
-                if (stem.endsWith("e") && !sfx.isEmpty() && isVowel(sfx[0])) stem.chop(1);
                 fullName = prefixPart + stem + sfx;
             } else {
                 QStringList lStrs;
                 for (int l : bestSig.principalLocants) lStrs.append(QString::number(l));
-                fullName = prefixPart + rootStr + QString("-%1-%2").arg(lStrs.join(","), sfx);
+                fullName = prefixPart + stem + QString("-%1-%2").arg(lStrs.join(","), sfx);
             }
         }
     }
