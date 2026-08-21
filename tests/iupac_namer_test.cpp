@@ -121,7 +121,9 @@ int main() {
         // New tests for locant omission bug fix -- the terminal "e" elides before
         // the vowel-initial "-ol" suffix even with a locant in between, matching
         // this file's own already-correct "naphthalen-1-ol"/"propan-1-ol" precedent.
-        {"Oc1ccccc1CCC", "2-propylbenzen-1-ol"},
+        {"Oc1ccccc1CCC", "2-propylphenol"},
+        {"Oc1ccccc1", "phenol"},
+        {"Oc1ccc(C)cc1", "4-methylphenol"},
         {"Oc1cccnc1CCC", "2-propylpyridin-3-ol"},
         {"Oc1cccnc1", "pyridin-3-ol"},
         {"C1CCCCC1C(=O)O", "cyclohexanecarboxylic acid"},
