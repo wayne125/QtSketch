@@ -3950,10 +3950,19 @@ IupacResult IupacNamer::generateName(int mol) {
                     } else {
                         carbonGroup[i] = GroupType::KETONE;
                     }
-                } else if (!doubleS.empty() && (node.totalH >= 1 || node.neighbors.size() <= 2)) {
-                    carbonGroup[i] = GroupType::THIAL;
                 } else if (!doubleS.empty()) {
-                    carbonGroup[i] = GroupType::THIONE;
+                    int singleC = 0;
+                    for (int nei : node.neighbors) {
+                        if (g.nodes[nei].atomicNumber == 6) singleC++;
+                    }
+                    if (singleC == 0 && node.totalH == 0) {
+                        return {false, "", "Carbonothioyl/thiocarbamoyl halide derivatives (rootless thiocarbonyl carbons) are not supported in this phase."};
+                    }
+                    if (node.totalH >= 1 || node.neighbors.size() <= 2) {
+                        carbonGroup[i] = GroupType::THIAL;
+                    } else {
+                        carbonGroup[i] = GroupType::THIONE;
+                    }
                 } else if (!doubleN.empty()) {
                     int nNode = doubleN[0];
                     if (doubleN.size() == 1 && (g.nodes[nNode].totalH >= 1 || g.nodes[nNode].neighbors.size() == 1)) {
@@ -8137,10 +8146,19 @@ IupacResult IupacNamer::generateName(int mol) {
                     } else {
                         carbonGroup[i] = GroupType::KETONE;
                     }
-              } else if (!doubleS.empty() && (node.totalH >= 1 || node.neighbors.size() <= 2)) {
-                  carbonGroup[i] = GroupType::THIAL;
               } else if (!doubleS.empty()) {
-                  carbonGroup[i] = GroupType::THIONE;
+                  int singleC = 0;
+                  for (int nei : node.neighbors) {
+                      if (g.nodes[nei].atomicNumber == 6) singleC++;
+                  }
+                  if (singleC == 0 && node.totalH == 0) {
+                      return {false, "", "Carbonothioyl/thiocarbamoyl halide derivatives (rootless thiocarbonyl carbons) are not supported in this phase."};
+                  }
+                  if (node.totalH >= 1 || node.neighbors.size() <= 2) {
+                      carbonGroup[i] = GroupType::THIAL;
+                  } else {
+                      carbonGroup[i] = GroupType::THIONE;
+                  }
               } else if (!doubleN.empty()) {
                   int nNode = doubleN[0];
                   if (doubleN.size() == 1 && (g.nodes[nNode].totalH >= 1 || g.nodes[nNode].neighbors.size() == 1)) {
@@ -8968,10 +8986,19 @@ IupacResult IupacNamer::generateName(int mol) {
                 } else {
                     carbonGroup[i] = GroupType::KETONE;
                 }
-              } else if (!doubleS.empty() && (node.totalH >= 1 || node.neighbors.size() <= 2)) {
-                  carbonGroup[i] = GroupType::THIAL;
               } else if (!doubleS.empty()) {
-                  carbonGroup[i] = GroupType::THIONE;
+                  int singleC = 0;
+                  for (int nei : node.neighbors) {
+                      if (g.nodes[nei].atomicNumber == 6) singleC++;
+                  }
+                  if (singleC == 0 && node.totalH == 0) {
+                      return {false, "", "Carbonothioyl/thiocarbamoyl halide derivatives (rootless thiocarbonyl carbons) are not supported in this phase."};
+                  }
+                  if (node.totalH >= 1 || node.neighbors.size() <= 2) {
+                      carbonGroup[i] = GroupType::THIAL;
+                  } else {
+                      carbonGroup[i] = GroupType::THIONE;
+                  }
               } else if (!doubleN.empty()) {
                   int nNode = doubleN[0];
                   if (doubleN.size() == 1 && (g.nodes[nNode].totalH >= 1 || g.nodes[nNode].neighbors.size() == 1)) {
