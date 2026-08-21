@@ -238,6 +238,8 @@ int main() {
         {"CS(=O)(=O)O", "methanesulfonic acid"},
         {"CS(=O)(=O)N", "methanesulfonamide"},
         {"c1ccccc1S(=O)(=O)N", "benzenesulfonamide"},
+        {"CS(=O)N", "methanesulfinamide"},
+        {"c1ccccc1S(=O)N", "benzenesulfinamide"},
         {"CS(=O)(=O)Cl", "methanesulfonyl chloride"},
         {"c1ccccc1S(=O)(=O)Cl", "benzenesulfonyl chloride"},
         {"CCS(=O)(=O)Br", "ethanesulfonyl bromide"},
