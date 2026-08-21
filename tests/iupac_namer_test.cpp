@@ -236,6 +236,9 @@ int main() {
         {"CC(=O)Cl", "ethanoyl chloride"},
         {"CC(O)C(=O)Cl", "2-hydroxypropanoyl chloride"},
         {"CS(=O)(=O)O", "methanesulfonic acid"},
+        {"CS(=O)(=O)Cl", "methanesulfonyl chloride"},
+        {"c1ccccc1S(=O)(=O)Cl", "benzenesulfonyl chloride"},
+        {"CCS(=O)(=O)Br", "ethanesulfonyl bromide"},
         {"OC(=O)CS(=O)(=O)O", "2-carboxyethanesulfonic acid"},
         // Phase 62: Phosphonic acid
         {"CP(=O)(O)O", "methanephosphonic acid"},
