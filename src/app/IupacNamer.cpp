@@ -3940,6 +3940,13 @@ IupacResult IupacNamer::generateName(int mol) {
                         carbonGroup[i] = GroupType::AMIDE;
                     }
                 } else if (!tripleN.empty()) {
+                    int singleC = 0;
+                    for (int nei : node.neighbors) {
+                        if (g.nodes[nei].atomicNumber == 6) singleC++;
+                    }
+                    if (singleC == 0 && node.totalH == 0) {
+                        return {false, "", "Cyanic acid halide derivatives (rootless nitrile carbons) are not supported in this phase."};
+                    }
                     carbonGroup[i] = GroupType::NITRILE;
                 } else if (!doubleO.empty()) {
                     if (isAcylPseudohalide(static_cast<int>(i), g, carbonAzide)) {
@@ -8136,6 +8143,13 @@ IupacResult IupacNamer::generateName(int mol) {
                         carbonGroup[i] = GroupType::AMIDE;
                     }
                 } else if (!tripleN.empty()) {
+                    int singleC = 0;
+                    for (int nei : node.neighbors) {
+                        if (g.nodes[nei].atomicNumber == 6) singleC++;
+                    }
+                    if (singleC == 0 && node.totalH == 0) {
+                        return {false, "", "Cyanic acid halide derivatives (rootless nitrile carbons) are not supported in this phase."};
+                    }
                     carbonGroup[i] = GroupType::NITRILE;
                 } else if (!doubleO.empty()) {
                     if (isAcylPseudohalide(static_cast<int>(i), g, carbonAzide)) {
@@ -8976,6 +8990,13 @@ IupacResult IupacNamer::generateName(int mol) {
                     carbonGroup[i] = GroupType::AMIDE;
                 }
             } else if (!tripleN.empty()) {
+                int singleC = 0;
+                for (int nei : node.neighbors) {
+                    if (g.nodes[nei].atomicNumber == 6) singleC++;
+                }
+                if (singleC == 0 && node.totalH == 0) {
+                    return {false, "", "Cyanic acid halide derivatives (rootless nitrile carbons) are not supported in this phase."};
+                }
                 carbonGroup[i] = GroupType::NITRILE;
             } else if (!doubleO.empty()) {
                 if (isAcylPseudohalide(static_cast<int>(i), g, carbonAzide)) {
