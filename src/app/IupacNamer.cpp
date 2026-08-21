@@ -3890,9 +3890,29 @@ IupacResult IupacNamer::generateName(int mol) {
                         return {false, "", "Peroxycarboxylic acids are not supported in this phase."};
                     }
                 } else if (!doubleO.empty() && !halogens.empty() && singleO.empty() && singleN.empty()) {
+                    if (halogens.size() > 1) {
+                        return {false, "", "Carbonic acid halides with multiple halogens are not supported in this phase."};
+                    }
+                    int singleC = 0;
+                    for (int nei : node.neighbors) {
+                        if (g.nodes[nei].atomicNumber == 6) singleC++;
+                    }
+                    if (singleC == 0) {
+                        return {false, "", "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."};
+                    }
                     carbonGroup[i] = GroupType::ACYL_HALIDE;
                     acylHalideHalogen[i] = g.nodes[halogens[0]].atomicNumber;
                 } else if (!doubleO.empty() && !singleN.empty()) {
+                    int singleC = 0;
+                    for (int nei : node.neighbors) {
+                        if (g.nodes[nei].atomicNumber == 6) singleC++;
+                    }
+                    if (singleC == 0) {
+                        return {false, "", "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."};
+                    }
+                    if (!halogens.empty()) {
+                        return {false, "", "Amides with coexisting halogens on the acyl carbon are not supported."};
+                    }
                     bool isHydrazide = false;
                     for (int sN : singleN) {
                         for (size_t k = 0; k < g.nodes[sN].neighbors.size(); ++k) {
@@ -8047,9 +8067,29 @@ IupacResult IupacNamer::generateName(int mol) {
                         return {false, "", "Peroxycarboxylic acids are not supported in this phase."};
                     }
                 } else if (!doubleO.empty() && !halogens.empty() && singleO.empty() && singleN.empty()) {
+                    if (halogens.size() > 1) {
+                        return {false, "", "Carbonic acid halides with multiple halogens are not supported in this phase."};
+                    }
+                    int singleC = 0;
+                    for (int nei : node.neighbors) {
+                        if (g.nodes[nei].atomicNumber == 6) singleC++;
+                    }
+                    if (singleC == 0) {
+                        return {false, "", "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."};
+                    }
                     carbonGroup[i] = GroupType::ACYL_HALIDE;
                     acylHalideHalogen[i] = g.nodes[halogens[0]].atomicNumber;
                 } else if (!doubleO.empty() && !singleN.empty()) {
+                    int singleC = 0;
+                    for (int nei : node.neighbors) {
+                        if (g.nodes[nei].atomicNumber == 6) singleC++;
+                    }
+                    if (singleC == 0) {
+                        return {false, "", "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."};
+                    }
+                    if (!halogens.empty()) {
+                        return {false, "", "Amides with coexisting halogens on the acyl carbon are not supported."};
+                    }
                     bool isHydrazide = false;
                     for (int sN : singleN) {
                         for (size_t k = 0; k < g.nodes[sN].neighbors.size(); ++k) {
@@ -8848,9 +8888,29 @@ IupacResult IupacNamer::generateName(int mol) {
                     return {false, "", "Peroxycarboxylic acids are not supported in this phase."};
                 }
             } else if (!doubleO.empty() && !halogens.empty() && singleO.empty() && singleN.empty()) {
+                if (halogens.size() > 1) {
+                    return {false, "", "Carbonic acid halides with multiple halogens are not supported in this phase."};
+                }
+                int singleC = 0;
+                for (int nei : node.neighbors) {
+                    if (g.nodes[nei].atomicNumber == 6) singleC++;
+                }
+                if (singleC == 0) {
+                    return {false, "", "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."};
+                }
                 carbonGroup[i] = GroupType::ACYL_HALIDE;
                 acylHalideHalogen[i] = g.nodes[halogens[0]].atomicNumber;
             } else if (!doubleO.empty() && !singleN.empty()) {
+                int singleC = 0;
+                for (int nei : node.neighbors) {
+                    if (g.nodes[nei].atomicNumber == 6) singleC++;
+                }
+                if (singleC == 0) {
+                    return {false, "", "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."};
+                }
+                if (!halogens.empty()) {
+                    return {false, "", "Amides with coexisting halogens on the acyl carbon are not supported."};
+                }
                 bool isHydrazide = false;
                 for (int sN : singleN) {
                     for (size_t k = 0; k < g.nodes[sN].neighbors.size(); ++k) {
