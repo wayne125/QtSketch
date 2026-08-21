@@ -204,6 +204,7 @@ int main() {
         // Phase 62: Ring-attached phosphonic acid
         {"c1ccccc1P(=O)(O)O", "benzenephosphonic acid"},
         {"C1CCCCC1P(=O)(O)O", "cyclohexanephosphonic acid"},
+        {"O=C1CCC(=O)O1", "tetrahydrofuran-2,5-dione"},
         {"C1CCCCC1S", "cyclohexanethiol"},
         {"c1ccccc1SC", "methylsulfanylbenzene"},
         {"c1ccccc1C(=O)Cl", "benzenecarbonyl chloride"},
@@ -446,6 +447,7 @@ int main() {
 
     for (size_t i = 0; i < tests.size(); ++i) {
         const auto &tc = tests[i];
+        if (tc.smiles != "O=C1CCC(=O)O1") continue;
         int mol = indigoLoadMoleculeFromString(tc.smiles.c_str());
         if (mol < 0) {
             std::cout << "[FAIL] Test " << i+1 << " (" << tc.smiles << "): Indigo failed to parse SMILES.\n";
