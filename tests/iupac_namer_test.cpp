@@ -3462,15 +3462,21 @@ int main() {
 
     {
         // Saturated 7-membered ring with N: should be rejected with the existing saturated message.
-        // Azepane (saturated 7-membered with NH): C1CCCCCCN1
+        // Azocane (saturated 8-membered with NH -- the comment previously
+        // mislabeled this "7-membered"; C1CCCCCCN1 has 7 carbons + 1 N = 8
+        // ring atoms). Saturated general heterocycles of sizes 7-10 are now
+        // supported (skeletal-replacement 'a' nomenclature, matching the
+        // already-working PIPERIDINE/PYRROLIDINE/THF/THT precedent for 5/6
+        // and LARGE_HETEROCYCLE's own saturated form for 11-20), so this
+        // must now succeed instead of reject.
         int m_sat7 = indigoLoadMoleculeFromString("C1CCCCCCN1");
         IupacResult r_sat7 = IupacNamer::generateName(m_sat7);
         indigoFree(m_sat7);
-        if (!r_sat7.success && r_sat7.error.contains("Saturated or partially unsaturated")) {
-            std::cout << "[PASS] Phase 55 rejection: saturated 7-membered N ring -> " << r_sat7.error.toStdString() << "\n";
+        if (r_sat7.success && r_sat7.name == "azocane") {
+            std::cout << "[PASS] azocane -> " << r_sat7.name.toStdString() << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] Phase 55 rejection: saturated 7-membered N ring should reject with saturated message, got success=" << r_sat7.success << " name='" << r_sat7.name.toStdString() << "' err='" << r_sat7.error.toStdString() << "'\n";
+            std::cout << "[FAIL] azocane -> got success=" << r_sat7.success << " name='" << r_sat7.name.toStdString() << "' err='" << r_sat7.error.toStdString() << "'\n";
             failed++;
         }
     }
@@ -3587,6 +3593,34 @@ int main() {
             passed++;
         } else {
             std::cout << "[FAIL] pyrrolidin-2-one -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Saturated general heterocycles, ring sizes 7-10 (skeletal-replacement
+        // 'a' nomenclature): bare azepane (sole heteroatom, locant correctly
+        // omitted) and azepan-2-one (P-64.3.1's own worked example -- a lactam
+        // on a 7-ring, locant still omitted for the heteroatom even with the
+        // suffix's own locant present, matching the piperidin-4-ol precedent).
+        int m1 = indigoLoadMoleculeFromString("C1CCCCCN1");
+        IupacResult r1 = IupacNamer::generateName(m1);
+        indigoFree(m1);
+        if (r1.success && r1.name == "azepane") {
+            std::cout << "[PASS] azepane -> " << r1.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] azepane -> got success=" << r1.success << " name='" << r1.name.toStdString() << "' err='" << r1.error.toStdString() << "'\n";
+            failed++;
+        }
+        int m2 = indigoLoadMoleculeFromString("O=C1CCCCCN1");
+        IupacResult r2 = IupacNamer::generateName(m2);
+        indigoFree(m2);
+        if (r2.success && r2.name == "azepan-2-one") {
+            std::cout << "[PASS] azepan-2-one -> " << r2.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] azepan-2-one -> got success=" << r2.success << " name='" << r2.name.toStdString() << "' err='" << r2.error.toStdString() << "'\n";
             failed++;
         }
     }

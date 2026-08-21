@@ -368,7 +368,7 @@ static QString hwSixMemberStem(const std::vector<int> &heteroAtomicNumbers) {
 //   size 9: "onine" (always)
 //   size 10: "ecine" (always)
 // For any other size, returns empty string (caller must guard against this).
-static QString hwGeneralRingStem(int ringSize, const std::vector<int> &heteroAtomicNumbers) {
+static QString hwGeneralRingStem(int ringSize, const std::vector<int> &heteroAtomicNumbers, bool saturated = false) {
     switch (ringSize) {
         case 3: {
             // P-22.2.2.1.5.1: stem 'irine' is used in place of 'irene' for rings ONLY containing
@@ -382,10 +382,10 @@ static QString hwGeneralRingStem(int ringSize, const std::vector<int> &heteroAto
         case 4: return "ete";   // Confirmed by PINs: oxete, azete
         case 5: return "ole";   // 5-ring always "ole"
         case 6: return hwSixMemberStem(heteroAtomicNumbers); // delegate to existing logic
-        case 7: return "epine"; // Confirmed by PINs: azepine, oxepine
-        case 8: return "ocine"; // Confirmed by PIN: diazocine
-        case 9: return "onine"; // Confirmed by PIN: dioxonine
-        case 10: return "ecine"; // Confirmed by PIN: diazecine
+        case 7: return saturated ? "epane" : "epine"; // Confirmed by PINs: azepine, azepane
+        case 8: return saturated ? "ocane" : "ocine"; // Confirmed by PIN: diazocine, azocane
+        case 9: return saturated ? "onane" : "onine"; // Confirmed by PIN: dioxonine, azonane
+        case 10: return saturated ? "ecane" : "ecine"; // Confirmed by PIN: diazecine, azecane
         default: return ""; // should never happen for sizes accepted by tryGeneralHeterocycle
     }
 }
@@ -718,6 +718,10 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
                 outType = RingType::TETRAHYDROFURAN; outNameRoot = "tetrahydrofuran"; return true;
             } else if (ringSize == 5 && hZ == 16) {
                 outType = RingType::TETRAHYDROTHIOPHENE; outNameRoot = "tetrahydrothiophene"; return true;
+            } else if (ringSize >= 7 && ringSize <= 10) {
+                if (tryGeneralHeterocycle(g, ringHeteroNodes, ringSize, outNameRoot)) {
+                    outType = RingType::GENERAL_HETEROCYCLE; return true;
+                }
             }
         }
         if (!heteroAromatic) {
@@ -9355,6 +9359,24 @@ IupacResult IupacNamer::generateName(int mol) {
 
     RingSignature bestSig = *bestIt;
     if (rType == RingType::GENERAL_HETEROCYCLE) {
+        // A ring where every ring-internal bond is a plain single bond is fully
+        // saturated (only reachable here for sizes 7-10, single heteroatom --
+        // see the saturated branch in classifyMonocyclicHeteroRing). For this
+        // case, hwGeneralRingStem must build the "-ane"-family stem (azepane,
+        // not azepine); indicated hydrogen (a mancude-form-only concept -- it
+        // marks the one saturated position amid an otherwise-maximally-
+        // unsaturated ring) does not apply at all, since every position is
+        // already saturated; and, matching the same sole-heteroatom locant-
+        // omission convention already established for the other saturated
+        // ring-parent paths (LARGE_HETEROCYCLE's azacycloundecane family,
+        // and PIPERIDINE/PYRROLIDINE/THF/THT), the heteroatom's own locant is
+        // omitted even when a substituent/suffix elsewhere needs its own
+        // locant (e.g. "azepan-2-one", not "1-azepan-2-one").
+        bool ringFullySaturated = true;
+        for (const auto &rb : ringBonds) {
+            if (rb.order != 1) { ringFullySaturated = false; break; }
+        }
+
         // P-22.2.2.1.3: Citation order for collecting locants and prefixes.
         // O > S > Se > Te > N > P > As > Sb > Bi > Si > Ge > Sn > Pb > B
         static const int citationOrder[] = {8, 16, 34, 52, 7, 15, 33, 51, 83, 14, 32, 50, 82, 5};
@@ -9385,7 +9407,7 @@ IupacResult IupacNamer::generateName(int mol) {
         }
         QStringList locStrs;
         for (int l : allLocs) locStrs.append(QString::number(l));
-        QString locantPrefix = locStrs.join(",") + "-";
+        QString locantPrefix = (ringFullySaturated && allLocs.size() == 1) ? "" : (locStrs.join(",") + "-");
 
         // Build 'a'-replacement prefix string in citation order.
         // P-22.2.2.1.1: final 'a' of a prefix elides before the next 'a' (whether
@@ -9420,7 +9442,7 @@ IupacResult IupacNamer::generateName(int mol) {
         }
 
         // Determine stem: P-22.2.2.1.5.1 / Table 2.5 for all ring sizes 3-10
-        QString stem = hwGeneralRingStem(ringSize, allAtomicNumbers);
+        QString stem = hwGeneralRingStem(ringSize, allAtomicNumbers, ringFullySaturated);
         if (stem.isEmpty()) { /* should never happen for sizes accepted by tryGeneralHeterocycle */ }
 
         // P-22.2.2.1.1: elide trailing 'a' of elemPrefixes before the stem
@@ -9429,6 +9451,9 @@ IupacResult IupacNamer::generateName(int mol) {
             elemPrefixes.chop(1);
         }
 
+        if (ringFullySaturated) {
+            parentNameRoot = locantPrefix + elemPrefixes + stem;
+        } else {
         // P-14.7.1: Check for indicated hydrogen (saturated ring position)
         int indicatedH = findIndicatedHydrogenLocant(g, bestSig.ringChain);
         if (indicatedH == -2) {
@@ -9440,6 +9465,7 @@ IupacResult IupacNamer::generateName(int mol) {
         } else {
             // No indicated hydrogen needed
             parentNameRoot = locantPrefix + elemPrefixes + stem;
+        }
         }
     } else if (rType == RingType::LARGE_HETEROCYCLE) {
         // P-22.2.3.1/P-22.2.3.2 (fully saturated heteromonocycles, 11-20 ring members):
