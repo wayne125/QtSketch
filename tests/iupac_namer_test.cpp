@@ -425,7 +425,12 @@ int main() {
         // Phase 19: Mixed and substituted/branched acid anhydrides
         {"CCCC(=O)OC(=O)C", "butanoic ethanoic anhydride"},
         {"CC(Cl)C(=O)OC(=O)C(Cl)C", "2-chloropropanoic anhydride"},
-        {"CC(C)C(=O)OC(=O)CC", "2-methylpropanoic propanoic anhydride"}
+        {"CC(C)C(=O)OC(=O)CC", "2-methylpropanoic propanoic anhydride"},
+
+        // HYDRAZIDE tests
+        {"CCCCC(=O)NN", "pentanehydrazide"},
+        {"NNC(=O)C1CCCCC1", "cyclohexanecarbohydrazide"},
+        {"NNC(=O)CCCC(=O)N", "5-amino-5-oxopentanamide"}
     };
 
     int passed = 0;
