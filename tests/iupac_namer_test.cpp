@@ -265,7 +265,9 @@ int main() {
         {"CC1CCCCC1CCCS(=O)O", "3-(2-methylcyclohexyl)propane-1-sulfinic acid"},
         {"Cc1ccccc1CCCS(=O)O", "3-(2-methylphenyl)propane-1-sulfinic acid"},
         // Sulfoxide regression (should still work, not be misclassified as sulfinic acid)
-        {"CS(=O)C", "methylsulfinylmethane"},
+        {"CS(=O)C", "methanesulfinylmethane"},
+        {"CCS(=O)CC", "ethanesulfinylethane"},
+        {"CCS(=O)(=O)CC", "ethanesulfonylethane"},
         // SULFINIC_ACID regression tests
         {"Oc1ccccc1S(=O)O", "2-hydroxybenzene-1-sulfinic acid"},
         {"CS(=O)(=O)O", "methanesulfonic acid"}, // regression test for existing sulfonic acid
@@ -957,7 +959,7 @@ int main() {
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
         std::string n = r.name.toStdString();
-        if (r.success && n == "methylsulfinylmethane") {
+        if (r.success && n == "methanesulfinylmethane") {
             std::cout << "[PASS] Dimethyl sulfoxide -> " << n << "\n";
             passed++;
         } else {
@@ -972,7 +974,7 @@ int main() {
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
         std::string n = r.name.toStdString();
-        if (r.success && n == "methylsulfonylmethane") {
+        if (r.success && n == "methanesulfonylmethane") {
             std::cout << "[PASS] Dimethyl sulfone -> " << n << "\n";
             passed++;
         } else {

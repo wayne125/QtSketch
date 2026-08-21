@@ -4599,7 +4599,8 @@ IupacResult IupacNamer::generateName(int mol) {
                             if (g.nodes[oNei].atomicNumber == 6 && oNei != cNode) { alkylNei = oNei; break; }
                         }
                         if (alkylNei != -1) {
-                            QString alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
+                            QString alkylName = nameAcyclicChainParentWithSubstituents(g, {alkylNei}, {alkylNei}, {nei}, {}, GroupType::NONE);
+                            if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
                             if (alkylName.isEmpty()) return {false, "", "Unrecognized or unsupported substituent."};
                             alkylName += "sulfinyl";
                             locantSubstituents[locant].append(alkylName);
@@ -4610,7 +4611,8 @@ IupacResult IupacNamer::generateName(int mol) {
                             if (g.nodes[oNei].atomicNumber == 6 && oNei != cNode) { alkylNei = oNei; break; }
                         }
                         if (alkylNei != -1) {
-                            QString alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
+                            QString alkylName = nameAcyclicChainParentWithSubstituents(g, {alkylNei}, {alkylNei}, {nei}, {}, GroupType::NONE);
+                            if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
                             if (alkylName.isEmpty()) return {false, "", "Unrecognized or unsupported substituent."};
                             alkylName += "sulfonyl";
                             locantSubstituents[locant].append(alkylName);
