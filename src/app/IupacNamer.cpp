@@ -8683,6 +8683,26 @@ IupacResult IupacNamer::generateName(int mol) {
                                     QString alkylName = nameBranchGraph(g, alkylNei, nei);
                                     subName = alkylName + "sulfanyl";
                                 }
+                            } else if (sulfoxideSulfurs.count(nei)) {
+                                int alkylNei = -1;
+                                for (int oNei : g.nodes[nei].neighbors) {
+                                    if (g.nodes[oNei].atomicNumber == 6 && oNei != rNode) { alkylNei = oNei; break; }
+                                }
+                                if (alkylNei != -1) {
+                                    QString alkylName = nameAcyclicChainParentWithSubstituents(g, {alkylNei}, {alkylNei}, {nei}, {}, GroupType::NONE);
+                                    if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
+                                    if (!alkylName.isEmpty()) subName = alkylName + "sulfinyl";
+                                }
+                            } else if (sulfoneSulfurs.count(nei)) {
+                                int alkylNei = -1;
+                                for (int oNei : g.nodes[nei].neighbors) {
+                                    if (g.nodes[oNei].atomicNumber == 6 && oNei != rNode) { alkylNei = oNei; break; }
+                                }
+                                if (alkylNei != -1) {
+                                    QString alkylName = nameAcyclicChainParentWithSubstituents(g, {alkylNei}, {alkylNei}, {nei}, {}, GroupType::NONE);
+                                    if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
+                                    if (!alkylName.isEmpty()) subName = alkylName + "sulfonyl";
+                                }
                             }
                         }
                     } else if (nz == 34) {
@@ -9786,6 +9806,26 @@ IupacResult IupacNamer::generateName(int mol) {
                             if (alkylNei != -1) {
                                 QString alkylName = nameBranchGraph(g, alkylNei, nei);
                                 subName = alkylName + "sulfanyl";
+                            }
+                        } else if (sulfoxideSulfurs.count(nei)) {
+                            int alkylNei = -1;
+                            for (int oNei : g.nodes[nei].neighbors) {
+                                if (g.nodes[oNei].atomicNumber == 6 && oNei != rNode) { alkylNei = oNei; break; }
+                            }
+                            if (alkylNei != -1) {
+                                QString alkylName = nameAcyclicChainParentWithSubstituents(g, {alkylNei}, {alkylNei}, {nei}, {}, GroupType::NONE);
+                                if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
+                                if (!alkylName.isEmpty()) subName = alkylName + "sulfinyl";
+                            }
+                        } else if (sulfoneSulfurs.count(nei)) {
+                            int alkylNei = -1;
+                            for (int oNei : g.nodes[nei].neighbors) {
+                                if (g.nodes[oNei].atomicNumber == 6 && oNei != rNode) { alkylNei = oNei; break; }
+                            }
+                            if (alkylNei != -1) {
+                                QString alkylName = nameAcyclicChainParentWithSubstituents(g, {alkylNei}, {alkylNei}, {nei}, {}, GroupType::NONE);
+                                if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
+                                if (!alkylName.isEmpty()) subName = alkylName + "sulfonyl";
                             }
                         }
                     }

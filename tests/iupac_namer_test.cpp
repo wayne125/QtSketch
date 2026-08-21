@@ -268,6 +268,8 @@ int main() {
         {"CS(=O)C", "methanesulfinylmethane"},
         {"CCS(=O)CC", "ethanesulfinylethane"},
         {"CCS(=O)(=O)CC", "ethanesulfonylethane"},
+        {"O=S(c1ccccc1)C", "methanesulfinylbenzene"},
+        {"O=S(=O)(c1ccccc1)C", "methanesulfonylbenzene"},
         // SULFINIC_ACID regression tests
         {"Oc1ccccc1S(=O)O", "2-hydroxybenzene-1-sulfinic acid"},
         {"CS(=O)(=O)O", "methanesulfonic acid"}, // regression test for existing sulfonic acid
@@ -1028,33 +1030,7 @@ int main() {
         }
     }
 
-    {
-        // Phase 22: Exocyclic sulfoxide on ring (must reject cleanly)
-        int m = indigoLoadMoleculeFromString("c1ccccc1S(=O)C");
-        IupacResult r = IupacNamer::generateName(m);
-        indigoFree(m);
-        if (!r.success) {
-            std::cout << "[PASS] Exocyclic sulfoxide on ring rejects cleanly -> " << r.error.toStdString() << "\n";
-            passed++;
-        } else {
-            std::cout << "[FAIL] Exocyclic sulfoxide on ring should reject -> got name='" << r.name.toStdString() << "'\n";
-            failed++;
-        }
-    }
 
-    {
-        // Phase 22: Exocyclic sulfone on ring (must reject cleanly)
-        int m = indigoLoadMoleculeFromString("c1ccccc1S(=O)(=O)C");
-        IupacResult r = IupacNamer::generateName(m);
-        indigoFree(m);
-        if (!r.success) {
-            std::cout << "[PASS] Exocyclic sulfone on ring rejects cleanly -> " << r.error.toStdString() << "\n";
-            passed++;
-        } else {
-            std::cout << "[FAIL] Exocyclic sulfone on ring should reject -> got name='" << r.name.toStdString() << "'\n";
-            failed++;
-        }
-    }
 
     {
         // Phase 22: Exocyclic disulfide on ring (must reject cleanly)
