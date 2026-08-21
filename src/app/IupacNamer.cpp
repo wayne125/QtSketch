@@ -91,6 +91,7 @@ enum class GroupType {
     PHOSPHONIC_ACID, // Phosphonic acid
     PHOSPHONIC_DIHALIDE, // Phosphonic dihalide
     ARSONIC_ACID, // Arsonic acid
+    ARSONIC_DIHALIDE, // Arsonic dihalide
     PHOSPHINE      // Phosphine
 };
 
@@ -1796,6 +1797,15 @@ static QString principalGroupSuffix(GroupType winningType, int k, int pCount,
             for (int l : principalLocants) lStrs.append(QString::number(l));
             sfx = QString("-%1-%2arsonic acid").arg(lStrs.join(","), multiPrefix(pCount));
         }
+    } else if (winningType == GroupType::ARSONIC_DIHALIDE) {
+        QString hName = "di" + halogenSuffixWord(acylHalideHalogenZ);
+        if (pCount == 1) sfx = (k <= 2) ? QString("arsonic %1").arg(hName)
+                                        : QString("-%1-arsonic %2").arg(principalLocants[0]).arg(hName);
+        else {
+            QStringList lStrs;
+            for (int l : principalLocants) lStrs.append(QString::number(l));
+            sfx = QString("-%1-%2arsonic %3").arg(lStrs.join(","), multiPrefix(pCount), hName);
+        }
     } else if (winningType == GroupType::ACID) {
         sfx = (pCount == 2) ? QStringLiteral("dioic acid") : QStringLiteral("oic acid");
     } else if (winningType == GroupType::ESTER) {
@@ -1938,6 +1948,8 @@ static bool isPrincipalGroupHeteroNeighbor(GroupType winningType, const Graph &g
         if (nz == 15 && order == 1) return true;                        // -P(=O)(OH)2
     } else if (winningType == GroupType::ARSONIC_ACID) {
         if (nz == 33 && order == 1) return true;                        // -As(=O)(OH)2
+    } else if (winningType == GroupType::ARSONIC_DIHALIDE) {
+        if (nz == 33 && order == 1) return true;                        // -As(=O)X2
     } else if (winningType == GroupType::ESTER) {
         if (nz == 8 && order == 2) return true;                         // =O
         if (nz == 8 && order == 1) return true;                         // ester -O-
@@ -2330,7 +2342,7 @@ static bool isChainParentWithRingSubstituentSupported(GroupType gt) {
     return gt == GroupType::ACID || gt == GroupType::AMIDE || gt == GroupType::HYDRAZIDE || gt == GroupType::NITRILE ||
            gt == GroupType::ALDEHYDE || gt == GroupType::KETONE ||
            gt == GroupType::ALCOHOL || gt == GroupType::THIOL || gt == GroupType::SELENOL || gt == GroupType::TELLUROL || gt == GroupType::HYDROPEROXIDE || gt == GroupType::AMINE || gt == GroupType::IMINE || gt == GroupType::THIAL || gt == GroupType::THIONE || gt == GroupType::SULFONIC_ACID ||
-           gt == GroupType::SULFINIC_ACID || gt == GroupType::PHOSPHONIC_ACID || gt == GroupType::PHOSPHONIC_DIHALIDE || gt == GroupType::ARSONIC_ACID || gt == GroupType::ESTER || gt == GroupType::ACYL_HALIDE || gt == GroupType::SULFONYL_HALIDE;
+           gt == GroupType::SULFINIC_ACID || gt == GroupType::PHOSPHONIC_ACID || gt == GroupType::PHOSPHONIC_DIHALIDE || gt == GroupType::ARSONIC_ACID || gt == GroupType::ARSONIC_DIHALIDE || gt == GroupType::ESTER || gt == GroupType::ACYL_HALIDE || gt == GroupType::SULFONYL_HALIDE;
 }
 
 // Phase 52 / Phase 54 (P-44.1.1 chain-wins case): when a chain-attached
@@ -3062,6 +3074,8 @@ IupacResult IupacNamer::generateName(int mol) {
     std::map<int, int> carbonPhosphonicDihalide; // carbonNode -> phosphorusNode
     std::map<int, int> phosphonicDihalideZ;    // carbonNode -> halogen atomic number
     std::map<int, int> carbonArsonicAcid;      // carbonNode -> arsenicNode
+    std::map<int, int> carbonArsonicDihalide;  // carbonNode -> arsenicNode
+    std::map<int, int> arsonicDihalideZ;       // carbonNode -> halogen atomic number
     std::map<int, int> carbonBoronicAcid;      // carbonNode -> boronNode
     std::map<int, int> carbonSulfonylHalide;   // carbonNode -> sulfurNode
     std::map<int, int> sulfonylHalideZ;        // carbonNode -> halogen atomic number
@@ -3196,6 +3210,7 @@ IupacResult IupacNamer::generateName(int mol) {
 
             int sglC = 0, dblO = 0, sglO_OH = 0;
             std::vector<int> cNeighbors;
+            std::vector<int> halogens;
             for (size_t j = 0; j < node.neighbors.size(); ++j) {
                 int nei = node.neighbors[j];
                 int order = node.bondOrders[j];
@@ -3207,10 +3222,15 @@ IupacResult IupacNamer::generateName(int mol) {
                     dblO++;
                 } else if (nZ == 8 && order == 1 && (g.nodes[nei].totalH >= 1 || g.nodes[nei].neighbors.size() == 1)) {
                     sglO_OH++;
+                } else if ((nZ == 9 || nZ == 17 || nZ == 35 || nZ == 53) && order == 1) {
+                    halogens.push_back(nei);
                 }
             }
             if (sglC == 1 && dblO == 1 && sglO_OH == 2 && node.neighbors.size() == 4) {
                 carbonArsonicAcid[cNeighbors[0]] = static_cast<int>(i);
+            } else if (sglC == 1 && dblO == 1 && halogens.size() == 2 && node.neighbors.size() == 4 && g.nodes[halogens[0]].atomicNumber == g.nodes[halogens[1]].atomicNumber) {
+                carbonArsonicDihalide[cNeighbors[0]] = static_cast<int>(i);
+                arsonicDihalideZ[cNeighbors[0]] = g.nodes[halogens[0]].atomicNumber;
             } else {
                 return {false, "", "Arsenic-containing groups other than arsonic acid are not supported in this phase."};
             }
@@ -4109,6 +4129,8 @@ IupacResult IupacNamer::generateName(int mol) {
                     carbonGroup[i] = GroupType::PHOSPHONIC_DIHALIDE;
                 } else if (carbonArsonicAcid.count(i)) {
                     carbonGroup[i] = GroupType::ARSONIC_ACID;
+                } else if (carbonArsonicDihalide.count(i)) {
+                    carbonGroup[i] = GroupType::ARSONIC_DIHALIDE;
                 } else if (carbonThiol.count(i)) {
                     carbonGroup[i] = GroupType::THIOL;
                 } else if (carbonSelenol.count(i)) {
@@ -4151,7 +4173,7 @@ IupacResult IupacNamer::generateName(int mol) {
 
         GroupType winningType = GroupType::NONE;
         static const GroupType seniorityOrder[] = {
-            GroupType::SULFONIC_ACID, GroupType::SULFINIC_ACID, GroupType::ACID, GroupType::PHOSPHONIC_ACID, GroupType::PHOSPHONIC_DIHALIDE, GroupType::ARSONIC_ACID, GroupType::BORONIC_ACID, GroupType::ESTER, GroupType::ACYL_HALIDE, GroupType::SULFONYL_HALIDE, GroupType::AMIDE, GroupType::HYDRAZIDE, GroupType::NITRILE,
+            GroupType::SULFONIC_ACID, GroupType::SULFINIC_ACID, GroupType::ACID, GroupType::PHOSPHONIC_ACID, GroupType::PHOSPHONIC_DIHALIDE, GroupType::ARSONIC_ACID, GroupType::ARSONIC_DIHALIDE, GroupType::BORONIC_ACID, GroupType::ESTER, GroupType::ACYL_HALIDE, GroupType::SULFONYL_HALIDE, GroupType::AMIDE, GroupType::HYDRAZIDE, GroupType::NITRILE,
             GroupType::ALDEHYDE, GroupType::THIAL, GroupType::KETONE, GroupType::THIONE, GroupType::ALCOHOL, GroupType::THIOL, GroupType::SELENOL, GroupType::TELLUROL, GroupType::HYDROPEROXIDE, GroupType::AMINE, GroupType::IMINE, GroupType::PHOSPHINE
         };
 
@@ -4468,6 +4490,9 @@ IupacResult IupacNamer::generateName(int mol) {
             if (carbonArsonicAcid.count(cNode) && winningType != GroupType::ARSONIC_ACID) {
                 locantSubstituents[locant].append("arsono");
             }
+            if (carbonArsonicDihalide.count(cNode) && winningType != GroupType::ARSONIC_DIHALIDE) {
+                locantSubstituents[locant].append("di" + halogenPrefix(arsonicDihalideZ[cNode]) + "arsoryl");
+            }
             if (carbonThiol.count(cNode) && winningType != GroupType::THIOL) {
                 locantSubstituents[locant].append("sulfanyl");
             }
@@ -4518,6 +4543,7 @@ IupacResult IupacNamer::generateName(int mol) {
                 if (carbonPhosphonicAcid.count(cNode) && carbonPhosphonicAcid[cNode] == nei) continue;
                 if (carbonPhosphonicDihalide.count(cNode) && carbonPhosphonicDihalide[cNode] == nei) continue;
                 if (carbonArsonicAcid.count(cNode) && carbonArsonicAcid[cNode] == nei) continue;
+                if (carbonArsonicDihalide.count(cNode) && carbonArsonicDihalide[cNode] == nei) continue;
                 if (carbonThiol.count(cNode) && carbonThiol[cNode] == nei) continue;
                 if (carbonSelenol.count(cNode) && carbonSelenol[cNode] == nei) continue;
                 if (carbonTellurol.count(cNode) && carbonTellurol[cNode] == nei) continue;
@@ -4947,6 +4973,11 @@ IupacResult IupacNamer::generateName(int mol) {
                 acylHalideZForSfx = phosphonicDihalideZ[bestSig.parentChain[0]];
                 for (int pc : bestSig.parentChain) {
                     if (phosphonicDihalideZ.count(pc)) { acylHalideZForSfx = phosphonicDihalideZ[pc]; break; }
+                }
+            } else if (winningType == GroupType::ARSONIC_DIHALIDE) {
+                acylHalideZForSfx = arsonicDihalideZ[bestSig.parentChain[0]];
+                for (int pc : bestSig.parentChain) {
+                    if (arsonicDihalideZ.count(pc)) { acylHalideZForSfx = arsonicDihalideZ[pc]; break; }
                 }
             }
             QString sfx = principalGroupSuffix(winningType, k, pCount, bestSig.principalLocants, acylHalideZForSfx);
@@ -8345,6 +8376,8 @@ IupacResult IupacNamer::generateName(int mol) {
                     carbonGroup[i] = GroupType::PHOSPHONIC_DIHALIDE;
                 } else if (carbonArsonicAcid.count(i)) {
                     carbonGroup[i] = GroupType::ARSONIC_ACID;
+                } else if (carbonArsonicDihalide.count(i)) {
+                    carbonGroup[i] = GroupType::ARSONIC_DIHALIDE;
                 } else if (carbonHydroperoxide.count(i)) {
                     carbonGroup[i] = GroupType::HYDROPEROXIDE;
                 } else if (carbonPhosphine.count(i)) {
@@ -8369,26 +8402,27 @@ IupacResult IupacNamer::generateName(int mol) {
                 case GroupType::PHOSPHONIC_ACID: return 4;
                 case GroupType::PHOSPHONIC_DIHALIDE: return 5;
                 case GroupType::ARSONIC_ACID: return 6;
-                case GroupType::BORONIC_ACID: return 7;
-                case GroupType::ESTER: return 8;
-                case GroupType::ACYL_HALIDE: return 9;
-                case GroupType::SULFONYL_HALIDE: return 10;
-                case GroupType::AMIDE: return 11;
-                case GroupType::HYDRAZIDE: return 12;
-                case GroupType::NITRILE: return 13;
-                case GroupType::ALDEHYDE: return 14;
-                case GroupType::THIAL: return 15;
-                case GroupType::KETONE: return 16;
-                case GroupType::THIONE: return 17;
-                case GroupType::ALCOHOL: return 18;
-                case GroupType::THIOL: return 19;
-                case GroupType::SELENOL: return 20;
-                case GroupType::TELLUROL: return 21;
-                case GroupType::HYDROPEROXIDE: return 22;
-                case GroupType::AMINE: return 23;
-                case GroupType::IMINE: return 24;
-                case GroupType::PHOSPHINE: return 25;
-                default: return 26;
+                case GroupType::ARSONIC_DIHALIDE: return 7;
+                case GroupType::BORONIC_ACID: return 8;
+                case GroupType::ESTER: return 9;
+                case GroupType::ACYL_HALIDE: return 10;
+                case GroupType::SULFONYL_HALIDE: return 11;
+                case GroupType::AMIDE: return 12;
+                case GroupType::HYDRAZIDE: return 13;
+                case GroupType::NITRILE: return 14;
+                case GroupType::ALDEHYDE: return 15;
+                case GroupType::THIAL: return 16;
+                case GroupType::KETONE: return 17;
+                case GroupType::THIONE: return 18;
+                case GroupType::ALCOHOL: return 19;
+                case GroupType::THIOL: return 20;
+                case GroupType::SELENOL: return 21;
+                case GroupType::TELLUROL: return 22;
+                case GroupType::HYDROPEROXIDE: return 23;
+                case GroupType::AMINE: return 24;
+                case GroupType::IMINE: return 25;
+                case GroupType::PHOSPHINE: return 26;
+                default: return 27;
             }
         };
 
@@ -8547,7 +8581,7 @@ IupacResult IupacNamer::generateName(int mol) {
                     if (ringNodeSet.count(nei)) continue;
 
                     if (winningType != GroupType::NONE) {
-                        if ((winningType == GroupType::ALCOHOL || winningType == GroupType::KETONE || winningType == GroupType::AMINE || winningType == GroupType::IMINE || winningType == GroupType::SULFONIC_ACID || winningType == GroupType::SULFONYL_HALIDE || winningType == GroupType::SULFINIC_ACID || winningType == GroupType::THIOL || winningType == GroupType::SELENOL || winningType == GroupType::TELLUROL || winningType == GroupType::HYDROPEROXIDE || winningType == GroupType::PHOSPHONIC_ACID || winningType == GroupType::PHOSPHONIC_DIHALIDE || winningType == GroupType::ARSONIC_ACID) && isPrincipalRNode) {
+                        if ((winningType == GroupType::ALCOHOL || winningType == GroupType::KETONE || winningType == GroupType::AMINE || winningType == GroupType::IMINE || winningType == GroupType::SULFONIC_ACID || winningType == GroupType::SULFONYL_HALIDE || winningType == GroupType::SULFINIC_ACID || winningType == GroupType::THIOL || winningType == GroupType::SELENOL || winningType == GroupType::TELLUROL || winningType == GroupType::HYDROPEROXIDE || winningType == GroupType::PHOSPHONIC_ACID || winningType == GroupType::PHOSPHONIC_DIHALIDE || winningType == GroupType::ARSONIC_ACID || winningType == GroupType::ARSONIC_DIHALIDE) && isPrincipalRNode) {
                             int nz = g.nodes[nei].atomicNumber;
                             bool isAzide = (carbonAzide.count(rNode) && std::find(carbonAzide[rNode].begin(), carbonAzide[rNode].end(), nei) != carbonAzide[rNode].end());
                             if (!isAzide && (nz == 7 || nz == 8 || nz == 16 || nz == 34 || nz == 52 || nz == 15 || nz == 33)) continue;
@@ -8658,6 +8692,8 @@ IupacResult IupacNamer::generateName(int mol) {
                     } else if (nz == 33) {
                         if (carbonArsonicAcid.count(rNode) && carbonArsonicAcid[rNode] == nei && winningType != GroupType::ARSONIC_ACID) {
                             subName = "arsono";
+                        } else if (carbonArsonicDihalide.count(rNode) && carbonArsonicDihalide[rNode] == nei && winningType != GroupType::ARSONIC_DIHALIDE) {
+                            subName = "di" + halogenPrefix(arsonicDihalideZ[rNode]) + "arsoryl";
                         }
                     } else if (nz == 6) {
                         if (carbonGroup.count(nei) && winningType != carbonGroup[nei]) {
@@ -8849,6 +8885,15 @@ IupacResult IupacNamer::generateName(int mol) {
             }
             else if (winningType == GroupType::PHOSPHONIC_ACID) sfx = (pCount == 1) ? "phosphonic acid" : "diphosphonic acid";
                 else if (winningType == GroupType::ARSONIC_ACID) sfx = (pCount == 1) ? "arsonic acid" : "diarsonic acid";
+                else if (winningType == GroupType::ARSONIC_DIHALIDE) {
+                    QString hName;
+                    int hz = arsonicDihalideZ.empty() ? 17 : arsonicDihalideZ.begin()->second;
+                    for (int pc : principalCarbons) {
+                        if (arsonicDihalideZ.count(pc)) { hz = arsonicDihalideZ[pc]; break; }
+                    }
+                    hName = "di" + halogenSuffixWord(hz);
+                    sfx = (pCount == 1) ? ("arsonic " + hName) : ("diarsonic " + hName);
+                }
                 else if (winningType == GroupType::THIOL) sfx = (pCount == 1) ? "thiol" : "dithiol";
                 else if (winningType == GroupType::SELENOL) sfx = (pCount == 1) ? "selenol" : "diselenol";
                 else if (winningType == GroupType::TELLUROL) sfx = (pCount == 1) ? "tellurol" : "ditellurol";
@@ -9229,6 +9274,8 @@ IupacResult IupacNamer::generateName(int mol) {
                 carbonGroup[i] = GroupType::PHOSPHONIC_DIHALIDE;
             } else if (carbonArsonicAcid.count(i)) {
                 carbonGroup[i] = GroupType::ARSONIC_ACID;
+            } else if (carbonArsonicDihalide.count(i)) {
+                carbonGroup[i] = GroupType::ARSONIC_DIHALIDE;
             } else if (carbonHydroperoxide.count(i)) {
                 carbonGroup[i] = GroupType::HYDROPEROXIDE;
             } else if (carbonPhosphine.count(i)) {
@@ -9253,26 +9300,27 @@ IupacResult IupacNamer::generateName(int mol) {
             case GroupType::PHOSPHONIC_ACID: return 4;
             case GroupType::PHOSPHONIC_DIHALIDE: return 5;
             case GroupType::ARSONIC_ACID: return 6;
-            case GroupType::BORONIC_ACID: return 7;
-            case GroupType::ESTER: return 8;
-            case GroupType::ACYL_HALIDE: return 9;
-            case GroupType::SULFONYL_HALIDE: return 10;
-            case GroupType::AMIDE: return 11;
-            case GroupType::HYDRAZIDE: return 12;
-            case GroupType::NITRILE: return 13;
-            case GroupType::ALDEHYDE: return 14;
-            case GroupType::THIAL: return 15;
-            case GroupType::KETONE: return 16;
-            case GroupType::THIONE: return 17;
-            case GroupType::ALCOHOL: return 18;
-            case GroupType::THIOL: return 19;
-            case GroupType::SELENOL: return 20;
-            case GroupType::TELLUROL: return 21;
-            case GroupType::HYDROPEROXIDE: return 22;
-            case GroupType::AMINE: return 23;
-            case GroupType::IMINE: return 24;
-            case GroupType::PHOSPHINE: return 25;
-            default: return 26;
+            case GroupType::ARSONIC_DIHALIDE: return 7;
+            case GroupType::BORONIC_ACID: return 8;
+            case GroupType::ESTER: return 9;
+            case GroupType::ACYL_HALIDE: return 10;
+            case GroupType::SULFONYL_HALIDE: return 11;
+            case GroupType::AMIDE: return 12;
+            case GroupType::HYDRAZIDE: return 13;
+            case GroupType::NITRILE: return 14;
+            case GroupType::ALDEHYDE: return 15;
+            case GroupType::THIAL: return 16;
+            case GroupType::KETONE: return 17;
+            case GroupType::THIONE: return 18;
+            case GroupType::ALCOHOL: return 19;
+            case GroupType::THIOL: return 20;
+            case GroupType::SELENOL: return 21;
+            case GroupType::TELLUROL: return 22;
+            case GroupType::HYDROPEROXIDE: return 23;
+            case GroupType::AMINE: return 24;
+            case GroupType::IMINE: return 25;
+            case GroupType::PHOSPHINE: return 26;
+            default: return 27;
         }
     };
 
@@ -9623,7 +9671,7 @@ IupacResult IupacNamer::generateName(int mol) {
                 if (ringNodeSet.count(nei)) continue;
 
                 if (winningType != GroupType::NONE) {
-                    if ((winningType == GroupType::ALCOHOL || winningType == GroupType::KETONE || winningType == GroupType::AMINE || winningType == GroupType::IMINE || winningType == GroupType::SULFONIC_ACID || winningType == GroupType::SULFONYL_HALIDE || winningType == GroupType::SULFINIC_ACID || winningType == GroupType::THIOL || winningType == GroupType::SELENOL || winningType == GroupType::TELLUROL || winningType == GroupType::HYDROPEROXIDE || winningType == GroupType::PHOSPHONIC_ACID || winningType == GroupType::PHOSPHONIC_DIHALIDE || winningType == GroupType::ARSONIC_ACID) && isPrincipalRNode) {
+                    if ((winningType == GroupType::ALCOHOL || winningType == GroupType::KETONE || winningType == GroupType::AMINE || winningType == GroupType::IMINE || winningType == GroupType::SULFONIC_ACID || winningType == GroupType::SULFONYL_HALIDE || winningType == GroupType::SULFINIC_ACID || winningType == GroupType::THIOL || winningType == GroupType::SELENOL || winningType == GroupType::TELLUROL || winningType == GroupType::HYDROPEROXIDE || winningType == GroupType::PHOSPHONIC_ACID || winningType == GroupType::PHOSPHONIC_DIHALIDE || winningType == GroupType::ARSONIC_ACID || winningType == GroupType::ARSONIC_DIHALIDE) && isPrincipalRNode) {
                         int nz = g.nodes[nei].atomicNumber;
                         bool isAzide = (carbonAzide.count(rNode) && std::find(carbonAzide[rNode].begin(), carbonAzide[rNode].end(), nei) != carbonAzide[rNode].end());
                         if (!isAzide && (nz == 7 || nz == 8 || nz == 16 || nz == 34 || nz == 52 || nz == 15 || nz == 33)) continue;
@@ -9734,6 +9782,8 @@ IupacResult IupacNamer::generateName(int mol) {
                 } else if (nz == 33) {
                     if (carbonArsonicAcid.count(rNode) && carbonArsonicAcid[rNode] == nei && winningType != GroupType::ARSONIC_ACID) {
                         subName = "arsono";
+                    } else if (carbonArsonicDihalide.count(rNode) && carbonArsonicDihalide[rNode] == nei && winningType != GroupType::ARSONIC_DIHALIDE) {
+                        subName = "di" + halogenPrefix(arsonicDihalideZ[rNode]) + "arsoryl";
                     }
                 } else if (nz == 6) {
                     if (carbonGroup.count(nei) && winningType != carbonGroup[nei]) {
@@ -10119,6 +10169,15 @@ IupacResult IupacNamer::generateName(int mol) {
             }
             else if (winningType == GroupType::PHOSPHONIC_ACID) sfx = (pCount == 1) ? "phosphonic acid" : "diphosphonic acid";
             else if (winningType == GroupType::ARSONIC_ACID) sfx = (pCount == 1) ? "arsonic acid" : "diarsonic acid";
+            else if (winningType == GroupType::ARSONIC_DIHALIDE) {
+                QString hName;
+                int hz = arsonicDihalideZ.empty() ? 17 : arsonicDihalideZ.begin()->second;
+                for (int pc : principalCarbons) {
+                    if (arsonicDihalideZ.count(pc)) { hz = arsonicDihalideZ[pc]; break; }
+                }
+                hName = "di" + halogenSuffixWord(hz);
+                sfx = (pCount == 1) ? ("arsonic " + hName) : ("diarsonic " + hName);
+            }
             else if (winningType == GroupType::THIOL) sfx = (pCount == 1) ? "thiol" : "dithiol";
             else if (winningType == GroupType::SELENOL) sfx = (pCount == 1) ? "selenol" : "diselenol";
             else if (winningType == GroupType::TELLUROL) sfx = (pCount == 1) ? "tellurol" : "ditellurol";
