@@ -103,13 +103,39 @@ QString halogenPrefix(int z) {
     }
 }
 
-bool isAcylPseudohalide(int i, const Graph &g, const std::map<int, std::vector<int>> &carbonAzide, const std::map<int, std::vector<int>> &carbonIsocyanate) {
+// Structural check for an isocyanate/isothiocyanate nitrogen (N=C=O or
+// N=C=S) singly bonded to `fromCarbon`, independent of any precomputed map
+// so it works the same in every duplicated classification region.
+bool isIsocyanateNitrogen(int nNode, int fromCarbon, const Graph &g) {
+    const GraphNode &n = g.nodes[nNode];
+    if (n.atomicNumber != 7 || n.totalH != 0 || n.neighbors.size() != 2) return false;
+    for (size_t k = 0; k < n.neighbors.size(); ++k) {
+        int nn = n.neighbors[k];
+        if (nn == fromCarbon || n.bondOrders[k] != 2 || g.nodes[nn].atomicNumber != 6) continue;
+        const GraphNode &isoC = g.nodes[nn];
+        if (isoC.neighbors.size() != 2) continue;
+        for (size_t m = 0; m < isoC.neighbors.size(); ++m) {
+            int isoNei = isoC.neighbors[m];
+            int isoZ = g.nodes[isoNei].atomicNumber;
+            if ((isoZ == 8 || isoZ == 16) && isoC.bondOrders[m] == 2 && g.nodes[isoNei].neighbors.size() == 1) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool isAcylPseudohalide(int i, const Graph &g, const std::map<int, std::vector<int>> &carbonAzide) {
     if (carbonAzide.count(i)) return true;
-    if (carbonIsocyanate.count(i)) return true;
     const GraphNode &node = g.nodes[i];
     for (size_t j = 0; j < node.neighbors.size(); ++j) {
         int nei = node.neighbors[j];
-        if (g.nodes[nei].atomicNumber == 6 && node.bondOrders[j] == 1) {
+        int nZ = g.nodes[nei].atomicNumber;
+        int order = node.bondOrders[j];
+
+        // Acyl cyanide: -C(=O)-C#N (nitrile carbon attached via a C-C bond,
+        // with no other heavy-atom substituents on that nitrile carbon).
+        if (nZ == 6 && order == 1) {
             const GraphNode &neiNode = g.nodes[nei];
             int tripleNCount = 0;
             int otherHeavyAtoms = 0;
@@ -123,6 +149,9 @@ bool isAcylPseudohalide(int i, const Graph &g, const std::map<int, std::vector<i
             }
             if (tripleNCount == 1 && otherHeavyAtoms == 0) return true;
         }
+
+        // Acyl isocyanate/isothiocyanate: -C(=O)-N=C=O (or =S).
+        if (nZ == 7 && order == 1 && isIsocyanateNitrogen(nei, i, g)) return true;
     }
     return false;
 }
@@ -3857,7 +3886,7 @@ IupacResult IupacNamer::generateName(int mol) {
                 } else if (!tripleN.empty()) {
                     carbonGroup[i] = GroupType::NITRILE;
                 } else if (!doubleO.empty()) {
-                    if (isAcylPseudohalide(static_cast<int>(i), g, carbonAzide, carbonIsocyanate)) {
+                    if (isAcylPseudohalide(static_cast<int>(i), g, carbonAzide)) {
                         return {false, "", "Acyl pseudohalides are not supported in this phase."};
                     }
                     if (node.totalH >= 1 || node.neighbors.size() <= 2) {
@@ -7949,6 +7978,7 @@ IupacResult IupacNamer::generateName(int mol) {
                     else if (nZ == 7 && order == 1) {
                         bool isNitroIsoOrAzide = false;
                         if (carbonAzide.count(i) && std::find(carbonAzide[i].begin(), carbonAzide[i].end(), nei) != carbonAzide[i].end()) isNitroIsoOrAzide = true;
+                        if (isIsocyanateNitrogen(nei, static_cast<int>(i), g)) isNitroIsoOrAzide = true;
                         if (!isNitroIsoOrAzide) singleN.push_back(nei);
                     }
                     else if (nZ == 7 && order == 3) tripleN.push_back(nei);
@@ -8009,7 +8039,7 @@ IupacResult IupacNamer::generateName(int mol) {
                 } else if (!tripleN.empty()) {
                     carbonGroup[i] = GroupType::NITRILE;
                 } else if (!doubleO.empty()) {
-                    if (isAcylPseudohalide(static_cast<int>(i), g, carbonAzide, std::map<int, std::vector<int>>())) {
+                    if (isAcylPseudohalide(static_cast<int>(i), g, carbonAzide)) {
                         return {false, "", "Acyl pseudohalides are not supported in this phase."};
                     }
                     if (node.totalH >= 1 || node.neighbors.size() <= 2) {
@@ -8739,6 +8769,7 @@ IupacResult IupacNamer::generateName(int mol) {
                 else if (nZ == 7 && order == 1) {
                     bool isNitroIsoOrAzide = false;
                     if (carbonAzide.count(i) && std::find(carbonAzide[i].begin(), carbonAzide[i].end(), nei) != carbonAzide[i].end()) isNitroIsoOrAzide = true;
+                    if (isIsocyanateNitrogen(nei, static_cast<int>(i), g)) isNitroIsoOrAzide = true;
                     // Phase 70: a ring-internal N-C bond (both atoms in ringNodeSet) is
                     // the ring itself, not an exocyclic amine substituent -- previously
                     // unreachable because every saturated-heterocycle-as-parent case was
@@ -8805,7 +8836,7 @@ IupacResult IupacNamer::generateName(int mol) {
             } else if (!tripleN.empty()) {
                 carbonGroup[i] = GroupType::NITRILE;
             } else if (!doubleO.empty()) {
-                if (isAcylPseudohalide(static_cast<int>(i), g, carbonAzide, std::map<int, std::vector<int>>())) {
+                if (isAcylPseudohalide(static_cast<int>(i), g, carbonAzide)) {
                     return {false, "", "Acyl pseudohalides are not supported in this phase."};
                 }
                 if (node.totalH >= 1 || node.neighbors.size() <= 2) {
