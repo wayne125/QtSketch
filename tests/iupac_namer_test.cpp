@@ -430,7 +430,15 @@ int main() {
         // HYDRAZIDE tests
         {"CCCCC(=O)NN", "pentanehydrazide"},
         {"NNC(=O)C1CCCCC1", "cyclohexanecarbohydrazide"},
-        {"NNC(=O)CCCC(=O)N", "5-amino-5-oxopentanamide"}
+        // Amide wins seniority over hydrazide (per the real suffix table, amide
+        // outranks hydrazide), demoting the non-principal hydrazide carbon to a
+        // substituent -- but this codebase has no "hydrazino"/"hydrazinocarbonyl"
+        // prefix, and the generic amino-substituent fallback only correctly
+        // represents a plain, unsubstituted -NH2 (calling a hydrazide's chained
+        // -NH-NH2 group "amino" would silently drop its outer nitrogen from the
+        // name entirely). Must reject cleanly rather than produce an incomplete
+        // name missing an atom.
+        {"NNC(=O)CCCC(=O)N", "", true, "Substituted amine/hydrazine substituents are not supported in this phase."}
     };
 
     int passed = 0;

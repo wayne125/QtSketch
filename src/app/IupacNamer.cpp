@@ -4491,6 +4491,18 @@ IupacResult IupacNamer::generateName(int mol) {
                                 }
                             }
                         } else {
+                            // "amino" only correctly represents a plain, unsubstituted -NH2.
+                            // If nei has any other heavy-atom neighbor (e.g. a chained N as in
+                            // a non-principal hydrazide's -NH-NH2, or any other N-substituent),
+                            // silently calling it "amino" would drop that neighbor from the name
+                            // entirely -- reject cleanly instead of producing an incomplete name.
+                            bool isPlainNH2 = true;
+                            for (int nNei2 : g.nodes[nei].neighbors) {
+                                if (nNei2 != cNode) { isPlainNH2 = false; break; }
+                            }
+                            if (!isPlainNH2) {
+                                return {false, "", "Substituted amine/hydrazine substituents are not supported in this phase."};
+                            }
                             locantSubstituents[locant].append("amino");
                         }
                     }
