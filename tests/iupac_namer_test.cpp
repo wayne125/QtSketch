@@ -242,6 +242,9 @@ int main() {
         {"OC(=O)CS(=O)(=O)O", "2-carboxyethanesulfonic acid"},
         // Phase 62: Phosphonic acid
         {"CP(=O)(O)O", "methanephosphonic acid"},
+        {"CP(=O)(Cl)Cl", "methanephosphonic dichloride"},
+        {"c1ccccc1P(=O)(Cl)Cl", "benzenephosphonic dichloride"},
+        {"CCP(=O)(Br)Br", "ethanephosphonic dibromide"},
         {"C[As](=O)(O)O", "methanarsonic acid"},
         {"CCCP(=O)(O)O", "propane-1-phosphonic acid"},
         {"CCC[As](=O)(O)O", "propan-1-arsonic acid"},
