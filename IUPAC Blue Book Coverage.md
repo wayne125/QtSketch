@@ -396,16 +396,29 @@ wherever both could appear.
    reverted, and re-implemented correctly. `iupac_namer_test` 471/471 (identical to baseline —
    the furan-plus-chain-COOH regression case is unaffected), `ctest` 11/11.
 
-   **New adjacent gap found (not fixed here, confirmed pre-existing and independent of the fix
-   above via a baseline-code control test)**: ring-as-parent name assembly has a formatting bug
-   when an aromatic ring parent carries both a hydroxy suffix and an additional substituent —
-   e.g. a plain propyl-substituted phenol already produces the malformed `2-propylbenzenol`
-   (missing the `-ol` suffix's own locant, and missing the "phenol" retained name) on the
-   *unmodified* pre-existing code, confirmed by testing the same molecule shape against a
-   temporarily-reverted build. The P-44.1.2 fix above makes more heteroatom-ring cases reach this
-   already-broken code path (e.g. a substituted hydroxypyridine), but does not itself introduce
-   the bug. Needs its own follow-up: locant citation for a ring's own suffix group when combined
-   with a substituent prefix, and wiring in retained names (phenol) for the substituted case.
+   **Adjacent gap found during this work — locant-omission half fixed 2026-08-21** (commit
+   `0677742`, elision follow-up in `4587501`): ring-as-parent name assembly (the on-ring suffix
+   branch, `IupacNamer.cpp` ~line 9248, shared by benzene/pyridine/furan/GENERAL_HETEROCYCLE ring
+   parents alike) was dropping the suffix group's own locant unconditionally whenever there was
+   exactly one instance of it — correct only for a genuinely symmetric, otherwise-unsubstituted
+   all-carbon monocycle (`cyclohexanol`, still correctly locant-less), wrong whenever the ring
+   also carries another substituent (`2-propylbenzenol` — ambiguous, missing the OH's own
+   position) or is a heteroatom ring where numbering is never symmetric (`2-propylpyridinol` —
+   worse, since pyridine's numbering is fixed by N regardless of substituents). Fixed by gating
+   the omission on `prefixPart.isEmpty() && allCarbon` instead of unconditionally; confirmed
+   pre-existing and independent of the P-44.1.2 fix above via a baseline-code control test before
+   fixing. A first pass at the fix omitted the terminal-`e` elision the with-locant case needs
+   (`2-propylbenzene-1-ol` instead of the correct `2-propylbenzen-1-ol`) — caught by comparing
+   against this file's own already-correct precedent (`naphthalen-1-ol`, `propan-1-ol`, both of
+   which already elide before a locant-prefixed vowel-initial suffix) and fixed by computing the
+   possibly-elided stem once, before branching, instead of only in the now-narrower omit-locant
+   branch. `iupac_namer_test` 473→476/476, `ctest` 11/11.
+
+   **Still not fixed, deliberately out of scope for the above**: the "phenol" retained name for
+   substituted hydroxybenzene (this codebase produces the valid-but-non-preferred systematic
+   `benzen-1-ol`/`4-methylbenzen-1-ol` rather than the retained PIN `phenol`/`4-methylphenol`) —
+   a distinct, lower-priority enhancement needing its own scoped look at how other retained
+   ring-parent names (naphthalene, pentalene) are already handled in this file.
 
    **Sub-task B (polycyclic ring as chain substituent) explicitly deferred, not attempted**:
    lifting the single-attachment / monocyclic-ring restriction (fused/bridged/polycyclic ring as
