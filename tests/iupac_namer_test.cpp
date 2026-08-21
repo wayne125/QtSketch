@@ -118,6 +118,10 @@ int main() {
         {"c1ccccc1", "benzene"},
         {"C1CCCCC1", "cyclohexane"},
         {"C1CCCCC1O", "cyclohexanol"},
+        // New tests for locant omission bug fix
+        {"Oc1ccccc1CCC", "2-propylbenzene-1-ol"},
+        {"Oc1cccnc1CCC", "2-propylpyridine-3-ol"},
+        {"Oc1cccnc1", "pyridine-3-ol"},
         {"C1CCCCC1C(=O)O", "cyclohexanecarboxylic acid"},
         {"Cc1ccccc1", "methylbenzene"},
         {"Clc1ccccc1", "chlorobenzene"},
@@ -202,7 +206,7 @@ int main() {
         {"C1CCCCC1C(=O)Cl", "cyclohexanecarbonyl chloride"},
         {"c1ccc2cc(S(=O)(=O)O)ccc2c1", "naphthalene-2-sulfonic acid"},
         {"Sc1cccc2ccccc12", "naphthalene-1-thiol"},
-        {"Oc1ccccc1S(=O)(=O)O", "2-hydroxybenzenesulfonic acid"},
+        {"Oc1ccccc1S(=O)(=O)O", "2-hydroxybenzene-1-sulfonic acid"},
 
         // Phase 6: New functional groups
         {"CC(=O)Cl", "ethanoyl chloride"},
@@ -213,7 +217,7 @@ int main() {
         {"CP(=O)(O)O", "methanephosphonic acid"},
         {"CCCP(=O)(O)O", "propane-1-phosphonic acid"},
         // Phase 62: regression tests
-        {"Oc1ccccc1S(=O)(=O)O", "2-hydroxybenzenesulfonic acid"}, // regression test for existing sulfonic acid
+        {"Oc1ccccc1S(=O)(=O)O", "2-hydroxybenzene-1-sulfonic acid"}, // regression test for existing sulfonic acid
         {"CS(=O)(=O)O", "methanesulfonic acid"}, // regression test for existing sulfonic acid
         // Phase 63: Sulfinic acid
         {"CS(=O)O", "methanesulfinic acid"},
@@ -225,7 +229,7 @@ int main() {
         // Sulfoxide regression (should still work, not be misclassified as sulfinic acid)
         {"CS(=O)C", "methylsulfinylmethane"},
         // SULFINIC_ACID regression tests
-        {"Oc1ccccc1S(=O)O", "2-hydroxybenzenesulfinic acid"},
+        {"Oc1ccccc1S(=O)O", "2-hydroxybenzene-1-sulfinic acid"},
         {"CS(=O)(=O)O", "methanesulfonic acid"}, // regression test for existing sulfonic acid
         {"CCP", "ethylphosphine"}, // regression test for existing phosphine
         {"CCB(O)O", "ethylboronic acid"}, // regression test for existing boronic acid
@@ -400,8 +404,8 @@ int main() {
         {"Cc1ccoc1CC(=O)O", "2-(3-methylfuran-2-yl)ethanoic acid"},
 
         // Phase 16: Ring-as-parent losing ACID, ESTER, ACYL_HALIDE, SULFONIC_ACID, THIOL
-        {"O=S(=O)(O)c1ccc(C(=O)O)cc1", "4-carboxybenzenesulfonic acid"},
-        {"O=S(=O)(O)C1CCC(C(=O)O)CC1", "4-carboxycyclohexanesulfonic acid"},
+        {"O=S(=O)(O)c1ccc(C(=O)O)cc1", "4-carboxybenzene-1-sulfonic acid"},
+        {"O=S(=O)(O)C1CCC(C(=O)O)CC1", "4-carboxycyclohexane-1-sulfonic acid"},
         {"COC(=O)C1CCC(C(=O)O)CC1", "4-methoxycarbonylcyclohexanecarboxylic acid"},
         {"ClC(=O)C1CCC(C(=O)O)CC1", "4-chlorocarbonylcyclohexanecarboxylic acid"},
         {"O=S(=O)(O)c1cccc2c(C(=O)O)cccc12", "5-carboxynaphthalene-1-sulfonic acid"},
