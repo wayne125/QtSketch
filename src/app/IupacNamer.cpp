@@ -8641,7 +8641,10 @@ IupacResult IupacNamer::generateName(int mol) {
                 if (nZ == 8 && order == 2) doubleO.push_back(nei);
                   else if (nZ == 16 && order == 2) doubleS.push_back(nei);
                   else if (nZ == 7 && order == 2) doubleN.push_back(nei);
-                else if (nZ == 8 && order == 1) singleO.push_back(nei);
+                else if (nZ == 8 && order == 1) {
+                    bool isRingBond = ringNodeSet.count(static_cast<int>(i)) && ringNodeSet.count(nei);
+                    if (!isRingBond) singleO.push_back(nei);
+                }
                 else if (nZ == 7 && order == 1) {
                     bool isNitroIsoOrAzide = false;
                     if (carbonAzide.count(i) && std::find(carbonAzide[i].begin(), carbonAzide[i].end(), nei) != carbonAzide[i].end()) isNitroIsoOrAzide = true;
