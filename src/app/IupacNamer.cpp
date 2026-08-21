@@ -8523,7 +8523,7 @@ IupacResult IupacNamer::generateName(int mol) {
 
     if (!ringHeteroNodes.empty()) {
         QString classErr;
-        if (!classifyMonocyclicHeteroRing(g, ringHeteroNodes, ringSize, ringCycle, rType, parentNameRoot, classErr)) {
+        if (!classifyMonocyclicHeteroRing(g, ringHeteroNodes, ringSize, ringCycle, rType, parentNameRoot, classErr, true)) {
             return {false, "", classErr};
         }
     } else {
@@ -8855,7 +8855,8 @@ IupacResult IupacNamer::generateName(int mol) {
     }
 
     std::vector<std::vector<int>> ringCandidates;
-    if (rType == RingType::FURAN || rType == RingType::THIOPHENE || rType == RingType::PYRROLE || rType == RingType::PYRIDINE) {
+    if (rType == RingType::FURAN || rType == RingType::THIOPHENE || rType == RingType::PYRROLE || rType == RingType::PYRIDINE ||
+        rType == RingType::PYRROLIDINE || rType == RingType::PIPERIDINE || rType == RingType::TETRAHYDROFURAN || rType == RingType::TETRAHYDROTHIOPHENE) {
         int hNode = ringHeteroNodes[0];
         int hIdx = -1;
         for (int i = 0; i < ringSize; ++i) {
@@ -9482,7 +9483,9 @@ IupacResult IupacNamer::generateName(int mol) {
             rType == RingType::PYRAZINE || rType == RingType::GENERAL_HETEROCYCLE ||
             rType == RingType::SELENOPHENE || rType == RingType::TELLUROPHENE ||
             rType == RingType::PHOSPHININE || rType == RingType::SELENAZOLE ||
-            rType == RingType::ISOSELENAZOLE || rType == RingType::LARGE_HETEROCYCLE) {
+            rType == RingType::ISOSELENAZOLE || rType == RingType::LARGE_HETEROCYCLE ||
+            rType == RingType::PYRROLIDINE || rType == RingType::PIPERIDINE ||
+            rType == RingType::TETRAHYDROFURAN || rType == RingType::TETRAHYDROTHIOPHENE) {
             fullName = prefixPart + rootStr;
         } else {
             fullName = prefixPart + rootStr + "e";
