@@ -3971,6 +3971,13 @@ IupacResult IupacNamer::generateName(int mol) {
                         carbonGroup[i] = GroupType::THIONE;
                     }
                 } else if (!doubleN.empty()) {
+                    int singleC = 0;
+                    for (int nei : node.neighbors) {
+                        if (g.nodes[nei].atomicNumber == 6) singleC++;
+                    }
+                    if (singleC == 0 && node.totalH == 0) {
+                        return {false, "", "Carbonimidic/carbamimidic acid halide derivatives (rootless imine carbons) are not supported in this phase."};
+                    }
                     int nNode = doubleN[0];
                     if (doubleN.size() == 1 && (g.nodes[nNode].totalH >= 1 || g.nodes[nNode].neighbors.size() == 1)) {
                         carbonImine[i] = nNode;
@@ -3978,6 +3985,7 @@ IupacResult IupacNamer::generateName(int mol) {
                     } else {
                         return {false, "", "N-substituted imines, oximes, hydrazones, and amidines are not supported in this phase; only the unsubstituted C=NH imine is supported."};
                     }
+
                 } else if (!singleO.empty()) {
                     bool foundGroup = false;
                     for (int sO : singleO) {
@@ -8174,6 +8182,13 @@ IupacResult IupacNamer::generateName(int mol) {
                       carbonGroup[i] = GroupType::THIONE;
                   }
               } else if (!doubleN.empty()) {
+                  int singleC = 0;
+                  for (int nei : node.neighbors) {
+                      if (g.nodes[nei].atomicNumber == 6) singleC++;
+                  }
+                  if (singleC == 0 && node.totalH == 0) {
+                      return {false, "", "Carbonimidic/carbamimidic acid halide derivatives (rootless imine carbons) are not supported in this phase."};
+                  }
                   int nNode = doubleN[0];
                   if (doubleN.size() == 1 && (g.nodes[nNode].totalH >= 1 || g.nodes[nNode].neighbors.size() == 1)) {
                       carbonImine[i] = nNode;
@@ -9021,6 +9036,13 @@ IupacResult IupacNamer::generateName(int mol) {
                       carbonGroup[i] = GroupType::THIONE;
                   }
               } else if (!doubleN.empty()) {
+                  int singleC = 0;
+                  for (int nei : node.neighbors) {
+                      if (g.nodes[nei].atomicNumber == 6) singleC++;
+                  }
+                  if (singleC == 0 && node.totalH == 0) {
+                      return {false, "", "Carbonimidic/carbamimidic acid halide derivatives (rootless imine carbons) are not supported in this phase."};
+                  }
                   int nNode = doubleN[0];
                   if (doubleN.size() == 1 && (g.nodes[nNode].totalH >= 1 || g.nodes[nNode].neighbors.size() == 1)) {
                       carbonImine[i] = nNode;

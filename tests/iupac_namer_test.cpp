@@ -96,6 +96,8 @@ int main() {
         // PHASE 67: IMINE (P-62.3, unsubstituted C=NH only)
         {"CC=N", "ethanimine"},
         {"CCC(C)=N", "butan-2-imine"},
+        {"ClC(Cl)=N", "", true, "Carbonimidic/carbamimidic acid halide derivatives (rootless imine carbons) are not supported in this phase."},
+        {"NC(Cl)=N", "", true, "Carbonimidic/carbamimidic acid halide derivatives (rootless imine carbons) are not supported in this phase."},
         // N-substituted imine rejection (out of scope this phase)
         {"CC=NC", "", true, "N-substituted imines, oximes, hydrazones, and amidines are not supported in this phase"},
         // PHASE 64: HYDROPEROXIDE (peroxol)
