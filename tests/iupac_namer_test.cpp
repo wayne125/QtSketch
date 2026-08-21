@@ -62,6 +62,9 @@ int main() {
         {"ClC(=S)Cl", "", true, "Carbonothioyl/thiocarbamoyl halide derivatives (rootless thiocarbonyl carbons) are not supported in this phase."},
         {"NC(=S)Cl", "", true, "Carbonothioyl/thiocarbamoyl halide derivatives (rootless thiocarbonyl carbons) are not supported in this phase."},
         {"COC(=S)Cl", "", true, "Carbonothioyl/thiocarbamoyl halide derivatives (rootless thiocarbonyl carbons) are not supported in this phase."},
+        // Rootless nitrile fixes
+        {"ClC#N", "", true, "Cyanic acid halide derivatives (rootless nitrile carbons) are not supported in this phase."},
+        {"N#CBr", "", true, "Cyanic acid halide derivatives (rootless nitrile carbons) are not supported in this phase."},
         // Straight-chain alkanes C1-C10
         {"C", "methane"},
         {"CC", "ethane"},
