@@ -164,7 +164,33 @@ Nomenclature of other classes of compounds, P-69 Organometallic compounds.
 | P-65.6 | Salts and esters | ◐ | Esters covered (`GroupType::ESTER`, `esterAlkylRoot`/`esterOxygen`); salts not covered at all (charged species rejected early). |
 | P-65.7 | Anhydrides and their analogues | ◐ | Symmetric/single-chain anhydride naming via `nameAcidChainFrom`; true two-parent-name anhydride construction not covered. |
 | P-66.1 | Amides | ✅ | `GroupType::AMIDE`, suffix `carboxamide`/`-amide`. |
-| P-66.2, P-66.3, P-66.4 | Imides, hydrazides, amidines/amidrazones/hydrazidines/amidoximes | ◐ | **P-66.2 cyclic imides fixed 2026-08-21** (commit `309d411`) — verified against `BlueBookV2.md`: cyclic imides are PIN-named as "heterocyclic pseudoketones" (succinimide's real PIN is `pyrrolidine-2,5-dione`, not a distinct imide suffix), so this needed no new functional-group class at all, only unblocking a separate underlying limitation (see the P-22.2.2/heterocycle row below). Acyclic imides (P-66.2.1's other branch, N-acyl derivatives of primary amides) not attempted. P-66.3 (hydrazides) and P-66.4 remain entirely unimplemented. |
+| P-66.2, P-66.3, P-66.4 | Imides, hydrazides, amidines/amidrazones/hydrazidines/amidoximes | ◐ | **P-66.2 cyclic imides fixed 2026-08-21** (commit `309d411`) — verified against `BlueBookV2.md`: cyclic imides are PIN-named as "heterocyclic pseudoketones" (succinimide's real PIN is `pyrrolidine-2,5-dione`, not a distinct imide suffix), so this needed no new functional-group class at all, only unblocking a separate underlying limitation (see the P-22.2.2/heterocycle row below). Acyclic imides (P-66.2.1's other branch, N-acyl derivatives of primary amides) not attempted.
+
+   **P-66.3.1 substitutive hydrazides fixed 2026-08-21** (commit `4c72b1b`): new `GroupType::HYDRAZIDE`
+   (the `-CO-NH-NH2` group, structurally amide's `-CO-NH2` with the nitrogen bearing a further
+   `-NH2`) mirroring `GroupType::AMIDE`'s implementation at all 15 call sites this file duplicates
+   functional-group logic across (detection, `groupRank`/`seniorityOrder` insertion — verified
+   against the real Blue Book suffix seniority table, which places hydrazide directly between
+   amide and nitrile — suffix assembly for both the acyclic `hydrazide`/`dihydrazide` and
+   ring-attached `carbohydrazide`/`dicarbohydrazide` forms, matching amide's own acyclic/ring
+   split exactly). Verified against real PINs `pentanehydrazide` and `cyclohexanecarbohydrazide`.
+   **A real bug was caught during review, not self-reported**: the delegated commit's own test for
+   a molecule with both a plain amide and a non-principal hydrazide (amide correctly wins
+   seniority) asserted `5-amino-5-oxopentanamide` as correct — but that name only accounts for 2
+   of the molecule's 3 nitrogens; the demoted hydrazide's outer nitrogen was being silently
+   dropped, because the generic "amino" substituent fallback this codebase uses when a
+   non-principal amide/hydrazide nitrogen doesn't match the specific N-acyl "amido" pattern never
+   checks whether that nitrogen has a further heavy-atom substituent of its own before calling it
+   a plain, unsubstituted amino group. Fixed (commit `4c0a2c9`) by rejecting cleanly in that case
+   instead of silently producing an incomplete name; the wrong test was corrected to assert the
+   rejection. **This same latent gap exists, undisturbed, at 6 other `"amino"`-substituent call
+   sites in this file** (ring-substituent and branch-graph naming contexts) — pre-existing, not
+   introduced by this task, not chased down since none are demonstrably reachable by anything this
+   task covers; a real, disclosed, unfixed issue for whichever future task first exercises one of
+   those paths with a substituted (non-terminal) amine. `iupac_namer_test` 492→495/495, `ctest`
+   11/11. **Not attempted**: P-66.3.1.2 (the ~5 retained-name hydrazides like `benzohydrazide`),
+   P-66.3.3-P-66.3.6 (substituted/chalcogen/carbonic-acid hydrazides, semioxamazones), and P-66.4
+   (amidines/amidrazones/hydrazidines/amidoximes — separate, unrelated functional groups). |
 | P-66.5 | Nitriles | ✅ | `GroupType::NITRILE`, suffix `-nitrile`/`carbonitrile`, prefix `cyano-`. |
 | P-66.6 | Aldehydes | ✅ | `GroupType::ALDEHYDE`, suffix `-al`/`carbaldehyde`, prefix `oxo-`/`formyl-`. |
 | P-67.1 | Mononuclear noncarbon oxoacids | ◐ | Sulfonic acid (`GroupType::SULFONIC_ACID`), sulfinic acid (`GroupType::SULFINIC_ACID`), boronic acid (`GroupType::BORONIC_ACID`), and phosphonic acid (`GroupType::PHOSPHONIC_ACID`) covered via the same numbered-chain-suffix machinery as SULFONIC_ACID; the general noncarbon-oxoacid system (phosphinic, arsonic, etc.) is not — phosphine (`GroupType::PHOSPHINE`) covers the amine-analogue class, not the oxoacid class. |
