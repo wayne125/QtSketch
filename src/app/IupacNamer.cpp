@@ -103,6 +103,30 @@ QString halogenPrefix(int z) {
     }
 }
 
+bool isAcylPseudohalide(int i, const Graph &g, const std::map<int, std::vector<int>> &carbonAzide, const std::map<int, std::vector<int>> &carbonIsocyanate) {
+    if (carbonAzide.count(i)) return true;
+    if (carbonIsocyanate.count(i)) return true;
+    const GraphNode &node = g.nodes[i];
+    for (size_t j = 0; j < node.neighbors.size(); ++j) {
+        int nei = node.neighbors[j];
+        if (g.nodes[nei].atomicNumber == 6 && node.bondOrders[j] == 1) {
+            const GraphNode &neiNode = g.nodes[nei];
+            int tripleNCount = 0;
+            int otherHeavyAtoms = 0;
+            for (size_t k = 0; k < neiNode.neighbors.size(); ++k) {
+                int nn = neiNode.neighbors[k];
+                if (g.nodes[nn].atomicNumber == 7 && neiNode.bondOrders[k] == 3) {
+                    tripleNCount++;
+                } else if (nn != i && g.nodes[nn].atomicNumber > 1) {
+                    otherHeavyAtoms++;
+                }
+            }
+            if (tripleNCount == 1 && otherHeavyAtoms == 0) return true;
+        }
+    }
+    return false;
+}
+
 bool isPlainBenzeneRing(int mol, const Graph &g, const std::map<int, int> &indigoToGraphIdx, int alkylRoot, int sO) {
     if (alkylRoot < 0 || alkylRoot >= static_cast<int>(g.nodes.size())) return false;
     if (g.nodes[alkylRoot].atomicNumber != 6) return false;
@@ -3832,10 +3856,15 @@ IupacResult IupacNamer::generateName(int mol) {
                     }
                 } else if (!tripleN.empty()) {
                     carbonGroup[i] = GroupType::NITRILE;
-                } else if (!doubleO.empty() && (node.totalH >= 1 || node.neighbors.size() <= 2)) {
-                    carbonGroup[i] = GroupType::ALDEHYDE;
                 } else if (!doubleO.empty()) {
-                    carbonGroup[i] = GroupType::KETONE;
+                    if (isAcylPseudohalide(static_cast<int>(i), g, carbonAzide, carbonIsocyanate)) {
+                        return {false, "", "Acyl pseudohalides are not supported in this phase."};
+                    }
+                    if (node.totalH >= 1 || node.neighbors.size() <= 2) {
+                        carbonGroup[i] = GroupType::ALDEHYDE;
+                    } else {
+                        carbonGroup[i] = GroupType::KETONE;
+                    }
                 } else if (!doubleS.empty() && (node.totalH >= 1 || node.neighbors.size() <= 2)) {
                     carbonGroup[i] = GroupType::THIAL;
                 } else if (!doubleS.empty()) {
@@ -7979,10 +8008,15 @@ IupacResult IupacNamer::generateName(int mol) {
                     }
                 } else if (!tripleN.empty()) {
                     carbonGroup[i] = GroupType::NITRILE;
-                } else if (!doubleO.empty() && (node.totalH >= 1 || node.neighbors.size() <= 2)) {
-                    carbonGroup[i] = GroupType::ALDEHYDE;
                 } else if (!doubleO.empty()) {
-                    carbonGroup[i] = GroupType::KETONE;
+                    if (isAcylPseudohalide(static_cast<int>(i), g, carbonAzide, std::map<int, std::vector<int>>())) {
+                        return {false, "", "Acyl pseudohalides are not supported in this phase."};
+                    }
+                    if (node.totalH >= 1 || node.neighbors.size() <= 2) {
+                        carbonGroup[i] = GroupType::ALDEHYDE;
+                    } else {
+                        carbonGroup[i] = GroupType::KETONE;
+                    }
               } else if (!doubleS.empty() && (node.totalH >= 1 || node.neighbors.size() <= 2)) {
                   carbonGroup[i] = GroupType::THIAL;
               } else if (!doubleS.empty()) {
@@ -8770,10 +8804,15 @@ IupacResult IupacNamer::generateName(int mol) {
                 }
             } else if (!tripleN.empty()) {
                 carbonGroup[i] = GroupType::NITRILE;
-            } else if (!doubleO.empty() && (node.totalH >= 1 || node.neighbors.size() <= 2)) {
-                carbonGroup[i] = GroupType::ALDEHYDE;
             } else if (!doubleO.empty()) {
-                carbonGroup[i] = GroupType::KETONE;
+                if (isAcylPseudohalide(static_cast<int>(i), g, carbonAzide, std::map<int, std::vector<int>>())) {
+                    return {false, "", "Acyl pseudohalides are not supported in this phase."};
+                }
+                if (node.totalH >= 1 || node.neighbors.size() <= 2) {
+                    carbonGroup[i] = GroupType::ALDEHYDE;
+                } else {
+                    carbonGroup[i] = GroupType::KETONE;
+                }
               } else if (!doubleS.empty() && (node.totalH >= 1 || node.neighbors.size() <= 2)) {
                   carbonGroup[i] = GroupType::THIAL;
               } else if (!doubleS.empty()) {

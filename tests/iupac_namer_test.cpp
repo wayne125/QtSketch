@@ -444,7 +444,11 @@ int main() {
         // -NH-NH2 group "amino" would silently drop its outer nitrogen from the
         // name entirely). Must reject cleanly rather than produce an incomplete
         // name missing an atom.
-        {"NNC(=O)CCCC(=O)N", "", true, "Substituted amine/hydrazine substituents are not supported in this phase."}
+        {"NNC(=O)CCCC(=O)N", "", true, "Substituted amine/hydrazine substituents are not supported in this phase."},
+
+        {"CCCC(=O)N=[N+]=[N-]", "", true, "Acyl pseudohalides"},
+        {"CCCC(=O)C#N", "", true, "Acyl pseudohalides"},
+        {"CCCC(=O)N=C=O", "", true, "Acyl pseudohalides"}
     };
 
     int passed = 0;
