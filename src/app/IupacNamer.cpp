@@ -3182,33 +3182,15 @@ IupacResult IupacNamer::generateName(int mol) {
     if (ringCount == 2 && allSSSRRings.size() == 2) {
         const std::set<int> &ring1Nodes = allSSSRRings[0];
         const std::set<int> &ring2Nodes = allSSSRRings[1];
-        if (ring1Nodes.size() == 6 && ring2Nodes.size() == 6) {
+        if ((ring1Nodes.size() == 5 || ring1Nodes.size() == 6) && (ring2Nodes.size() == 5 || ring2Nodes.size() == 6) && ring1Nodes.size() == ring2Nodes.size()) {
             std::vector<int> sharedNodes;
             for (int n : ring1Nodes) {
                 if (ring2Nodes.count(n)) sharedNodes.push_back(n);
             }
             if (sharedNodes.empty()) {
-                auto checkRingAssemblyOneSide = [&](const std::set<int> &rNodes, const std::set<int> &otherRNodes) -> QString {
-                    if (rNodes.size() != 6) return "";
-                    for (int idx : rNodes) {
-                        if (g.nodes[idx].atomicNumber != 6) return "";
-                    }
-                    bool allAromatic = true;
-                    bool allSingle = true;
-                    bool hasDouble = false;
-                    bool hasTriple = false;
-                    for (const auto &gb : g.bonds) {
-                        if (rNodes.count(gb.u) && rNodes.count(gb.v)) {
-                            if (gb.order != 4) allAromatic = false;
-                            if (gb.order != 1) allSingle = false;
-                            if (gb.order == 2) hasDouble = true;
-                            if (gb.order == 3) hasTriple = true;
-                        }
-                    }
-                    bool isBenzene = (!hasTriple) && (allAromatic || (!allSingle && !hasDouble));
-                    bool isCyclohexane = allSingle && (!hasDouble) && (!hasTriple) && (!allAromatic);
-                    if (!isBenzene && !isCyclohexane) return "";
-
+                auto checkRingAssemblyOneSide = [&](const std::set<int> &rNodes, const std::set<int> &otherRNodes) -> std::pair<QString, int> {
+                    int attachNodeThis = -1;
+                    int attachNodeOther = -1;
                     int nodesWithExo = 0;
                     bool validSubstituent = true;
                     for (int rNode : rNodes) {
@@ -3219,6 +3201,9 @@ IupacResult IupacNamer::generateName(int mol) {
                                 exoCount++;
                                 if (!otherRNodes.count(nei) || g.nodes[rNode].bondOrders[j] != 1) {
                                     validSubstituent = false;
+                                } else {
+                                    attachNodeThis = rNode;
+                                    attachNodeOther = nei;
                                 }
                             }
                         }
@@ -3228,14 +3213,58 @@ IupacResult IupacNamer::generateName(int mol) {
                             nodesWithExo++;
                         }
                     }
-                    if (!validSubstituent || nodesWithExo != 1) return "";
-                    return isBenzene ? "phenyl" : "cyclohexyl";
+                    if (!validSubstituent || nodesWithExo != 1 || attachNodeThis == -1) return {"", -1};
+
+                    QString subName = nameRingAsSubstituent(g, rNodes, attachNodeThis, attachNodeOther, allSSSRRings);
+                    if (subName.isEmpty()) return {"", -1};
+
+                    while (subName.startsWith("(") || subName.startsWith("[") || subName.startsWith("{")) subName = subName.mid(1);
+                    while (subName.endsWith(")") || subName.endsWith("]") || subName.endsWith("}")) subName.chop(1);
+
+                    if (subName == "phenyl") return {"phenyl", 1};
+                    if (subName == "cyclohexyl") return {"cyclohexyl", 1};
+
+                    if (!subName.endsWith("-yl")) return {"", -1};
+                    int lastDash = subName.lastIndexOf('-');
+                    if (lastDash == -1) return {"", -1};
+                    int prevDash = subName.lastIndexOf('-', lastDash - 1);
+                    if (prevDash == -1) return {"", -1};
+
+                    bool ok;
+                    int locant = subName.mid(prevDash + 1, lastDash - prevDash - 1).toInt(&ok);
+                    if (!ok) return {"", -1};
+
+                    QString stem = subName.left(prevDash);
+                    QString parentName = stem;
+                    if (parentName.endsWith("pyridin")) parentName += "e";
+                    else if (parentName.endsWith("piperidin")) parentName += "e";
+                    else if (parentName.endsWith("pyrrolidin")) parentName += "e";
+                    else if (parentName.endsWith("thiophen")) parentName += "e";
+                    else if (parentName.endsWith("pyrrol")) parentName += "e";
+                    else if (parentName.endsWith("imidazol")) parentName += "e";
+                    else if (parentName.endsWith("pyrazol")) parentName += "e";
+                    else if (parentName.endsWith("pyrimidin")) parentName += "e";
+                    else if (parentName.endsWith("pyridazin")) parentName += "e";
+                    else if (parentName.endsWith("pyrazin")) parentName += "e";
+                    else if (parentName.endsWith("oxazol")) parentName += "e";
+                    else if (parentName.endsWith("isoxazol")) parentName += "e";
+                    else if (parentName.endsWith("thiazol")) parentName += "e";
+                    else if (parentName.endsWith("isothiazol")) parentName += "e";
+                    else if (parentName.endsWith("tetrahydrothiophen")) parentName += "e";
+
+                    return {parentName, locant};
                 };
 
-                QString type1 = checkRingAssemblyOneSide(ring1Nodes, ring2Nodes);
-                QString type2 = checkRingAssemblyOneSide(ring2Nodes, ring1Nodes);
-                if (!type1.isEmpty() && !type2.isEmpty() && type1 == type2) {
-                    return {true, "bi" + type1, ""};
+                auto res1 = checkRingAssemblyOneSide(ring1Nodes, ring2Nodes);
+                auto res2 = checkRingAssemblyOneSide(ring2Nodes, ring1Nodes);
+                if (!res1.first.isEmpty() && !res2.first.isEmpty() && res1.first == res2.first) {
+                    if (res1.first == "phenyl" || res1.first == "cyclohexyl") {
+                        return {true, "bi" + res1.first, ""};
+                    } else {
+                        int loc1 = std::min(res1.second, res2.second);
+                        int loc2 = std::max(res1.second, res2.second);
+                        return {true, QString("%1,%2-bi%3").arg(loc1).arg(loc2).arg(res1.first), ""};
+                    }
                 }
             }
         }

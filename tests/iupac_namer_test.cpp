@@ -776,6 +776,48 @@ int main() {
     }
 
     {
+        int m = indigoLoadMoleculeFromString("n1ccccc1-c2ncccc2");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        std::string n = r.name.toStdString();
+        if (r.success && n == "2,2-bipyridine") {
+            std::cout << "[PASS] 2,2-bipyridine -> " << n << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] 2,2-bipyridine -> got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        int m = indigoLoadMoleculeFromString("c1ccoc1-c2ccoc2");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        std::string n = r.name.toStdString();
+        if (r.success && n == "2,3-bifuran") {
+            std::cout << "[PASS] 2,3-bifuran -> " << n << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] 2,3-bifuran -> got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        int m = indigoLoadMoleculeFromString("c1c(csc1)c2c(csc2)");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        std::string n = r.name.toStdString();
+        if (r.success && n == "3,3-bithiophene") {
+            std::cout << "[PASS] 3,3-bithiophene -> " << n << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] 3,3-bithiophene -> got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
         // Substituted ring assembly regression test (must reject)
         int m = indigoLoadMoleculeFromString("Clc1ccccc1-c1ccccc1");
         IupacResult r = IupacNamer::generateName(m);
