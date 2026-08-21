@@ -455,7 +455,10 @@ int main() {
         // (that map is scoped only to the plain-acyclic-chain region) --
         // must also reject cleanly, not fall through to a wrong AMIDE name.
         {"O=C(N=C=O)C1CCCCCCCCCN1", "", true, "Acyl pseudohalides"},
-        {"O=C(N=C=O)c1ccc2ccccc2c1", "", true, "Acyl pseudohalides"}
+        {"O=C(N=C=O)c1ccc2ccccc2c1", "", true, "Acyl pseudohalides"},
+
+        {"CC(=O)OO", "", true, "Peroxycarboxylic acids"},
+        {"OOC(=O)c1ccccc1", "", true, "Peroxycarboxylic acids"}
     };
 
     int passed = 0;

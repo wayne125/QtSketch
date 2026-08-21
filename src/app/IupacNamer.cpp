@@ -156,6 +156,28 @@ bool isAcylPseudohalide(int i, const Graph &g, const std::map<int, std::vector<i
     return false;
 }
 
+bool isPeroxyCarboxylicAcid(int i, const Graph &g) {
+    const GraphNode &node = g.nodes[i];
+    for (size_t j = 0; j < node.neighbors.size(); ++j) {
+        int nei = node.neighbors[j];
+        if (g.nodes[nei].atomicNumber == 8 && node.bondOrders[j] == 1) {
+            const GraphNode &oNode = g.nodes[nei];
+            if (oNode.neighbors.size() == 2) {
+                for (size_t k = 0; k < oNode.neighbors.size(); ++k) {
+                    int oNei = oNode.neighbors[k];
+                    if (oNei != i && g.nodes[oNei].atomicNumber == 8 && oNode.bondOrders[k] == 1) {
+                        const GraphNode &peroxyONode = g.nodes[oNei];
+                        if (peroxyONode.totalH >= 1 || peroxyONode.neighbors.size() == 1) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return false;
+}
+
 bool isPlainBenzeneRing(int mol, const Graph &g, const std::map<int, int> &indigoToGraphIdx, int alkylRoot, int sO) {
     if (alkylRoot < 0 || alkylRoot >= static_cast<int>(g.nodes.size())) return false;
     if (g.nodes[alkylRoot].atomicNumber != 6) return false;
@@ -3862,7 +3884,11 @@ IupacResult IupacNamer::generateName(int mol) {
                             hasOH = true; break;
                         }
                     }
-                    if (hasOH) carbonGroup[i] = GroupType::ACID;
+                    if (hasOH) {
+                        carbonGroup[i] = GroupType::ACID;
+                    } else if (isPeroxyCarboxylicAcid(static_cast<int>(i), g)) {
+                        return {false, "", "Peroxycarboxylic acids are not supported in this phase."};
+                    }
                 } else if (!doubleO.empty() && !halogens.empty() && singleO.empty() && singleN.empty()) {
                     carbonGroup[i] = GroupType::ACYL_HALIDE;
                     acylHalideHalogen[i] = g.nodes[halogens[0]].atomicNumber;
@@ -8015,7 +8041,11 @@ IupacResult IupacNamer::generateName(int mol) {
                             hasOH = true; break;
                         }
                     }
-                    if (hasOH) carbonGroup[i] = GroupType::ACID;
+                    if (hasOH) {
+                        carbonGroup[i] = GroupType::ACID;
+                    } else if (isPeroxyCarboxylicAcid(static_cast<int>(i), g)) {
+                        return {false, "", "Peroxycarboxylic acids are not supported in this phase."};
+                    }
                 } else if (!doubleO.empty() && !halogens.empty() && singleO.empty() && singleN.empty()) {
                     carbonGroup[i] = GroupType::ACYL_HALIDE;
                     acylHalideHalogen[i] = g.nodes[halogens[0]].atomicNumber;
@@ -8812,7 +8842,11 @@ IupacResult IupacNamer::generateName(int mol) {
                         hasOH = true; break;
                     }
                 }
-                if (hasOH) carbonGroup[i] = GroupType::ACID;
+                if (hasOH) {
+                    carbonGroup[i] = GroupType::ACID;
+                } else if (isPeroxyCarboxylicAcid(static_cast<int>(i), g)) {
+                    return {false, "", "Peroxycarboxylic acids are not supported in this phase."};
+                }
             } else if (!doubleO.empty() && !halogens.empty() && singleO.empty() && singleN.empty()) {
                 carbonGroup[i] = GroupType::ACYL_HALIDE;
                 acylHalideHalogen[i] = g.nodes[halogens[0]].atomicNumber;
