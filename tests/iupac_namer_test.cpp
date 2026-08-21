@@ -2124,43 +2124,40 @@ int main() {
     }
 
     {
-        // Phase 29: Aromaticity gate rejection - Tetrahydrofuran
         int m = indigoLoadMoleculeFromString("C1CCOC1");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
-        if (!r.success && r.error == "Saturated or partially unsaturated heterocycles are not yet supported; only the fully aromatic (maximally unsaturated) forms are supported in this phase.") {
-            std::cout << "[PASS] Tetrahydrofuran rejection -> " << r.error.toStdString() << "\n";
+        if (r.success && r.name == "tetrahydrofuran") {
+            std::cout << "[PASS] Tetrahydrofuran -> " << r.name.toStdString() << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] Tetrahydrofuran rejection -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            std::cout << "[FAIL] Tetrahydrofuran -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
             failed++;
         }
     }
 
     {
-        // Phase 29: Aromaticity gate rejection - Pyrrolidine
         int m = indigoLoadMoleculeFromString("C1CCNC1");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
-        if (!r.success && r.error == "Saturated or partially unsaturated heterocycles are not yet supported; only the fully aromatic (maximally unsaturated) forms are supported in this phase.") {
-            std::cout << "[PASS] Pyrrolidine rejection -> " << r.error.toStdString() << "\n";
+        if (r.success && r.name == "pyrrolidine") {
+            std::cout << "[PASS] Pyrrolidine -> " << r.name.toStdString() << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] Pyrrolidine rejection -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            std::cout << "[FAIL] Pyrrolidine -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
             failed++;
         }
     }
 
     {
-        // Phase 29: Aromaticity gate rejection - Piperidine
         int m = indigoLoadMoleculeFromString("C1CCNCC1");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
-        if (!r.success && r.error == "Saturated or partially unsaturated heterocycles are not yet supported; only the fully aromatic (maximally unsaturated) forms are supported in this phase.") {
-            std::cout << "[PASS] Piperidine rejection -> " << r.error.toStdString() << "\n";
+        if (r.success && r.name == "piperidine") {
+            std::cout << "[PASS] Piperidine -> " << r.name.toStdString() << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] Piperidine rejection -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            std::cout << "[FAIL] Piperidine -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
             failed++;
         }
     }
@@ -3532,6 +3529,32 @@ int main() {
             passed++;
         } else {
             std::cout << "[FAIL] P-29.5.1 -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        int m = indigoLoadMoleculeFromString("O=C1CCC(=O)N1");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "pyrrolidine-2,5-dione") {
+            std::cout << "[PASS] Succinimide -> " << r.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Succinimide -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        int m = indigoLoadMoleculeFromString("C1CC(O)CCN1");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "piperidin-4-ol") {
+            std::cout << "[PASS] Piperidin-4-ol -> " << r.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Piperidin-4-ol -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
             failed++;
         }
     }
