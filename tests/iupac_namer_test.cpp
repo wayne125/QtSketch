@@ -3477,6 +3477,23 @@ int main() {
         }
     }
 
+    {
+        // P-29.5.1 complex substituted substituent group worked example (real Blue
+        // Book PIN prefix "6-(3-methylbutyl)undecyl", embedded here as an amine) --
+        // confirms Phase 39's existing nesting mechanism already satisfies this
+        // rule without any new code.
+        int m = indigoLoadMoleculeFromString("NCCCCCC(CCC(C)C)CCCCC");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "6-(3-methylbutyl)undecan-1-amine") {
+            std::cout << "[PASS] P-29.5.1 -> " << r.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] P-29.5.1 -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
     std::cout << "\nSummary: " << passed << " passed, " << failed << " failed.\n";
     indigoReleaseSessionId(sid);
     return (failed == 0) ? 0 : 1;
