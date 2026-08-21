@@ -3572,6 +3572,24 @@ int main() {
         }
     }
 
+    {
+        // P-64.3.1's own worked example: pyrrolidin-2-one (a lactam, cyclic
+        // amide), already correctly nameable via the saturated-heterocycle-
+        // ring-parent fix (commit 309d411) -- a single ring-carbon ketone-type
+        // suffix position on pyrrolidine, no new code needed for this specific
+        // case.
+        int m = indigoLoadMoleculeFromString("O=C1CCCN1");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "pyrrolidin-2-one") {
+            std::cout << "[PASS] pyrrolidin-2-one -> " << r.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] pyrrolidin-2-one -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
     std::cout << "\nSummary: " << passed << " passed, " << failed << " failed.\n";
     indigoReleaseSessionId(sid);
     return (failed == 0) ? 0 : 1;
