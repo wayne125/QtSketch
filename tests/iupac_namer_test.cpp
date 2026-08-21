@@ -448,7 +448,14 @@ int main() {
 
         {"CCCC(=O)N=[N+]=[N-]", "", true, "Acyl pseudohalides"},
         {"CCCC(=O)C#N", "", true, "Acyl pseudohalides"},
-        {"CCCC(=O)N=C=O", "", true, "Acyl pseudohalides"}
+        {"CCCC(=O)N=C=O", "", true, "Acyl pseudohalides"},
+
+        // Acyl isocyanate on ring-substituent classification paths that the
+        // original acyl-pseudohalide fix's carbonIsocyanate map didn't reach
+        // (that map is scoped only to the plain-acyclic-chain region) --
+        // must also reject cleanly, not fall through to a wrong AMIDE name.
+        {"O=C(N=C=O)C1CCCCCCCCCN1", "", true, "Acyl pseudohalides"},
+        {"O=C(N=C=O)c1ccc2ccccc2c1", "", true, "Acyl pseudohalides"}
     };
 
     int passed = 0;
