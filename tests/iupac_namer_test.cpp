@@ -447,7 +447,6 @@ int main() {
 
     for (size_t i = 0; i < tests.size(); ++i) {
         const auto &tc = tests[i];
-        if (tc.smiles != "O=C1CCC(=O)O1") continue;
         int mol = indigoLoadMoleculeFromString(tc.smiles.c_str());
         if (mol < 0) {
             std::cout << "[FAIL] Test " << i+1 << " (" << tc.smiles << "): Indigo failed to parse SMILES.\n";
