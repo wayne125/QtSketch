@@ -1,0 +1,10 @@
+--- src/app/IupacNamer.cpp
++++ src/app/IupacNamer.cpp
+@@ -8511,6 +8511,7 @@
+         }
+ 
+     } else {
++        std::cout << "DEBUG: Entered else block (ring parent)\n";
+         // --- Phase 2: Monocyclic Ring Path (ringCount == 1) ---
+         int sssrIter = indigoIterateSSSR(mol);
+         if (sssrIter < 0) {

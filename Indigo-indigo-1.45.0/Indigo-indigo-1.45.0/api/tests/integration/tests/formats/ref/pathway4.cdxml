@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE CDXML SYSTEM "http://www.cambridgesoft.com/xml/cdxml.dtd">
+<CDXML BondLength="30.000000" LabelFont="3" CaptionFont="4">
+    <fonttable id="1">
+        <font id="2" charset="utf-8" name="Arial"/>
+        <font id="3" charset="utf-8" name="Times New Roman"/>
+    </fonttable>
+    <colortable>
+        <color r="1" g="1" b="1"/>
+        <color r="0" g="0" b="0"/>
+        <color r="1" g="0" b="0"/>
+        <color r="1" g="1" b="0"/>
+        <color r="0" g="1" b="0"/>
+        <color r="0" g="1" b="1"/>
+        <color r="0" g="0" b="1"/>
+        <color r="1" g="0" b="1"/>
+        <color r="0.5" g="0.5" b="0.5"/>
+    </colortable>
+    <page HeightPages="1" WidthPages="1">
+        <fragment id="4">
+            <n id="5" p="24.291000 -63.708000"/>
+            <n id="6" p="39.303001 -17.504997"/>
+            <n id="7" p="48.582001 -45.893997"/>
+            <n id="8" p="9.282002 -17.504997"/>
+            <n id="9" p="0.000000 -45.893997"/>
+            <b id="34" B="5" E="9"/>
+            <b id="35" B="9" E="8" Order="2"/>
+            <b id="36" B="8" E="6"/>
+            <b id="37" B="6" E="7" Order="2"/>
+            <b id="38" B="7" E="5"/>
+        </fragment>
+        <fragment id="10">
+            <n id="11" p="362.505005 -66.210007"/>
+            <n id="12" p="414.414032 -66.224998"/>
+            <n id="13" p="388.509003 -81.212997"/>
+            <n id="14" p="414.414032 -36.198006"/>
+            <n id="15" p="362.505005 -36.062996"/>
+            <n id="16" p="388.574982 -21.212997"/>
+            <n id="17" p="336.525024 -21.062994"/>
+            <n id="18" p="367.362000 -0.000000"/>
+            <n id="19" p="435.627014 -14.985008"/>
+            <b id="39" B="13" E="11" Order="2"/>
+            <b id="40" B="11" E="15"/>
+            <b id="41" B="15" E="16" Order="2"/>
+            <b id="42" B="16" E="14"/>
+            <b id="43" B="14" E="12" Order="2"/>
+            <b id="44" B="12" E="13"/>
+            <b id="45" B="15" E="17"/>
+            <b id="46" B="16" E="18" Order="2"/>
+            <b id="47" B="14" E="19"/>
+        </fragment>
+        <fragment id="20">
+            <n id="21" p="153.582001 -55.606514"/>
+            <n id="22" p="153.582001 -25.606514"/>
+            <n id="23" p="179.562012 -10.606499"/>
+            <n id="24" p="205.545013 -25.606514"/>
+            <n id="25" p="205.545013 -55.606514"/>
+            <n id="26" p="179.562012 -70.606514"/>
+            <n id="27" p="231.525024 -70.606514"/>
+            <b id="48" B="26" E="21"/>
+            <b id="49" B="21" E="22"/>
+            <b id="50" B="22" E="23"/>
+            <b id="51" B="23" E="24"/>
+            <b id="52" B="24" E="25"/>
+            <b id="53" B="25" E="26"/>
+            <b id="54" B="25" E="27"/>
+        </fragment>
+        <arrow id="28" BoundingBox="306.525024 -40.606499 261.525024 -40.606499" FillType="None" ArrowheadType="Solid" HeadSize="2250" ArrowheadWidth="563" ArrowheadHead="Full" ArrowheadCenterSize="25" Head3D="306.525024 -40.606499 0.000000" Tail3D="261.525024 -40.606499 0.000000"/>
+        <arrow id="31" BoundingBox="123.582001 -40.606499 78.582001 -40.606499" FillType="None" ArrowheadType="Solid" HeadSize="2250" ArrowheadWidth="563" ArrowheadHead="Full" ArrowheadCenterSize="25" Head3D="123.582001 -40.606499 0.000000" Tail3D="78.582001 -40.606499 0.000000"/>
+        <scheme>
+            <step ReactionStepReactants="4" ReactionStepProducts="20" ReactionStepArrows="28"/>
+            <step ReactionStepReactants="20" ReactionStepProducts="10" ReactionStepArrows="31"/>
+        </scheme>
+    </page>
+</CDXML>

@@ -1,0 +1,21 @@
+#cmakedefine DATA_PATH "@DATA_PATH@"
+
+#include <string>
+
+#include <gtest/gtest.h>
+
+namespace indigo
+{
+
+    class IndigoApiTest : public ::testing::Test
+    {
+    protected:
+        void SetUp() override;
+        void TearDown() override;
+
+        static std::string dataPath(const char* dataPathSuffix);
+        static void errorHandler(const char* message, void* context);
+
+        unsigned long long session;
+    };
+}

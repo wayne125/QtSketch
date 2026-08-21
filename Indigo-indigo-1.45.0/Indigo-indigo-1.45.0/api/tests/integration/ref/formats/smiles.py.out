@@ -1,0 +1,93 @@
+*** Wiggly bonds ***
+CC(O)(N)C |w:1,r|
+False
+*** Chrial ***
+C[C@@](S)(O)N
+True
+*** Not chrial ***
+C[C@@](S)(O)N |&1:1,r|
+False
+*** Relative save/load ***
+C[C@@](S)(O)N |&1:1,r|
+C[C@](N)(O)S |&1:1,r|
+*** Either cis-trans ***
+CC=CN
+CC=CN
+C/C=C/N
+C/C=C\N
+*** Aromatic cis-trans ***
+O=CC=C1N=c2c(cccc2)=N1
+O=CC=C1N=c2ccccc2=N1
+CN=c1c(=N/C=C\C=O)cccc1
+CN=c1ccccc1=N/C=C\C=O
+ON=c1c(=NO)c(=O)c2c(cccc2)c1=O
+ON=c1c(=NO)c(=O)c2ccccc2c1=O
+*** Closing with cis-trans constraint ***
+CCSc1nc2OC=Nc3c(-c2nn1)cccc3
+CCSc1nc2OC=Nc3c(-c2nn1)cccc3
+*** Atom lists ***
+[#6,#7,#8]c1nc2ccccc2n1
+%s loaded as SMARTS
+[C,N,O]c1nc2ccccc2n1
+%s loaded as SMARTS
+[c,n,o]c1nc2ccccc2n1
+%s loaded as SMARTS
+C1=CC=CC2=C1N=C(N2)[*;#6,#7,#8]
+%s loaded as SMARTS
+C1=CC=CC2=C1N=C(N2)[*;C,N,O]
+%s loaded as SMARTS
+C1=CC=CC2=C1N=C(N2)[*;c,n,o]
+%s loaded as SMARTS
+*** S-Groups ***
+default smiles:
+CCCC |Sg:gen:0,1,2:|
+canonical smiles:
+CCCC
+default smiles:
+CCCC |Sg:n:0,1,2:3-6:eu|
+canonical smiles:
+canonical SMILES saver: can not canonicalize a polymer
+default smiles:
+CCCC |Sg:n:0,1,2::ht|
+canonical smiles:
+canonical SMILES saver: can not canonicalize a polymer
+default smiles:
+CCCCC |Sg:n:1,2,3::hh|
+canonical smiles:
+canonical SMILES saver: can not canonicalize a polymer
+daylight:
+CCCC
+daylight:
+SMILES saver: repeating units must have exactly two outgoing bonds, has 1
+daylight:
+SMILES saver: repeating units must have exactly two outgoing bonds, has 1
+daylight:
+CC{-}CC{+n}C
+chemaxon:
+CCCC |Sg:gen:0,1,2:|
+chemaxon:
+CCCC |Sg:n:0,1,2:3-6:eu|
+chemaxon:
+CCCC |Sg:n:0,1,2::ht|
+chemaxon:
+CCCCC |Sg:n:1,2,3::hh|
+*** Atropisomers ***
+atropisomer:
+C1=CC=C(C)C(C2=C(N)C=C(C)C=C2)=C1O |o1:5,r,wU:5.4|
+C1=CC=C(C)C(C2=C(N)C=C(C)C=C2)=C1O |o1:5,r,wU:5.4,(1.50,-0.87,;2.00,-0.00,;1.50,0.87,;0.50,0.87,;0.00,1.73,;0.00,0.00,;-1.00,0.00,;-1.50,0.87,;-1.00,1.73,;-2.50,0.87,;-3.00,0.00,;-4.00,0.00,;-2.50,-0.87,;-1.50,-0.87,;0.50,-0.87,;-0.00,-1.73,)|
+atropisomer:
+C1C(O)=C(C2C=CC(C)=CC=2N)C(C)=CC=1 |wU:3.12,wD:3.3|
+C1C(O)=C(C2C=CC(C)=CC=2N)C(C)=CC=1 |wU:3.12,wD:3.3,(-1.50,0.87,;-0.50,0.87,;-0.00,1.73,;0.00,0.00,;1.00,0.00,;1.50,0.87,;2.50,0.87,;3.00,0.00,;4.00,0.00,;2.50,-0.87,;1.50,-0.87,;1.00,-1.73,;-0.50,-0.87,;0.00,-1.73,;-1.50,-0.87,;-2.00,-0.00,)|
+atropisomer:
+C1C(O)=C(C2C=CC(C)=CC=2N)C(C)=CC=1 |w:3.3,3.12|
+C1C(O)=C(C2C=CC(C)=CC=2N)C(C)=CC=1 |w:3.3,3.12,(-1.50,0.87,;-0.50,0.87,;-0.00,1.73,;0.00,0.00,;1.00,0.00,;1.50,0.87,;2.50,0.87,;3.00,0.00,;4.00,0.00,;2.50,-0.87,;1.50,-0.87,;1.00,-1.73,;-0.50,-0.87,;0.00,-1.73,;-1.50,-0.87,;-2.00,-0.00,)|
+atropisomer:
+CC1=C(N2C=CC=C2[C@H](C)Cl)C(C)CCC1 |a:2,&1:8,r,wD:8.10,2.11,(13.73,-9.95,;14.59,-9.45,;15.46,-9.95,;15.46,-10.95,;16.36,-11.39,;16.22,-12.38,;15.23,-12.55,;14.76,-11.67,;13.77,-11.53,;13.16,-12.32,;13.40,-10.60,;16.33,-9.45,;17.19,-9.95,;17.23,-7.80,;16.18,-6.82,;16.07,-8.70,)|
+CC1=C(N2C=CC=C2[C@H](C)Cl)C(C)CCC1 |a:2,&1:8,r,wU:8.10,wD:2.11,(13.73,-9.95,;14.59,-9.45,;15.46,-9.95,;15.46,-10.95,;14.56,-11.39,;14.70,-12.38,;15.69,-12.55,;16.15,-11.67,;17.14,-11.53,;17.76,-12.32,;17.52,-10.60,;16.33,-9.45,;17.19,-9.95,;16.33,-8.45,;15.46,-7.95,;14.59,-8.45,)|
+*** Suffoxides ***
+suffoxide:
+C1[S@](=O)CC(=O)C=1C
+C1[S@](=O)CC(=O)C=1C
+bond:5 stereo:6
+*** Star atom ***
+{"root":{"nodes":[{"$ref":"mol0"}]},"mol0":{"type":"molecule","atoms":[{"label":"*","location":[0.0,0.0,0.0]},{"label":"C","location":[-1.0,0.0,0.0]},{"label":"*","location":[-1.5,-0.8660253882408142,0.0]},{"label":"C","location":[-1.0,-1.732050895690918,0.0]},{"label":"*","location":[1.1920928955078126e-7,-1.7320510149002076,0.0]},{"label":"C","location":[0.5000003576278687,-0.8660255670547485,0.0]}],"bonds":[{"type":1,"atoms":[0,1]},{"type":2,"atoms":[1,2]},{"type":1,"atoms":[2,3]},{"type":2,"atoms":[3,4]},{"type":1,"atoms":[4,5]},{"type":2,"atoms":[5,0]}]}}

@@ -1,0 +1,18 @@
+--- tests/iupac_namer_test.cpp
++++ tests/iupac_namer_test.cpp
+@@ -3574,6 +3574,16 @@
+         MoleculeGraph g = smiToGraph(tc.smiles);
+         IupacNamer namer;
+         auto [success, name, error] = namer.nameCompound(g);
++        if (tc.smiles == "O=C1CCC(=O)O1") {
++            std::cout << "GRAPH DUMP FOR O=C1CCC(=O)O1:\n";
++            for (size_t i = 0; i < g.nodes.size(); ++i) {
++                std::cout << "Node " << i << ": Z=" << g.nodes[i].atomicNumber << "\n";
++                for (size_t j = 0; j < g.nodes[i].neighbors.size(); ++j) {
++                    std::cout << "  Nei " << g.nodes[i].neighbors[j] << " (order " << g.nodes[i].bondOrders[j] << ")\n";
++                }
++            }
++        }
++
+         if (tc.shouldFail) {
+             if (success) {

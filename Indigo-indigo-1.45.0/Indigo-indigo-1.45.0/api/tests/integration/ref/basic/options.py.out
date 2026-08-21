@@ -1,0 +1,20 @@
+***** Get options check *****
+***** String *****
+ASCII
+str
+UTF-8
+***** Integer *****
+10000
+int
+100
+100
+***** Boolean *****
+False
+bool
+True
+true
+***** Float *****
+0.500
+float
+21.333
+21.333

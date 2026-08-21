@@ -1,0 +1,23 @@
+--- src/app/IupacNamer.cpp
++++ src/app/IupacNamer.cpp
+@@ -3496,8 +3496,7 @@
+             }
+         }
+     }
+ 
+-    // Branch to Phase 1 (acyclic) if ringCount == 0 or ring-substituted chain
+-    std::cout << "DEBUG: ringCount=" << ringCount << " ringSubstituentInfos.empty()=" << ringSubstituentInfos.empty() << "\n";
++    // Branch to Phase 1 (acyclic) if ringCount == 0 or ring-substituted chain
+     if (ringCount == 0 || !ringSubstituentInfos.empty()) {
+ 
+         std::map<int, std::vector<int>> carbonNitro;      // carbonNode -> vector of nitro N nodes
+@@ -8527,8 +8526,7 @@
+         fullName = stereoRes.prefix + fullName;
+         return {true, fullName, ""};
+     }
+-    } else {
+-        std::cout << "DEBUG: Entered else block (ring parent)\n";
++    } else {
+         // --- Phase 2: Monocyclic Ring Path (ringCount == 1) ---
+     int sssrIter = indigoIterateSSSR(mol);
+     if (sssrIter < 0) {

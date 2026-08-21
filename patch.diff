@@ -1,0 +1,12 @@
+--- src/app/IupacNamer.cpp
++++ src/app/IupacNamer.cpp
+@@ -3594,6 +3594,9 @@
+                                 }
+                             }
+                         }
++                        if (isAnhydride) {
++                            std::cout << "DEBUG: isAnhydride is true for node " << i << "\n";
++                        }
+                         if (isAnhydride) {
+                             auto getPlainChainLength = [&](int startC, int bridgeO) -> int {
+                                 int count = 0;

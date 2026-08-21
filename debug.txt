@@ -1,0 +1,501 @@
+[PASS] Test 1 (C) -> methane
+[PASS] Test 2 (CC) -> ethane
+[PASS] Test 3 (CCC) -> propane
+[PASS] Test 4 (CCCC) -> butane
+[PASS] Test 5 (CCCCC) -> pentane
+[PASS] Test 6 (CCCCCC) -> hexane
+[PASS] Test 7 (CCCCCCC) -> heptane
+[PASS] Test 8 (CCCCCCCC) -> octane
+[PASS] Test 9 (CCCCCCCCC) -> nonane
+[PASS] Test 10 (CCCCCCCCCC) -> decane
+[PASS] Test 11 (CC(C)C) -> 2-methylpropane
+[PASS] Test 12 (C=C) -> ethene
+[PASS] Test 13 (C#C) -> ethyne
+[PASS] Test 14 (CC=C) -> prop-1-ene
+[PASS] Test 15 (CC(=O)O) -> ethanoic acid
+[PASS] Test 16 (CC(=O)N) -> ethanamide
+[PASS] Test 17 (CC#N) -> ethanenitrile
+[PASS] Test 18 (CC=O) -> ethanal
+[PASS] Test 19 (CC(=O)C) -> propan-2-one
+[PASS] Test 20 (CCO) -> ethanol
+[PASS] Test 21 (CCN) -> ethanamine
+[PASS] Test 22 (CC=N) -> ethanimine
+[PASS] Test 23 (CCC(C)=N) -> butan-2-imine
+[PASS] Test 24 (CC=NC) correctly rejected: N-substituted imines, oximes, hydrazones, and amidines are not supported in this phase; only the unsubstituted C=NH imine is supported.
+[PASS] Test 25 (CCOO) -> ethaneperoxol
+[PASS] Test 26 (CCC(C)(C)OO) -> 2-methylbutane-2-peroxol
+[PASS] Test 27 (OOCCO) -> 2-hydroperoxyethanol
+[PASS] Test 28 (CC(O)CO) -> propane-1,2-diol
+[PASS] Test 29 (CCOOCC) correctly rejected: Dialkyl peroxides are not supported in this phase.
+[PASS] Test 30 (CC(O)C(=O)O) -> 2-hydroxypropanoic acid
+[PASS] Test 31 (NCCO) -> 2-aminoethanol
+[PASS] Test 32 (CC(Cl)C) -> 2-chloropropane
+[PASS] Test 33 (O=C(O)CCCCC(=O)O) -> hexanedioic acid
+[PASS] Test 34 (NCCN) -> ethane-1,2-diamine
+[PASS] Test 35 (CCC(C)CC) -> 3-methylpentane
+[PASS] Test 36 (CC(F)C(Cl)C) -> 2-chloro-3-fluorobutane
+[PASS] Test 37 (c1ccccc1) -> benzene
+[PASS] Test 38 (C1CCCCC1) -> cyclohexane
+[PASS] Test 39 (C1CCCCC1O) -> cyclohexanol
+[PASS] Test 40 (Oc1ccccc1CCC) -> 2-propylphenol
+[PASS] Test 41 (Oc1ccccc1) -> phenol
+[PASS] Test 42 (Oc1ccc(C)cc1) -> 4-methylphenol
+[PASS] Test 43 (Oc1cccnc1CCC) -> 2-propylpyridin-3-ol
+[PASS] Test 44 (Oc1cccnc1) -> pyridin-3-ol
+[PASS] Test 45 (C1CCCCC1C(=O)O) -> cyclohexanecarboxylic acid
+[PASS] Test 46 (Cc1ccccc1) -> methylbenzene
+[PASS] Test 47 (Clc1ccccc1) -> chlorobenzene
+[PASS] Test 48 (C1=CCCCC1) -> cyclohexene
+[PASS] Test 49 (c1ccoc1) -> furan
+[PASS] Test 50 (c1ccsc1) -> thiophene
+[PASS] Test 51 (c1cc[se]c1) -> selenophene
+[PASS] Test 52 (c1cc[te]c1) -> tellurophene
+[PASS] Test 53 (c1cc[nH]c1) -> pyrrole
+[PASS] Test 54 (c1ccncc1) -> pyridine
+[PASS] Test 55 (c1ccccp1) -> phosphinine
+[PASS] Test 56 (C1CCC1) -> cyclobutane
+[PASS] Test 57 (C1CC1) -> cyclopropane
+[PASS] Test 58 (O=C1CCCCC1) -> cyclohexanone
+[PASS] Test 59 (NC1CCCCC1) -> cyclohexanamine
+[PASS] Test 60 (ClC1CCCCC1) -> chlorocyclohexane
+[PASS] Test 61 (c1ccc2ccccc2c1) -> naphthalene
+[PASS] Test 62 (Cc1cccc2ccccc12) -> 1-methylnaphthalene
+[PASS] Test 63 (Cc1ccc2ccccc2c1) -> 2-methylnaphthalene
+[PASS] Test 64 (Clc1cccc2ccccc12) -> 1-chloronaphthalene
+[PASS] Test 65 (Clc1cc2ccccc2cc1) -> 2-chloronaphthalene
+[PASS] Test 66 (Oc1cccc2ccccc12) -> naphthalen-1-ol
+[PASS] Test 67 (OC(=O)c1cccc2ccccc12) -> naphthalene-1-carboxylic acid
+[PASS] Test 68 (OC(=O)c1cccc2c(C(=O)O)cccc12) -> naphthalene-1,5-dicarboxylic acid
+[PASS] Test 69 (c1ccc2cc3ccccc3cc2c1) correctly rejected: Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2.
+[PASS] Test 70 (C1CCC2CCCCC2C1) -> bicyclo[4.4.0]decane
+[PASS] Test 71 (C1CC2(CC1)CCCCC2) -> spiro[4.5]decane
+[PASS] Test 72 ([CH3+]) correctly rejected: Charged atoms are not supported in Phase 1.
+[PASS] Test 73 (CC.CC) correctly rejected: Multi-component structures are not supported in Phase 1.
+[PASS] Test 74 (c1ccn[nH]1) -> pyrazole
+[PASS] Test 75 (C(F)(Cl)Br) -> bromochlorofluoromethane
+[PASS] Test 76 (CC1CCCCC1Cl) -> 1-chloro-2-methylcyclohexane
+[PASS] Test 77 (C/C=C/C) -> (2E)-but-2-ene
+[PASS] Test 78 (C/C=C\C) -> (2Z)-but-2-ene
+[PASS] Test 79 (C/C=C/CC) -> (2E)-pent-2-ene
+[PASS] Test 80 (C/C=C\CC) -> (2Z)-pent-2-ene
+[PASS] Test 81 (CC(C)=CC) -> 2-methylbut-2-ene
+[PASS] Test 82 (C/C=C(C)\CC) -> (2Z)-3-methylpent-2-ene
+[PASS] Test 83 (C/C=C(C)/CC) -> (2E)-3-methylpent-2-ene
+[PASS] Test 84 (CC=C(C)CC) -> 3-methylpent-2-ene
+[PASS] Test 85 (C=C=C) correctly rejected: Allenes and cumulated double bonds are not supported in this phase.
+[PASS] Test 86 (OC(=O)[C@H](O)[C@H](O)[C@H](O)C(=O)O) -> (2R,3r,4S)-2,3,4-trihydroxypentanedioic acid
+[PASS] Test 87 (c1ccccc1S) -> benzenethiol
+[PASS] Test 88 (c1ccccc1S(=O)(=O)O) -> benzenesulfonic acid
+[PASS] Test 89 (C1CCCCC1S(=O)(=O)O) -> cyclohexanesulfonic acid
+[PASS] Test 90 (c1ccccc1P(=O)(O)O) -> benzenephosphonic acid
+[PASS] Test 91 (C1CCCCC1P(=O)(O)O) -> cyclohexanephosphonic acid
+[PASS] Test 92 (C1CCCCC1S) -> cyclohexanethiol
+[PASS] Test 93 (c1ccccc1SC) -> methylsulfanylbenzene
+[PASS] Test 94 (c1ccccc1C(=O)Cl) -> benzenecarbonyl chloride
+[PASS] Test 95 (C1CCCCC1C(=O)Cl) -> cyclohexanecarbonyl chloride
+[PASS] Test 96 (c1ccc2cc(S(=O)(=O)O)ccc2c1) -> naphthalene-2-sulfonic acid
+[PASS] Test 97 (Sc1cccc2ccccc12) -> naphthalene-1-thiol
+[PASS] Test 98 (Oc1ccccc1S(=O)(=O)O) -> 2-hydroxybenzene-1-sulfonic acid
+[PASS] Test 99 (CC(=O)Cl) -> ethanoyl chloride
+[PASS] Test 100 (CC(O)C(=O)Cl) -> 2-hydroxypropanoyl chloride
+[PASS] Test 101 (CS(=O)(=O)O) -> methanesulfonic acid
+[PASS] Test 102 (OC(=O)CS(=O)(=O)O) -> 2-carboxyethanesulfonic acid
+[PASS] Test 103 (CP(=O)(O)O) -> methanephosphonic acid
+[PASS] Test 104 (CCCP(=O)(O)O) -> propane-1-phosphonic acid
+[PASS] Test 105 (Oc1ccccc1S(=O)(=O)O) -> 2-hydroxybenzene-1-sulfonic acid
+[PASS] Test 106 (CS(=O)(=O)O) -> methanesulfonic acid
+[PASS] Test 107 (CS(=O)O) -> methanesulfinic acid
+[PASS] Test 108 (CCC(S(=O)O)C) -> butane-2-sulfinic acid
+[PASS] Test 109 (c1ccccc1S(=O)O) -> benzenesulfinic acid
+[PASS] Test 110 (C1CCCCC1S(=O)O) -> cyclohexanesulfinic acid
+[PASS] Test 111 (CC1CCCCC1CCCS(=O)O) -> 3-(2-methylcyclohexyl)propane-1-sulfinic acid
+[PASS] Test 112 (Cc1ccccc1CCCS(=O)O) -> 3-(2-methylphenyl)propane-1-sulfinic acid
+[PASS] Test 113 (CS(=O)C) -> methylsulfinylmethane
+[PASS] Test 114 (Oc1ccccc1S(=O)O) -> 2-hydroxybenzene-1-sulfinic acid
+[PASS] Test 115 (CS(=O)(=O)O) -> methanesulfonic acid
+[PASS] Test 116 (CCP) -> ethylphosphine
+[PASS] Test 117 (CCB(O)O) -> ethylboronic acid
+[PASS] Test 118 (CCS) -> ethanethiol
+[PASS] Test 119 (CSC) -> methylsulfanylmethane
+[PASS] Test 120 (C[Se]C) -> methylselanylmethane
+[PASS] Test 121 (C[Te]C) -> methyltellanylmethane
+[PASS] Test 122 (CC[Se]CC) -> ethylselanylethane
+[PASS] Test 123 (C[Se](=O)C) -> methylseleninylmethane
+[PASS] Test 124 (C[Se](=O)(=O)C) -> methylselenonylmethane
+[PASS] Test 125 (C[Te](=O)C) -> methyltellurinylmethane
+[PASS] Test 126 (C[Te](=O)(=O)C) -> methyltelluronylmethane
+[PASS] Test 127 (C[Se][Se]C) -> methyldiselanylmethane
+[PASS] Test 128 (C[Te][Te]C) -> methylditellanylmethane
+[PASS] Test 129 (CC[SeH]) -> ethaneselenol
+[PASS] Test 130 (C[SeH]) -> methaneselenol
+[PASS] Test 131 (CC[TeH]) -> ethanetellurol
+[PASS] Test 132 ([SeH]CCO) -> 2-selanylethanol
+[PASS] Test 133 ([TeH]CCO) -> 2-tellanylethanol
+[PASS] Test 134 (CN(=O)=O) -> nitromethane
+[PASS] Test 135 (C[N+](=O)[O-]) -> nitromethane
+[PASS] Test 136 (CCN=C=O) -> isocyanatoethane
+[PASS] Test 137 (CC(=O)OCC) -> ethyl ethanoate
+[PASS] Test 138 (CC(=O)OC(C)C) -> (1-methylethyl) ethanoate
+[PASS] Test 139 (COC=O) -> methyl methanoate
+[PASS] Test 140 (COC(=O)CC(=O)O) -> 3-methoxycarbonylpropanoic acid
+[PASS] Test 141 (COC(=O)C(=O)OC) correctly rejected: Multiple ester groups are not supported in this phase.
+[PASS] Test 142 (C[C@H](Cl)C(=O)OCC) correctly rejected: Stereodescriptors combined with ester naming are not supported in this phase.
+[PASS] Test 143 (CC(=O)OC(=O)C) -> ethanoic anhydride
+[PASS] Test 144 (CCC(=O)OC(=O)CC) -> propanoic anhydride
+[PASS] Test 145 (CC(=O)OC(=O)CC) -> ethanoic propanoic anhydride
+[PASS] Test 146 (CC(C)C(=O)OC(=O)C(C)C) -> 2-methylpropanoic anhydride
+[PASS] Test 147 (CC(F)C(=O)OC(=O)CC) -> 2-fluoropropanoic propanoic anhydride
+[PASS] Test 148 (O=COC=O) -> methanoic anhydride
+[PASS] Test 149 (c1ccccc1CC(=O)O) -> 2-phenylethanoic acid
+[PASS] Test 150 (c1ccccc1CS) -> phenylmethanethiol
+[PASS] Test 151 (c1ccccc1CO) -> phenylmethanol
+[PASS] Test 152 (c1ccccc1CCN) -> 2-phenylethanamine
+[PASS] Test 153 (c1ccccc1CCC(=O)O) -> 3-phenylpropanoic acid
+[PASS] Test 154 (Cc1ccccc1CC(=O)O) -> 2-(2-methylphenyl)ethanoic acid
+[PASS] Test 155 (c1ccccc1CC) -> ethylbenzene
+[PASS] Test 156 (c1cccc2c(CC(=O)O)cccc12) -> 2-(naphthalen-1-yl)ethanoic acid
+[PASS] Test 157 (c1ccc2cc(CC(=O)O)ccc2c1) -> 2-(naphthalen-2-yl)ethanoic acid
+[PASS] Test 158 (c1cccc2c(CO)cccc12) -> (naphthalen-1-yl)methanol
+[PASS] Test 159 (c1ccc2cc(CS)ccc2c1) -> (naphthalen-2-yl)methanethiol
+[PASS] Test 160 (CCc1cccc2ccccc12) -> 1-ethylnaphthalene
+[PASS] Test 161 (CCc1ccc2ccccc2c1) -> 2-ethylnaphthalene
+[PASS] Test 162 (Cc1cccc2c(CC(=O)O)cccc12) correctly rejected: A chain-based principal group outranks the ring in this structure; chain-as-parent seniority (P-44.1.1) for this ring/class combination is not yet supported.
+[PASS] Test 163 (C1CCCCC1CC(=O)O) -> 2-cyclohexylethanoic acid
+[PASS] Test 164 (C1CCCCC1CO) -> cyclohexylmethanol
+[PASS] Test 165 (C1CCCCC1CCC(=O)O) -> 3-cyclohexylpropanoic acid
+[PASS] Test 166 (CCC1CCCCC1) -> ethylcyclohexane
+[PASS] Test 167 (CCCCCCCc1ccccc1) -> heptylbenzene
+[PASS] Test 168 (Cc1ccccc1CCC(=O)O) -> 3-(2-methylphenyl)propanoic acid
+[PASS] Test 169 (CC1CCCCC1CCC(=O)O) -> 3-(2-methylcyclohexyl)propanoic acid
+[PASS] Test 170 (CC1CCCCC1CC(=O)O) -> 2-(2-methylcyclohexyl)ethanoic acid
+[PASS] Test 171 (Cc1ccccc1CCC(=O)N) -> 3-(2-methylphenyl)propanamide
+[PASS] Test 172 (Cc1ccccc1CCC#N) -> 3-(2-methylphenyl)propanenitrile
+[PASS] Test 173 (Cc1ccccc1CCC=O) -> 3-(2-methylphenyl)propanal
+[PASS] Test 174 (Cc1ccccc1CCC(=O)C) -> 4-(2-methylphenyl)butan-2-one
+[PASS] Test 175 (Cc1ccccc1CCCO) -> 3-(2-methylphenyl)propan-1-ol
+[PASS] Test 176 (Cc1ccccc1CCCS) -> 3-(2-methylphenyl)propane-1-thiol
+[PASS] Test 177 (Cc1ccccc1CCCN) -> 3-(2-methylphenyl)propan-1-amine
+[PASS] Test 178 (CC1CCCCC1C(O)CO) -> 1-(2-methylcyclohexyl)ethane-1,2-diol
+[PASS] Test 179 (CC1CCCCC1C(N)CN) -> 1-(2-methylcyclohexyl)ethane-1,2-diamine
+[PASS] Test 180 (CC1CCCCC1CCC(=O)O) -> 3-(2-methylcyclohexyl)propanoic acid
+[PASS] Test 181 (Cc1ccccc1CCC=S) -> 3-(2-methylphenyl)propanethial
+[PASS] Test 182 (Cc1ccccc1CCC(=S)C) -> 4-(2-methylphenyl)butane-2-thione
+[PASS] Test 183 (Cc1ccccc1CCCS(=O)(=O)O) -> 3-(2-methylphenyl)propane-1-sulfonic acid
+[PASS] Test 184 (Cc1ccccc1CCCP(=O)(O)O) -> 3-(2-methylphenyl)propane-1-phosphonic acid
+[PASS] Test 185 (Cc1ccccc1CCC(=O)N) -> 3-(2-methylphenyl)propanamide
+[PASS] Test 186 (CC1CCCCC1CCC(=O)OC) -> methyl 3-(2-methylcyclohexyl)propanoate
+[PASS] Test 187 (CC1CCCCC1CCC(=O)OCC) -> ethyl 3-(2-methylcyclohexyl)propanoate
+[PASS] Test 188 (CC1CCCCC1CCC(=O)Cl) -> 3-(2-methylcyclohexyl)propanoyl chloride
+[PASS] Test 189 (CC1CCCCC1CCC(=O)Oc1ccccc1) -> phenyl 3-(2-methylcyclohexyl)propanoate
+[PASS] Test 190 (CCC(=O)OC) -> methyl propanoate
+[PASS] Test 191 (CCC(=O)Cl) -> propanoyl chloride
+[PASS] Test 192 (CN=[N+]=[N-]) -> azidomethane
+[PASS] Test 193 (CCN=[N+]=[N-]) -> azidoethane
+[PASS] Test 194 (CCCN=[N+]=[N-]) -> 1-azidopropane
+[PASS] Test 195 (CC(N=[N+]=[N-])C) -> 2-azidopropane
+[PASS] Test 196 ([CH2+]N=[N+]=[N-]) correctly rejected: Charged atoms are not supported in Phase 1.
+[PASS] Test 197 (c1ccoc1CC(=O)O) -> 2-(furan-2-yl)ethanoic acid
+[PASS] Test 198 (c1ccoc1CO) -> (furan-2-yl)methanol
+[PASS] Test 199 (c1(CC(=O)O)ccoc1) -> 2-(furan-3-yl)ethanoic acid
+[PASS] Test 200 (c1(CO)ccoc1) -> (furan-3-yl)methanol
+[PASS] Test 201 (c1ccsc1CC(=O)O) -> 2-(thiophen-2-yl)ethanoic acid
+[PASS] Test 202 (c1ccsc1CO) -> (thiophen-2-yl)methanol
+[PASS] Test 203 (c1(CC(=O)O)ccsc1) -> 2-(thiophen-3-yl)ethanoic acid
+[PASS] Test 204 (c1(CO)ccsc1) -> (thiophen-3-yl)methanol
+[PASS] Test 205 (c1cc[nH]c1CC(=O)O) -> 2-(pyrrol-2-yl)ethanoic acid
+[PASS] Test 206 (c1cc[nH]c1CO) -> (pyrrol-2-yl)methanol
+[PASS] Test 207 (c1(CC(=O)O)cc[nH]c1) -> 2-(pyrrol-3-yl)ethanoic acid
+[PASS] Test 208 (c1(CO)cc[nH]c1) -> (pyrrol-3-yl)methanol
+[PASS] Test 209 (c1ccoc1CC) -> 2-ethylfuran
+[PASS] Test 210 (c1ccsc1CC) -> 2-ethylthiophene
+[PASS] Test 211 (c1cc[se]c1CC) -> 2-ethylselenophene
+[PASS] Test 212 (c1cc[te]c1CC) -> 2-ethyltellurophene
+[PASS] Test 213 (c1cc[nH]c1CC) -> 2-ethylpyrrole
+[PASS] Test 214 (c1ccncc1CC(=O)O) -> 2-(pyridin-3-yl)ethanoic acid
+[PASS] Test 215 (n1c(CC(=O)O)cccc1) -> 2-(pyridin-2-yl)ethanoic acid
+[PASS] Test 216 (n1c(CO)cccc1) -> (pyridin-2-yl)methanol
+[PASS] Test 217 (n1cc(CC(=O)O)ccc1) -> 2-(pyridin-3-yl)ethanoic acid
+[PASS] Test 218 (n1cc(CO)ccc1) -> (pyridin-3-yl)methanol
+[PASS] Test 219 (n1ccc(CC(=O)O)cc1) -> 2-(pyridin-4-yl)ethanoic acid
+[PASS] Test 220 (n1ccc(CO)cc1) -> (pyridin-4-yl)methanol
+[PASS] Test 221 (n1c(CC)cccc1) -> 2-ethylpyridine
+[PASS] Test 222 (n1cc(CC)ccc1) -> 3-ethylpyridine
+[PASS] Test 223 (n1ccc(CC)cc1) -> 4-ethylpyridine
+[PASS] Test 224 (Cc1nccc(CC(=O)O)c1) -> 2-(2-methylpyridin-4-yl)ethanoic acid
+[PASS] Test 225 (Cc1ccoc1CC(=O)O) -> 2-(3-methylfuran-2-yl)ethanoic acid
+[PASS] Test 226 (O=S(=O)(O)c1ccc(C(=O)O)cc1) -> 4-carboxybenzene-1-sulfonic acid
+[PASS] Test 227 (O=S(=O)(O)C1CCC(C(=O)O)CC1) -> 4-carboxycyclohexane-1-sulfonic acid
+[PASS] Test 228 (COC(=O)C1CCC(C(=O)O)CC1) -> 4-methoxycarbonylcyclohexanecarboxylic acid
+[PASS] Test 229 (ClC(=O)C1CCC(C(=O)O)CC1) -> 4-chlorocarbonylcyclohexanecarboxylic acid
+[PASS] Test 230 (O=S(=O)(O)c1cccc2c(C(=O)O)cccc12) -> 5-carboxynaphthalene-1-sulfonic acid
+[PASS] Test 231 (COC(=O)c1cccc2c(C(=O)O)cccc12) -> 5-methoxycarbonylnaphthalene-1-carboxylic acid
+[PASS] Test 232 (OC1CCCCC1C(=O)O) -> 2-hydroxycyclohexanecarboxylic acid
+[PASS] Test 233 (c1ccccc1N=[N+]=[N-]) -> azidobenzene
+[PASS] Test 234 (C1CCCCC1N=[N+]=[N-]) -> azidocyclohexane
+[PASS] Test 235 (c1cccc2c(N=[N+]=[N-])cccc12) -> 1-azidonaphthalene
+[PASS] Test 236 (c1ccccc1CN=[N+]=[N-]) correctly rejected: Unrecognized or unsupported substituent on ring.
+[PASS] Test 237 (CCCC(=O)OC(=O)C) -> butanoic ethanoic anhydride
+[PASS] Test 238 (CC(Cl)C(=O)OC(=O)C(Cl)C) -> 2-chloropropanoic anhydride
+[PASS] Test 239 (CC(C)C(=O)OC(=O)CC) -> 2-methylpropanoic propanoic anhydride
+[DEBUG] Before m1
+[DEBUG] After m1, before m2
+[DEBUG] After m2, before r1
+[DEBUG] After r1, before r2
+[DEBUG] After r2
+[PASS] Stereo anchor [C@H](F)(Cl)Br vs [C@@H](F)(Cl)Br -> (1S)-bromochlorofluoromethane vs (1R)-bromochlorofluoromethane
+[PASS] Stereo 2-chlorobutane -> (2S)-2-chlorobutane vs (2R)-2-chlorobutane
+[PASS] Stereo 2-chloro-1-methylcyclohexane -> (2S)-1-chloro-2-methylcyclohexane vs (2R)-1-chloro-2-methylcyclohexane
+[PASS] Two stereocenters -> (2R,3S)-2-bromo-3-chlorobutane
+[PASS] Stereo anchor C/C=C/C vs C/C=C\C -> (2E)-but-2-ene vs (2Z)-but-2-ene
+[PASS] Combined R/S + E/Z -> (2E,4S)-4-chloropent-2-ene
+[PASS] Methyl cyclohexanecarboxylate -> methyl cyclohexanecarboxylate
+[PASS] Methyl benzenecarboxylate -> methyl benzenecarboxylate
+[PASS] Methyl 2-chlorocyclohexanecarboxylate -> methyl 2-chlorocyclohexanecarboxylate
+[PASS] Phenyl ethanoate -> phenyl ethanoate
+[PASS] Phenyl propanoate -> phenyl propanoate
+[PASS] Substituted benzene as ester O-substituent handled cleanly -> (2-chlorophenyl) ethanoate
+[PASS] Methyl naphthalene-1-carboxylate -> methyl naphthalene-1-carboxylate
+[PASS] Diphenylmethane -> diphenylmethane
+[PASS] Diphenylacetic acid -> 2,2-diphenylethanoic acid
+[PASS] Mixed phenyl + cyclohexyl -> 2-cyclohexyl-2-phenylethanoic acid
+[PASS] Biphenyl -> biphenyl
+[PASS] Bicyclohexyl -> bicyclohexyl
+[PASS] Substituted ring assembly (4-chlorobiphenyl) rejects cleanly -> Fused ring systems other than naphthalene are not supported in this phase.
+[PASS] Mixed ring assembly (cyclohexylbenzene) rejects cleanly -> Fused ring systems other than naphthalene are not supported in this phase.
+[PASS] Naphthalene regression -> naphthalene
+[PASS] 1-Methylnaphthalene regression -> 1-methylnaphthalene
+[PASS] Substituted ring in multi-ring on chain -> 3-(3-chlorophenyl)-2-phenylpropanoic acid
+[PASS] Dimethyl sulfoxide -> methylsulfinylmethane
+[PASS] Dimethyl sulfone -> methylsulfonylmethane
+[PASS] Dimethyl disulfide -> methyldisulfanylmethane
+[PASS] Thioacetone -> propane-2-thione
+[PASS] Thioacetaldehyde -> ethanethial
+[PASS] Exocyclic sulfoxide on ring rejects cleanly -> Unrecognized or unsupported substituent on ring.
+[PASS] Exocyclic sulfone on ring rejects cleanly -> Unrecognized or unsupported substituent on ring.
+[PASS] Exocyclic disulfide on ring rejects cleanly -> Unrecognized or unsupported substituent on ring.
+[PASS] Imidazole (c1c[nH]cn1) -> imidazole
+[PASS] Pyrimidine (c1ccncn1) -> pyrimidine
+[PASS] Pyrazole (1,2-diaza 5-ring) -> pyrazole
+[PASS] Pyridazine (1,2-diaza 6-ring) -> pyridazine
+[PASS] Pyrazine (1,4-diaza 6-ring) -> pyrazine
+[PASS] 2-Ethylimidazole (n1c(CC)[nH]cc1) -> 2-ethylimidazole
+[PASS] 4-Methylimidazole (Cc1c[nH]cn1) -> 4-methylimidazole
+[PASS] 2-Methylpyrimidine (Cc1ncccn1) -> 2-methylpyrimidine
+[PASS] 4-Methylpyrimidine (Cc1ccncn1) -> 4-methylpyrimidine
+[PASS] 5-Methylpyrimidine (Cc1cncnc1) -> 5-methylpyrimidine
+[PASS] Methylphosphine (CP) -> methylphosphine
+[PASS] Ethylphosphine (CCP) -> ethylphosphine
+[PASS] Methylboronic acid (CB(O)O) -> methylboronic acid
+[PASS] Ethylboronic acid (CCB(O)O) -> ethylboronic acid
+[PASS] Unsupported P pattern (CP(C)C) correctly rejected: Phosphorus-containing groups other than phosphine and phosphonic acid are not supported in this phase.
+[PASS] Unsupported B pattern (CB(C)C) correctly rejected: Boron-containing groups other than boronic acid are not supported in this phase.
+[PASS] Ring-attached phosphine (C1CCCCC1P) correctly rejected: Unrecognized or unsupported substituent on ring.
+[PASS] Phase 61 boronic acid chain-wins: CC1CCCCC1CCCB(O)O -> 3-(2-methylcyclohexyl)propylboronic acid
+[PASS] Phase 61 phosphine chain-wins: CC1CCCCC1CCCP -> 3-(2-methylcyclohexyl)propylphosphine
+[PASS] Phase 61 regression: CCB(O)O -> ethylboronic acid
+[PASS] Phase 61 regression: CCP -> ethylphosphine
+[PASS] Phase 61 regression: CC1CCCCC1CCC(=O)O -> 3-(2-methylcyclohexyl)propanoic acid
+[PASS] Phase 25 single-level branch stereo CCCCC([C@H](Cl)C)CCC -> 4-[(1R)-1-chloroethyl]octane vs 4-[(1S)-1-chloroethyl]octane
+[PASS] Phase 25 single-level branch stereo CCC([C@H](Cl)C)CC(=O)O -> 3-[(1R)-1-chloroethyl]pentanoic acid vs 3-[(1S)-1-chloroethyl]pentanoic acid
+[PASS] Two-branches-deep stereocenter correctly rejected: Stereocenters on substituent branches are not supported in this phase.
+[PASS] Ring parent with branch stereocenter -> [(1R)-1-chloroethyl]cyclohexane vs [(1S)-1-chloroethyl]cyclohexane
+[PASS] Naphthalene parent with branch stereocenter -> 1-[(1R)-1-chloroethyl]naphthalene vs 1-[(1S)-1-chloroethyl]naphthalene
+[PASS] Ring parent branch stereocenter + unnameable substituent correctly rejected: Unrecognized or unsupported substituent on ring.
+[PASS] Naphthalene parent branch stereocenter + unnameable substituent correctly rejected: Unrecognized or unsupported substituent on ring.
+[PASS] Acyclic parent branch stereocenter + unnameable substituent correctly rejected: Unrecognized or unsupported substituent.
+[PASS] Thioether branch with unnameable alkyl side correctly rejected: Unrecognized or unsupported substituent.
+[PASS] Acyclic parent branch with unnameable non-stereocenter substituent correctly rejected: Unrecognized or unsupported substituent.
+[PASS] Alphabetization Phase 1 -> 5-bromo-4-[(1R)-1-chloroethyl]nonane
+[PASS] Alphabetization Phase 2 -> 1-bromo-2-[(1S)-1-chloroethyl]cyclohexane
+[PASS] Alphabetization Phase 3 -> 2-bromo-1-[(1S)-1-chloroethyl]naphthalene
+[PASS] Phase 26 trisubstituted alkene stereo Cl/C(F)=C/C vs F/C(Cl)=C/C -> (1E)-1-chloro-1-fluoroprop-1-ene vs (1Z)-1-chloro-1-fluoroprop-1-ene
+[PASS] Phase 26 tetrasubstituted alkene stereo Cl/C(F)=C(/Br)C vs Cl/C(F)=C(\Br)C -> (1E)-2-bromo-1-chloro-1-fluoroprop-1-ene vs (1Z)-2-bromo-1-chloro-1-fluoroprop-1-ene
+[PASS] Trisubstituted alkene tie case resolved: 1-chloro-2-methylbut-1-ene
+[PASS] Phase 27 norbornane -> bicyclo[2.2.1]heptane
+[PASS] Phase 27 decalin -> bicyclo[4.4.0]decane
+[PASS] Phase 27 bicyclo[2.2.2]octane -> bicyclo[2.2.2]octane
+[PASS] Phase 28 spiro[4.5]decane -> spiro[4.5]decane
+[PASS] Phase 28 spiro[5.5]undecane -> spiro[5.5]undecane
+[PASS] Phase 28 spiro[3.3]heptane -> spiro[3.3]heptane
+[PASS] Phase 28 spiro[2.5]octane -> spiro[2.5]octane
+[PASS] Phase 27 stereo -> (1S,2S,4R)-2-bromobicyclo[2.2.1]heptane
+[PASS] Phase 28 stereo -> (2R)-2-bromospiro[3.5]nonane
+[PASS] Phase 53 3-methylspiro[5.5]undecane -> 3-methylspiro[5.5]undecane
+[PASS] 6-oxaspiro[4.5]decane -> 6-oxaspiro[4.5]decane
+[PASS] 9-oxa-6-azaspiro[4.5]decane -> 9-oxa-6-azaspiro[4.5]decane
+[PASS] 7-thia-9-azaspiro[4.5]decane -> 7-thia-9-azaspiro[4.5]decane
+[PASS] Spiro unsupported ring element rejected -> Radicals are not supported in Phase 1.
+[PASS] Phase 57 spiro[5.5]undec-2-ene -> spiro[5.5]undec-2-ene
+[PASS] Phase 53 2-methylbicyclo[2.2.1]heptane -> 2-methylbicyclo[2.2.1]heptane
+[PASS] Phase 53 1-methylbicyclo[2.2.1]heptane -> 1-methylbicyclo[2.2.1]heptane
+[PASS] Phase 53 1-fluorobicyclo[2.2.1]heptane -> 1-fluorobicyclo[2.2.1]heptane
+[PASS] Phase 53 1-fluoro-4-methylbicyclo[2.2.1]heptane -> 1-fluoro-4-methylbicyclo[2.2.1]heptane
+[PASS] Phase 53 1-methylspiro[4.5]decane -> 1-methylspiro[4.5]decane
+[PASS] Phase 53 hydroxybicyclo rejection -> Fused ring systems other than naphthalene are not supported in this phase.
+[PASS] 7-oxabicyclo[2.2.1]heptane -> 7-oxabicyclo[2.2.1]heptane
+[PASS] 2-oxa-4-thiabicyclo[3.2.1]octane -> 2-oxa-4-thiabicyclo[3.2.1]octane
+[PASS] 3,6,8-trioxabicyclo[3.2.2]nonane -> 3,6,8-trioxabicyclo[3.2.2]nonane
+[PASS] von Baeyer unsupported ring element rejected: Radicals are not supported in Phase 1.
+[PASS] Phase 57 bicyclo[2.2.1]hept-2-ene -> bicyclo[2.2.1]hept-2-ene
+[PASS] Phase 57 spiro[3.5]non-5-ene -> spiro[3.5]non-5-ene
+[PASS] Oxazole (c1cocn1) -> oxazole
+[PASS] Isoxazole (c1ccon1) -> isoxazole
+[PASS] Thiazole (c1cscn1) -> thiazole
+[PASS] Selenazole (c1c[se]cn1) -> selenazole
+[PASS] Isothiazole (c1ccsn1) -> isothiazole
+[PASS] Isoselenazole (c1cc[se]n1) -> isoselenazole
+[PASS] 3-Methylpyrazole (Cc1cc[nH]n1) -> 3-methylpyrazole
+[PASS] 2-Methylthiazole (c1nc(C)sc1) -> 2-methylthiazole
+[PASS] Tetrahydrofuran rejection -> Saturated or partially unsaturated heterocycles are not yet supported; only the fully aromatic (maximally unsaturated) forms are supported in this phase.
+[PASS] Pyrrolidine rejection -> Saturated or partially unsaturated heterocycles are not yet supported; only the fully aromatic (maximally unsaturated) forms are supported in this phase.
+[PASS] Piperidine rejection -> Saturated or partially unsaturated heterocycles are not yet supported; only the fully aromatic (maximally unsaturated) forms are supported in this phase.
+[PASS] 1,2,4-Triazole (c1nc[nH]n1) -> 1,2,4-triazole
+[PASS] 1,3,5-Triazine (c1ncncn1) -> 1,3,5-triazine
+[PASS] Tetrazole (c1nnn[nH]1) -> 1,2,3,4-tetrazole
+[PASS] 1,3,4-Oxadiazole (o1cnnc1) -> 1,3,4-oxadiazole
+[PASS] 1,4-Oxazine tie-break (c1nccoc1) -> 1,4-oxazine
+[PASS] 3-Methyl-1,2,4-triazole (n1c(C)ncn1) -> 3-methyl-1,2,4-triazole
+[PASS] Unsupported heteroatom (F ring atom) rejection -> Saturated or partially unsaturated heterocycles are not yet supported; only the fully aromatic (maximally unsaturated) forms are supported in this phase.
+[PASS] Phase 60 7-membered heterocycle (c1nncccn1) -> 3H-1,2,4-triazepine
+[PASS] Saturated general heterocycle rejection -> Saturated or partially unsaturated heterocycles are not yet supported; only the fully aromatic (maximally unsaturated) forms are supported in this phase.
+[PASS] Imidazole retained name non-regression -> imidazole
+[PASS] Phase 31 indole (c1ccc2[nH]ccc2c1) -> indole
+[PASS] Phase 31 isoindole (c1ccc2c[nH]cc2c1) -> isoindole
+[PASS] Phase 31 benzofuran (c1ccc2occc2c1) -> benzofuran
+[PASS] Phase 31 isobenzofuran (c1ccc2cocc2c1) -> isobenzofuran
+[PASS] Phase 31 benzothiophene (c1ccc2sccc2c1) -> benzothiophene
+[PASS] Phase 31 isobenzothiophene (c1ccc2cscc2c1) -> isobenzothiophene
+[PASS] Phase 31 benzoselenophene (c1ccc2[se]ccc2c1) -> benzoselenophene
+[PASS] Phase 31 isobenzoselenophene (c1ccc2c[se]cc2c1) -> isobenzoselenophene
+[PASS] Phase 31 benzotellurophene (c1ccc2[te]ccc2c1) -> benzotellurophene
+[PASS] Phase 31 isobenzotellurophene (c1ccc2c[te]cc2c1) -> isobenzotellurophene
+[PASS] Phase 31 benzimidazole (c1ccc2[nH]cnc2c1) -> benzimidazole
+[PASS] Phase 31 quinoline (c1ccc2ncccc2c1) -> quinoline
+[PASS] Phase 31 isoquinoline (c1ccc2cnccc2c1) -> isoquinoline
+[PASS] Phase 31 quinazoline (c1ccc2ncncc2c1) -> quinazoline
+[PASS] Phase 31 cinnoline (c1ccc2nnccc2c1) -> cinnoline
+[PASS] Phase 31 phthalazine (c1ccc2cnncc2c1) -> phthalazine
+[PASS] Phase 31 quinoxaline (c1ccc2nccnc2c1) -> quinoxaline
+[PASS] Phase 31 rejection (c1ccc2ncoc2c1) -> Fused ring systems other than naphthalene are not supported in this phase.
+[PASS] Phase 31 rejection (c1ccc2nn[nH]c2c1) -> Fused ring systems other than naphthalene are not supported in this phase.
+[PASS] Phase 32 purine (c1ncnc2[nH]cnc12) -> purine
+[PASS] Phase 32 purine (c1ncc2[nH]cnc2n1) -> purine
+[PASS] Phase 32 rejection (Cc1ncnc2[nH]cnc12) -> Fused ring systems other than naphthalene are not supported in this phase.
+[PASS] Phase 32 furo[2,3-b]pyridine (c1cc2cccnc2o1) -> furo[2,3-b]pyridine
+[PASS] Phase 32 3H-thieno[3,2-d]imidazole (c1csc2[nH]cnc12) -> 3H-thieno[3,2-d]imidazole
+[PASS] Phase 33 pentalene (C1=CC=C2C=CC=C12) -> pentalene
+[PASS] Phase 33 rejection (CC1=CC=C2C=CC=C12) -> Fused ring systems other than naphthalene are not supported in this phase.
+[PASS] Phase 33 bicyclo[3.3.0]octane (C1CCC2CCCC12) -> bicyclo[3.3.0]octane
+[PASS] Phase 34 3H-pyrrolizine (C1=CN2C=CC=C2C1) -> 3H-pyrrolizine
+[PASS] Phase 34 3H-pyrrolizine (C1=CC2=CC=CN2C1) -> 3H-pyrrolizine
+[PASS] Phase 34 rejection (CC1=CN2C=CC=C2C1) -> Fused ring systems other than naphthalene are not supported in this phase.
+[PASS] Phase 34 rejection (C1=C[NH]C2=C1CCC2) -> Fused ring systems other than naphthalene are not supported in this phase.
+[PASS] Phase 35 furo[3,2-b]pyridine (C1=CC2=C(C=CO2)N=C1) -> furo[3,2-b]pyridine
+[PASS] Phase 35 phosphinino[3,2-b]furan (C1=CC2=C(C=CO2)P=C1) -> phosphinino[3,2-b]furan
+[PASS] Phase 35 pyrido[2,3-d]pyrimidine (C1=CC2=CN=CN=C2N=C1) -> pyrido[2,3-d]pyrimidine
+[PASS] Phase 35 thieno[3,2-b]thiophene (C1=CSC2=C1SC=C2) -> thieno[3,2-b]thiophene
+[PASS] Phase 35 selenolo[3,2-b]thiophene (C1=C[Se]C2=C1SC=C2) -> selenolo[3,2-b]thiophene
+[PASS] Phase 35 tellurolo[3,2-b]selenophene (C1=C[Te]C2=C1[Se]C=C2) -> tellurolo[3,2-b]selenophene
+[PASS] Phase 35 phosphinino[3,2-b]tellurophene (c1c[te]c2c1pccc2) -> phosphinino[3,2-b]tellurophene
+[PASS] Phase 35 rejection (CC1=CC2=C(C=CO2)N=C1) -> Fused ring systems other than naphthalene are not supported in this phase.
+[PASS] Phase 35 4H-furo[3,2-b]pyrrole (c1cc2occc2[nH]1) -> 4H-furo[3,2-b]pyrrole
+[PASS] Phase 36 indole peripheral numbering correct (N1, 3a, 7a)
+[PASS] Phase 36 quinoline peripheral numbering correct (N1, 4a, 8a)
+[PASS] Phase 36 purine exception captured: general numbering produces 'a'-suffixed locants, demonstrating mismatch with purine's fixed plain-integer scheme
+[PASS] Phase 37 5-methylindole (Cc1ccc2[nH]ccc2c1) -> 5-methylindole
+[PASS] Phase 37 5-methylisoindole (Cc1ccc2c[nH]cc2c1) -> 5-methylisoindole
+[PASS] Phase 37 1-methylisoindole (Cc1c2ccccc2c[nH]1) -> 1-methylisoindole
+[PASS] Phase 37 1-methylisoindole (Cc1[nH]cc2ccccc12) -> 1-methylisoindole
+[PASS] Phase 37 5-methylbenzofuran (Cc1ccc2occc2c1) -> 5-methylbenzofuran
+[PASS] Phase 37 5-methylisobenzofuran (Cc1ccc2cocc2c1) -> 5-methylisobenzofuran
+[PASS] Phase 37 1-methylisobenzofuran (Cc1c2ccccc2co1) -> 1-methylisobenzofuran
+[PASS] Phase 37 1-methylisobenzofuran (Cc1occ2ccccc12) -> 1-methylisobenzofuran
+[PASS] Phase 37 5-methylbenzothiophene (Cc1ccc2sccc2c1) -> 5-methylbenzothiophene
+[PASS] Phase 37 5-methylisobenzothiophene (Cc1ccc2cscc2c1) -> 5-methylisobenzothiophene
+[PASS] Phase 37 1-methylisobenzothiophene (Cc1c2ccccc2cs1) -> 1-methylisobenzothiophene
+[PASS] Phase 37 1-methylisobenzothiophene (Cc1scc2ccccc12) -> 1-methylisobenzothiophene
+[PASS] Phase 37 5-methylbenzimidazole (Cc1ccc2[nH]cnc2c1) -> 5-methylbenzimidazole
+[PASS] Phase 37 5-methylbenzimidazole (Cc1ccc2nc[nH]c2c1) -> 5-methylbenzimidazole
+[PASS] Phase 37 3-chloroquinoline (c1ccc2ncc(Cl)cc2c1) -> 3-chloroquinoline
+[PASS] Phase 37 3-methylisoquinoline (Cc1ncc2ccccc2c1) -> 3-methylisoquinoline
+[PASS] Phase 37 2-methylquinazoline (Cc1nc2ccccc2cn1) -> 2-methylquinazoline
+[PASS] Phase 37 3-methylcinnoline (Cc1nnc2ccccc2c1) -> 3-methylcinnoline
+[PASS] Phase 37 1-methylphthalazine (Cc1c2ccccc2cnn1) -> 1-methylphthalazine
+[PASS] Phase 37 1-methylphthalazine (Cc1nncc2ccccc12) -> 1-methylphthalazine
+[PASS] Phase 37 2-methylquinoxaline (Cc1nc2ccccc2nc1) -> 2-methylquinoxaline
+[PASS] Phase 37 2-methylquinoxaline (Cc1cnc2ccccc2n1) -> 2-methylquinoxaline
+[PASS] Phase 37 3,5-dimethylindole (Cc1ccc2[nH]cc(C)c2c1) -> 3,5-dimethylindole
+[PASS] Phase 37 rejection (CC12C=CC=CC1=NC=CC2) -> Fused ring systems other than naphthalene are not supported in this phase.
+[PASS] Phase 37 rejection (Cc1ncnc2[nH]cnc12) -> Fused ring systems other than naphthalene are not supported in this phase.
+[PASS] Phase 37 rejection (CC1=CC=C2C=CC=C12) -> Fused ring systems other than naphthalene are not supported in this phase.
+[PASS] Phase 37 rejection (CC1=CN2C=CC=C2C1) -> Fused ring systems other than naphthalene are not supported in this phase.
+[PASS] Phase 37 rejection (CC1=CC2=C(C=CO2)N=C1) -> Fused ring systems other than naphthalene are not supported in this phase.
+[PASS] Phase 38 thiazolo[5,4-b]pyridine (C1=CC2=C(N=C1)SC=N2) -> thiazolo[5,4-b]pyridine
+[PASS] Phase 38 oxazolo[5,4-b]pyridine (C1=CC2=C(N=C1)OC=N2) -> oxazolo[5,4-b]pyridine
+[PASS] Phase 38 1H-pyrrolo[2,3-b]pyridine (C1=CC2=C(NC=C2)N=C1) -> 1H-pyrrolo[2,3-b]pyridine
+[PASS] Phase 38 1H-imidazo[4,5-b]pyridine (C1=CC2=C(N=CN2)N=C1) -> 1H-imidazo[4,5-b]pyridine
+[PASS] Phase 38 1H-pyrazolo[4,5-b]pyridine (C1=CC2=C(N=C1)C=NN2) -> 1H-pyrazolo[4,5-b]pyridine
+[PASS] Phase 38 rejection (CC1=CNC2=C1C=CC=N2) -> Fused ring systems other than naphthalene are not supported in this phase.
+[PASS] Phase 38 rejection (C1=CC2=NC=CN2C=C1) -> Fused ring systems other than naphthalene are not supported in this phase.
+[PASS] Phase 44 furo[3,2-b]thieno[2,3-e]pyridine (o1ccc2nc3ccsc3cc12) -> furo[3,2-b]thieno[2,3-e]pyridine
+[PASS] Phase 44 furo[2,3-b]thieno[3,2-e]pyrazine (o1ccc2nc3ccsc3nc12) -> furo[2,3-b]thieno[3,2-e]pyrazine
+[PASS] Phase 44 6H-furo[3,2-b]pyrrolo[2,3-e]pyridine (o1ccc2nc3cc[nH]c3cc12) -> 6H-furo[3,2-b]pyrrolo[2,3-e]pyridine
+[PASS] Phase 44 2H-furo[3,2-b]pyrazolo[3,4-e]pyridine (o1ccc2nc3c[nH]nc3cc12) -> 2H-furo[3,2-b]pyrazolo[3,4-e]pyridine
+[PASS] Phase 44 thieno[3',4':4,5]furo[3,2-c]pyridine (o1c2c(cncc2)c3c1csc3) -> thieno[3',4':4,5]furo[3,2-c]pyridine
+[PASS] Phase 40 thiazolo[4,5-d]oxazole (O1C=NC2=C1SC=N2) -> thiazolo[4,5-d]oxazole
+[PASS] Phase 40 selenazolo[4,5-d]thiazole (S1C=NC2=C1[Se]C=N2) -> selenazolo[4,5-d]thiazole
+[PASS] Phase 40 pyrazino[2,3-d]pyridazine (C=12C=NN=CC1N=CC=N2) -> pyrazino[2,3-d]pyridazine
+TEST SMILES: N1=CC=C2C(=C1)N=CC3=C2N=CC4=C3N=CC=C4 RING COUNT: 4
+[PASS] Phase 48 pyrido[3,4-b]pyrido[6',5':4,5]pyrido[2,3-d]pyridine (N1=CC=C2C(=C1)N=CC3=C2N=CC4=C3N=CC=C4) -> pyrido[3,4-b]pyrido[6',5':4,5]pyrido[2,3-d]pyridine
+TEST SMILES: N1=CC=C2C(=C1)N=CC3=C2N=CC4=C3N=CC5=C4N=CC=C5 RING COUNT: 5
+[PASS] Phase 48 pyrido[4',3':5,6]pyrido[4,3-b]pyrido[6',5':4,5]pyrido[2,3-d]pyridine (N1=CC=C2C(=C1)N=CC3=C2N=CC4=C3N=CC5=C4N=CC=C5) -> pyrido[4',3':5,6]pyrido[4,3-b]pyrido[6',5':4,5]pyrido[2,3-d]pyridine
+TEST SMILES: N1=CC=C2C(=C1)N=CC3=C2N=CC4=C3N=CC5=C4N=CC6=C5N=CC=C6 RING COUNT: 6
+[PASS] Phase 48 pyrido[4',3':5,6]pyrido[4,3-b]pyrido[6'',5'':4',5']pyrido[2',3':4,5]pyrido[2,3-d]pyridine (N1=CC=C2C(=C1)N=CC3=C2N=CC4=C3N=CC5=C4N=CC6=C5N=CC=C6) -> pyrido[4',3':5,6]pyrido[4,3-b]pyrido[6'',5'':4',5']pyrido[2',3':4,5]pyrido[2,3-d]pyridine
+TEST SMILES: o1ccc2nc3ncc4ccsc4c3nc12 RING COUNT: 4
+[PASS] Phase 48 furo[2,3-b]thieno[2',3':4,5]pyrido[2,3-e]pyrazine (o1ccc2nc3ncc4ccsc4c3nc12) -> furo[2,3-b]thieno[2',3':4,5]pyrido[2,3-e]pyrazine
+TEST SMILES: o1ccc2nc3ccsc3cc4cc[se]c4c12 RING COUNT: 4
+[PASS] Phase 48 rejection (o1ccc2nc3ccsc3cc4cc[se]c4c12) -> Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2.
+[FAIL] Phase 26 adamantane (C1C2CC3CC1CC(C2)C3) -> got success=0 name='' err='Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2.'
+[FAIL] Phase 26 cubane (C12C3C4C1C5C2C3C45) -> got success=0 name='' err='Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2.'
+[FAIL] Phase 26 adamantan-1-ol (OC12CC3CC(CC(C1)C3)C2) -> got success=0 name='' err='Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2.'
+[FAIL] Phase 26 1-chloroadamantane (ClC12CC3CC(CC(C1)C3)C2) -> got success=0 name='' err='Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2.'
+[FAIL] Phase 26 adamantan-2-one (O=C1C2CC3CC(C2)CC1C3) -> got success=0 name='' err='bridged fused ring systems (P-25.4) are not yet supported.'
+[FAIL] Phase 26 1-chlorocubane (ClC12C3C4C1C5C2C3C45) -> got success=0 name='' err='Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2.'
+[FAIL] Phase 26 decahydronaphthalene (C1CCC2CCCCC2C1) -> got success=1 name='bicyclo[4.4.0]decane' err=''
+[PASS] Phase 39 methyl 2-(4-methoxybenzamido)-3-{4-[(1-methylpiperidin-4-yl)oxy]phenyl}propanoate (C1CN(C)CCC1OC1C=CC(CC(NC(C2C=CC(OC)=CC=2)=O)C(OC)=O)=CC=1) -> methyl 2-(4-methoxybenzamido)-3-{4-[(1-methylpiperidin-4-yl)oxy]phenyl}propanoate
+[PASS] Phase 39 cyclohexyl(furan-3-yl)phenylmethane (c1ccccc1C(c2ccoc2)C3CCCCC3) -> cyclohexyl(furan-3-yl)phenylmethane
+[PASS] Phase 39 2-(4-chlorophenyl)ethanoic acid (Clc1ccc(CC(=O)O)cc1) -> 2-(4-chlorophenyl)ethanoic acid
+[PASS] Phase 39 2-{4-[(furan-2-yl)oxy]phenyl}ethanoic acid (c1ccoc1Oc2ccc(CC(=O)O)cc2) -> 2-{4-[(furan-2-yl)oxy]phenyl}ethanoic acid
+[PASS] Phase 39 rejection (c1ccc2c(c1)CCCC2CC(=O)O) -> Fused ring systems other than naphthalene are not supported in this phase.
+[PASS] Phase 39 rejection (C1C2CC3CC1CC(C2)C3) -> Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2.
+[PASS] Phase 51 1,3,5-triazine (c1ncncn1) -> 1,3,5-triazine
+[PASS] Phase 51 1,2,4-oxadiazole (c1nocn1) -> 1,2,4-oxadiazole
+[PASS] Phase 51 1,2,4-selenadiazole ([se]1ncnc1) -> 1,2,4-selenadiazole
+[PASS] Phase 51 1,3,5-triphosphinine (P1=CP=CP=C1) -> 1,3,5-triphosphinine
+[PASS] Phase 55 azocine (c1ncccccc1) -> 1-azocine
+[PASS] Phase 60 1,5-diazonine (c1nccccncc1) -> 2H-1,5-diazonine
+[PASS] Phase 60 1,2-diazirine (c1nn1) -> 3H-1,2-diazirine
+[PASS] Phase 60 regression: even-membered general heterocycle (1,3,5-triazine) -> 1,3,5-triazine
+[PASS] Phase 60 regression: curated ring (furan) unchanged -> furan
+[SKIP] Phase 55 oxirene (3-membered O-ring) - structure not reliably parsable by Indigo
+[SKIP] Phase 55 oxete (4-membered O-ring) - 4-membered aromatic rings not Huckel-aromatic, Indigo likely rejects
+[SKIP] Phase 55 diazonine (9-membered) - large ring aromaticity may not be recognized by Indigo
+[SKIP] Phase 55 diazecine (10-membered) - large ring aromaticity may not be recognized by Indigo
+[PASS] Phase 55 regression: 1,3,5-triazine (c1ncncn1) -> 1,3,5-triazine
+[PASS] Phase 55 regression: 1,2,4-oxadiazole (c1nocn1) -> 1,2,4-oxadiazole
+[PASS] Phase 70: 11-membered saturated heterocycle -> azacycloundecane
+[PASS] Phase 70: same-kind multi-heteroatom -> 1,5-dithiacyclododecane
+[PASS] Phase 70: mixed-kind heteroatoms -> 1-thia-5-selenacyclododecane
+[PASS] Phase 70: 1-oxacycloundeca-2,4,6,8,10-pentaene
+[PASS] Phase 70: 1,8-dioxacyclooctadeca-2,4,6,9,11,13,15,17-octaene
+[PASS] Phase 70: 1-azacyclotetradeca-1,3,5,7,9,11,13-heptaene
+[PASS] Phase 70 scope: parity-failing mancude heterocycle correctly rejected: Ring composition cannot support a valid mancude form due to parity failure.
+[PASS] Phase 70: 2-methylazacycloundecane
+[PASS] Ring substituent with own stereocenter -> 5-[(2R)-2-methylcyclopentyl]heptanoic acid
+[PASS] Phase 55 rejection: saturated 7-membered N ring -> Saturated or partially unsaturated heterocycles are not yet supported; only the fully aromatic (maximally unsaturated) forms are supported in this phase.
+[PASS] Phase 55 rejection: saturated 3-membered N ring (aziridine) -> Saturated or partially unsaturated heterocycles are not yet supported; only the fully aromatic (maximally unsaturated) forms are supported in this phase.
+[PASS] Acenaphthylene rejected as P-25.3.1.1.2
+[PASS] Pyrene rejected as P-25.5
+[PASS] 1,4-methanonaphthalene rejected as P-25.4
+
+Summary: 478 passed, 7 failed.

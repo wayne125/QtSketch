@@ -1,0 +1,1599 @@
+commit ca08edb917baedf5e7765b9379d1a4dab951edaa
+Author: wayne125 <wayne125@users.noreply.github.com>
+Date:   Fri Aug 21 01:09:07 2026 +0530
+
+    Implement N-ring generic fusion nomenclature for simple paths
+
+diff --git a/src/app/IupacNamer.cpp b/src/app/IupacNamer.cpp
+index f7da185..d9c07f9 100644
+--- a/src/app/IupacNamer.cpp
++++ b/src/app/IupacNamer.cpp
+@@ -6404,8 +6404,8 @@ IupacResult IupacNamer::generateName(int mol) {
+     }
+ 
+ 
+-// --- Phase 44: Three-Heterocycle Fusion Chain Nomenclature ---
+-    if (ringCount == 3) {
++// --- Phase 44 & 48: N-Heterocycle Fusion Chain Nomenclature ---
++    if (ringCount >= 3) {
+         int sssrIter = indigoIterateSSSR(mol);
+         bool allDisjoint = true;
+         std::vector<std::set<int>> sssrRings;
+@@ -6426,7 +6426,6 @@ IupacResult IupacNamer::generateName(int mol) {
+                 indigoFree(subMol);
+             }
+             indigoFree(sssrIter);
+-
+             for (size_t i = 0; i < sssrRings.size() && allDisjoint; ++i) {
+                 for (size_t j = i + 1; j < sssrRings.size(); ++j) {
+                     for (int a : sssrRings[i]) {
+@@ -6443,692 +6442,11 @@ IupacResult IupacNamer::generateName(int mol) {
+         }
+ 
+         if (!allDisjoint) {
+-            bool handled = false;
+-            if (sssrRings.size() == 3) {
+-                int shared[3][3] = {0};
+-                std::vector<int> sharedNodesPairs[3][3];
+-                for (int i = 0; i < 3; ++i) {
+-                    for (int j = i + 1; j < 3; ++j) {
+-                        for (int a : sssrRings[i]) {
+-                            if (sssrRings[j].count(a)) {
+-                                if (indigoToGraphIdx.count(a)) {
+-                                    sharedNodesPairs[i][j].push_back(indigoToGraphIdx[a]);
+-                                    sharedNodesPairs[j][i].push_back(indigoToGraphIdx[a]);
+-                                }
+-                            }
+-                        }
+-                        shared[i][j] = shared[j][i] = sharedNodesPairs[i][j].size();
+-                    }
+-                }
+-
+-                int centerRingIdx = -1;
+-                for (int i = 0; i < 3; ++i) {
+-                    int neighbors = 0;
+-                    for (int j = 0; j < 3; ++j) {
+-                        if (shared[i][j] == 2) neighbors++;
+-                    }
+-                    if (neighbors == 2) {
+-                        centerRingIdx = i;
+-                    }
+-                }
+-
+-                if (centerRingIdx != -1) {
+-                    int end1Idx = -1, end2Idx = -1;
+-                    for (int i = 0; i < 3; ++i) {
+-                        if (i != centerRingIdx) {
+-                            if (end1Idx == -1) end1Idx = i;
+-                            else end2Idx = i;
+-                        }
+-                    }
+-
+-                    if (shared[end1Idx][end2Idx] == 0) {
+-                        auto getRingNodes = [&](int rIdx) {
+-                            std::set<int> res;
+-                            for (int idx : sssrRings[rIdx]) {
+-                                if (indigoToGraphIdx.count(idx)) res.insert(indigoToGraphIdx[idx]);
+-                            }
+-                            return res;
+-                        };
+-
+-                        std::set<int> nodes[3] = {getRingNodes(0), getRingNodes(1), getRingNodes(2)};
+-                        
+-                        bool all5or6 = true;
+-                        for (int i=0; i<3; ++i) {
+-                            if (nodes[i].size() != 5 && nodes[i].size() != 6) all5or6 = false;
+-                        }
+-
+-                        if (all5or6) {
+-                            bool allFusionsCarbon = true;
+-                            for (int endIdx : {end1Idx, end2Idx}) {
+-                                const auto& pair = sharedNodesPairs[centerRingIdx][endIdx];
+-                                if (pair.size() == 2) {
+-                                    int a = pair[0], b = pair[1];
+-                                    if (g.nodes[a].atomicNumber != 6 || g.nodes[b].atomicNumber != 6) allFusionsCarbon = false;
+-                                    bool bonded = false;
+-                                    for (int nei : g.nodes[a].neighbors) if (nei == b) bonded = true;
+-                                    if (!bonded) allFusionsCarbon = false;
+-                                } else {
+-                                    allFusionsCarbon = false;
+-                                }
+-                            }
+-
+-                            if (allFusionsCarbon) {
+-                                auto buildCycle = [&](const std::set<int> &rNodes) -> std::vector<int> {
+-                                    int rSize = static_cast<int>(rNodes.size());
+-                                    std::vector<int> cycle;
+-                                    int startNode = *rNodes.begin();
+-                                    cycle.push_back(startNode);
+-                                    int current = startNode;
+-                                    int previous = -1;
+-                                    for (int step = 1; step < rSize; ++step) {
+-                                        int nextNode = -1;
+-                                        for (int nei : g.nodes[current].neighbors) {
+-                                            if (rNodes.count(nei) && nei != previous) {
+-                                                if (step == rSize - 1) {
+-                                                    bool connectedToStart = false;
+-                                                    for (int startNei : g.nodes[nei].neighbors) {
+-                                                        if (startNei == startNode) { connectedToStart = true; break; }
+-                                                    }
+-                                                    if (!connectedToStart) continue;
+-                                                }
+-                                                nextNode = nei;
+-                                                break;
+-                                            }
+-                                        }
+-                                        if (nextNode == -1) break;
+-                                        previous = current;
+-                                        current = nextNode;
+-                                        cycle.push_back(current);
+-                                    }
+-                                    if (static_cast<int>(cycle.size()) != rSize) return {};
+-                                    return cycle;
+-                                };
+-
+-                                std::vector<int> cycles[3];
+-                                std::vector<int> rHetero[3];
+-                                RingType types[3];
+-                                bool classOk[3] = {false};
+-                                for (int i = 0; i < 3; ++i) {
+-                                    cycles[i] = buildCycle(nodes[i]);
+-                                    for (int n : nodes[i]) {
+-                                        if (g.nodes[n].atomicNumber != 6) rHetero[i].push_back(n);
+-                                    }
+-                                    if (cycles[i].size() == nodes[i].size()) {
+-                                        QString d1, d2;
+-                                        classOk[i] = classifyMonocyclicHeteroRing(g, rHetero[i], static_cast<int>(nodes[i].size()), cycles[i], types[i], d1, d2);
+-                                    }
+-                                }
+-
+-                                auto isAllowedType = [](RingType t) {
+-                                    return t == RingType::FURAN || t == RingType::THIOPHENE ||
+-                                           t == RingType::PYRIDINE || t == RingType::PYRIMIDINE ||
+-                                           t == RingType::PYRIDAZINE || t == RingType::PYRAZINE ||
+-                                           t == RingType::OXAZOLE || t == RingType::ISOXAZOLE ||
+-                                           t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE ||
+-                                           t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE ||
+-                                           t == RingType::PYRROLE || t == RingType::IMIDAZOLE ||
+-                                           t == RingType::PYRAZOLE || t == RingType::SELENOPHENE ||
+-                                           t == RingType::TELLUROPHENE || t == RingType::PHOSPHININE;
+-                                };
+-
+-                                auto isNHType = [](RingType t) {
+-                                    return t == RingType::PYRROLE || t == RingType::IMIDAZOLE || t == RingType::PYRAZOLE;
+-                                };
+-
+-                                if (classOk[0] && classOk[1] && classOk[2] && 
+-                                    isAllowedType(types[0]) && isAllowedType(types[1]) && isAllowedType(types[2])) {
+-                                    
+-                                    auto getCandidates = [&](RingType t, const std::vector<int> &hNodes, int rSize, const std::vector<int> &rCycle) {
+-                                        std::vector<std::vector<int>> cands;
+-                                        if (t == RingType::FURAN || t == RingType::THIOPHENE || t == RingType::SELENOPHENE || t == RingType::TELLUROPHENE || t == RingType::PHOSPHININE || t == RingType::PYRIDINE || t == RingType::PYRROLE) {
+-                                            if (hNodes.size() == 1) {
+-                                                int hNode = hNodes[0];
+-                                                int hIdx = -1;
+-                                                for (int i = 0; i < rSize; ++i) {
+-                                                    if (rCycle[i] == hNode) { hIdx = i; break; }
+-                                                }
+-                                                if (hIdx != -1) {
+-                                                    std::vector<int> fwd(rSize), bwd(rSize);
+-                                                    for (int i = 0; i < rSize; ++i) {
+-                                                        fwd[i] = rCycle[(hIdx + i) % rSize];
+-                                                        bwd[i] = rCycle[(hIdx - i + rSize) % rSize];
+-                                                    }
+-                                                    cands.push_back(fwd);
+-                                                    cands.push_back(bwd);
+-                                                }
+-                                            }
+-                                        } else if (t == RingType::PYRIMIDINE || t == RingType::PYRIDAZINE || t == RingType::PYRAZINE) {
+-                                            if (hNodes.size() == 2) {
+-                                                int n1 = hNodes[0];
+-                                                int n2 = hNodes[1];
+-                                                int idx1 = -1, idx2 = -1;
+-                                                for (int i = 0; i < rSize; ++i) {
+-                                                    if (rCycle[i] == n1) idx1 = i;
+-                                                    if (rCycle[i] == n2) idx2 = i;
+-                                                }
+-                                                if (idx1 != -1 && idx2 != -1) {
+-                                                    int reqOtherIdx = (t == RingType::PYRIDAZINE) ? 1 : ((t == RingType::PYRIMIDINE) ? 2 : 3);
+-                                                    std::vector<int> fwd1(rSize), bwd1(rSize);
+-                                                    for (int i = 0; i < rSize; ++i) {
+-                                                        fwd1[i] = rCycle[(idx1 + i) % rSize];
+-                                                        bwd1[i] = rCycle[(idx1 - i + rSize) % rSize];
+-                                                    }
+-                                                    if (fwd1[reqOtherIdx] == n2) cands.push_back(fwd1);
+-                                                    if (bwd1[reqOtherIdx] == n2) cands.push_back(bwd1);
+-
+-                                                    std::vector<int> fwd2(rSize), bwd2(rSize);
+-                                                    for (int i = 0; i < rSize; ++i) {
+-                                                        fwd2[i] = rCycle[(idx2 + i) % rSize];
+-                                                        bwd2[i] = rCycle[(idx2 - i + rSize) % rSize];
+-                                                    }
+-                                                    if (fwd2[reqOtherIdx] == n1) cands.push_back(fwd2);
+-                                                    if (bwd2[reqOtherIdx] == n1) cands.push_back(bwd2);
+-                                                }
+-                                            }
+-                                        } else if (t == RingType::IMIDAZOLE || t == RingType::PYRAZOLE) {
+-                                            if (hNodes.size() == 2) {
+-                                                int hNH = -1, hN = -1;
+-                                                if (g.nodes[hNodes[0]].totalH >= 1) {
+-                                                    hNH = hNodes[0];
+-                                                    hN = hNodes[1];
+-                                                } else {
+-                                                    hNH = hNodes[1];
+-                                                    hN = hNodes[0];
+-                                                }
+-                                                int hIdx = -1;
+-                                                for (int i = 0; i < rSize; ++i) {
+-                                                    if (rCycle[i] == hNH) { hIdx = i; break; }
+-                                                }
+-                                                if (hIdx != -1) {
+-                                                    std::vector<int> fwd(rSize), bwd(rSize);
+-                                                    for (int i = 0; i < rSize; ++i) {
+-                                                        fwd[i] = rCycle[(hIdx + i) % rSize];
+-                                                        bwd[i] = rCycle[(hIdx - i + rSize) % rSize];
+-                                                    }
+-                                                    int reqOtherIdx = (t == RingType::IMIDAZOLE) ? 2 : 1;
+-                                                    if (fwd[reqOtherIdx] == hN) cands.push_back(fwd);
+-                                                    if (bwd[reqOtherIdx] == hN) cands.push_back(bwd);
+-                                                }
+-                                            }
+-                                        } else if (t == RingType::OXAZOLE || t == RingType::ISOXAZOLE || t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE) {
+-                                            if (hNodes.size() == 2) {
+-                                                int hOS = -1, hN = -1;
+-                                                int z0 = g.nodes[hNodes[0]].atomicNumber;
+-                                                if (z0 == 8 || z0 == 16) {
+-                                                    hOS = hNodes[0];
+-                                                    hN = hNodes[1];
+-                                                } else {
+-                                                    hOS = hNodes[1];
+-                                                    hN = hNodes[0];
+-                                                }
+-                                                int hIdx = -1;
+-                                                for (int i = 0; i < rSize; ++i) {
+-                                                    if (rCycle[i] == hOS) { hIdx = i; break; }
+-                                                }
+-                                                if (hIdx != -1) {
+-                                                    std::vector<int> fwd(rSize), bwd(rSize);
+-                                                    for (int i = 0; i < rSize; ++i) {
+-                                                        fwd[i] = rCycle[(hIdx + i) % rSize];
+-                                                        bwd[i] = rCycle[(hIdx - i + rSize) % rSize];
+-                                                    }
+-                                                    int reqNIdx = (t == RingType::ISOXAZOLE || t == RingType::ISOTHIAZOLE) ? 1 : 2;
+-                                                    if (fwd[reqNIdx] == hN) cands.push_back(fwd);
+-                                                    if (bwd[reqNIdx] == hN) cands.push_back(bwd);
+-                                                }
+-                                            }
+-                                        }
+-                                        return cands;
+-                                    };
+-
+-                                    auto getFusionLocants = [&](RingType t, const std::vector<int> &hNodes, int rSize, const std::vector<int> &rCycle, int bhA, int bhB) -> std::pair<int, int> {
+-                                        std::vector<std::vector<int>> cands = getCandidates(t, hNodes, rSize, rCycle);
+-                                        std::pair<int, int> best = {999, 999};
+-                                        for (const auto &cand : cands) {
+-                                            int posA = -1, posB = -1;
+-                                            for (int i = 0; i < rSize; ++i) {
+-                                                if (cand[i] == bhA) posA = i;
+-                                                if (cand[i] == bhB) posB = i;
+-                                            }
+-                                            if (posA != -1 && posB != -1) {
+-                                                int locA = posA + 1;
+-                                                int locB = posB + 1;
+-                                                std::pair<int, int> pairVal = {std::min(locA, locB), std::max(locA, locB)};
+-                                                if (pairVal < best) best = pairVal;
+-                                            }
+-                                        }
+-                                        return best;
+-                                    };
+-
+-                                    auto compareSeniority = [&](int idx1, int idx2) -> int {
+-                                        RingType t1 = types[idx1];
+-                                        RingType t2 = types[idx2];
+-                                        int size1 = nodes[idx1].size();
+-                                        int size2 = nodes[idx2].size();
+-                                        const auto &rH1 = rHetero[idx1];
+-                                        const auto &rH2 = rHetero[idx2];
+-                                        
+-                                        if (t1 == t2) return idx1; // tie goes to first
+-
+-                                        auto getRankHetero = [](RingType t) {
+-                                            if (t == RingType::PYRIDINE || t == RingType::PYRIMIDINE || t == RingType::PYRIDAZINE || t == RingType::PYRAZINE || t == RingType::OXAZOLE || t == RingType::ISOXAZOLE || t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE || t == RingType::PYRROLE || t == RingType::IMIDAZOLE || t == RingType::PYRAZOLE) return 1;
+-                                            if (t == RingType::FURAN) return 2;
+-                                            if (t == RingType::THIOPHENE) return 3;
+-                                            if (t == RingType::SELENOPHENE) return 4;
+-                                            if (t == RingType::TELLUROPHENE) return 5;
+-                                            if (t == RingType::PHOSPHININE) return 6;
+-                                            return 99;
+-                                        };
+-
+-                                        auto getNumHetero = [](RingType t) {
+-                                            if (t == RingType::PYRIMIDINE || t == RingType::PYRIDAZINE || t == RingType::PYRAZINE || t == RingType::OXAZOLE || t == RingType::ISOXAZOLE || t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE || t == RingType::IMIDAZOLE || t == RingType::PYRAZOLE) return 2;
+-                                            return 1;
+-                                        };
+-
+-                                        int rH1Rank = getRankHetero(t1), rH2Rank = getRankHetero(t2);
+-                                        if (rH1Rank < rH2Rank) return idx1;
+-                                        if (rH2Rank < rH1Rank) return idx2;
+-
+-                                        if (size1 > size2) return idx1;
+-                                        if (size2 > size1) return idx2;
+-
+-                                        int nHet1 = getNumHetero(t1), nHet2 = getNumHetero(t2);
+-                                        if (nHet1 > nHet2) return idx1;
+-                                        if (nHet2 > nHet1) return idx2;
+-
+-                                        auto getVariety = [&](const std::vector<int> &hNodes) {
+-                                            std::set<int> elems;
+-                                            for (int n : hNodes) elems.insert(g.nodes[n].atomicNumber);
+-                                            return static_cast<int>(elems.size());
+-                                        };
+-                                        int v1 = getVariety(rH1), v2 = getVariety(rH2);
+-                                        if (v1 > v2) return idx1;
+-                                        if (v2 > v1) return idx2;
+-
+-                                        auto altRank = [](int z) {
+-                                            switch (z) { case 9: return 1; case 17: return 2; case 35: return 3; case 53: return 4; case 8: return 5; case 16: return 6; case 34: return 7; case 52: return 8; case 7: return 9; case 15: return 10; default: return 99; }
+-                                        };
+-                                        auto getTopAltRank = [&](const std::vector<int> &hNodes) {
+-                                            int best = 99;
+-                                            for (int n : hNodes) best = std::min(best, altRank(g.nodes[n].atomicNumber));
+-                                            return best;
+-                                        };
+-                                        int alt1 = getTopAltRank(rH1), alt2 = getTopAltRank(rH2);
+-                                        if (alt1 < alt2) return idx1;
+-                                        if (alt2 < alt1) return idx2;
+-
+-                                        auto getOwnLocants = [](RingType t) -> std::vector<int> {
+-                                            switch (t) {
+-                                                case RingType::PYRIDINE: case RingType::PYRROLE: case RingType::FURAN: case RingType::THIOPHENE: case RingType::SELENOPHENE: case RingType::TELLUROPHENE: case RingType::PHOSPHININE: return {1};
+-                                                case RingType::PYRIDAZINE: case RingType::ISOXAZOLE: case RingType::ISOTHIAZOLE: case RingType::PYRAZOLE: case RingType::ISOSELENAZOLE: return {1, 2};
+-                                                case RingType::PYRIMIDINE: case RingType::OXAZOLE: case RingType::THIAZOLE: case RingType::IMIDAZOLE: case RingType::SELENAZOLE: return {1, 3};
+-                                                case RingType::PYRAZINE: return {1, 4};
+-                                                default: return {};
+-                                            }
+-                                        };
+-                                        std::vector<int> ownLoc1 = getOwnLocants(t1), ownLoc2 = getOwnLocants(t2);
+-                                        if (ownLoc1 < ownLoc2) return idx1;
+-                                        if (ownLoc2 < ownLoc1) return idx2;
+-
+-                                        int bhA = sharedNodesPairs[idx1][idx2][0];
+-                                        int bhB = sharedNodesPairs[idx1][idx2][1];
+-                                        std::pair<int, int> fl1 = getFusionLocants(t1, rH1, size1, cycles[idx1], bhA, bhB);
+-                                        std::pair<int, int> fl2 = getFusionLocants(t2, rH2, size2, cycles[idx2], bhA, bhB);
+-                                        if (fl1 < fl2) return idx1;
+-                                        if (fl2 < fl1) return idx2;
+-
+-                                        return idx1; // absolute tie
+-                                    };
+-
+-                                    // Pairwise tournament: A vs B, winner vs C
+-                                    int w1 = compareSeniority(end1Idx, centerRingIdx);
+-                                    int baseChoice = compareSeniority(w1, end2Idx);
+-
+-                                    if (baseChoice != centerRingIdx) {
+-                                        int baseIdx = baseChoice;
+-                                        int midIdx = centerRingIdx;
+-                                        int farIdx = (baseChoice == end1Idx) ? end2Idx : end1Idx;
+-                                        
+-                                        RingType baseType = types[baseIdx];
+-                                        RingType midType = types[midIdx];
+-                                        RingType farType = types[farIdx];
+-                                        
+-                                        int bhMidBaseA = sharedNodesPairs[midIdx][baseIdx][0];
+-                                        int bhMidBaseB = sharedNodesPairs[midIdx][baseIdx][1];
+-                                        
+-                                        int bhFarMidA = sharedNodesPairs[farIdx][midIdx][0];
+-                                        int bhFarMidB = sharedNodesPairs[farIdx][midIdx][1];
+-                                        
+-                                        std::vector<std::vector<int>> baseCands = getCandidates(baseType, rHetero[baseIdx], nodes[baseIdx].size(), cycles[baseIdx]);
+-                                        std::vector<std::vector<int>> midCands = getCandidates(midType, rHetero[midIdx], nodes[midIdx].size(), cycles[midIdx]);
+-                                        std::vector<std::vector<int>> farCands = getCandidates(farType, rHetero[farIdx], nodes[farIdx].size(), cycles[farIdx]);
+-                                        
+-                                        if (!baseCands.empty() && !midCands.empty() && !farCands.empty()) {
+-                                            auto getLetterAndNodes = [&](const std::vector<int>& bCand, int bhA, int bhB) -> std::tuple<int, int, int> {
+-                                                int posA = -1, posB = -1;
+-                                                for (int i = 0; i < (int)bCand.size(); ++i) {
+-                                                    if (bCand[i] == bhA) posA = i;
+-                                                    if (bCand[i] == bhB) posB = i;
+-                                                }
+-                                                if (posA != -1 && posB != -1) {
+-                                                    int locA = posA + 1;
+-                                                    int locB = posB + 1;
+-                                                    int minL = std::min(locA, locB);
+-                                                    int maxL = std::max(locA, locB);
+-                                                    int baseSize = bCand.size();
+-                                                    if (maxL == minL + 1) {
+-                                                        return {minL - 1, (locA == minL) ? bhA : bhB, (locA == minL) ? bhB : bhA};
+-                                                    } else if (minL == 1 && maxL == baseSize) {
+-                                                        return {baseSize - 1, (locA == baseSize) ? bhA : bhB, (locA == 1) ? bhA : bhB};
+-                                                    }
+-                                                }
+-                                                return {-1, -1, -1};
+-                                            };
+-                                            
+-                                            struct Solution2 {
+-                                                int baseLetter;
+-                                                std::pair<int, int> midBasePair;
+-                                                std::pair<int, int> midFarPair;
+-                                                std::pair<int, int> farPair;
+-                                            };
+-                                            
+-                                            std::vector<Solution2> validSolutions;
+-                                            
+-                                            for (const auto& bCand : baseCands) {
+-                                                auto tBase = getLetterAndNodes(bCand, bhMidBaseA, bhMidBaseB);
+-                                                int baseLetter = std::get<0>(tBase);
+-                                                int nsBase = std::get<1>(tBase);
+-                                                int neBase = std::get<2>(tBase);
+-                                                if (baseLetter != -1) {
+-                                                    for (const auto& mCand : midCands) {
+-                                                        int pStart = -1, pEnd = -1;
+-                                                        for (size_t i = 0; i < mCand.size(); ++i) {
+-                                                            if (mCand[i] == nsBase) pStart = i;
+-                                                            if (mCand[i] == neBase) pEnd = i;
+-                                                        }
+-                                                        if (pStart != -1 && pEnd != -1) {
+-                                                            std::pair<int, int> midBasePair = {pStart + 1, pEnd + 1};
+-                                                            
+-                                                            int fStart = -1, fEnd = -1;
+-                                                            for (size_t i = 0; i < mCand.size(); ++i) {
+-                                                                if (mCand[i] == bhFarMidA) fStart = i;
+-                                                                if (mCand[i] == bhFarMidB) fEnd = i;
+-                                                            }
+-                                                            if (fStart != -1 && fEnd != -1) {
+-                                                                for (const auto& fCand : farCands) {
+-                                                                    int fs = -1, fe = -1;
+-                                                                    for (size_t i = 0; i < fCand.size(); ++i) {
+-                                                                        if (fCand[i] == mCand[fStart]) fs = i;
+-                                                                        if (fCand[i] == mCand[fEnd]) fe = i;
+-                                                                    }
+-                                                                    if (fs != -1 && fe != -1) {
+-                                                                        validSolutions.push_back({baseLetter, midBasePair, {fStart + 1, fEnd + 1}, {fs + 1, fe + 1}});
+-                                                                    }
+-                                                                }
+-                                                            }
+-                                                        }
+-                                                    }
+-                                                }
+-                                            }
+-                                            
+-                                            if (!validSolutions.empty()) {
+-                                                Solution2 bestSol = validSolutions[0];
+-                                                for (size_t i = 1; i < validSolutions.size(); ++i) {
+-                                                    const auto& sol = validSolutions[i];
+-                                                    if (sol.baseLetter < bestSol.baseLetter) { bestSol = sol; continue; }
+-                                                    if (sol.baseLetter > bestSol.baseLetter) continue;
+-                                                    
+-                                                    if (sol.midBasePair < bestSol.midBasePair) { bestSol = sol; continue; }
+-                                                    if (sol.midBasePair > bestSol.midBasePair) continue;
+-                                                    
+-                                                    if (sol.farPair < bestSol.farPair) { bestSol = sol; continue; }
+-                                                    if (sol.farPair > bestSol.farPair) continue;
+-                                                }
+-                                                
+-                                                QString farPref = getFusionPrefixShared(farType);
+-                                                QString midPref = getFusionPrefixShared(midType);
+-                                                QString baseName = getBaseNameShared(baseType);
+-                                                
+-                                                QString resultName = QString("%1[%2',%3':%4,%5]%6[%7,%8-%9]%10")
+-                                                    .arg(farPref)
+-                                                    .arg(bestSol.farPair.first).arg(bestSol.farPair.second)
+-                                                    .arg(bestSol.midFarPair.first).arg(bestSol.midFarPair.second)
+-                                                    .arg(midPref)
+-                                                    .arg(bestSol.midBasePair.first).arg(bestSol.midBasePair.second)
+-                                                    .arg((char)('a' + bestSol.baseLetter))
+-                                                    .arg(baseName);
+-                                                    
+-                                                if (isNHType(types[0]) || isNHType(types[1]) || isNHType(types[2])) {
+-                                                    int nhNode = -1;
+-                                                    for (int i = 0; i < 3; ++i) {
+-                                                        for (int n : nodes[i]) {
+-                                                            if (g.nodes[n].atomicNumber == 7 && g.nodes[n].totalH >= 1) {
+-                                                                nhNode = n;
+-                                                                break;
+-                                                            }
+-                                                        }
+-                                                        if (nhNode != -1) break;
+-                                                    }
+-                                                    if (nhNode != -1) {
+-                                                        std::set<int> bheads = {bhMidBaseA, bhMidBaseB, bhFarMidA, bhFarMidB};
+-                                                        std::map<int, QString> periphMap = computePeripheralNumbering3Ring(g, nodes[0], nodes[1], nodes[2], bheads, {}, true);
+-                                                        if (periphMap.count(nhNode)) {
+-                                                            QString locStr = periphMap[nhNode];
+-                                                            bool ok = false;
+-                                                            locStr.toInt(&ok);
+-                                                            if (ok) {
+-                                                                resultName = locStr + "H-" + resultName;
+-                                                            }
+-                                                        }
+-                                                    }
+-                                                }
+-                                                    
+-                                                return {true, resultName, ""};
+-                                            }
+-                                        }
+-                                        return {false, "", "Failed to generate candidates for second-order attached component."};
+-                                    }
+-
+-                                    // Middle ring is base.
+-                                    RingType baseType = types[centerRingIdx];
+-                                    int baseSize = nodes[centerRingIdx].size();
+-                                    const std::vector<int>& baseCycle = cycles[centerRingIdx];
+-                                    const std::vector<int>& baseHetero = rHetero[centerRingIdx];
+-
+-                                    int bh1_A = sharedNodesPairs[centerRingIdx][end1Idx][0];
+-                                    int bh1_B = sharedNodesPairs[centerRingIdx][end1Idx][1];
+-                                    int bh2_A = sharedNodesPairs[centerRingIdx][end2Idx][0];
+-                                    int bh2_B = sharedNodesPairs[centerRingIdx][end2Idx][1];
+-
+-                                    std::vector<std::vector<int>> baseCands = getCandidates(baseType, baseHetero, baseSize, baseCycle);
+-                                    std::vector<std::vector<int>> attCands1 = getCandidates(types[end1Idx], rHetero[end1Idx], nodes[end1Idx].size(), cycles[end1Idx]);
+-                                    std::vector<std::vector<int>> attCands2 = getCandidates(types[end2Idx], rHetero[end2Idx], nodes[end2Idx].size(), cycles[end2Idx]);
+-
+-                                    if (!baseCands.empty() && !attCands1.empty() && !attCands2.empty()) {
+-                                        auto getLetterAndNodes = [&](const std::vector<int>& bCand, int bhA, int bhB) -> std::tuple<int, int, int> {
+-                                            int posA = -1, posB = -1;
+-                                            for (int i = 0; i < baseSize; ++i) {
+-                                                if (bCand[i] == bhA) posA = i;
+-                                                if (bCand[i] == bhB) posB = i;
+-                                            }
+-                                            if (posA != -1 && posB != -1) {
+-                                                int locA = posA + 1;
+-                                                int locB = posB + 1;
+-                                                int minL = std::min(locA, locB);
+-                                                int maxL = std::max(locA, locB);
+-                                                if (maxL == minL + 1) {
+-                                                    return {minL - 1, (locA == minL) ? bhA : bhB, (locA == minL) ? bhB : bhA};
+-                                                } else if (minL == 1 && maxL == baseSize) {
+-                                                    return {baseSize - 1, (locA == baseSize) ? bhA : bhB, (locA == 1) ? bhA : bhB};
+-                                                }
+-                                            }
+-                                            return {-1, -1, -1};
+-                                        };
+-
+-                                        struct Solution {
+-                                            int l1, l2; // letters
+-                                            std::pair<int,int> p1, p2; // locant pairs for end1, end2
+-                                        };
+-                                        std::vector<Solution> validSolutions;
+-
+-                                        for (const auto& bCand : baseCands) {
+-                                            auto [letter1, ns1, ne1] = getLetterAndNodes(bCand, bh1_A, bh1_B);
+-                                            auto [letter2, ns2, ne2] = getLetterAndNodes(bCand, bh2_A, bh2_B);
+-
+-                                            if (letter1 != -1 && letter2 != -1) {
+-                                                std::pair<int, int> bestAttPair1 = {999, 999};
+-                                                for (const auto &aCand : attCands1) {
+-                                                    int pStart = -1, pEnd = -1;
+-                                                    for (size_t i = 0; i < aCand.size(); ++i) {
+-                                                        if (aCand[i] == ns1) pStart = i;
+-                                                        if (aCand[i] == ne1) pEnd = i;
+-                                                    }
+-                                                    if (pStart != -1 && pEnd != -1) {
+-                                                        std::pair<int, int> p = {pStart + 1, pEnd + 1};
+-                                                        if (p < bestAttPair1) bestAttPair1 = p;
+-                                                    }
+-                                                }
+-
+-                                                std::pair<int, int> bestAttPair2 = {999, 999};
+-                                                for (const auto &aCand : attCands2) {
+-                                                    int pStart = -1, pEnd = -1;
+-                                                    for (size_t i = 0; i < aCand.size(); ++i) {
+-                                                        if (aCand[i] == ns2) pStart = i;
+-                                                        if (aCand[i] == ne2) pEnd = i;
+-                                                    }
+-                                                    if (pStart != -1 && pEnd != -1) {
+-                                                        std::pair<int, int> p = {pStart + 1, pEnd + 1};
+-                                                        if (p < bestAttPair2) bestAttPair2 = p;
+-                                                    }
+-                                                }
+-                                                
+-                                                if (bestAttPair1.first < 999 && bestAttPair2.first < 999) {
+-                                                    validSolutions.push_back({letter1, letter2, bestAttPair1, bestAttPair2});
+-                                                }
+-                                            }
+-                                        }
+-
+-                                        if (!validSolutions.empty()) {
+-                                            QString pref1 = getFusionPrefixShared(types[end1Idx]);
+-                                            QString pref2 = getFusionPrefixShared(types[end2Idx]);
+-                                            
+-                                            Solution bestSol = validSolutions[0];
+-                                            for (size_t i = 1; i < validSolutions.size(); ++i) {
+-                                                const auto& sol = validSolutions[i];
+-                                                std::vector<int> lSet_best = {bestSol.l1, bestSol.l2};
+-                                                std::vector<int> lSet_curr = {sol.l1, sol.l2};
+-                                                std::sort(lSet_best.begin(), lSet_best.end());
+-                                                std::sort(lSet_curr.begin(), lSet_curr.end());
+-                                                
+-                                                if (lSet_curr < lSet_best) {
+-                                                    bestSol = sol;
+-                                                } else if (lSet_curr == lSet_best) {
+-                                                    bool e1First = (pref1 < pref2);
+-                                                    std::vector<int> order_best = e1First ? std::vector<int>{bestSol.l1, bestSol.l2} : std::vector<int>{bestSol.l2, bestSol.l1};
+-                                                    std::vector<int> order_curr = e1First ? std::vector<int>{sol.l1, sol.l2} : std::vector<int>{sol.l2, sol.l1};
+-                                                    if (order_curr < order_best) {
+-                                                        bestSol = sol;
+-                                                    }
+-                                                }
+-                                            }
+-                                            
+-                                            QString block1 = QString("%1[%2,%3-%4]").arg(pref1).arg(bestSol.p1.first).arg(bestSol.p1.second).arg((char)('a' + bestSol.l1));
+-                                            QString block2 = QString("%1[%2,%3-%4]").arg(pref2).arg(bestSol.p2.first).arg(bestSol.p2.second).arg((char)('a' + bestSol.l2));
+-                                            
+-                                            QString resultName;
+-                                            if (pref1 < pref2) {
+-                                                resultName = block1 + block2 + getBaseNameShared(baseType);
+-                                            } else {
+-                                                resultName = block2 + block1 + getBaseNameShared(baseType);
+-                                            }
+-                                            
+-                                            if (isNHType(types[0]) || isNHType(types[1]) || isNHType(types[2])) {
+-                                                int nhNode = -1;
+-                                                for (int i = 0; i < 3; ++i) {
+-                                                    for (int n : nodes[i]) {
+-                                                        if (g.nodes[n].atomicNumber == 7 && g.nodes[n].totalH >= 1) {
+-                                                            nhNode = n;
+-                                                            break;
+-                                                        }
+-                                                    }
+-                                                    if (nhNode != -1) break;
+-                                                }
+-                                                if (nhNode != -1) {
+-                                                    std::set<int> bheads = {bh1_A, bh1_B, bh2_A, bh2_B};
+-                                                    std::map<int, QString> periphMap = computePeripheralNumbering3Ring(g, nodes[0], nodes[1], nodes[2], bheads, {}, true);
+-                                                    if (!periphMap.count(nhNode)) {
+-                                                        return {false, "", "Failed to compute peripheral locant for indicated hydrogen."};
+-                                                    }
+-                                                    QString locStr = periphMap[nhNode];
+-                                                    bool ok = false;
+-                                                    locStr.toInt(&ok);
+-                                                    if (!ok) {
+-                                                        return {false, "", "Indicated hydrogen locant is letter-suffixed."};
+-                                                    }
+-                                                    resultName = locStr + "H-" + resultName;
+-                                                }
+-                                            }
+-                                            return {true, resultName, ""};
+-                                        }
+-                                    }
+-                                }
+-                            }
+-                        }
+-                    }
+-                }
+-            }
+-            if (!handled) {
+-                return {false, "", "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."};
+-            }
+-        }
+-    }
+-
+-    
+-
+-// --- Phase 48: Four-Heterocycle Fusion Chain Nomenclature ---
+-    if (ringCount > 4) {
+-        return {false, "", "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."};
+-    }
+-    if (ringCount == 4) {
+-        int sssrIter = indigoIterateSSSR(mol);
+-        bool allDisjoint = true;
+-        std::vector<std::set<int>> sssrRings;
+-        if (sssrIter >= 0) {
+-            int subMol = 0;
+-            while ((subMol = indigoNext(sssrIter)) != 0) {
+-                std::set<int> rAtoms;
+-                int ringAtomIter = indigoIterateAtoms(subMol);
+-                if (ringAtomIter >= 0) {
+-                    int ringAtomHandle = 0;
+-                    while ((ringAtomHandle = indigoNext(ringAtomIter)) != 0) {
+-                        rAtoms.insert(indigoIndex(ringAtomHandle));
+-                        indigoFree(ringAtomHandle);
+-                    }
+-                    indigoFree(ringAtomIter);
+-                }
+-                sssrRings.push_back(rAtoms);
+-                indigoFree(subMol);
+-            }
+-            indigoFree(sssrIter);
+-            for (size_t i = 0; i < sssrRings.size() && allDisjoint; ++i) {
+-                for (size_t j = i + 1; j < sssrRings.size(); ++j) {
+-                    for (int a : sssrRings[i]) {
+-                        if (sssrRings[j].count(a)) {
+-                            allDisjoint = false;
+-                            break;
+-                        }
+-                    }
+-                    if (!allDisjoint) break;
+-                }
+-            }
+-        } else {
+-            allDisjoint = false;
+-        }
+-
+-        if (!allDisjoint && sssrRings.size() == 4) {
+-            int shared[4][4] = {0};
+-            std::vector<int> sharedNodesPairs[4][4];
+-            for (int i = 0; i < 4; ++i) {
+-                for (int j = i + 1; j < 4; ++j) {
++            int N = sssrRings.size();
++            std::vector<std::vector<int>> shared(N, std::vector<int>(N, 0));
++            std::vector<std::vector<std::vector<int>>> sharedNodesPairs(N, std::vector<std::vector<int>>(N));
++            for (int i = 0; i < N; ++i) {
++                for (int j = i + 1; j < N; ++j) {
+                     for (int a : sssrRings[i]) {
+                         if (sssrRings[j].count(a)) {
+                             if (indigoToGraphIdx.count(a)) {
+@@ -7141,406 +6459,522 @@ IupacResult IupacNamer::generateName(int mol) {
+                 }
+             }
+ 
+-            int degree[4] = {0};
++            std::vector<int> degree(N, 0);
+             bool validFusion = true;
+-            for (int i = 0; i < 4; ++i) {
+-                for (int j = 0; j < 4; ++j) {
++            for (int i = 0; i < N; ++i) {
++                for (int j = 0; j < N; ++j) {
+                     if (shared[i][j] == 2) degree[i]++;
+                     else if (shared[i][j] != 0) validFusion = false;
+                 }
+             }
+ 
+             int ends = 0, centers = 0;
+-            for (int i = 0; i < 4; ++i) {
++            for (int i = 0; i < N; ++i) {
+                 if (degree[i] == 1) ends++;
+                 else if (degree[i] == 2) centers++;
+-            }
+-
+-            if (validFusion && ends == 2 && centers == 2) {
+-                // Walk the chain from one end to build the ordered ring sequence.
+-                int startEnd = -1;
+-                for (int i = 0; i < 4; ++i) if (degree[i] == 1) { startEnd = i; break; }
+-                std::vector<int> chain;
+-                std::set<int> visited;
+-                int curr = startEnd;
+-                for (int step = 0; step < 4 && curr != -1; ++step) {
+-                    chain.push_back(curr);
+-                    visited.insert(curr);
+-                    int nextRing = -1;
+-                    for (int j = 0; j < 4; ++j) {
+-                        if (j != curr && shared[curr][j] == 2 && !visited.count(j)) { nextRing = j; break; }
+-                    }
+-                    curr = nextRing;
+-                }
+-
+-                if (chain.size() == 4) {
+-                    std::set<int> nodes4[4];
+-                    for (int i = 0; i < 4; ++i) {
+-                        for (int a : sssrRings[i]) if (indigoToGraphIdx.count(a)) nodes4[i].insert(indigoToGraphIdx[a]);
+-                    }
+-
+-                    auto buildCycle4 = [&](const std::set<int> &rNodes) -> std::vector<int> {
+-                        int rSize = static_cast<int>(rNodes.size());
+-                        std::vector<int> cycle;
+-                        int startNode = *rNodes.begin();
+-                        cycle.push_back(startNode);
+-                        int current = startNode;
+-                        int previous = -1;
+-                        for (int step = 1; step < rSize; ++step) {
+-                            int nextNode = -1;
+-                            for (int nei : g.nodes[current].neighbors) {
+-                                if (rNodes.count(nei) && nei != previous) {
+-                                    if (step == rSize - 1) {
+-                                        bool connectedToStart = false;
+-                                        for (int startNei : g.nodes[nei].neighbors) {
+-                                            if (startNei == startNode) { connectedToStart = true; break; }
+-                                        }
+-                                        if (!connectedToStart) continue;
++                else if (degree[i] > 2) validFusion = false;
++            }
++
++            if (validFusion && ends == 2 && centers == N - 2) {
++                std::vector<std::set<int>> nodesN(N);
++                for (int i = 0; i < N; ++i) {
++                    for (int a : sssrRings[i]) if (indigoToGraphIdx.count(a)) nodesN[i].insert(indigoToGraphIdx[a]);
++                }
++
++                auto buildCycleN = [&](const std::set<int> &rNodes) -> std::vector<int> {
++                    int rSize = static_cast<int>(rNodes.size());
++                    std::vector<int> cycle;
++                    int startNode = *rNodes.begin();
++                    cycle.push_back(startNode);
++                    int current = startNode;
++                    int previous = -1;
++                    for (int step = 1; step < rSize; ++step) {
++                        int nextNode = -1;
++                        for (int nei : g.nodes[current].neighbors) {
++                            if (rNodes.count(nei) && nei != previous) {
++                                if (step == rSize - 1) {
++                                    bool connectedToStart = false;
++                                    for (int startNei : g.nodes[nei].neighbors) {
++                                        if (startNei == startNode) { connectedToStart = true; break; }
+                                     }
+-                                    nextNode = nei;
+-                                    break;
++                                    if (!connectedToStart) continue;
+                                 }
++                                nextNode = nei;
++                                break;
+                             }
+-                            if (nextNode == -1) break;
+-                            previous = current;
+-                            current = nextNode;
+-                            cycle.push_back(current);
+                         }
+-                        if (static_cast<int>(cycle.size()) != rSize) return {};
+-                        return cycle;
++                        if (nextNode == -1) break;
++                        previous = current;
++                        current = nextNode;
++                        cycle.push_back(current);
++                    }
++                    if (static_cast<int>(cycle.size()) != rSize) return {};
++                    return cycle;
++                };
++
++                std::vector<std::vector<int>> cyclesN(N);
++                std::vector<std::vector<int>> rHeteroN(N);
++                std::vector<RingType> typesN(N);
++                std::vector<bool> classOkN(N, false);
++                bool allClassified = true;
++                for (int i = 0; i < N; ++i) {
++                    cyclesN[i] = buildCycleN(nodesN[i]);
++                    for (int n : nodesN[i]) if (g.nodes[n].atomicNumber != 6) rHeteroN[i].push_back(n);
++                    if (cyclesN[i].size() == nodesN[i].size()) {
++                        QString d1, d2;
++                        classOkN[i] = classifyMonocyclicHeteroRing(g, rHeteroN[i], static_cast<int>(nodesN[i].size()), cyclesN[i], typesN[i], d1, d2);
++                    }
++                    if (!classOkN[i]) allClassified = false;
++                }
++
++                auto isAllowedType = [](RingType t) {
++                    return t == RingType::FURAN || t == RingType::THIOPHENE ||
++                           t == RingType::PYRIDINE || t == RingType::PYRIMIDINE ||
++                           t == RingType::PYRIDAZINE || t == RingType::PYRAZINE ||
++                           t == RingType::OXAZOLE || t == RingType::ISOXAZOLE ||
++                           t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE ||
++                           t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE ||
++                           t == RingType::PYRROLE || t == RingType::IMIDAZOLE ||
++                           t == RingType::PYRAZOLE || t == RingType::SELENOPHENE ||
++                           t == RingType::TELLUROPHENE || t == RingType::PHOSPHININE;
++                };
++
++                bool allAllowed = allClassified;
++                for (int i = 0; i < N && allAllowed; ++i) if (!isAllowedType(typesN[i])) allAllowed = false;
++
++                if (allAllowed) {
++                    auto getCandidates = [&](RingType t, const std::vector<int> &hNodes, int rSize, const std::vector<int> &rCycle) {
++                        std::vector<std::vector<int>> cands;
++                        if (t == RingType::FURAN || t == RingType::THIOPHENE || t == RingType::SELENOPHENE || t == RingType::TELLUROPHENE || t == RingType::PHOSPHININE || t == RingType::PYRIDINE || t == RingType::PYRROLE) {
++                            if (hNodes.size() == 1) {
++                                int hNode = hNodes[0];
++                                int hIdx = -1;
++                                for (int i = 0; i < rSize; ++i) if (rCycle[i] == hNode) { hIdx = i; break; }
++                                if (hIdx != -1) {
++                                    std::vector<int> fwd(rSize), bwd(rSize);
++                                    for (int i = 0; i < rSize; ++i) { fwd[i] = rCycle[(hIdx + i) % rSize]; bwd[i] = rCycle[(hIdx - i + rSize) % rSize]; }
++                                    cands.push_back(fwd);
++                                    cands.push_back(bwd);
++                                }
++                            }
++                        } else if (t == RingType::PYRIMIDINE || t == RingType::PYRIDAZINE || t == RingType::PYRAZINE) {
++                            if (hNodes.size() == 2) {
++                                int n1 = hNodes[0], n2 = hNodes[1];
++                                int idx1 = -1, idx2 = -1;
++                                for (int i = 0; i < rSize; ++i) { if (rCycle[i] == n1) idx1 = i; if (rCycle[i] == n2) idx2 = i; }
++                                if (idx1 != -1 && idx2 != -1) {
++                                    int reqOtherIdx = (t == RingType::PYRIDAZINE) ? 1 : ((t == RingType::PYRIMIDINE) ? 2 : 3);
++                                    std::vector<int> fwd1(rSize), bwd1(rSize);
++                                    for (int i = 0; i < rSize; ++i) { fwd1[i] = rCycle[(idx1 + i) % rSize]; bwd1[i] = rCycle[(idx1 - i + rSize) % rSize]; }
++                                    if (fwd1[reqOtherIdx] == n2) cands.push_back(fwd1);
++                                    if (bwd1[reqOtherIdx] == n2) cands.push_back(bwd1);
++                                    std::vector<int> fwd2(rSize), bwd2(rSize);
++                                    for (int i = 0; i < rSize; ++i) { fwd2[i] = rCycle[(idx2 + i) % rSize]; bwd2[i] = rCycle[(idx2 - i + rSize) % rSize]; }
++                                    if (fwd2[reqOtherIdx] == n1) cands.push_back(fwd2);
++                                    if (bwd2[reqOtherIdx] == n1) cands.push_back(bwd2);
++                                }
++                            }
++                        } else if (t == RingType::IMIDAZOLE || t == RingType::PYRAZOLE) {
++                            if (hNodes.size() == 2) {
++                                int hNH = -1, hN = -1;
++                                if (g.nodes[hNodes[0]].totalH >= 1) { hNH = hNodes[0]; hN = hNodes[1]; }
++                                else { hNH = hNodes[1]; hN = hNodes[0]; }
++                                int hIdx = -1;
++                                for (int i = 0; i < rSize; ++i) if (rCycle[i] == hNH) { hIdx = i; break; }
++                                if (hIdx != -1) {
++                                    std::vector<int> fwd(rSize), bwd(rSize);
++                                    for (int i = 0; i < rSize; ++i) { fwd[i] = rCycle[(hIdx + i) % rSize]; bwd[i] = rCycle[(hIdx - i + rSize) % rSize]; }
++                                    int reqOtherIdx = (t == RingType::IMIDAZOLE) ? 2 : 1;
++                                    if (fwd[reqOtherIdx] == hN) cands.push_back(fwd);
++                                    if (bwd[reqOtherIdx] == hN) cands.push_back(bwd);
++                                }
++                            }
++                        } else if (t == RingType::OXAZOLE || t == RingType::ISOXAZOLE || t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE) {
++                            if (hNodes.size() == 2) {
++                                int hOS = -1, hN = -1;
++                                int z0 = g.nodes[hNodes[0]].atomicNumber;
++                                if (z0 == 8 || z0 == 16 || z0 == 34) { hOS = hNodes[0]; hN = hNodes[1]; }
++                                else { hOS = hNodes[1]; hN = hNodes[0]; }
++                                int hIdx = -1;
++                                for (int i = 0; i < rSize; ++i) if (rCycle[i] == hOS) { hIdx = i; break; }
++                                if (hIdx != -1) {
++                                    std::vector<int> fwd(rSize), bwd(rSize);
++                                    for (int i = 0; i < rSize; ++i) { fwd[i] = rCycle[(hIdx + i) % rSize]; bwd[i] = rCycle[(hIdx - i + rSize) % rSize]; }
++                                    int reqNIdx = (t == RingType::ISOXAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::ISOSELENAZOLE) ? 1 : 2;
++                                    if (fwd[reqNIdx] == hN) cands.push_back(fwd);
++                                    if (bwd[reqNIdx] == hN) cands.push_back(bwd);
++                                }
++                            }
++                        }
++                        return cands;
+                     };
+ 
+-                    std::vector<int> cycles4[4];
+-                    std::vector<int> rHetero4[4];
+-                    RingType types4[4];
+-                    bool classOk4[4] = {false};
+-                    bool allClassified = true;
+-                    for (int i = 0; i < 4; ++i) {
+-                        cycles4[i] = buildCycle4(nodes4[i]);
+-                        for (int n : nodes4[i]) if (g.nodes[n].atomicNumber != 6) rHetero4[i].push_back(n);
+-                        if (cycles4[i].size() == nodes4[i].size()) {
+-                            QString d1, d2;
+-                            classOk4[i] = classifyMonocyclicHeteroRing(g, rHetero4[i], static_cast<int>(nodes4[i].size()), cycles4[i], types4[i], d1, d2);
+-                        }
+-                        if (!classOk4[i]) allClassified = false;
+-                    }
+-
+-                    auto isAllowedType4 = [](RingType t) {
+-                        return t == RingType::FURAN || t == RingType::THIOPHENE ||
+-                               t == RingType::PYRIDINE || t == RingType::PYRIMIDINE ||
+-                               t == RingType::PYRIDAZINE || t == RingType::PYRAZINE ||
+-                               t == RingType::OXAZOLE || t == RingType::ISOXAZOLE ||
+-                               t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE ||
+-                               t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE ||
+-                               t == RingType::PYRROLE || t == RingType::IMIDAZOLE ||
+-                               t == RingType::PYRAZOLE || t == RingType::SELENOPHENE ||
+-                               t == RingType::TELLUROPHENE || t == RingType::PHOSPHININE;
++                    auto getRankHetero = [](RingType t) {
++                        if (t == RingType::PYRIDINE || t == RingType::PYRIMIDINE || t == RingType::PYRIDAZINE || t == RingType::PYRAZINE || t == RingType::OXAZOLE || t == RingType::ISOXAZOLE || t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE || t == RingType::PYRROLE || t == RingType::IMIDAZOLE || t == RingType::PYRAZOLE) return 1;
++                        if (t == RingType::FURAN) return 2;
++                        if (t == RingType::THIOPHENE) return 3;
++                        if (t == RingType::SELENOPHENE) return 4;
++                        if (t == RingType::TELLUROPHENE) return 5;
++                        if (t == RingType::PHOSPHININE) return 6;
++                        return 99;
++                    };
++                    auto getNumHetero = [](RingType t) {
++                        if (t == RingType::PYRIMIDINE || t == RingType::PYRIDAZINE || t == RingType::PYRAZINE || t == RingType::OXAZOLE || t == RingType::ISOXAZOLE || t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE || t == RingType::IMIDAZOLE || t == RingType::PYRAZOLE) return 2;
++                        return 1;
++                    };
++                    auto getVariety = [&](const std::vector<int> &hNodes) {
++                        std::set<int> elems;
++                        for (int n : hNodes) elems.insert(g.nodes[n].atomicNumber);
++                        return static_cast<int>(elems.size());
+                     };
+-                    auto isNHType4 = [](RingType t) {
+-                        return t == RingType::PYRROLE || t == RingType::IMIDAZOLE || t == RingType::PYRAZOLE;
++                    auto altRank = [](int z) {
++                        switch (z) { case 9: return 1; case 17: return 2; case 35: return 3; case 53: return 4; case 8: return 5; case 16: return 6; case 34: return 7; case 52: return 8; case 7: return 9; case 15: return 10; default: return 99; }
++                    };
++                    auto getTopAltRank = [&](const std::vector<int> &hNodes) {
++                        int best = 99;
++                        for (int n : hNodes) best = std::min(best, altRank(g.nodes[n].atomicNumber));
++                        return best;
++                    };
++                    auto getOwnLocants = [](RingType t) -> std::vector<int> {
++                        switch (t) {
++                            case RingType::PYRIDINE: case RingType::PYRROLE: case RingType::FURAN: case RingType::THIOPHENE: case RingType::SELENOPHENE: case RingType::TELLUROPHENE: case RingType::PHOSPHININE: return {1};
++                            case RingType::PYRIDAZINE: case RingType::ISOXAZOLE: case RingType::ISOTHIAZOLE: case RingType::PYRAZOLE: case RingType::ISOSELENAZOLE: return {1, 2};
++                            case RingType::PYRIMIDINE: case RingType::OXAZOLE: case RingType::THIAZOLE: case RingType::IMIDAZOLE: case RingType::SELENAZOLE: return {1, 3};
++                            case RingType::PYRAZINE: return {1, 4};
++                            default: return {};
++                        }
+                     };
+ 
+-                    bool allAllowed = allClassified;
+-                    for (int i = 0; i < 4 && allAllowed; ++i) if (!isAllowedType4(types4[i])) allAllowed = false;
+-                    bool anyNH = false;
+-                    for (int i = 0; i < 4; ++i) if (isNHType4(types4[i])) anyNH = true;
+-
+-                    if (allAllowed && !anyNH) {
+-                        auto getCandidates4 = [&](RingType t, const std::vector<int> &hNodes, int rSize, const std::vector<int> &rCycle) {
+-                            std::vector<std::vector<int>> cands;
+-                            if (t == RingType::FURAN || t == RingType::THIOPHENE || t == RingType::SELENOPHENE || t == RingType::TELLUROPHENE || t == RingType::PHOSPHININE || t == RingType::PYRIDINE || t == RingType::PYRROLE) {
+-                                if (hNodes.size() == 1) {
+-                                    int hNode = hNodes[0];
+-                                    int hIdx = -1;
+-                                    for (int i = 0; i < rSize; ++i) if (rCycle[i] == hNode) { hIdx = i; break; }
+-                                    if (hIdx != -1) {
+-                                        std::vector<int> fwd(rSize), bwd(rSize);
+-                                        for (int i = 0; i < rSize; ++i) {
+-                                            fwd[i] = rCycle[(hIdx + i) % rSize];
+-                                            bwd[i] = rCycle[(hIdx - i + rSize) % rSize];
+-                                        }
+-                                        cands.push_back(fwd);
+-                                        cands.push_back(bwd);
+-                                    }
+-                                }
+-                            } else if (t == RingType::PYRIMIDINE || t == RingType::PYRIDAZINE || t == RingType::PYRAZINE) {
+-                                if (hNodes.size() == 2) {
+-                                    int n1 = hNodes[0], n2 = hNodes[1];
+-                                    int idx1 = -1, idx2 = -1;
+-                                    for (int i = 0; i < rSize; ++i) { if (rCycle[i] == n1) idx1 = i; if (rCycle[i] == n2) idx2 = i; }
+-                                    if (idx1 != -1 && idx2 != -1) {
+-                                        int reqOtherIdx = (t == RingType::PYRIDAZINE) ? 1 : ((t == RingType::PYRIMIDINE) ? 2 : 3);
+-                                        std::vector<int> fwd1(rSize), bwd1(rSize);
+-                                        for (int i = 0; i < rSize; ++i) { fwd1[i] = rCycle[(idx1 + i) % rSize]; bwd1[i] = rCycle[(idx1 - i + rSize) % rSize]; }
+-                                        if (fwd1[reqOtherIdx] == n2) cands.push_back(fwd1);
+-                                        if (bwd1[reqOtherIdx] == n2) cands.push_back(bwd1);
+-                                        std::vector<int> fwd2(rSize), bwd2(rSize);
+-                                        for (int i = 0; i < rSize; ++i) { fwd2[i] = rCycle[(idx2 + i) % rSize]; bwd2[i] = rCycle[(idx2 - i + rSize) % rSize]; }
+-                                        if (fwd2[reqOtherIdx] == n1) cands.push_back(fwd2);
+-                                        if (bwd2[reqOtherIdx] == n1) cands.push_back(bwd2);
+-                                    }
+-                                }
+-                            } else if (t == RingType::OXAZOLE || t == RingType::ISOXAZOLE || t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE) {
+-                                if (hNodes.size() == 2) {
+-                                    int hOS = -1, hN = -1;
+-                                    int z0 = g.nodes[hNodes[0]].atomicNumber;
+-                                    if (z0 == 8 || z0 == 16 || z0 == 34) { hOS = hNodes[0]; hN = hNodes[1]; }
+-                                    else { hOS = hNodes[1]; hN = hNodes[0]; }
+-                                    int hIdx = -1;
+-                                    for (int i = 0; i < rSize; ++i) if (rCycle[i] == hOS) { hIdx = i; break; }
+-                                    if (hIdx != -1) {
+-                                        std::vector<int> fwd(rSize), bwd(rSize);
+-                                        for (int i = 0; i < rSize; ++i) { fwd[i] = rCycle[(hIdx + i) % rSize]; bwd[i] = rCycle[(hIdx - i + rSize) % rSize]; }
+-                                        int reqNIdx = (t == RingType::ISOXAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::ISOSELENAZOLE) ? 1 : 2;
+-                                        if (fwd[reqNIdx] == hN) cands.push_back(fwd);
+-                                        if (bwd[reqNIdx] == hN) cands.push_back(bwd);
+-                                    }
++                    auto compareRingSeniority = [&](int idx1, int idx2) -> int {
++                        RingType t1 = typesN[idx1], t2 = typesN[idx2];
++                        if (t1 != t2) {
++                            int r1 = getRankHetero(t1), r2 = getRankHetero(t2);
++                            if (r1 != r2) return (r1 < r2) ? -1 : 1;
++                            int size1 = static_cast<int>(nodesN[idx1].size()), size2 = static_cast<int>(nodesN[idx2].size());
++                            if (size1 != size2) return (size1 > size2) ? -1 : 1;
++                            int nHet1 = getNumHetero(t1), nHet2 = getNumHetero(t2);
++                            if (nHet1 != nHet2) return (nHet1 > nHet2) ? -1 : 1;
++                            int v1 = getVariety(rHeteroN[idx1]), v2 = getVariety(rHeteroN[idx2]);
++                            if (v1 != v2) return (v1 > v2) ? -1 : 1;
++                            int alt1 = getTopAltRank(rHeteroN[idx1]), alt2 = getTopAltRank(rHeteroN[idx2]);
++                            if (alt1 != alt2) return (alt1 < alt2) ? -1 : 1;
++                            std::vector<int> own1 = getOwnLocants(t1), own2 = getOwnLocants(t2);
++                            if (own1 != own2) return (own1 < own2) ? -1 : 1;
++                        }
++                        return 0;
++                    };
++
++                    std::vector<int> candidateRoots;
++                    for (int i = 0; i < N; ++i) {
++                        bool isBest = true;
++                        for (int j = 0; j < N; ++j) {
++                            if (i == j) continue;
++                            if (compareRingSeniority(j, i) < 0) {
++                                isBest = false;
++                                break;
++                            }
++                        }
++                        if (isBest) candidateRoots.push_back(i);
++                    }
++
++                    auto getTopo = [&](int root) {
++                        std::vector<int> depths(N, -1);
++                        std::vector<int> q;
++                        q.push_back(root);
++                        depths[root] = 0;
++                        int head = 0;
++                        int maxD = 0;
++                        std::vector<int> counts(N + 1, 0);
++                        while (head < (int)q.size()) {
++                            int u = q[head++];
++                            for (int v = 0; v < N; ++v) {
++                                if (shared[u][v] == 2 && depths[v] == -1) {
++                                    depths[v] = depths[u] + 1;
++                                    maxD = std::max(maxD, depths[v]);
++                                    counts[depths[v]]++;
++                                    q.push_back(v);
+                                 }
+                             }
+-                            return cands;
+-                        };
++                        }
++                        return std::make_pair(maxD, counts);
++                    };
+ 
+-                        auto getFusionLocants4 = [&](RingType t, const std::vector<int> &hNodes, int rSize, const std::vector<int> &rCycle, int bhA, int bhB) -> std::pair<int, int> {
+-                            std::vector<std::vector<int>> cands = getCandidates4(t, hNodes, rSize, rCycle);
+-                            std::pair<int, int> best = {999, 999};
+-                            for (const auto &cand : cands) {
+-                                int posA = -1, posB = -1;
+-                                for (int i = 0; i < rSize; ++i) { if (cand[i] == bhA) posA = i; if (cand[i] == bhB) posB = i; }
+-                                if (posA != -1 && posB != -1) {
+-                                    int locA = posA + 1, locB = posB + 1;
+-                                    std::pair<int,int> pv = {std::min(locA,locB), std::max(locA,locB)};
+-                                    if (pv < best) best = pv;
++                    std::vector<int> bestRoots;
++                    std::pair<int, std::vector<int>> bestTopo = {999, {}};
++                    for (int root : candidateRoots) {
++                        auto topo = getTopo(root);
++                        if (bestRoots.empty()) {
++                            bestRoots.push_back(root);
++                            bestTopo = topo;
++                        } else {
++                            if (topo.first < bestTopo.first) {
++                                bestRoots.clear();
++                                bestRoots.push_back(root);
++                                bestTopo = topo;
++                            } else if (topo.first == bestTopo.first) {
++                                bool better = false;
++                                bool worse = false;
++                                for (size_t d = 1; d < topo.second.size(); ++d) {
++                                    if (topo.second[d] > bestTopo.second[d]) { better = true; break; }
++                                    if (topo.second[d] < bestTopo.second[d]) { worse = true; break; }
++                                }
++                                if (better) {
++                                    bestRoots.clear();
++                                    bestRoots.push_back(root);
++                                    bestTopo = topo;
++                                } else if (!worse) {
++                                    bestRoots.push_back(root);
+                                 }
+                             }
+-                            return best;
+-                        };
++                        }
++                    }
+ 
+-                        auto compareSeniority4 = [&](int idx1, int idx2) -> int {
+-                            RingType t1 = types4[idx1], t2 = types4[idx2];
+-                            int size1 = static_cast<int>(nodes4[idx1].size()), size2 = static_cast<int>(nodes4[idx2].size());
+-                            const auto &rH1 = rHetero4[idx1];
+-                            const auto &rH2 = rHetero4[idx2];
+-                            if (t1 == t2) return idx1;
+-
+-                            auto getRankHetero = [](RingType t) {
+-                                if (t == RingType::PYRIDINE || t == RingType::PYRIMIDINE || t == RingType::PYRIDAZINE || t == RingType::PYRAZINE || t == RingType::OXAZOLE || t == RingType::ISOXAZOLE || t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE || t == RingType::PYRROLE || t == RingType::IMIDAZOLE || t == RingType::PYRAZOLE) return 1;
+-                                if (t == RingType::FURAN) return 2;
+-                                if (t == RingType::THIOPHENE) return 3;
+-                                if (t == RingType::SELENOPHENE) return 4;
+-                                if (t == RingType::TELLUROPHENE) return 5;
+-                                if (t == RingType::PHOSPHININE) return 6;
+-                                return 99;
+-                            };
+-                            auto getNumHetero = [](RingType t) {
+-                                if (t == RingType::PYRIMIDINE || t == RingType::PYRIDAZINE || t == RingType::PYRAZINE || t == RingType::OXAZOLE || t == RingType::ISOXAZOLE || t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE || t == RingType::IMIDAZOLE || t == RingType::PYRAZOLE) return 2;
+-                                return 1;
+-                            };
++                    std::vector<std::vector<std::vector<int>>> allCands(N);
++                    bool hasValidCands = true;
++                    for (int i = 0; i < N; ++i) {
++                        allCands[i] = getCandidates(typesN[i], rHeteroN[i], static_cast<int>(nodesN[i].size()), cyclesN[i]);
++                        if (allCands[i].empty()) hasValidCands = false;
++                    }
+ 
+-                            int rH1Rank = getRankHetero(t1), rH2Rank = getRankHetero(t2);
+-                            if (rH1Rank < rH2Rank) return idx1;
+-                            if (rH2Rank < rH1Rank) return idx2;
+-                            if (size1 > size2) return idx1;
+-                            if (size2 > size1) return idx2;
+-                            int nHet1 = getNumHetero(t1), nHet2 = getNumHetero(t2);
+-                            if (nHet1 > nHet2) return idx1;
+-                            if (nHet2 > nHet1) return idx2;
++                    if (hasValidCands) {
++                        struct Block {
++                            QString text;
++                            std::vector<char> letters;
++                            std::vector<int> firstOrder;
++                            std::map<int, std::vector<int>> lowerLocs;
++                            std::map<int, std::vector<int>> higherLocs;
++                            bool operator<(const Block& o) const { return text < o.text; }
++                        };
+ 
+-                            auto getVariety = [&](const std::vector<int> &hNodes) {
+-                                std::set<int> elems;
+-                                for (int n : hNodes) elems.insert(g.nodes[n].atomicNumber);
+-                                return static_cast<int>(elems.size());
+-                            };
+-                            int v1 = getVariety(rH1), v2 = getVariety(rH2);
+-                            if (v1 > v2) return idx1;
+-                            if (v2 > v1) return idx2;
++                        auto formatLocants = [](std::pair<int, int> locs, int level) -> QString {
++                            QString primes = "";
++                            for (int i = 1; i < level; ++i) primes += "'";
++                            return QString("%1%2,%3%4").arg(locs.first).arg(primes).arg(locs.second).arg(primes);
++                        };
+ 
+-                            auto altRank = [](int z) {
+-                                switch (z) { case 9: return 1; case 17: return 2; case 35: return 3; case 53: return 4; case 8: return 5; case 16: return 6; case 34: return 7; case 52: return 8; case 7: return 9; case 15: return 10; default: return 99; }
+-                            };
+-                            auto getTopAltRank = [&](const std::vector<int> &hNodes) {
+-                                int best = 99;
+-                                for (int n : hNodes) best = std::min(best, altRank(g.nodes[n].atomicNumber));
+-                                return best;
+-                            };
+-                            int alt1 = getTopAltRank(rH1), alt2 = getTopAltRank(rH2);
+-                            if (alt1 < alt2) return idx1;
+-                            if (alt2 < alt1) return idx2;
+-
+-                            auto getOwnLocants = [](RingType t) -> std::vector<int> {
+-                                switch (t) {
+-                                    case RingType::PYRIDINE: case RingType::PYRROLE: case RingType::FURAN: case RingType::THIOPHENE: case RingType::SELENOPHENE: case RingType::TELLUROPHENE: case RingType::PHOSPHININE: return {1};
+-                                    case RingType::PYRIDAZINE: case RingType::ISOXAZOLE: case RingType::ISOTHIAZOLE: case RingType::PYRAZOLE: case RingType::ISOSELENAZOLE: return {1, 2};
+-                                    case RingType::PYRIMIDINE: case RingType::OXAZOLE: case RingType::THIAZOLE: case RingType::IMIDAZOLE: case RingType::SELENAZOLE: return {1, 3};
+-                                    case RingType::PYRAZINE: return {1, 4};
+-                                    default: return {};
++                        auto getFaceLocants = [](const std::vector<int>& num, int nA, int nB) -> std::tuple<int, int, int, int> {
++                            int S = num.size();
++                            int idxA = -1, idxB = -1;
++                            for (int i = 0; i < S; ++i) {
++                                if (num[i] == nA) idxA = i;
++                                if (num[i] == nB) idxB = i;
++                            }
++                            if ((idxA + 1) % S == idxB) return {idxA + 1, idxB + 1, nA, nB};
++                            if ((idxB + 1) % S == idxA) return {idxB + 1, idxA + 1, nB, nA};
++                            return {-1, -1, -1, -1};
++                        };
++
++                        struct NameScore {
++                            std::vector<char> parentLettersSet;
++                            std::vector<char> parentLettersCitation;
++                            std::vector<int> firstOrderLocantsSet;
++                            std::vector<int> firstOrderLocantsCitation;
++                            std::map<int, std::vector<int>> lowerLocsSet;
++                            std::map<int, std::vector<int>> lowerLocsCitation;
++                            std::map<int, std::vector<int>> higherLocsSet;
++                            std::map<int, std::vector<int>> higherLocsCitation;
++                            QString finalName;
++                            
++                            bool operator<(const NameScore& o) const {
++                                if (parentLettersSet != o.parentLettersSet) return parentLettersSet < o.parentLettersSet;
++                                if (parentLettersCitation != o.parentLettersCitation) return parentLettersCitation < o.parentLettersCitation;
++                                if (firstOrderLocantsSet != o.firstOrderLocantsSet) return firstOrderLocantsSet < o.firstOrderLocantsSet;
++                                if (firstOrderLocantsCitation != o.firstOrderLocantsCitation) return firstOrderLocantsCitation < o.firstOrderLocantsCitation;
++                                for (auto it = lowerLocsSet.begin(); it != lowerLocsSet.end(); ++it) {
++                                    int d = it->first;
++                                    auto itO = o.lowerLocsSet.find(d);
++                                    if (itO == o.lowerLocsSet.end()) return true;
++                                    if (it->second != itO->second) return it->second < itO->second;
++                                    
++                                    const auto& c1 = lowerLocsCitation.at(d);
++                                    const auto& c2 = o.lowerLocsCitation.at(d);
++                                    if (c1 != c2) return c1 < c2;
++                                    
++                                    const auto& h1 = higherLocsSet.at(d);
++                                    const auto& h2 = o.higherLocsSet.at(d);
++                                    if (h1 != h2) return h1 < h2;
++                                    
++                                    const auto& hc1 = higherLocsCitation.at(d);
++                                    const auto& hc2 = o.higherLocsCitation.at(d);
++                                    if (hc1 != hc2) return hc1 < hc2;
+                                 }
+-                            };
+-                            std::vector<int> ownLoc1 = getOwnLocants(t1), ownLoc2 = getOwnLocants(t2);
+-                            if (ownLoc1 < ownLoc2) return idx1;
+-                            if (ownLoc2 < ownLoc1) return idx2;
+-
+-                            if (sharedNodesPairs[idx1][idx2].size() == 2) {
+-                                int bhA = sharedNodesPairs[idx1][idx2][0];
+-                                int bhB = sharedNodesPairs[idx1][idx2][1];
+-                                std::pair<int,int> fl1 = getFusionLocants4(t1, rH1, size1, cycles4[idx1], bhA, bhB);
+-                                std::pair<int,int> fl2 = getFusionLocants4(t2, rH2, size2, cycles4[idx2], bhA, bhB);
+-                                if (fl1 < fl2) return idx1;
+-                                if (fl2 < fl1) return idx2;
++                                return finalName < o.finalName;
+                             }
+-                            return idx1;
+                         };
+ 
+-                        // Cascading tournament down the chain: a linear 4-ring chain can
+-                        // only be named without a third-order attached component if the
+-                        // winner is one of the two INTERIOR rings (position 1 or 2) - an
+-                        // end-ring winner (position 0 or 3) would need the far ring cited
+-                        // three levels deep, which is out of scope (FR-2.3/P-25.3.4.1.1
+-                        // only defines first- and second-order attached components).
+-                        int w1 = compareSeniority4(chain[0], chain[1]);
+-                        int w2 = compareSeniority4(w1, chain[2]);
+-                        int winner = compareSeniority4(w2, chain[3]);
+-
+-                        int winnerPos = -1;
+-                        for (int p = 0; p < 4; ++p) if (chain[p] == winner) winnerPos = p;
+-
+-                        if (winnerPos == 0 || winnerPos == 3) {
+-                            return {false, "", "End ring as base in a 4-ring fusion chain requires third-order attached components, which are not supported."};
+-                        }
+-
+-                        if (winnerPos == 1 || winnerPos == 2) {
+-                            int baseIdx = winner;
+-                            int nearIdx = (winnerPos == 1) ? chain[0] : chain[3];
+-                            int midIdx  = (winnerPos == 1) ? chain[2] : chain[1];
+-                            int farIdx  = (winnerPos == 1) ? chain[3] : chain[0];
+-
+-                            RingType baseType = types4[baseIdx];
+-                            RingType nearType = types4[nearIdx];
+-                            RingType midType = types4[midIdx];
+-                            RingType farType = types4[farIdx];
+-
+-                            int baseSize = static_cast<int>(nodes4[baseIdx].size());
+-                            const std::vector<int> &baseCycle = cycles4[baseIdx];
+-                            const std::vector<int> &baseHetero = rHetero4[baseIdx];
+-
+-                            int bhNearA = sharedNodesPairs[baseIdx][nearIdx][0];
+-                            int bhNearB = sharedNodesPairs[baseIdx][nearIdx][1];
+-                            int bhMidA = sharedNodesPairs[baseIdx][midIdx][0];
+-                            int bhMidB = sharedNodesPairs[baseIdx][midIdx][1];
+-                            int bhFarMidA = sharedNodesPairs[midIdx][farIdx][0];
+-                            int bhFarMidB = sharedNodesPairs[midIdx][farIdx][1];
+-
+-                            std::vector<std::vector<int>> baseCands = getCandidates4(baseType, baseHetero, baseSize, baseCycle);
+-                            std::vector<std::vector<int>> nearCands = getCandidates4(nearType, rHetero4[nearIdx], static_cast<int>(nodes4[nearIdx].size()), cycles4[nearIdx]);
+-                            std::vector<std::vector<int>> midCands = getCandidates4(midType, rHetero4[midIdx], static_cast<int>(nodes4[midIdx].size()), cycles4[midIdx]);
+-                            std::vector<std::vector<int>> farCands = getCandidates4(farType, rHetero4[farIdx], static_cast<int>(nodes4[farIdx].size()), cycles4[farIdx]);
+-
+-                            if (!baseCands.empty() && !nearCands.empty() && !midCands.empty() && !farCands.empty()) {
+-                                auto getLetterAndNodes = [&](const std::vector<int>& bCand, int bhA, int bhB) -> std::tuple<int,int,int> {
+-                                    int posA = -1, posB = -1;
+-                                    for (int i = 0; i < baseSize; ++i) { if (bCand[i]==bhA) posA=i; if (bCand[i]==bhB) posB=i; }
+-                                    if (posA != -1 && posB != -1) {
+-                                        int locA = posA+1, locB = posB+1;
+-                                        int minL = std::min(locA,locB), maxL = std::max(locA,locB);
+-                                        if (maxL == minL+1) return {minL-1, (locA==minL)?bhA:bhB, (locA==minL)?bhB:bhA};
+-                                        else if (minL==1 && maxL==baseSize) return {baseSize-1, (locA==baseSize)?bhA:bhB, (locA==1)?bhA:bhB};
++                        NameScore bestScore;
++                        bool scoreInit = false;
++
++                        for (int root : bestRoots) {
++                            std::vector<int> depths(N, -1);
++                            std::vector<int> q;
++                            q.push_back(root);
++                            depths[root] = 0;
++                            int head = 0;
++                            while (head < (int)q.size()) {
++                                int u = q[head++];
++                                for (int v = 0; v < N; ++v) {
++                                    if (shared[u][v] == 2 && depths[v] == -1) {
++                                        depths[v] = depths[u] + 1;
++                                        q.push_back(v);
+                                     }
+-                                    return {-1,-1,-1};
+-                                };
++                                }
++                            }
+ 
+-                                struct Solution4 {
+-                                    int letterNear, letterMid;
+-                                    std::pair<int,int> nearPair, midBasePair, midFarPair, farPair;
+-                                };
+-                                std::vector<Solution4> validSolutions;
+-
+-                                for (const auto &bCand : baseCands) {
+-                                    auto [letterNear, nsN, neN] = getLetterAndNodes(bCand, bhNearA, bhNearB);
+-                                    auto [letterMid, nsM, neM] = getLetterAndNodes(bCand, bhMidA, bhMidB);
+-                                    if (letterNear == -1 || letterMid == -1) continue;
+-
+-                                    std::pair<int,int> bestNearPair = {999,999};
+-                                    for (const auto &aCand : nearCands) {
+-                                        int pS=-1,pE=-1;
+-                                        for (size_t i=0;i<aCand.size();++i) { if (aCand[i]==nsN) pS=i; if (aCand[i]==neN) pE=i; }
+-                                        if (pS!=-1 && pE!=-1) {
+-                                            std::pair<int,int> p = {pS+1,pE+1};
+-                                            if (p < bestNearPair) bestNearPair = p;
++                            std::vector<int> assign(N, 0);
++                            bool done = false;
++                            while (!done) {
++                                std::vector<std::vector<int>> currentNum(N);
++                                for (int i = 0; i < N; ++i) currentNum[i] = allCands[i][assign[i]];
++
++                                std::function<std::pair<bool, Block>(int, int)> buildBlock = [&](int u, int p) -> std::pair<bool, Block> {
++                                    std::vector<Block> cBlocks;
++                                    for (int v = 0; v < N; ++v) {
++                                        if (shared[u][v] == 2 && v != p) {
++                                            auto res = buildBlock(v, u);
++                                            if (!res.first) return {false, Block()};
++                                            cBlocks.push_back(res.second);
+                                         }
+                                     }
+-                                    if (bestNearPair.first >= 999) continue;
+-
+-                                    for (const auto &mCand : midCands) {
+-                                        int pStart=-1,pEnd=-1;
+-                                        for (size_t i=0;i<mCand.size();++i) { if (mCand[i]==nsM) pStart=i; if (mCand[i]==neM) pEnd=i; }
+-                                        if (pStart==-1 || pEnd==-1) continue;
+-                                        std::pair<int,int> midBasePair = {pStart+1, pEnd+1};
+-
+-                                        int fStart=-1, fEnd=-1;
+-                                        for (size_t i=0;i<mCand.size();++i) { if (mCand[i]==bhFarMidA) fStart=i; if (mCand[i]==bhFarMidB) fEnd=i; }
+-                                        if (fStart==-1 || fEnd==-1) continue;
+-
+-                                        for (const auto &fCand : farCands) {
+-                                            int fs=-1, fe=-1;
+-                                            for (size_t i=0;i<fCand.size();++i) { if (fCand[i]==mCand[fStart]) fs=i; if (fCand[i]==mCand[fEnd]) fe=i; }
+-                                            if (fs==-1 || fe==-1) continue;
+-                                            validSolutions.push_back({letterNear, letterMid, bestNearPair, midBasePair, {fStart+1, fEnd+1}, {fs+1, fe+1}});
++                                    std::sort(cBlocks.begin(), cBlocks.end());
++                                    
++                                    Block b;
++                                    for (const auto& cb : cBlocks) {
++                                        b.text += cb.text;
++                                        b.letters.insert(b.letters.end(), cb.letters.begin(), cb.letters.end());
++                                        b.firstOrder.insert(b.firstOrder.end(), cb.firstOrder.begin(), cb.firstOrder.end());
++                                        for (const auto& kv : cb.lowerLocs) {
++                                            b.lowerLocs[kv.first].insert(b.lowerLocs[kv.first].end(), kv.second.begin(), kv.second.end());
++                                        }
++                                        for (const auto& kv : cb.higherLocs) {
++                                            b.higherLocs[kv.first].insert(b.higherLocs[kv.first].end(), kv.second.begin(), kv.second.end());
+                                         }
+                                     }
+-                                }
+ 
+-                                if (!validSolutions.empty()) {
+-                                    QString nearPref = getFusionPrefixShared(nearType);
+-                                    QString midPref = getFusionPrefixShared(midType);
+-                                    QString farPref = getFusionPrefixShared(farType);
+-                                    QString baseName = getBaseNameShared(baseType);
+-
+-                                    // The alphabetically-first attached component (by its own
+-                                    // fusion-prefix name) is entitled to the lower base letter;
+-                                    // a plain sorted-set comparison can't tell "near=b,mid=e"
+-                                    // apart from "near=e,mid=b" since both give the same set.
+-                                    bool nearFirst = (nearPref < midPref);
+-                                    auto sortKey = [&](const Solution4 &s) {
+-                                        int firstLetter = nearFirst ? s.letterNear : s.letterMid;
+-                                        int secondLetter = nearFirst ? s.letterMid : s.letterNear;
+-                                        return std::make_tuple(firstLetter, secondLetter, s.nearPair, s.midBasePair, s.midFarPair, s.farPair);
+-                                    };
+-                                    Solution4 bestSol = validSolutions[0];
+-                                    for (size_t i = 1; i < validSolutions.size(); ++i) {
+-                                        const auto &sol = validSolutions[i];
+-                                        if (sortKey(sol) < sortKey(bestSol)) bestSol = sol;
++                                    QString myPrefix;
++                                    if (u == root) myPrefix = getBaseNameShared(typesN[u]);
++                                    else myPrefix = getFusionPrefixShared(typesN[u]);
++
++                                    if (u == root) {
++                                        b.text += myPrefix;
++                                        return {true, b};
++                                    } else {
++                                        int d = depths[u];
++                                        int bhA = sharedNodesPairs[u][p][0];
++                                        int bhB = sharedNodesPairs[u][p][1];
++                                        
++                                        auto tP = getFaceLocants(currentNum[p], bhA, bhB);
++                                        int pL1 = std::get<0>(tP), pL2 = std::get<1>(tP), ns = std::get<2>(tP), ne = std::get<3>(tP);
++                                        if (pL1 == -1) return {false, Block()};
++                                        
++                                        int S = currentNum[p].size();
++                                        int uL1 = -1, uL2 = -1;
++                                        for (int i = 0; i < (int)currentNum[u].size(); ++i) {
++                                            if (currentNum[u][i] == ns) uL1 = i + 1;
++                                            if (currentNum[u][i] == ne) uL2 = i + 1;
++                                        }
++                                        if (uL1 == -1 || uL2 == -1) return {false, Block()};
++
++                                        if (d == 1) {
++                                            char faceLetter;
++                                            if (std::min(pL1, pL2) == 1 && std::max(pL1, pL2) == S) faceLetter = 'a' + S - 1;
++                                            else faceLetter = 'a' + std::min(pL1, pL2) - 1;
++                                            
++                                            b.letters.push_back(faceLetter);
++                                            b.firstOrder.push_back(uL1); b.firstOrder.push_back(uL2);
++                                            b.text += myPrefix + QString("[%1-%2]").arg(formatLocants({uL1, uL2}, d)).arg(faceLetter);
++                                        } else {
++                                            b.lowerLocs[d].push_back(pL1); b.lowerLocs[d].push_back(pL2);
++                                            b.higherLocs[d].push_back(uL1); b.higherLocs[d].push_back(uL2);
++                                            b.text += myPrefix + QString("[%1:%2]").arg(formatLocants({uL1, uL2}, d)).arg(formatLocants({pL1, pL2}, d - 1));
++                                        }
++                                        return {true, b};
+                                     }
++                                };
+ 
+-                                    QString nearBlock = QString("%1[%2,%3-%4]").arg(nearPref).arg(bestSol.nearPair.first).arg(bestSol.nearPair.second).arg((char)('a' + bestSol.letterNear));
+-                                    QString midBlock = QString("%1[%2,%3-%4]").arg(midPref).arg(bestSol.midBasePair.first).arg(bestSol.midBasePair.second).arg((char)('a' + bestSol.letterMid));
+-
+-                                    // Normalize the correspondence to ascending order on the
+-                                    // outer (unprimed, mid-relative) side, swapping both linked
+-                                    // pairs together so the primed<->unprimed correspondence
+-                                    // between the same physical atoms is preserved.
+-                                    std::pair<int,int> farPairOut = bestSol.farPair;
+-                                    std::pair<int,int> midFarPairOut = bestSol.midFarPair;
+-                                    if (midFarPairOut.first > midFarPairOut.second) {
+-                                        std::swap(farPairOut.first, farPairOut.second);
+-                                        std::swap(midFarPairOut.first, midFarPairOut.second);
++                                auto res = buildBlock(root, -1);
++                                if (res.first) {
++                                    Block b = res.second;
++                                    NameScore score;
++                                    score.finalName = b.text;
++                                    score.parentLettersCitation = b.letters;
++                                    score.parentLettersSet = b.letters; std::sort(score.parentLettersSet.begin(), score.parentLettersSet.end());
++                                    score.firstOrderLocantsCitation = b.firstOrder;
++                                    score.firstOrderLocantsSet = b.firstOrder; std::sort(score.firstOrderLocantsSet.begin(), score.firstOrderLocantsSet.end());
++                                    
++                                    for (const auto& kv : b.lowerLocs) {
++                                        score.lowerLocsCitation[kv.first] = kv.second;
++                                        score.lowerLocsSet[kv.first] = kv.second; std::sort(score.lowerLocsSet[kv.first].begin(), score.lowerLocsSet[kv.first].end());
++                                    }
++                                    for (const auto& kv : b.higherLocs) {
++                                        score.higherLocsCitation[kv.first] = kv.second;
++                                        score.higherLocsSet[kv.first] = kv.second; std::sort(score.higherLocsSet[kv.first].begin(), score.higherLocsSet[kv.first].end());
+                                     }
+-                                    QString farBlock = QString("%1[%2',%3':%4,%5]").arg(farPref).arg(farPairOut.first).arg(farPairOut.second).arg(midFarPairOut.first).arg(midFarPairOut.second);
+ 
+-                                    QString resultName;
+-                                    if (nearPref < midPref) {
+-                                        resultName = nearBlock + farBlock + midBlock + baseName;
+-                                    } else {
+-                                        resultName = farBlock + midBlock + nearBlock + baseName;
++                                    if (!scoreInit || score < bestScore) {
++                                        bestScore = score;
++                                        scoreInit = true;
+                                     }
++                                }
+ 
+-                                    return {true, resultName, ""};
++                                for (int i = 0; i < N; ++i) {
++                                    assign[i]++;
++                                    if (assign[i] < (int)allCands[i].size()) break;
++                                    assign[i] = 0;
++                                    if (i == N - 1) done = true;
+                                 }
+                             }
+                         }
++
++                        if (scoreInit) {
++                            QString resultName = bestScore.finalName;
++                            
++                            // Indicated hydrogen for exactly 3 rings, per original Phase 44 logic
++                            if (N == 3) {
++                                auto isNHType = [](RingType t) {
++                                    return t == RingType::PYRROLE || t == RingType::IMIDAZOLE || t == RingType::PYRAZOLE;
++                                };
++                                if (isNHType(typesN[0]) || isNHType(typesN[1]) || isNHType(typesN[2])) {
++                                    int nhNode = -1;
++                                    for (int i = 0; i < 3; ++i) {
++                                        for (int n : nodesN[i]) {
++                                            if (g.nodes[n].atomicNumber == 7 && g.nodes[n].totalH >= 1) {
++                                                nhNode = n; break;
++                                            }
++                                        }
++                                        if (nhNode != -1) break;
++                                    }
++                                    if (nhNode != -1) {
++                                        std::set<int> bheads;
++                                        for (int i = 0; i < 3; ++i) {
++                                            for (int j = i + 1; j < 3; ++j) {
++                                                if (shared[i][j] == 2) {
++                                                    bheads.insert(sharedNodesPairs[i][j][0]);
++                                                    bheads.insert(sharedNodesPairs[i][j][1]);
++                                                }
++                                            }
++                                        }
++                                        std::map<int, QString> periphMap = computePeripheralNumbering3Ring(g, nodesN[0], nodesN[1], nodesN[2], bheads, {}, true);
++                                        if (!periphMap.count(nhNode)) {
++                                            return {false, "", "Failed to compute peripheral locant for indicated hydrogen."};
++                                        }
++                                        QString locStr = periphMap[nhNode];
++                                        bool ok = false;
++                                        locStr.toInt(&ok);
++                                        if (!ok) {
++                                            return {false, "", "Indicated hydrogen locant is letter-suffixed."};
++                                        }
++                                        resultName = locStr + "H-" + resultName;
++                                    }
++                                }
++                            }
++
++                            return {true, resultName, ""};
++                        }
+                     }
+                 }
+             }
+         }
+-
+         return {false, "", "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."};
+     }
+ 

@@ -55,6 +55,9 @@ int main() {
         {"ClC(=O)Cl", "", true, "Carbonic acid halides with multiple halogens are not supported in this phase."},
         {"ClC(=O)Br", "", true, "Carbonic acid halides with multiple halogens are not supported in this phase."},
         {"NC(=O)Cl", "", true, "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."},
+        {"COC(=O)OC", "", true, "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."},
+        {"O=C(OC)OCC", "", true, "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."},
+        {"COC(=O)Cl", "", true, "Esters with a coexisting halogen on the acyl carbon (chloroformate-type structures) are not supported in this phase."},
         // Straight-chain alkanes C1-C10
         {"C", "methane"},
         {"CC", "ethane"},

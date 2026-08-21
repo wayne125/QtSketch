@@ -3868,6 +3868,16 @@ IupacResult IupacNamer::generateName(int mol) {
                             return {true, finalName, ""};
                         }
                         if (cCount == 2 && alkylRootNode != -1) {
+                            if (!halogens.empty()) {
+                                return {false, "", "Esters with a coexisting halogen on the acyl carbon (chloroformate-type structures) are not supported in this phase."};
+                            }
+                            int singleC = 0;
+                            for (int nei : node.neighbors) {
+                                if (g.nodes[nei].atomicNumber == 6) singleC++;
+                            }
+                            if (singleC == 0 && node.totalH == 0) {
+                                return {false, "", "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."};
+                            }
                             carbonGroup[i] = GroupType::ESTER;
                             esterAlkylRoot[i] = alkylRootNode;
                             esterOxygen[i] = sO;
@@ -8045,6 +8055,16 @@ IupacResult IupacNamer::generateName(int mol) {
                             }
                         }
                         if (cCount == 2 && alkylRootNode != -1) {
+                            if (!halogens.empty()) {
+                                return {false, "", "Esters with a coexisting halogen on the acyl carbon (chloroformate-type structures) are not supported in this phase."};
+                            }
+                            int singleC = 0;
+                            for (int nei : node.neighbors) {
+                                if (g.nodes[nei].atomicNumber == 6) singleC++;
+                            }
+                            if (singleC == 0 && node.totalH == 0) {
+                                return {false, "", "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."};
+                            }
                             carbonGroup[i] = GroupType::ESTER;
                             esterAlkylRoot[i] = alkylRootNode;
                             esterOxygen[i] = sO;
@@ -8866,6 +8886,16 @@ IupacResult IupacNamer::generateName(int mol) {
                         }
                     }
                     if (cCount == 2 && alkylRootNode != -1) {
+                        if (!halogens.empty()) {
+                            return {false, "", "Esters with a coexisting halogen on the acyl carbon (chloroformate-type structures) are not supported in this phase."};
+                        }
+                        int singleC = 0;
+                        for (int nei : node.neighbors) {
+                            if (g.nodes[nei].atomicNumber == 6) singleC++;
+                        }
+                        if (singleC == 0 && node.totalH == 0) {
+                            return {false, "", "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."};
+                        }
                         carbonGroup[i] = GroupType::ESTER;
                         esterAlkylRoot[i] = alkylRootNode;
                         esterOxygen[i] = sO;

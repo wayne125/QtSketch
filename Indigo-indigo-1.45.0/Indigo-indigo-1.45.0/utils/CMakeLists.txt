@@ -1,0 +1,7 @@
+if (BUILD_INDIGO_UTILS)
+    add_subdirectory(cdx-dump)
+    add_subdirectory(indigo-cano)
+    add_subdirectory(indigo-deco)
+    add_subdirectory(indigo-depict)
+    add_subdirectory(indigo-service)
+endif ()
