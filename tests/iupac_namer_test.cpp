@@ -55,6 +55,10 @@ int main() {
         {"CCP(=O)(O)CC", "diethylphosphinic acid"},
         {"CP(=O)(O)c1ccccc1", "methyl(phenyl)phosphinic acid"},
 
+        // Arsinic acid
+        {"CC[As](=O)(O)CC", "diethylarsinic acid"},
+        {"C[As](=O)(O)c1ccccc1", "methyl(phenyl)arsinic acid"},
+
         // Nitroso probe tests
         {"CN=O", "nitrosomethane"},
         {"c1ccccc1N=O", "nitrosobenzene"},
@@ -1286,7 +1290,7 @@ int main() {
         int m = indigoLoadMoleculeFromString("C[As](C)C");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
-        if (!r.success && r.error.contains("Arsenic-containing groups other than arsonic acid are not supported")) {
+        if (!r.success && r.error.contains("Arsenic-containing groups other than arsonic and arsinic acids are not supported")) {
             std::cout << "[PASS] Unsupported As pattern (C[As](C)C) correctly rejected: " << r.error.toStdString() << "\n";
             passed++;
         } else {
