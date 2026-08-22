@@ -4013,6 +4013,57 @@ IupacResult IupacNamer::generateName(int mol) {
                                 if (g.nodes[nei].atomicNumber == 6) singleC++;
                             }
                             if (singleC == 0 && node.totalH == 0) {
+                                if (doubleO.size() == 1) {
+                                    int esterOCount = 0;
+                                    std::vector<std::pair<int, int>> esterO_alk;
+                                    for (int oNode : singleO) {
+                                        int cCountInner = 0;
+                                        int alkNode = -1;
+                                        for (int oNei : g.nodes[oNode].neighbors) {
+                                            if (g.nodes[oNei].atomicNumber == 6) {
+                                                cCountInner++;
+                                                if (oNei != static_cast<int>(i)) alkNode = oNei;
+                                            }
+                                        }
+                                        if (cCountInner == 2 && alkNode != -1) {
+                                            esterOCount++;
+                                            esterO_alk.push_back({oNode, alkNode});
+                                        }
+                                    }
+                                    
+                                    if (esterOCount == 1 && singleO.size() == 1 && singleN.size() == 1) {
+                                        int nZ = singleN[0];
+                                        if (g.nodes[nZ].totalH == 2 && g.nodes[nZ].neighbors.size() == 1) {
+                                            QString alkName = nameBranchGraph(g, esterO_alk[0].second, esterO_alk[0].first, allSSSRRings);
+                                            if (!alkName.isEmpty()) {
+                                                if (alkName.startsWith("(") && alkName.endsWith(")")) alkName = alkName.mid(1, alkName.length() - 2);
+                                                else if (alkName.startsWith("[") && alkName.endsWith("]")) alkName = alkName.mid(1, alkName.length() - 2);
+                                                return {true, alkName + " carbamate", ""};
+                                            }
+                                        }
+                                    }
+                                    
+                                    if (esterOCount == 2 && singleO.size() == 2 && singleN.empty()) {
+                                        QString alkName1 = nameBranchGraph(g, esterO_alk[0].second, esterO_alk[0].first, allSSSRRings);
+                                        QString alkName2 = nameBranchGraph(g, esterO_alk[1].second, esterO_alk[1].first, allSSSRRings);
+                                        
+                                        if (!alkName1.isEmpty() && !alkName2.isEmpty()) {
+                                            if (alkName1.startsWith("(") && alkName1.endsWith(")")) alkName1 = alkName1.mid(1, alkName1.length() - 2);
+                                            else if (alkName1.startsWith("[") && alkName1.endsWith("]")) alkName1 = alkName1.mid(1, alkName1.length() - 2);
+                                            
+                                            if (alkName2.startsWith("(") && alkName2.endsWith(")")) alkName2 = alkName2.mid(1, alkName2.length() - 2);
+                                            else if (alkName2.startsWith("[") && alkName2.endsWith("]")) alkName2 = alkName2.mid(1, alkName2.length() - 2);
+                                            
+                                            if (alkName1 == alkName2) {
+                                                return {true, "di" + alkName1 + " carbonate", ""};
+                                            } else {
+                                                QString a = alphabetizationKey(alkName1).toLower() < alphabetizationKey(alkName2).toLower() ? alkName1 : alkName2;
+                                                QString b = alphabetizationKey(alkName1).toLower() < alphabetizationKey(alkName2).toLower() ? alkName2 : alkName1;
+                                                return {true, a + " " + b + " carbonate", ""};
+                                            }
+                                        }
+                                    }
+                                }
                                 return {false, "", "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."};
                             }
                             carbonGroup[i] = GroupType::ESTER;
@@ -4032,6 +4083,28 @@ IupacResult IupacNamer::generateName(int mol) {
                         }
                     }
                     if (hasOH) {
+                        int singleC = 0;
+                        for (int nei : node.neighbors) {
+                            if (g.nodes[nei].atomicNumber == 6) singleC++;
+                        }
+                        if (singleC == 0 && node.totalH == 0) {
+                            if (doubleO.size() == 1) {
+                                int ohCount = 0;
+                                for (int sO : singleO) {
+                                    if (g.nodes[sO].totalH >= 1 || g.nodes[sO].neighbors.size() == 1) ohCount++;
+                                }
+                                if (ohCount == 1 && singleN.size() == 1 && singleO.size() == 1) {
+                                    int nZ = singleN[0];
+                                    if (g.nodes[nZ].totalH == 2 && g.nodes[nZ].neighbors.size() == 1) {
+                                        return {true, "carbamic acid", ""};
+                                    }
+                                }
+                                if (ohCount == 2 && singleO.size() == 2 && singleN.empty()) {
+                                    return {true, "carbonic acid", ""};
+                                }
+                            }
+                            return {false, "", "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."};
+                        }
                         carbonGroup[i] = GroupType::ACID;
                     } else if (isPeroxyCarboxylicAcid(static_cast<int>(i), g)) {
                         return {false, "", "Peroxycarboxylic acids are not supported in this phase."};
@@ -8282,6 +8355,57 @@ IupacResult IupacNamer::generateName(int mol) {
                                 if (g.nodes[nei].atomicNumber == 6) singleC++;
                             }
                             if (singleC == 0 && node.totalH == 0) {
+                                if (doubleO.size() == 1) {
+                                    int esterOCount = 0;
+                                    std::vector<std::pair<int, int>> esterO_alk;
+                                    for (int oNode : singleO) {
+                                        int cCountInner = 0;
+                                        int alkNode = -1;
+                                        for (int oNei : g.nodes[oNode].neighbors) {
+                                            if (g.nodes[oNei].atomicNumber == 6) {
+                                                cCountInner++;
+                                                if (oNei != static_cast<int>(i)) alkNode = oNei;
+                                            }
+                                        }
+                                        if (cCountInner == 2 && alkNode != -1) {
+                                            esterOCount++;
+                                            esterO_alk.push_back({oNode, alkNode});
+                                        }
+                                    }
+                                    
+                                    if (esterOCount == 1 && singleO.size() == 1 && singleN.size() == 1) {
+                                        int nZ = singleN[0];
+                                        if (g.nodes[nZ].totalH == 2 && g.nodes[nZ].neighbors.size() == 1) {
+                                            QString alkName = nameBranchGraph(g, esterO_alk[0].second, esterO_alk[0].first, allSSSRRings);
+                                            if (!alkName.isEmpty()) {
+                                                if (alkName.startsWith("(") && alkName.endsWith(")")) alkName = alkName.mid(1, alkName.length() - 2);
+                                                else if (alkName.startsWith("[") && alkName.endsWith("]")) alkName = alkName.mid(1, alkName.length() - 2);
+                                                return {true, alkName + " carbamate", ""};
+                                            }
+                                        }
+                                    }
+                                    
+                                    if (esterOCount == 2 && singleO.size() == 2 && singleN.empty()) {
+                                        QString alkName1 = nameBranchGraph(g, esterO_alk[0].second, esterO_alk[0].first, allSSSRRings);
+                                        QString alkName2 = nameBranchGraph(g, esterO_alk[1].second, esterO_alk[1].first, allSSSRRings);
+                                        
+                                        if (!alkName1.isEmpty() && !alkName2.isEmpty()) {
+                                            if (alkName1.startsWith("(") && alkName1.endsWith(")")) alkName1 = alkName1.mid(1, alkName1.length() - 2);
+                                            else if (alkName1.startsWith("[") && alkName1.endsWith("]")) alkName1 = alkName1.mid(1, alkName1.length() - 2);
+                                            
+                                            if (alkName2.startsWith("(") && alkName2.endsWith(")")) alkName2 = alkName2.mid(1, alkName2.length() - 2);
+                                            else if (alkName2.startsWith("[") && alkName2.endsWith("]")) alkName2 = alkName2.mid(1, alkName2.length() - 2);
+                                            
+                                            if (alkName1 == alkName2) {
+                                                return {true, "di" + alkName1 + " carbonate", ""};
+                                            } else {
+                                                QString a = alphabetizationKey(alkName1).toLower() < alphabetizationKey(alkName2).toLower() ? alkName1 : alkName2;
+                                                QString b = alphabetizationKey(alkName1).toLower() < alphabetizationKey(alkName2).toLower() ? alkName2 : alkName1;
+                                                return {true, a + " " + b + " carbonate", ""};
+                                            }
+                                        }
+                                    }
+                                }
                                 return {false, "", "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."};
                             }
                             carbonGroup[i] = GroupType::ESTER;
@@ -8301,6 +8425,28 @@ IupacResult IupacNamer::generateName(int mol) {
                         }
                     }
                     if (hasOH) {
+                        int singleC = 0;
+                        for (int nei : node.neighbors) {
+                            if (g.nodes[nei].atomicNumber == 6) singleC++;
+                        }
+                        if (singleC == 0 && node.totalH == 0) {
+                            if (doubleO.size() == 1) {
+                                int ohCount = 0;
+                                for (int sO : singleO) {
+                                    if (g.nodes[sO].totalH >= 1 || g.nodes[sO].neighbors.size() == 1) ohCount++;
+                                }
+                                if (ohCount == 1 && singleN.size() == 1 && singleO.size() == 1) {
+                                    int nZ = singleN[0];
+                                    if (g.nodes[nZ].totalH == 2 && g.nodes[nZ].neighbors.size() == 1) {
+                                        return {true, "carbamic acid", ""};
+                                    }
+                                }
+                                if (ohCount == 2 && singleO.size() == 2 && singleN.empty()) {
+                                    return {true, "carbonic acid", ""};
+                                }
+                            }
+                            return {false, "", "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."};
+                        }
                         carbonGroup[i] = GroupType::ACID;
                     } else if (isPeroxyCarboxylicAcid(static_cast<int>(i), g)) {
                         return {false, "", "Peroxycarboxylic acids are not supported in this phase."};
@@ -9220,6 +9366,57 @@ IupacResult IupacNamer::generateName(int mol) {
                             if (g.nodes[nei].atomicNumber == 6) singleC++;
                         }
                         if (singleC == 0 && node.totalH == 0) {
+                            if (doubleO.size() == 1) {
+                                int esterOCount = 0;
+                                std::vector<std::pair<int, int>> esterO_alk;
+                                for (int oNode : singleO) {
+                                    int cCountInner = 0;
+                                    int alkNode = -1;
+                                    for (int oNei : g.nodes[oNode].neighbors) {
+                                        if (g.nodes[oNei].atomicNumber == 6) {
+                                            cCountInner++;
+                                            if (oNei != static_cast<int>(i)) alkNode = oNei;
+                                        }
+                                    }
+                                    if (cCountInner == 2 && alkNode != -1) {
+                                        esterOCount++;
+                                        esterO_alk.push_back({oNode, alkNode});
+                                    }
+                                }
+                                
+                                if (esterOCount == 1 && singleO.size() == 1 && singleN.size() == 1) {
+                                    int nZ = singleN[0];
+                                    if (g.nodes[nZ].totalH == 2 && g.nodes[nZ].neighbors.size() == 1) {
+                                        QString alkName = nameBranchGraph(g, esterO_alk[0].second, esterO_alk[0].first, allSSSRRings);
+                                        if (!alkName.isEmpty()) {
+                                            if (alkName.startsWith("(") && alkName.endsWith(")")) alkName = alkName.mid(1, alkName.length() - 2);
+                                            else if (alkName.startsWith("[") && alkName.endsWith("]")) alkName = alkName.mid(1, alkName.length() - 2);
+                                            return {true, alkName + " carbamate", ""};
+                                        }
+                                    }
+                                }
+                                
+                                if (esterOCount == 2 && singleO.size() == 2 && singleN.empty()) {
+                                    QString alkName1 = nameBranchGraph(g, esterO_alk[0].second, esterO_alk[0].first, allSSSRRings);
+                                    QString alkName2 = nameBranchGraph(g, esterO_alk[1].second, esterO_alk[1].first, allSSSRRings);
+                                    
+                                    if (!alkName1.isEmpty() && !alkName2.isEmpty()) {
+                                        if (alkName1.startsWith("(") && alkName1.endsWith(")")) alkName1 = alkName1.mid(1, alkName1.length() - 2);
+                                        else if (alkName1.startsWith("[") && alkName1.endsWith("]")) alkName1 = alkName1.mid(1, alkName1.length() - 2);
+                                        
+                                        if (alkName2.startsWith("(") && alkName2.endsWith(")")) alkName2 = alkName2.mid(1, alkName2.length() - 2);
+                                        else if (alkName2.startsWith("[") && alkName2.endsWith("]")) alkName2 = alkName2.mid(1, alkName2.length() - 2);
+                                        
+                                        if (alkName1 == alkName2) {
+                                            return {true, "di" + alkName1 + " carbonate", ""};
+                                        } else {
+                                            QString a = alphabetizationKey(alkName1).toLower() < alphabetizationKey(alkName2).toLower() ? alkName1 : alkName2;
+                                            QString b = alphabetizationKey(alkName1).toLower() < alphabetizationKey(alkName2).toLower() ? alkName2 : alkName1;
+                                            return {true, a + " " + b + " carbonate", ""};
+                                        }
+                                    }
+                                }
+                            }
                             return {false, "", "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."};
                         }
                         carbonGroup[i] = GroupType::ESTER;
@@ -9239,6 +9436,28 @@ IupacResult IupacNamer::generateName(int mol) {
                     }
                 }
                 if (hasOH) {
+                    int singleC = 0;
+                    for (int nei : node.neighbors) {
+                        if (g.nodes[nei].atomicNumber == 6) singleC++;
+                    }
+                    if (singleC == 0 && node.totalH == 0) {
+                        if (doubleO.size() == 1) {
+                            int ohCount = 0;
+                            for (int sO : singleO) {
+                                if (g.nodes[sO].totalH >= 1 || g.nodes[sO].neighbors.size() == 1) ohCount++;
+                            }
+                            if (ohCount == 1 && singleN.size() == 1 && singleO.size() == 1) {
+                                int nZ = singleN[0];
+                                if (g.nodes[nZ].totalH == 2 && g.nodes[nZ].neighbors.size() == 1) {
+                                    return {true, "carbamic acid", ""};
+                                }
+                            }
+                            if (ohCount == 2 && singleO.size() == 2 && singleN.empty()) {
+                                return {true, "carbonic acid", ""};
+                            }
+                        }
+                        return {false, "", "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."};
+                    }
                     carbonGroup[i] = GroupType::ACID;
                 } else if (isPeroxyCarboxylicAcid(static_cast<int>(i), g)) {
                     return {false, "", "Peroxycarboxylic acids are not supported in this phase."};
