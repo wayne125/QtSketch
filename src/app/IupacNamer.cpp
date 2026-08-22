@@ -1011,7 +1011,9 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                                      const std::vector<std::set<int>> &allIndependentRings = {},
                                      const std::set<int> &forbiddenNodes = {},
                                      const std::map<int, QChar> &stereoByGraphId = {},
-                                     std::set<int> *handledBranchStereoIds = nullptr) {
+                                     std::set<int> *handledBranchStereoIds = nullptr,
+                                     const std::map<int, int> &carbonSulfonamide = {},
+                                     const std::map<int, int> &carbonSulfinamide = {}) {
     if (ringNodes.empty() || !ringNodes.count(attachmentNode)) return "";
     std::set<int> combinedForbidden = forbiddenNodes;
     for (int n : ringNodes) combinedForbidden.insert(n);
@@ -1333,6 +1335,10 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                     }
                 } else if (nZ == 9 || nZ == 17 || nZ == 35 || nZ == 53) {
                     subName = halogenPrefix(nZ);
+                } else if (nZ == 16 && carbonSulfonamide.count(rNode) && carbonSulfonamide.at(rNode) == nei) {
+                    subName = "sulfamoyl";
+                } else if (nZ == 16 && carbonSulfinamide.count(rNode) && carbonSulfinamide.at(rNode) == nei) {
+                    subName = "sulfinamoyl";
                 } else {
                     subName = nameBranchGraph(g, nei, rNode, allIndependentRings, combinedForbidden);
                 }
@@ -2435,7 +2441,7 @@ static bool isChainParentWithRingSubstituentSupported(GroupType gt) {
     return gt == GroupType::ACID || gt == GroupType::AMIDE || gt == GroupType::THIOAMIDE || gt == GroupType::HYDRAZIDE || gt == GroupType::NITRILE ||
            gt == GroupType::ALDEHYDE || gt == GroupType::KETONE ||
            gt == GroupType::ALCOHOL || gt == GroupType::THIOL || gt == GroupType::SELENOL || gt == GroupType::TELLUROL || gt == GroupType::HYDROPEROXIDE || gt == GroupType::AMINE || gt == GroupType::IMINE || gt == GroupType::THIAL || gt == GroupType::THIONE || gt == GroupType::SULFONIC_ACID ||
-           gt == GroupType::SULFINIC_ACID || gt == GroupType::SULFINYL_HALIDE || gt == GroupType::PHOSPHONIC_ACID || gt == GroupType::PHOSPHONIC_DIHALIDE || gt == GroupType::ARSONIC_ACID || gt == GroupType::ARSONIC_DIHALIDE || gt == GroupType::ESTER || gt == GroupType::ACYL_HALIDE || gt == GroupType::SULFONYL_HALIDE;
+           gt == GroupType::SULFINIC_ACID || gt == GroupType::SULFINYL_HALIDE || gt == GroupType::PHOSPHONIC_ACID || gt == GroupType::PHOSPHONIC_DIHALIDE || gt == GroupType::ARSONIC_ACID || gt == GroupType::ARSONIC_DIHALIDE || gt == GroupType::ESTER || gt == GroupType::ACYL_HALIDE || gt == GroupType::SULFONYL_HALIDE || gt == GroupType::SULFONAMIDE || gt == GroupType::SULFINAMIDE;
 }
 
 // Phase 52 / Phase 54 (P-44.1.1 chain-wins case): when a chain-attached
@@ -2472,7 +2478,9 @@ QString nameChainParentWithRingSubstituent(int mol, const std::map<int, int> &in
                                           const std::map<int, GroupType> &carbonGroup,
                                           GroupType winningType,
                                           const std::map<int, QChar> &stereoByGraphId = {},
-                                          std::set<int> *handledBranchStereoIds = nullptr) {
+                                          std::set<int> *handledBranchStereoIds = nullptr,
+                                          const std::map<int, int> &carbonSulfonamide = {},
+                                          const std::map<int, int> &carbonSulfinamide = {}) {
     // 1. Collect the pure-chain principal carbons of the winning class (carbons
     //    of winningType that are neither part of the ring nor exocyclic to it).
     //    These are the chain-parent's principal characteristic groups; the
@@ -2543,7 +2551,7 @@ QString nameChainParentWithRingSubstituent(int mol, const std::map<int, int> &in
 
     // 4. Name the ring as a substituent prefix (handles ring-borne substituents
     //    such as a methyl via its own locant). This is class-agnostic.
-    QString ringPrefix = nameRingAsSubstituent(g, ringNodeSet, ipsoRingNode, chainAttachCarbon, allSSSRRings, ringNodeSet, stereoByGraphId, handledBranchStereoIds);
+    QString ringPrefix = nameRingAsSubstituent(g, ringNodeSet, ipsoRingNode, chainAttachCarbon, allSSSRRings, ringNodeSet, stereoByGraphId, handledBranchStereoIds, carbonSulfonamide, carbonSulfinamide);
     if (ringPrefix.isEmpty()) return "";
 
     // 5. Build the chain-parent name with the ring injected as an extra
@@ -3646,7 +3654,7 @@ IupacResult IupacNamer::generateName(int mol) {
                     }
                     if (!validSubstituent || nodesWithExo != 1 || attachNodeThis == -1) return {"", -1};
 
-                    QString subName = nameRingAsSubstituent(g, rNodes, attachNodeThis, attachNodeOther, allSSSRRings);
+                    QString subName = nameRingAsSubstituent(g, rNodes, attachNodeThis, attachNodeOther, allSSSRRings, {}, {}, nullptr, carbonSulfonamide, carbonSulfinamide);
                     if (subName.isEmpty()) return {"", -1};
 
                     while (subName.startsWith("(") || subName.startsWith("[") || subName.startsWith("{")) subName = subName.mid(1);
@@ -3838,7 +3846,7 @@ IupacResult IupacNamer::generateName(int mol) {
                 // double-processing risk, and lets a ring substituent's own stereocenter
                 // reach the name instead of being silently dropped.
                 std::set<int> ringInfoHandledStereoIds;
-                QString pName = nameRingAsSubstituent(g, rNodes, attachRingNode, foundAttachChainNode, allSSSRRings, {}, stereoByGraphId, &ringInfoHandledStereoIds);
+                QString pName = nameRingAsSubstituent(g, rNodes, attachRingNode, foundAttachChainNode, allSSSRRings, {}, stereoByGraphId, &ringInfoHandledStereoIds, carbonSulfonamide, carbonSulfinamide);
                 if (!pName.isEmpty()) {
                     ringSubstituentInfos.push_back({rNodes, pName, foundAttachChainNode});
                 }
@@ -9274,7 +9282,7 @@ IupacResult IupacNamer::generateName(int mol) {
                     }
                 } else if (isChainParentWithRingSubstituentSupported(combinedWinner)) {
                     std::set<int> handledBranchStereoIds;
-                    QString chainName = nameChainParentWithRingSubstituent(mol, indigoToGraphIdx, g, ringNodeSet, allSSSRRings, carbonGroup, combinedWinner, stereoByGraphId, &handledBranchStereoIds);
+                    QString chainName = nameChainParentWithRingSubstituent(mol, indigoToGraphIdx, g, ringNodeSet, allSSSRRings, carbonGroup, combinedWinner, stereoByGraphId, &handledBranchStereoIds, carbonSulfonamide, carbonSulfinamide);
                     if (!chainName.isEmpty()) return {true, chainName, ""};
                 }
                 return {false, "", "A chain-based principal group outranks the ring in this structure; chain-as-parent seniority (P-44.1.1) for this ring/class combination is not yet supported."};
@@ -10456,7 +10464,7 @@ IupacResult IupacNamer::generateName(int mol) {
                 }
             } else if (isChainParentWithRingSubstituentSupported(combinedWinner)) {
                 std::set<int> handledBranchStereoIds;
-                QString chainName = nameChainParentWithRingSubstituent(mol, indigoToGraphIdx, g, ringNodeSet, allSSSRRings, carbonGroup, combinedWinner, stereoByGraphId, &handledBranchStereoIds);
+                QString chainName = nameChainParentWithRingSubstituent(mol, indigoToGraphIdx, g, ringNodeSet, allSSSRRings, carbonGroup, combinedWinner, stereoByGraphId, &handledBranchStereoIds, carbonSulfonamide, carbonSulfinamide);
                 if (!chainName.isEmpty()) return {true, chainName, ""};
             }
             return {false, "", "A chain-based principal group outranks the ring in this structure; chain-as-parent seniority (P-44.1.1) for this ring/class combination is not yet supported."};

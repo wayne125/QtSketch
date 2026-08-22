@@ -268,6 +268,8 @@ int main() {
         {"CC(O)C(=O)Cl", "2-hydroxypropanoyl chloride"},
         {"CS(=O)(=O)O", "methanesulfonic acid"},
         {"CS(=O)(=O)N", "methanesulfonamide"},
+        {"NS(=O)(=O)CCC1CC(S(N)(=O)=O)CCC1", "2-(3-sulfamoylcyclohexyl)ethanesulfonamide"},
+        {"NS(=O)CCC1CC(S(N)=O)CCC1", "2-(3-sulfinamoylcyclohexyl)ethanesulfinamide"},
         {"c1ccccc1S(=O)(=O)N", "benzenesulfonamide"},
         {"CS(=O)N", "methanesulfinamide"},
         {"c1ccccc1S(=O)N", "benzenesulfinamide"},
