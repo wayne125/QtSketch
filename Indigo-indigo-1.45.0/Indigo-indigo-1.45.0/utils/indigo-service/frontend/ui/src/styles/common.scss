@@ -1,0 +1,26 @@
+@import './variables';
+@import './mixins.scss';
+
+input[type='number'] {
+  @include app-field;
+  display: inline-block;
+  width: calc(50% - 5px);
+}
+
+input[type='number'] + input[type='number'] {
+  margin-left: 10px;
+}
+
+table {
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+.app-wrapper {
+  margin: 8px;
+}
+
+.execute-search-form {
+  width: 475px;
+}
+

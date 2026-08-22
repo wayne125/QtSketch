@@ -1,0 +1,25 @@
+Item #1
+  Try #1
+automorphism search timeout: The operation timed out: 6000 ms
+  Try #2
+automorphism search timeout: The operation timed out: 6000 ms
+Item #2
+  Try #1
+C[C@@H]1[C@H](N)[C@@H](C)[C@H](C)[C@@H](C)[C@H]1C.C[C@H]1[C@@H](N)[C@H](C)[C@H](C)[C@H](C)[C@H]1C.C[C@H]1[C@@H](N)[C@H](C)[C@H](C)[C@H](C)[C@H]1C.C[C@H]1[C@@H](N)[C@H](C)[C@H](C)[C@H](C)[C@H]1C.C[C@H]1[C@@H](N)[C@H](C)[C@H](C)[C@H](C)[C@H]1C.C[C@H]1[C@@H](N)[C@H](C)[C@H](C)[C@H](C)[C@H]1C.C[C@H]1[C@H](N)[C@@H](C)[C@H](C)[C@@H](C)[C@H]1C.C[C@H]1[C@H](N)[C@@H](C)[C@H](C)[C@@H](C)[C@H]1C.C[C@H]1[C@H](N)[C@@H](C)[C@H](C)[C@@H](C)[C@H]1C.C[C@H]1[C@H](N)[C@@H](C)[C@H](C)[C@@H](C)[C@H]1C.C[C@H]1[C@H](N)[C@@H](C)[C@H](C)[C@@H](C)[C@@H]1C.C[C@H]1[C@H](N)[C@@H](C)[C@H](C)[C@@H](C)[C@@H]1C.C[C@H]1[C@H](C)[C@@H](C)[C@H](C)[C@@H](C)[C@@H]1C.C[C@H]1[C@H](C)[C@@H](C)[C@H](C)[C@@H](C)[C@@H]1C.C[C@H]1[C@H](C)[C@@H](C)[C@@H](C)[C@@H](C)[C@@H]1C.C[C@H]1[C@H](C)[C@@H](C)[C@@H](C)[C@@H](C)[C@@H]1C.C[C@H]1[C@H](C)[C@@H](C)[C@@H](C)[C@H](C)[C@@H]1C.C[C@H]1[C@@H](C)[C@H](C)[C@H](C)[C@H](C)[C@H]1C
+  Try #2
+C[C@@H]1[C@H](N)[C@@H](C)[C@H](C)[C@@H](C)[C@H]1C.C[C@H]1[C@@H](N)[C@H](C)[C@H](C)[C@H](C)[C@H]1C.C[C@H]1[C@@H](N)[C@H](C)[C@H](C)[C@H](C)[C@H]1C.C[C@H]1[C@@H](N)[C@H](C)[C@H](C)[C@H](C)[C@H]1C.C[C@H]1[C@@H](N)[C@H](C)[C@H](C)[C@H](C)[C@H]1C.C[C@H]1[C@@H](N)[C@H](C)[C@H](C)[C@H](C)[C@H]1C.C[C@H]1[C@H](N)[C@@H](C)[C@H](C)[C@@H](C)[C@H]1C.C[C@H]1[C@H](N)[C@@H](C)[C@H](C)[C@@H](C)[C@H]1C.C[C@H]1[C@H](N)[C@@H](C)[C@H](C)[C@@H](C)[C@H]1C.C[C@H]1[C@H](N)[C@@H](C)[C@H](C)[C@@H](C)[C@H]1C.C[C@H]1[C@H](N)[C@@H](C)[C@H](C)[C@@H](C)[C@@H]1C.C[C@H]1[C@H](N)[C@@H](C)[C@H](C)[C@@H](C)[C@@H]1C.C[C@H]1[C@H](C)[C@@H](C)[C@H](C)[C@@H](C)[C@@H]1C.C[C@H]1[C@H](C)[C@@H](C)[C@H](C)[C@@H](C)[C@@H]1C.C[C@H]1[C@H](C)[C@@H](C)[C@@H](C)[C@@H](C)[C@@H]1C.C[C@H]1[C@H](C)[C@@H](C)[C@@H](C)[C@@H](C)[C@@H]1C.C[C@H]1[C@H](C)[C@@H](C)[C@@H](C)[C@H](C)[C@@H]1C.C[C@H]1[C@@H](C)[C@H](C)[C@H](C)[C@H](C)[C@H]1C
+Item #3
+  Try #1
+C[C@@H]1[C@@H](N)[C@H](C)[C@H](C)[C@H](C)[C@H]1C.C[C@H]1[C@@H](N)[C@H](C)[C@H](C)[C@H](C)[C@H]1C.C[C@H]1[C@@H](N)[C@H](C)[C@H](C)[C@H](C)[C@H]1C.C[C@@H]1[C@@H](N)[C@H](C)[C@@H](C)[C@H](C)[C@H]1C.C[C@@H]1[C@@H](C)[C@H](C)[C@@H](C)[C@H](C)[C@H]1C.C[C@@H]1[C@@H](C)[C@H](C)[C@@H](C)[C@H](C)[C@H]1C.C[C@@H]1[C@@H](C)[C@H](C)[C@H](C)[C@H](C)[C@H]1C.C[C@@H]1[C@@H](C)[C@H](C)[C@H](C)[C@H](C)[C@H]1C.C[C@H]1[C@H](C)[C@@H](C)[C@@H](C)[C@H](C)[C@@H]1C.C[C@@H]1[C@H](C)[C@@H](C)[C@@H](C)[C@@H](C)[C@@H]1C
+  Try #2
+C[C@@H]1[C@@H](N)[C@H](C)[C@H](C)[C@H](C)[C@H]1C.C[C@H]1[C@@H](N)[C@H](C)[C@H](C)[C@H](C)[C@H]1C.C[C@H]1[C@@H](N)[C@H](C)[C@H](C)[C@H](C)[C@H]1C.C[C@@H]1[C@@H](N)[C@H](C)[C@@H](C)[C@H](C)[C@H]1C.C[C@@H]1[C@@H](C)[C@H](C)[C@@H](C)[C@H](C)[C@H]1C.C[C@@H]1[C@@H](C)[C@H](C)[C@@H](C)[C@H](C)[C@H]1C.C[C@@H]1[C@@H](C)[C@H](C)[C@H](C)[C@H](C)[C@H]1C.C[C@@H]1[C@@H](C)[C@H](C)[C@H](C)[C@H](C)[C@H]1C.C[C@H]1[C@H](C)[C@@H](C)[C@@H](C)[C@H](C)[C@@H]1C.C[C@@H]1[C@H](C)[C@@H](C)[C@@H](C)[C@@H](C)[C@@H]1C
+Item #4
+  Try #1
+[HH].[OH].[O].[Na+].[Na+].[Na+].[Na+].[Na+].[Na+].[Na+].[Na+].CC(C)(C)[O].CC(C)(C)[O].CC(C)(C)[O].CC(C)(C)[O].CC(C)(C)[O].CC(C)(C)[O].CC(C)(C)O[Na].CC(C)(C)O[Na].CC(C)(C)O[Na].CC(C)(C)O[Na].CC(C)(C)O[Na].CC(C)(C)O[Na].CC(C)(C)O[Na].CC(C)(C)O[Na].CC(C)(C)O[Na].CC(C)(C)O[Na].CC(C)(C)O[Na].CC(C)(C)O[Na].CC(C)(C)O[Na].CC(C)(C)O[Na]
+  Try #2
+[HH].[OH].[O].[Na+].[Na+].[Na+].[Na+].[Na+].[Na+].[Na+].[Na+].CC(C)(C)[O].CC(C)(C)[O].CC(C)(C)[O].CC(C)(C)[O].CC(C)(C)[O].CC(C)(C)[O].CC(C)(C)O[Na].CC(C)(C)O[Na].CC(C)(C)O[Na].CC(C)(C)O[Na].CC(C)(C)O[Na].CC(C)(C)O[Na].CC(C)(C)O[Na].CC(C)(C)O[Na].CC(C)(C)O[Na].CC(C)(C)O[Na].CC(C)(C)O[Na].CC(C)(C)O[Na].CC(C)(C)O[Na].CC(C)(C)O[Na]
+Item #5
+  Try #1
+[Yb].[Yb].[Yb].[Yb].CC(C)(C)O[Si](O[W](CC)(CC)CC)(OC(C)(C)C)OC(C)(C)C.CC(C)(C)O[Si](O[W](CC)(CC)CC)(OC(C)(C)C)OC(C)(C)C.CC(C)(C)O[Si](O[W](CC)(CC)CC)(OC(C)(C)C)OC(C)(C)C.CC(C)(C)O[Si](O[W](CC)(CC)CC)(OC(C)(C)C)OC(C)(C)C.CC(C)(C)O[Si](O[W](CC)(CC)CC)(OC(C)(C)C)OC(C)(C)C.CC(C)(C)O[Si](O[W](CC)(CC)CC)(OC(C)(C)C)OC(C)(C)C.CC(C)(C)O[Si](O[W](CC)(CC)CC)(OC(C)(C)C)OC(C)(C)C.CC(C)(C)O[Si](O[W](CC)(CC)CC)(OC(C)(C)C)OC(C)(C)C
+  Try #2
+[Yb].[Yb].[Yb].[Yb].CC(C)(C)O[Si](O[W](CC)(CC)CC)(OC(C)(C)C)OC(C)(C)C.CC(C)(C)O[Si](O[W](CC)(CC)CC)(OC(C)(C)C)OC(C)(C)C.CC(C)(C)O[Si](O[W](CC)(CC)CC)(OC(C)(C)C)OC(C)(C)C.CC(C)(C)O[Si](O[W](CC)(CC)CC)(OC(C)(C)C)OC(C)(C)C.CC(C)(C)O[Si](O[W](CC)(CC)CC)(OC(C)(C)C)OC(C)(C)C.CC(C)(C)O[Si](O[W](CC)(CC)CC)(OC(C)(C)C)OC(C)(C)C.CC(C)(C)O[Si](O[W](CC)(CC)CC)(OC(C)(C)C)OC(C)(C)C.CC(C)(C)O[Si](O[W](CC)(CC)CC)(OC(C)(C)C)OC(C)(C)C

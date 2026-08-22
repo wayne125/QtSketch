@@ -1,0 +1,392 @@
+#!/usr/bin/env python
+import datetime
+import difflib
+import gc
+import io
+import os
+import platform
+import re
+import runpy
+import shutil
+import sys
+import time
+import traceback
+from threading import Lock
+
+if sys.platform == "cli":
+    import clr
+    import System
+
+    clr.AddReference("System.IO.FileSystem")
+    clr.AddReference("System.Runtime.Extensions")
+    from System import Environment
+    from System.IO import Directory, File, FileInfo
+
+base_root = os.path.normpath(os.path.abspath(os.path.dirname(__file__)))
+sys.path.append(os.path.join(base_root, "common"))
+from env_indigo import (
+    Indigo,
+    dir_exists,
+    dll_full_path,
+    file_exists,
+    file_size,
+    getPlatform,
+    isIronPython,
+    isJython,
+    makedirs,
+)
+from thread_pool import ThreadPool, cpu_count
+from thread_printer import ThreadPrinter, ThreadPrinterManager
+from util import overridePlatform
+
+stdout_thread_printer = ThreadPrinter()
+stderr_thredd_printer = ThreadPrinter()
+stdout_lock = Lock()
+
+res_failed = "[FAILED]"
+res_passed = "[PASSED]"
+res_error = "[ERROR]"
+res_new = "[NEW]"
+res_todo = "[TODO]"
+
+
+def write_difference(fn_1, fn_2, fn_3):
+    with io.open(fn_1, "rt", encoding="utf-8") as f_1, io.open(
+        fn_2, "rt", encoding="utf-8"
+    ) as f_2:
+        lines_1 = f_1.readlines()
+        lines_2 = f_2.readlines()
+
+    s1 = [s.splitlines()[0] for s in lines_1]
+    s2 = [s.splitlines()[0] for s in lines_2]
+
+    s = difflib.SequenceMatcher()
+    s.set_seqs(s1, s2)
+
+    with io.open(fn_3, "wt", encoding="utf-8") as f_3:
+        difference_counter = 0
+        for tag, i1, i2, j1, j2 in s.get_opcodes():
+            if tag == "equal":
+                continue
+            sub1 = s1[i1:i2]
+            sub2 = s2[j1:j2]
+            difference_counter += len(sub1) + len(sub2)
+            # we cannot use zip_longest or map because code have to compatible for Python 2.4 .. 3.x
+            while len(sub1) < len(sub2):
+                sub1.append("")
+            while len(sub2) < len(sub1):
+                sub2.append("")
+            for line1, line2 in zip(sub1, sub2):
+                if line1:
+                    f_3.write("- " + line1 + "\n")
+                if line2:
+                    f_3.write("+ " + line2 + "\n")
+    # On Linux and macOS Jython and IronPython work for hours in some cases to build this diff. Use Python.
+    if not isJython() and not isIronPython():
+        with io.open(
+            "{}.html".format(fn_3), "wt", encoding="utf-8"
+        ) as pretty_file:
+            pretty_diff = difflib.HtmlDiff()
+            html_cont = pretty_diff.make_file(lines_1, lines_2)
+            pretty_file.write(html_cont)
+    return difference_counter
+
+
+def get_tests(root_path):
+    result = []
+    for path in os.listdir(root_path):
+        if path.endswith(".py"):
+            result.append((os.path.basename(root_path), path))
+        elif dir_exists(os.path.join(root_path, path)):
+            result += get_tests(os.path.join(root_path, path))
+    return result
+
+
+def main():
+    indigo = Indigo()
+    output_dir_base = os.path.join(base_root, "ref")
+    output_dir = os.path.join(base_root, "out")
+    pattern_list = []
+    exclude_pattern_list = []
+    junit_report_name = ""
+    iterations = 1
+    threads_number = cpu_count()
+
+    if "LABEL" in os.environ:
+        binenv = os.environ["LABEL"].upper()
+        python_exec = os.environ[binenv]
+    else:
+        python_exec = sys.executable
+
+    for i in range(1, len(sys.argv), 2):
+        if sys.argv[i] == "-p":
+            pattern_list = sys.argv[i + 1].split(",")
+        elif sys.argv[i] == "-e":
+            exclude_pattern_list = sys.argv[i + 1].split(",")
+        elif sys.argv[i] == "-o":
+            output_dir = sys.argv[i + 1]
+        elif sys.argv[i] == "-b":
+            output_dir_base = sys.argv[i + 1]
+        elif sys.argv[i] == "-i":
+            iterations = int(sys.argv[i + 1])
+        elif sys.argv[i] == "-j":
+            junit_report_name = sys.argv[i + 1]
+        elif sys.argv[i] == "-t":
+            threads_number = int(sys.argv[i + 1])
+        elif sys.argv[i] == "-exec":
+            python_exec = sys.argv[i + 1]
+        elif sys.argv[i] == "-platform":
+            overridePlatform(sys.argv[i + 1])
+        elif sys.argv[i] == "-u":
+            os.environ["INDIGO_UPDATE_TESTS"] = "True"
+        else:
+            print("Unexpected options: %s" % (sys.argv[i]))
+            exit()
+
+    if dir_exists(output_dir):
+        shutil.rmtree(output_dir)
+    makedirs(output_dir)
+
+    # sys.stdout = Logger(output_dir + "/results.txt")
+
+    if python_exec.startswith('"') and python_exec.endswith('"'):
+        python_exec = python_exec[1:-1]
+
+    print("Indigo version: " + indigo.version())
+    print("Indigo library path: " + dll_full_path())
+    print("Date & time: " + datetime.datetime.now().strftime("%d.%m.%Y %H:%M"))
+    print("Platform: {}".format(platform.platform()))
+    print("Processor: {}".format(platform.processor()))
+    print("Python: " + sys.version.replace("\n", "\t"))
+    print("Executable: " + python_exec)
+    import socket
+
+    print("Host name: " + socket.gethostname())  # platform.node())
+    print("")
+    del indigo
+    # Collect tests and sort them
+    tests_dir = os.path.join(base_root, "tests")
+    tests = sorted(get_tests(tests_dir))
+    # Calcuate maximum lenthd of the test names
+    max_name_len = max((len(item[0]) + len(item[1]) + 1 for item in tests))
+    # add small gap
+    max_name_len += 3
+
+    test_results = []
+    # Execute tests in sorted order
+    test_args = []
+    for root, filename in tests:
+        test_dir = os.path.join(output_dir, root)
+        if not dir_exists(test_dir):
+            os.makedirs(test_dir)
+        test_name = os.path.join(root, filename).replace("\\", "/")
+
+        if test_name != "":
+            # Check test name by input pattern
+            if len(pattern_list):
+                skip_test = True
+                for pattern in pattern_list:
+                    if re.search(pattern, test_name):
+                        skip_test = False
+                if skip_test:
+                    continue
+            # exclude some files from test by pattern
+            if len(exclude_pattern_list):
+                skip_test = False
+                for exclude_pattern in exclude_pattern_list:
+                    if re.search(exclude_pattern, test_name):
+                        skip_test = True
+                if skip_test:
+                    continue
+
+        for i in range(iterations):
+            test_args.append(
+                (
+                    (
+                        filename,
+                        i,
+                        max_name_len,
+                        output_dir_base,
+                        root,
+                        test_dir,
+                        test_name,
+                        tests_dir,
+                    )
+                )
+            )
+
+    p = ThreadPool(threads_number)
+    total_time = time.time()
+    with ThreadPrinterManager(
+        stdout=stdout_thread_printer, stderr=stderr_thredd_printer
+    ):
+        test_results = tuple(p.imap_unordered(run_analyze_test, test_args))
+        # test_results = []
+        # for test_arg in test_args:
+        #     test_results.append(run_analyze_test(test_arg))
+    test_status = 0
+    for test_result in test_results:
+        if test_result[2] == res_failed:
+            test_status = test_status | 1
+        if test_result[2] == res_error:
+            test_status = test_status | 2
+            for i in test_result:
+                print("%s" % i)
+        if test_result[2] == res_new:
+            test_status = test_status | 4
+    total_time = time.time() - total_time
+    print("\nTotal time: {:.2f} sec".format(total_time))
+
+    if junit_report_name != "":
+        from generate_junit_report import generate_junit_report
+
+        generate_junit_report(test_results, junit_report_name)
+
+    # remove output folders where no errors were found
+    for folder in os.listdir(output_dir):
+        f_path = os.path.join(output_dir, folder)
+        if not os.listdir(f_path):
+            shutil.rmtree(f_path)
+
+    return test_status
+
+
+def run_analyze_test(args):
+    (
+        filename,
+        i,
+        max_name_len,
+        output_dir_base,
+        root,
+        test_dir,
+        test_name,
+        tests_dir,
+    ) = args
+    out_message = test_name
+    spacer_len = max_name_len - len(test_name)
+    out_filename = os.path.join(test_dir, filename + "_" + str(i) + ".out")
+    err_filename = os.path.join(test_dir, filename + "_" + str(i) + ".err")
+    module_filename = os.path.join(tests_dir, root, filename)
+
+    tspent = run_test_module(module_filename)
+    stdout_thread = stdout_thread_printer.read_and_clean()
+    base_dir = os.path.join(output_dir_base, root)
+
+    # Update ref files
+    is_ref_update_required = (
+        os.getenv("INDIGO_UPDATE_TESTS", "False") == "True"
+    )
+    if is_ref_update_required:
+        ref_file_to_update = determine_path_based_on_platform(
+            base_dir, filename
+        )
+        with open(ref_file_to_update, "wb") as f:
+            f.write(stdout_thread)
+
+    with open(out_filename, "wb") as f:
+        f.write(stdout_thread)
+
+    with open(err_filename, "wb") as f:
+        f.write(stderr_thredd_printer.read_and_clean())
+
+    failed_stderr = False
+    if not file_size(err_filename):
+        os.remove(err_filename)
+    else:
+        failed_stderr = True
+    base_output_file = os.path.join(base_dir, filename + ".out")
+    base_exists = False
+    ndiffcnt = 0
+    diff_file = None
+    if file_exists(base_output_file):
+        diff_file = os.path.join(test_dir, filename + ".diff")
+        # determine platform and copy reference file
+        base_output_file = determine_path_based_on_platform(base_dir, filename)
+        new_ref_file = os.path.join(test_dir, filename + ".std")
+        if not os.path.normpath(
+            os.path.abspath(base_output_file)
+        ) == os.path.normpath(os.path.abspath(new_ref_file)):
+            if not sys.platform == "cli":
+                shutil.copy(base_output_file, new_ref_file)
+            else:
+                import clr
+
+                clr.AddReference("System.IO.FileSystem")
+                from System.IO import File
+
+                File.Copy(base_output_file, new_ref_file, True)
+
+        ndiffcnt = write_difference(new_ref_file, out_filename, diff_file)
+        # remove empty diff file
+        if not ndiffcnt:
+            if os.path.exists(diff_file):
+                os.remove(diff_file)
+            if os.path.exists(diff_file + ".html"):
+                os.remove(diff_file + ".html")
+            os.remove(out_filename)
+            os.remove(new_ref_file)
+        base_exists = True
+    spacer = "."
+    msg = ""
+    if failed_stderr:
+        test_status = res_error if root != "todo" else res_todo
+    elif not base_exists:
+        test_status = res_new
+    elif not ndiffcnt:
+        test_status = res_passed
+        spacer = " "
+        spacer_len += 2
+    else:
+        test_status = res_failed if root != "todo" else res_todo
+    out_message += "{}{}    {:.2f} sec".format(
+        spacer * spacer_len, test_status, tspent
+    )
+    if diff_file and file_exists(diff_file):
+        f = io.open(diff_file, "rt", encoding="utf-8")
+        msg = "Diff:\n" + f.read()
+        f.close()
+    if err_filename and file_exists(err_filename):
+        f = io.open(err_filename, "rt", encoding="utf-8")
+        msg = "Error:\n" + f.read()
+        f.close()
+    with stdout_lock:
+        sys.__stdout__.write(out_message + "\n")
+        if test_status == "[FAILED]":
+            sys.__stdout__.write(msg + "\n")
+    test_result = (root, filename, test_status, msg, tspent)
+    return test_result
+
+
+def run_test_module(module_filename):
+    t0 = time.time()
+    try:
+        runpy.run_path(module_filename, run_name="__main__")
+        gc.collect()
+    except:
+        sys.stderr.write(traceback.format_exc())
+    tspent = time.time() - t0
+    return tspent
+
+
+def determine_path_based_on_platform(base_dir_path, file_name):
+    if isJython() and file_exists(
+        os.path.join(base_dir_path, "jython", file_name + ".out")
+    ):
+        return os.path.join(base_dir_path, "jython", file_name + ".out")
+    elif isIronPython() and file_exists(
+        os.path.join(base_dir_path, "iron", file_name + ".out")
+    ):
+        return os.path.join(base_dir_path, "iron", file_name + ".out")
+    else:
+        sn = getPlatform()
+        if sn and file_exists(
+            os.path.join(base_dir_path, sn, file_name + ".out")
+        ):
+            return os.path.join(base_dir_path, sn, file_name + ".out")
+    return os.path.join(base_dir_path, file_name + ".out")
+
+
+if __name__ == "__main__":
+    result = main()
+    if result:
+        sys.exit(result)

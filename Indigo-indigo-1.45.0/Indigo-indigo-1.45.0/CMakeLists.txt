@@ -1,0 +1,141 @@
+if(WIN32)
+    set(CMAKE_SYSTEM_VERSION 6.1)
+endif()
+
+project(Indigo LANGUAGES NONE)
+cmake_minimum_required(VERSION 3.9)
+
+# Options
+
+# Common options
+option(ENABLE_TESTS "Enable CTest tests" ON)
+
+option(BUILD_STANDALONE "Build without any system dependencies except for libc, otherwise require tinyxml2, zlib, rapidjson, and cairo for renderer" ON)
+option(USE_CLANG_TIDY "Use clang-tidy for static analysis" OFF)
+option(WITH_STATIC "Build Indigo static library as well as shared" OFF)
+
+# Indigo API options
+option(BUILD_INDIGO "Build indigo shared library" ON)
+option(USE_FONT_MANAGER "Build indigo render with font_face_manager" OFF)
+
+# Indigo API Wrappers options
+option(BUILD_INDIGO_WRAPPERS "Build all existing Indigo API wrappers" ON)
+option(BUILD_INDIGO_WRAPPERS_PYTHON "Build Indigo API wrappers to Python" ON)
+option(BUILD_INDIGO_WRAPPERS_JAVA "Build Indigo API wrappers to Java" ON)
+option(BUILD_INDIGO_WRAPPERS_DOTNET "Build Indigo API wrappers to .NET" ON)
+# option(BUILD_INDIGO_WRAPPERS_R "Build Indigo API wrappers to R [WIP]" OFF)
+
+# CLI utils options
+option(BUILD_INDIGO_UTILS "Build indigo-cano, indigo-deco and indigo-depict utilities" ON)
+
+# Bingo options
+option(BUILD_BINGO "Build all existing Bingo cartridges" ON)
+option(BUILD_BINGO_POSTGRES "Build Bingo Postgres cartridge" ON)
+option(BUILD_BINGO_SQLSERVER "Build Bingo MS SqlServer cartridge" ON)
+option(BUILD_BINGO_ORACLE "Build Bingo Oracle cartridge" ON)
+
+# Bingo-Elastic options
+option(BUILD_BINGO_ELASTIC "Build Bingo Elastic cartridges for Java and Python" ON)
+
+# Auto-set dependent options
+
+if (BUILD_INDIGO_UTILS AND NOT BUILD_INDIGO)
+    message(STATUS "Enabling BUILD_INDIGO because it's required for BUILD_INDIGO_UTILS")
+    set(BUILD_INDIGO ON)
+endif()
+
+if (BUILD_INDIGO_WRAPPERS)
+    if (NOT BUILD_INDIGO_WRAPPERS_PYTHON AND NOT BUILD_INDIGO_WRAPPERS_JAVA AND NOT BUILD_INDIGO_WRAPPERS_DOTNET)
+        message(STATUS "No specific wrappers selected, disabling BUILD_INDIGO_WRAPPERS")
+        set(BUILD_INDIGO_WRAPPERS OFF)
+    else()
+        if (BUILD_INDIGO_WRAPPERS_PYTHON)
+            message(STATUS "Enabling BUILD_INDIGO_WRAPPERS_PYTHON")
+        endif()
+        if (BUILD_INDIGO_WRAPPERS_JAVA)
+            message(STATUS "Enabling BUILD_INDIGO_WRAPPERS_JAVA")
+        endif()
+        if (BUILD_INDIGO_WRAPPERS_DOTNET)
+            message(STATUS "Enabling BUILD_INDIGO_WRAPPERS_DOTNET")
+        endif()
+    endif()
+else()
+    message(STATUS "Disabling BUILD_INDIGO_WRAPPERS_PYTHON, BUILD_INDIGO_WRAPPERS_JAVA, BUILD_INDIGO_WRAPPERS_DOTNET because BUILD_INDIGO_WRAPPERS=OFF")
+    set(BUILD_INDIGO_WRAPPERS_PYTHON OFF)
+    set(BUILD_INDIGO_WRAPPERS_JAVA OFF)
+    set(BUILD_INDIGO_WRAPPERS_DOTNET OFF)
+    # set(BUILD_INDIGO_WRAPPERS_R OFF)
+endif()
+
+if (BUILD_BINGO)
+    message(STATUS "Enabling BUILD_BINGO_POSTGRES, BUILD_BINGO_SQLSERVER, BUILD_BINGO_ORACLE because BUILD_BINGO=ON")
+    set(BUILD_BINGO_POSTGRES ON)
+    set(BUILD_BINGO_SQLSERVER ON)
+    set(BUILD_BINGO_ORACLE ON)
+else()
+    message(STATUS "Disabling BUILD_BINGO_POSTGRES, BUILD_BINGO_SQLSERVER, BUILD_BINGO_ORACLE because BUILD_BINGO=OFF")
+    set(BUILD_BINGO_POSTGRES OFF)
+    set(BUILD_BINGO_SQLSERVER OFF)
+    set(BUILD_BINGO_ORACLE OFF)
+endif()
+
+if (EMSCRIPTEN)
+    message(STATUS "Emscripten build: Disabling all except indigo-ketcher and indigo-wasm, and enabling them")
+    set(ENABLE_TESTS OFF)
+    set(BUILD_STANDALONE ON)
+    set(BUILD_INDIGO_WRAPPERS OFF)
+    set(BUILD_INDIGO_WRAPPERS_PYTHON OFF)
+    set(BUILD_INDIGO_WRAPPERS_JAVA OFF)
+    set(BUILD_INDIGO_WRAPPERS_DOTNET OFF)
+    # set(BUILD_INDIGO_WRAPPERS_R OFF)
+    set(BUILD_INDIGO_UTILS OFF)
+    set(BUILD_BINGO_POSTGRES OFF)
+    set(BUILD_BINGO_SQLSERVER OFF)
+    set(BUILD_BINGO_ORACLE OFF)
+    set(BUILD_BINGO_ELASTIC OFF)
+    set(USE_FONT_MANAGER ON)
+    # Skip Array/Pool bounds-check throws in release WASM builds to allow inlining.
+    # emscripten's JS-based exception handling wraps every throw-containing function
+    # in invoke_* shims, preventing inlining and causing ~80x overhead in hot loops.
+    if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+        add_definitions(-DINDIGO_UNCHECKED_ACCESS)
+    endif()
+endif()
+
+if (BUILD_INDIGO OR BUILD_INDIGO_UTILS OR BUILD_BINGO_SQLSERVER OR BUILD_BINGO_ORACLE OR BUILD_BINGO_POSTGRES OR EMSCRIPTEN)
+    set(BUILD_NATIVE ON)
+endif()
+
+# Print all options and settings
+message(STATUS "ENABLE_TESTS=${ENABLE_TESTS}")
+message(STATUS "BUILD_STANDALONE=${BUILD_STANDALONE}")
+message(STATUS "BUILD_INDIGO=${BUILD_INDIGO}")
+message(STATUS "BUILD_INDIGO_WRAPPERS=${BUILD_INDIGO_WRAPPERS}")
+message(STATUS "BUILD_INDIGO_WRAPPERS_PYTHON=${BUILD_INDIGO_WRAPPERS_PYTHON}")
+message(STATUS "BUILD_INDIGO_WRAPPERS_JAVA=${BUILD_INDIGO_WRAPPERS_JAVA}")
+message(STATUS "BUILD_INDIGO_WRAPPERS_DOTNET=${BUILD_INDIGO_WRAPPERS_DOTNET}")
+# message(STATUS "BUILD_INDIGO_WRAPPERS_R=${BUILD_INDIGO_WRAPPERS_R}")
+message(STATUS "BUILD_INDIGO_UTILS=${BUILD_INDIGO_UTILS}")
+message(STATUS "BUILD_BINGO_POSTGRES=${BUILD_BINGO_POSTGRES}")
+message(STATUS "BUILD_BINGO_SQLSERVER=${BUILD_BINGO_SQLSERVER}")
+message(STATUS "BUILD_BINGO_ORACLE=${BUILD_BINGO_ORACLE}")
+message(STATUS "BUILD_BINGO_ELASTIC=${BUILD_BINGO_ELASTIC}")
+
+# Set up compiler flags and other preparatory steps
+set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
+include(setup)
+
+# In subprojects we'll add dependencies for this pseudo-target to build all packages at once
+if (BUILD_INDIGO OR BUILD_INDIGO_UTILS OR BUILD_BINGO_POSTGRES OR BUILD_BINGO_ORACLE OR BUILD_BINGO_SQLSERVER)
+    add_subdirectory(third_party)
+    add_subdirectory(core)
+endif()
+if (BUILD_INDIGO OR BUILD_INDIGO_WRAPPERS)
+    add_subdirectory(api)
+endif()
+if (BUILD_BINGO_POSTGRES OR BUILD_BINGO_ORACLE OR BUILD_BINGO_SQLSERVER OR BUILD_BINGO_ELASTIC)
+    add_subdirectory(bingo)
+endif()
+if (BUILD_INDIGO_UTILS)
+    add_subdirectory(utils)
+endif()

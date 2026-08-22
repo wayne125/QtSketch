@@ -1,0 +1,70 @@
+{
+  "name": "react-ui",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "axios": "^1.18.0",
+    "ketcher-react": "^3.17.2",
+    "ketcher-standalone": "^2.25.0-rc.5",
+    "ketcher-core": "^2.25.0-rc.5",
+    "normalize.css": "^8.0.1",
+    "react": "^18.2.0",
+    "react-app-polyfill": "^2.0.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "^5.0.1",
+    "react-spinners": "^0.13.8"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^4.2.4",
+    "@testing-library/react": "^9.5.0",
+    "@testing-library/user-event": "^7.2.1",
+    "@types/jest": "^27.0.3",
+    "@types/node": "^16.11.12",
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.2.4",
+    "@welldone-software/why-did-you-render": "^4.3.1",
+    "cross-env": "^7.0.3",
+    "customize-cra": "^1.0.0",
+    "eslint": "^8.4.1",
+    "git-revision-webpack-plugin": "^3.0.6",
+    "html-replace-webpack-plugin": "^2.5.6",
+    "npm-run-all": "^4.1.5",
+    "prettier": "^2.5.1",
+    "react-app-rewired": "^2.2.1",
+    "react-router-dom": "^7.18.2",
+    "reactstrap": "^9.1.5",
+    "sass": "^1.54.0",
+    "serve": "^14.2.5",
+    "shx": "^0.3.3",
+    "source-map-loader": "^3.0.1",
+    "stylelint": "13.13.1",
+    "typescript": "^4.5.2",
+    "web-vitals": "^2.1.4",
+    "webpack": "^5.109.2",
+    "webpack-bundle-analyzer": "^4.10.2"
+  },
+  "scripts": {
+    "start:standalone": "cross-env MODE=standalone ENABLE_POLYMER_EDITOR=false react-app-rewired start",
+    "build": "cross-env MODE=development ENABLE_POLYMER_EDITOR=false react-app-rewired build"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "ie 11",
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "config-overrides-path": "config/webpack.config.js"
+}
