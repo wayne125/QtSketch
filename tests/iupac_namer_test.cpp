@@ -51,6 +51,10 @@ int main() {
 
     std::vector<TestCase> tests = {
 
+        // Phosphinic acid
+        {"CCP(=O)(O)CC", "diethylphosphinic acid"},
+        {"CP(=O)(O)c1ccccc1", "methyl(phenyl)phosphinic acid"},
+
         // Nitroso probe tests
         {"CN=O", "nitrosomethane"},
         {"c1ccccc1N=O", "nitrosobenzene"},
