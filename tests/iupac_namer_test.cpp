@@ -51,6 +51,10 @@ int main() {
 
     std::vector<TestCase> tests = {
 
+        // Nitroso probe tests
+        {"CN=O", "nitrosomethane"},
+        {"c1ccccc1N=O", "nitrosobenzene"},
+
         // Rootless acyl carbon / multiple halogen fixes
         {"ClC(=O)Cl", "", true, "Carbonic acid halides with multiple halogens are not supported in this phase."},
         {"ClC(=O)Br", "", true, "Carbonic acid halides with multiple halogens are not supported in this phase."},

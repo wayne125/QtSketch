@@ -142,6 +142,34 @@ bool isIsocyanateNitrogen(int nNode, int fromCarbon, const Graph &g) {
     return false;
 }
 
+// Structural check for a nitroso nitrogen (-N=O) singly bonded to `fromCarbon`
+bool isNitrosoNitrogen(int nNode, int fromCarbon, const Graph &g) {
+    const GraphNode &n = g.nodes[nNode];
+    if (n.atomicNumber != 7 || n.totalH != 0 || n.neighbors.size() != 2) return false;
+    for (size_t k = 0; k < n.neighbors.size(); ++k) {
+        int nn = n.neighbors[k];
+        if (nn == fromCarbon) continue;
+        if (g.nodes[nn].atomicNumber == 8 && n.bondOrders[k] == 2 && g.nodes[nn].neighbors.size() == 1) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Structural check for a nitro nitrogen (-NO2) singly bonded to `fromCarbon`
+bool isNitroNitrogen(int nNode, int fromCarbon, const Graph &g) {
+    const GraphNode &n = g.nodes[nNode];
+    if (n.atomicNumber != 7 || n.totalH != 0 || n.neighbors.size() != 3) return false;
+    int oxygenCount = 0;
+    for (size_t k = 0; k < n.neighbors.size(); ++k) {
+        int nn = n.neighbors[k];
+        if (nn != fromCarbon && g.nodes[nn].atomicNumber == 8 && g.nodes[nn].neighbors.size() == 1) {
+            oxygenCount++;
+        }
+    }
+    return oxygenCount == 2;
+}
+
 bool isAcylPseudohalide(int i, const Graph &g, const std::map<int, std::vector<int>> &carbonAzide) {
     if (carbonAzide.count(i)) return true;
     const GraphNode &node = g.nodes[i];
@@ -3755,13 +3783,14 @@ IupacResult IupacNamer::generateName(int mol) {
     if (ringCount == 0 || !ringSubstituentInfos.empty()) {
 
         std::map<int, std::vector<int>> carbonNitro;      // carbonNode -> vector of nitro N nodes
+        std::map<int, std::vector<int>> carbonNitroso;    // carbonNode -> vector of nitroso N nodes
         std::map<int, std::vector<int>> carbonIsocyanate; // carbonNode -> vector of isocyanate N nodes
         std::set<int> isocyanateCarbons;
 
         for (size_t i = 0; i < g.nodes.size(); ++i) {
             const GraphNode &node = g.nodes[i];
             if (node.atomicNumber == 7) {
-                int sglC = -1, dblC_iso = -1;
+                int sglC = -1, dblC_iso = -1, dblO = -1;
                 std::vector<int> oxygens;
                 for (size_t j = 0; j < node.neighbors.size(); ++j) {
                     int nei = node.neighbors[j];
@@ -3769,11 +3798,16 @@ IupacResult IupacNamer::generateName(int mol) {
                     int nZ = g.nodes[nei].atomicNumber;
                     if (nZ == 6 && order == 1) sglC = nei;
                     else if (nZ == 6 && order == 2) dblC_iso = nei;
-                    else if (nZ == 8) oxygens.push_back(nei);
+                    else if (nZ == 8) {
+                        oxygens.push_back(nei);
+                        if (order == 2) dblO = nei;
+                    }
                 }
 
                 if (sglC != -1 && oxygens.size() == 2 && node.totalH == 0) {
                     carbonNitro[sglC].push_back(static_cast<int>(i));
+                } else if (sglC != -1 && dblO != -1 && node.totalH == 0 && node.neighbors.size() == 2) {
+                    carbonNitroso[sglC].push_back(static_cast<int>(i));
                 } else if (sglC != -1 && dblC_iso != -1 && node.totalH == 0 && node.neighbors.size() == 2) {
                     bool isoOk = false;
                     const GraphNode &isoNode = g.nodes[dblC_iso];
@@ -3821,6 +3855,7 @@ IupacResult IupacNamer::generateName(int mol) {
                     else if (nZ == 7 && order == 1) {
                         bool isNitroIsoOrAzide = false;
                         if (carbonNitro.count(i) && std::find(carbonNitro[i].begin(), carbonNitro[i].end(), nei) != carbonNitro[i].end()) isNitroIsoOrAzide = true;
+                        if (carbonNitroso.count(i) && std::find(carbonNitroso[i].begin(), carbonNitroso[i].end(), nei) != carbonNitroso[i].end()) isNitroIsoOrAzide = true;
                         if (carbonIsocyanate.count(i) && std::find(carbonIsocyanate[i].begin(), carbonIsocyanate[i].end(), nei) != carbonIsocyanate[i].end()) isNitroIsoOrAzide = true;
                         if (carbonAzide.count(i) && std::find(carbonAzide[i].begin(), carbonAzide[i].end(), nei) != carbonAzide[i].end()) isNitroIsoOrAzide = true;
                         if (!isNitroIsoOrAzide) singleN.push_back(nei);
@@ -4583,6 +4618,11 @@ IupacResult IupacNamer::generateName(int mol) {
                     locantSubstituents[locant].append("nitro");
                 }
             }
+            if (carbonNitroso.count(cNode)) {
+                for (size_t nIdx = 0; nIdx < carbonNitroso[cNode].size(); ++nIdx) {
+                    locantSubstituents[locant].append("nitroso");
+                }
+            }
             if (carbonIsocyanate.count(cNode)) {
                 for (size_t nIdx = 0; nIdx < carbonIsocyanate[cNode].size(); ++nIdx) {
                     locantSubstituents[locant].append("isocyanato");
@@ -4686,6 +4726,7 @@ IupacResult IupacNamer::generateName(int mol) {
                 if (carbonHydroperoxide.count(cNode) && carbonHydroperoxide[cNode] == nei) continue;
                 if (carbonImine.count(cNode) && carbonImine[cNode] == nei) continue;
                 if (carbonNitro.count(cNode) && std::find(carbonNitro[cNode].begin(), carbonNitro[cNode].end(), nei) != carbonNitro[cNode].end()) continue;
+                if (carbonNitroso.count(cNode) && std::find(carbonNitroso[cNode].begin(), carbonNitroso[cNode].end(), nei) != carbonNitroso[cNode].end()) continue;
                 if (carbonIsocyanate.count(cNode) && std::find(carbonIsocyanate[cNode].begin(), carbonIsocyanate[cNode].end(), nei) != carbonIsocyanate[cNode].end()) continue;
                 if (carbonAzide.count(cNode) && std::find(carbonAzide[cNode].begin(), carbonAzide[cNode].end(), nei) != carbonAzide[cNode].end()) continue;
 
@@ -5296,7 +5337,14 @@ IupacResult IupacNamer::generateName(int mol) {
                     int z = g.nodes[nei].atomicNumber;
                     if (z == 8 && order == 2) hasDblO = true;
                     if (z == 8 && order == 1 && (g.nodes[nei].totalH >= 1 || g.nodes[nei].neighbors.size() == 1)) hasSglO_OH = true;
-                    if (z == 7 && order == 1) hasSglN = true;
+                    if (z == 7 && order == 1) {
+                        bool isNitroIsoOrAzide = false;
+                        if (carbonAzide.count(rIdx) && std::find(carbonAzide[rIdx].begin(), carbonAzide[rIdx].end(), nei) != carbonAzide[rIdx].end()) isNitroIsoOrAzide = true;
+                        if (isIsocyanateNitrogen(nei, rIdx, g)) isNitroIsoOrAzide = true;
+                        if (isNitroNitrogen(nei, rIdx, g)) isNitroIsoOrAzide = true;
+                        if (isNitrosoNitrogen(nei, rIdx, g)) isNitroIsoOrAzide = true;
+                        if (!isNitroIsoOrAzide) hasSglN = true;
+                    }
                 }
                 if (hasDblO && hasSglO_OH) myCarbonGroup[rIdx] = GroupType::ACID;
                 else if (hasDblO && hasSglN) {
@@ -8327,6 +8375,8 @@ IupacResult IupacNamer::generateName(int mol) {
                         bool isNitroIsoOrAzide = false;
                         if (carbonAzide.count(i) && std::find(carbonAzide[i].begin(), carbonAzide[i].end(), nei) != carbonAzide[i].end()) isNitroIsoOrAzide = true;
                         if (isIsocyanateNitrogen(nei, static_cast<int>(i), g)) isNitroIsoOrAzide = true;
+                        if (isNitroNitrogen(nei, static_cast<int>(i), g)) isNitroIsoOrAzide = true;
+                        if (isNitrosoNitrogen(nei, static_cast<int>(i), g)) isNitroIsoOrAzide = true;
                         if (!isNitroIsoOrAzide) singleN.push_back(nei);
                     }
                     else if (nZ == 7 && order == 3) tripleN.push_back(nei);
@@ -8846,6 +8896,12 @@ IupacResult IupacNamer::generateName(int mol) {
                         }
                         if (carbonAzide.count(rNode) && ringNodeSet.count(rNode) > 0 && std::find(carbonAzide[rNode].begin(), carbonAzide[rNode].end(), nei) != carbonAzide[rNode].end()) {
                             subName = "azido";
+                        } else if (isIsocyanateNitrogen(nei, rNode, g)) {
+                            subName = "isocyanato";
+                        } else if (isNitroNitrogen(nei, rNode, g)) {
+                            subName = "nitro";
+                        } else if (isNitrosoNitrogen(nei, rNode, g)) {
+                            subName = "nitroso";
                         } else if (!isAzide && order == 1 && winningType != GroupType::AMINE) {
                             subName = "amino";
                         } else if (!isAzide && order == 2 && carbonImine.count(rNode) && carbonImine[rNode] == nei && winningType != GroupType::IMINE) {
@@ -9332,6 +9388,8 @@ IupacResult IupacNamer::generateName(int mol) {
                     bool isNitroIsoOrAzide = false;
                     if (carbonAzide.count(i) && std::find(carbonAzide[i].begin(), carbonAzide[i].end(), nei) != carbonAzide[i].end()) isNitroIsoOrAzide = true;
                     if (isIsocyanateNitrogen(nei, static_cast<int>(i), g)) isNitroIsoOrAzide = true;
+                    if (isNitroNitrogen(nei, static_cast<int>(i), g)) isNitroIsoOrAzide = true;
+                    if (isNitrosoNitrogen(nei, static_cast<int>(i), g)) isNitroIsoOrAzide = true;
                     // Phase 70: a ring-internal N-C bond (both atoms in ringNodeSet) is
                     // the ring itself, not an exocyclic amine substituent -- previously
                     // unreachable because every saturated-heterocycle-as-parent case was
@@ -10055,6 +10113,12 @@ IupacResult IupacNamer::generateName(int mol) {
                     }
                     if (carbonAzide.count(rNode) && ringNodeSet.count(rNode) > 0 && std::find(carbonAzide[rNode].begin(), carbonAzide[rNode].end(), nei) != carbonAzide[rNode].end()) {
                         subName = "azido";
+                    } else if (isIsocyanateNitrogen(nei, rNode, g)) {
+                        subName = "isocyanato";
+                    } else if (isNitroNitrogen(nei, rNode, g)) {
+                        subName = "nitro";
+                    } else if (isNitrosoNitrogen(nei, rNode, g)) {
+                        subName = "nitroso";
                     } else if (!isAzide && order == 1 && winningType != GroupType::AMINE) {
                         subName = "amino";
                     } else if (!isAzide && order == 2 && carbonImine.count(rNode) && carbonImine[rNode] == nei && winningType != GroupType::IMINE) {
