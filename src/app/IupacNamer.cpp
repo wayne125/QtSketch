@@ -10277,6 +10277,49 @@ IupacResult IupacNamer::generateName(int mol) {
     // (which will correctly favour the chain) must decide, or the principal group would be
     // stranded off the chosen parent with no way to cite it as the required suffix.
     GroupType combinedWinner = (groupRank(winningRingGroup) <= groupRank(winningChainGroup)) ? winningRingGroup : winningChainGroup;
+    if (combinedWinner == GroupType::BORINIC_ACID) {
+        int bNode = -1;
+        for (const auto &pair : carbonBorinicAcid) { bNode = pair.second; break; }
+        if (bNode == -1 && !allBorinicAcids.empty()) bNode = *allBorinicAcids.begin();
+        if (bNode != -1) {
+            std::vector<QString> subNames;
+            for (int nei : g.nodes[bNode].neighbors) {
+                int nz = g.nodes[nei].atomicNumber;
+                if (nz == 6) {
+                    if (ringNodeSet.count(nei)) {
+                        subNames.push_back(nameRingAsSubstituent(g, ringNodeSet, nei, bNode, allSSSRRings, ringNodeSet));
+                    } else {
+                        subNames.push_back(nameBranchGraph(g, nei, bNode, allSSSRRings, ringNodeSet));
+                    }
+                } else if (nz == 9 || nz == 17 || nz == 35 || nz == 53) {
+                    subNames.push_back(halogenPrefix(nz));
+                }
+            }
+            if (subNames.size() == 2) {
+                QString name1 = subNames[0];
+                QString name2 = subNames[1];
+                if (!name1.isEmpty() && !name2.isEmpty()) {
+                    auto stripBrackets = [](QString s) {
+                        if (s.startsWith("(") && s.endsWith(")")) return s.mid(1, s.length() - 2);
+                        if (s.startsWith("[") && s.endsWith("]")) return s.mid(1, s.length() - 2);
+                        return s;
+                    };
+                    QString clean1 = stripBrackets(name1);
+                    QString clean2 = stripBrackets(name2);
+                    QString fullName;
+                    if (clean1 == clean2) {
+                        fullName = "di" + clean1 + "borinic acid";
+                    } else {
+                        QString a = alphabetizationKey(clean1).toLower() < alphabetizationKey(clean2).toLower() ? clean1 : clean2;
+                        QString b = alphabetizationKey(clean1).toLower() < alphabetizationKey(clean2).toLower() ? clean2 : clean1;
+                        fullName = a + "(" + b + ")borinic acid";
+                    }
+                    return {true, fullName, ""};
+                }
+            }
+        }
+        return {false, "", "Unsupported borinic acid geometry."};
+    }
     if (combinedWinner == GroupType::PHOSPHINIC_ACID) {
         int pNode = -1;
         for (const auto &pair : carbonPhosphinicAcid) { pNode = pair.second; break; }

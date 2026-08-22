@@ -62,6 +62,7 @@ int main() {
         // Borinic acid
         {"CCB(O)CC", "diethylborinic acid"},
         {"CCB(O)Cl", "chloro(ethyl)borinic acid"},
+        {"CB(O)c1ccccc1", "methyl(phenyl)borinic acid"},
 
         // Nitroso probe tests
         {"CN=O", "nitrosomethane"},
