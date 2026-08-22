@@ -3686,6 +3686,45 @@ int main() {
         }
     }
 
+    {
+        int m = indigoLoadMoleculeFromString("CC(=S)N");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "ethanethioamide") {
+            std::cout << "[PASS] CC(=S)N -> ethanethioamide\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] CC(=S)N -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+    
+    {
+        int m = indigoLoadMoleculeFromString("CCC(=S)N");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "propanethioamide") {
+            std::cout << "[PASS] CCC(=S)N -> propanethioamide\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] CCC(=S)N -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+    
+    {
+        int m = indigoLoadMoleculeFromString("c1ccccc1C(=S)N");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "benzenecarbothioamide") {
+            std::cout << "[PASS] c1ccccc1C(=S)N -> benzenecarbothioamide\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] c1ccccc1C(=S)N -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
     std::cout << "\nSummary: " << passed << " passed, " << failed << " failed.\n";
     indigoReleaseSessionId(sid);
     return (failed == 0) ? 0 : 1;

@@ -78,6 +78,7 @@ enum class GroupType {
     ESTER,         // Ester
     ACYL_HALIDE,   // Acyl halide
     AMIDE,         // Amide
+    THIOAMIDE,     // Thioamide
     HYDRAZIDE,     // Hydrazide
     NITRILE,       // Nitrile
     ALDEHYDE,      // Aldehyde
@@ -1899,6 +1900,8 @@ static QString principalGroupSuffix(GroupType winningType, int k, int pCount,
         sfx = (pCount == 2) ? ("dioyl " + hName) : ("oyl " + hName);
     } else if (winningType == GroupType::AMIDE) {
         sfx = (pCount == 2) ? QStringLiteral("diamide") : QStringLiteral("amide");
+    } else if (winningType == GroupType::THIOAMIDE) {
+        sfx = (pCount == 2) ? QStringLiteral("dithioamide") : QStringLiteral("thioamide");
     } else if (winningType == GroupType::HYDRAZIDE) {
         sfx = (pCount == 2) ? QStringLiteral("dihydrazide") : QStringLiteral("hydrazide");
     } else if (winningType == GroupType::NITRILE) {
@@ -1994,6 +1997,9 @@ static bool isPrincipalGroupHeteroNeighbor(GroupType winningType, const Graph &g
             (g.nodes[nei].totalH >= 1 || g.nodes[nei].neighbors.size() == 1)) return true; // -OH
     } else if (winningType == GroupType::AMIDE) {
         if (nz == 8 && order == 2) return true;                         // =O
+        if (nz == 7 && order == 1) return true;                         // -N<
+    } else if (winningType == GroupType::THIOAMIDE) {
+        if (nz == 16 && order == 2) return true;                        // =S
         if (nz == 7 && order == 1) return true;                         // -N<
     } else if (winningType == GroupType::HYDRAZIDE) {
         if (nz == 8 && order == 2) return true;                         // =O
@@ -2423,7 +2429,7 @@ QString nameAcyclicChainParentWithSubstituents(
 // drift between the naphthalene block and the monocyclic block (this codebase
 // once lost work to a delegate fixing only one of two duplicate sites).
 static bool isChainParentWithRingSubstituentSupported(GroupType gt) {
-    return gt == GroupType::ACID || gt == GroupType::AMIDE || gt == GroupType::HYDRAZIDE || gt == GroupType::NITRILE ||
+    return gt == GroupType::ACID || gt == GroupType::AMIDE || gt == GroupType::THIOAMIDE || gt == GroupType::HYDRAZIDE || gt == GroupType::NITRILE ||
            gt == GroupType::ALDEHYDE || gt == GroupType::KETONE ||
            gt == GroupType::ALCOHOL || gt == GroupType::THIOL || gt == GroupType::SELENOL || gt == GroupType::TELLUROL || gt == GroupType::HYDROPEROXIDE || gt == GroupType::AMINE || gt == GroupType::IMINE || gt == GroupType::THIAL || gt == GroupType::THIONE || gt == GroupType::SULFONIC_ACID ||
            gt == GroupType::SULFINIC_ACID || gt == GroupType::SULFINYL_HALIDE || gt == GroupType::PHOSPHONIC_ACID || gt == GroupType::PHOSPHONIC_DIHALIDE || gt == GroupType::ARSONIC_ACID || gt == GroupType::ARSONIC_DIHALIDE || gt == GroupType::ESTER || gt == GroupType::ACYL_HALIDE || gt == GroupType::SULFONYL_HALIDE;
@@ -3724,18 +3730,19 @@ IupacResult IupacNamer::generateName(int mol) {
                         if (isChainC) {
                             bool isDirectExocyclicGroup = false;
                             const GraphNode &attachNode = g.nodes[nei];
-                            bool hasDoubleO = false, hasSingleO = false, hasSingleN = false, hasTripleN = false, hasHalogen = false;
+                            bool hasDoubleO = false, hasDoubleS = false, hasSingleO = false, hasSingleN = false, hasTripleN = false, hasHalogen = false;
                             for (size_t k = 0; k < attachNode.neighbors.size(); ++k) {
                                 int aNei = attachNode.neighbors[k];
                                 int order = attachNode.bondOrders[k];
                                 int aZ = g.nodes[aNei].atomicNumber;
                                 if (aZ == 8 && order == 2) hasDoubleO = true;
+                                else if (aZ == 16 && order == 2) hasDoubleS = true;
                                 else if (aZ == 8 && order == 1) hasSingleO = true;
                                 else if (aZ == 7 && order == 1) hasSingleN = true;
                                 else if (aZ == 7 && order == 3) hasTripleN = true;
                                 else if (aZ == 9 || aZ == 17 || aZ == 35 || aZ == 53) hasHalogen = true;
                             }
-                            if ((hasDoubleO && hasSingleO) || (hasDoubleO && hasHalogen) || (hasDoubleO && hasSingleN) || hasTripleN || (hasDoubleO && attachNode.totalH >= 1)) {
+                            if ((hasDoubleO && hasSingleO) || (hasDoubleO && hasHalogen) || (hasDoubleO && hasSingleN) || hasTripleN || (hasDoubleO && attachNode.totalH >= 1) || (hasDoubleS && hasSingleN) || (hasDoubleS && attachNode.totalH >= 1)) {
                                 isDirectExocyclicGroup = true;
                             }
 
@@ -4322,13 +4329,26 @@ IupacResult IupacNamer::generateName(int mol) {
                     for (int nei : node.neighbors) {
                         if (g.nodes[nei].atomicNumber == 6) singleC++;
                     }
-                    if (singleC == 0 && node.totalH == 0) {
-                        return {false, "", "Carbonothioyl/thiocarbamoyl halide derivatives (rootless thiocarbonyl carbons) are not supported in this phase."};
+
+                    bool hasUnsubN = false;
+                    for (int sN : singleN) {
+                        if (g.nodes[sN].totalH == 2 && g.nodes[sN].neighbors.size() == 1) {
+                            hasUnsubN = true;
+                            break;
+                        }
                     }
-                    if (node.totalH >= 1 || node.neighbors.size() <= 2) {
-                        carbonGroup[i] = GroupType::THIAL;
+
+                    if (hasUnsubN && singleC >= 1) {
+                        carbonGroup[i] = GroupType::THIOAMIDE;
                     } else {
-                        carbonGroup[i] = GroupType::THIONE;
+                        if (singleC == 0 && node.totalH == 0) {
+                            return {false, "", "Carbonothioyl/thiocarbamoyl halide derivatives (rootless thiocarbonyl carbons) are not supported in this phase."};
+                        }
+                        if (node.totalH >= 1 || node.neighbors.size() <= 2) {
+                            carbonGroup[i] = GroupType::THIAL;
+                        } else {
+                            carbonGroup[i] = GroupType::THIONE;
+                        }
                     }
                 } else if (!doubleN.empty()) {
                     int singleC = 0;
@@ -4459,7 +4479,7 @@ IupacResult IupacNamer::generateName(int mol) {
 
         GroupType winningType = GroupType::NONE;
         static const GroupType seniorityOrder[] = {
-            GroupType::SULFONIC_ACID, GroupType::SULFINIC_ACID, GroupType::SULFINAMIDE, GroupType::SULFINYL_HALIDE, GroupType::ACID, GroupType::PHOSPHONIC_ACID, GroupType::PHOSPHONIC_DIHALIDE, GroupType::ARSONIC_ACID, GroupType::ARSONIC_DIHALIDE, GroupType::BORONIC_ACID, GroupType::ESTER, GroupType::ACYL_HALIDE, GroupType::SULFONYL_HALIDE, GroupType::SULFONAMIDE, GroupType::AMIDE, GroupType::HYDRAZIDE, GroupType::NITRILE,
+            GroupType::SULFONIC_ACID, GroupType::SULFINIC_ACID, GroupType::SULFINAMIDE, GroupType::SULFINYL_HALIDE, GroupType::ACID, GroupType::PHOSPHONIC_ACID, GroupType::PHOSPHONIC_DIHALIDE, GroupType::ARSONIC_ACID, GroupType::ARSONIC_DIHALIDE, GroupType::BORONIC_ACID, GroupType::ESTER, GroupType::ACYL_HALIDE, GroupType::SULFONYL_HALIDE, GroupType::SULFONAMIDE, GroupType::AMIDE, GroupType::THIOAMIDE, GroupType::HYDRAZIDE, GroupType::NITRILE,
             GroupType::ALDEHYDE, GroupType::THIAL, GroupType::KETONE, GroupType::THIONE, GroupType::ALCOHOL, GroupType::THIOL, GroupType::SELENOL, GroupType::TELLUROL, GroupType::HYDROPEROXIDE, GroupType::AMINE, GroupType::IMINE, GroupType::PHOSPHINE
         };
 
@@ -5447,22 +5467,24 @@ IupacResult IupacNamer::generateName(int mol) {
             auto myGroupRank = [](GroupType gt) -> int {
                 if (gt == GroupType::ACID) return 1;
                 if (gt == GroupType::AMIDE) return 2;
-                if (gt == GroupType::HYDRAZIDE) return 3;
-                if (gt == GroupType::KETONE) return 4;
-                if (gt == GroupType::ALCOHOL) return 5;
-                if (gt == GroupType::AMINE) return 6;
+                if (gt == GroupType::THIOAMIDE) return 3;
+                if (gt == GroupType::HYDRAZIDE) return 4;
+                if (gt == GroupType::KETONE) return 5;
+                if (gt == GroupType::ALCOHOL) return 6;
+                if (gt == GroupType::AMINE) return 7;
                 return 99;
             };
 
             GroupType winningType = GroupType::NONE;
             std::map<int, GroupType> myCarbonGroup;
             for (int rIdx : allSSSRNodes) {
-                bool hasDblO = false, hasSglO_OH = false, hasSglN = false;
+                bool hasDblO = false, hasSglO_OH = false, hasSglN = false, hasDblS = false;
                 for (size_t j = 0; j < g.nodes[rIdx].neighbors.size(); ++j) {
                     int nei = g.nodes[rIdx].neighbors[j];
                     int order = g.nodes[rIdx].bondOrders[j];
                     int z = g.nodes[nei].atomicNumber;
                     if (z == 8 && order == 2) hasDblO = true;
+                    if (z == 16 && order == 2) hasDblS = true;
                     if (z == 8 && order == 1 && (g.nodes[nei].totalH >= 1 || g.nodes[nei].neighbors.size() == 1)) hasSglO_OH = true;
                     if (z == 7 && order == 1) {
                         bool isNitroIsoOrAzide = false;
@@ -5500,6 +5522,7 @@ IupacResult IupacNamer::generateName(int mol) {
                     }
                     myCarbonGroup[rIdx] = isHydrazide ? GroupType::HYDRAZIDE : GroupType::AMIDE;
                 }
+                else if (hasDblS && hasSglN) myCarbonGroup[rIdx] = GroupType::THIOAMIDE;
                 else if (hasDblO) myCarbonGroup[rIdx] = GroupType::KETONE;
                 else if (hasSglO_OH) myCarbonGroup[rIdx] = GroupType::ALCOHOL;
                 else if (hasSglN) myCarbonGroup[rIdx] = GroupType::AMINE;
@@ -5532,6 +5555,7 @@ IupacResult IupacNamer::generateName(int mol) {
                         bool isPrincipalAtom = false;
                         if (winningType == GroupType::ACID && z == 8) isPrincipalAtom = true;
                         if (winningType == GroupType::AMIDE && (z == 8 || z == 7)) isPrincipalAtom = true;
+                        if (winningType == GroupType::THIOAMIDE && (z == 16 || z == 7)) isPrincipalAtom = true;
                         if (winningType == GroupType::HYDRAZIDE && (z == 8 || z == 7)) isPrincipalAtom = true;
                         if (winningType == GroupType::KETONE && z == 8 && order == 2) isPrincipalAtom = true;
                         if (winningType == GroupType::ALCOHOL && z == 8 && order == 1) isPrincipalAtom = true;
@@ -8701,13 +8725,26 @@ IupacResult IupacNamer::generateName(int mol) {
                   for (int nei : node.neighbors) {
                       if (g.nodes[nei].atomicNumber == 6) singleC++;
                   }
-                  if (singleC == 0 && node.totalH == 0) {
-                      return {false, "", "Carbonothioyl/thiocarbamoyl halide derivatives (rootless thiocarbonyl carbons) are not supported in this phase."};
+
+                  bool hasUnsubN = false;
+                  for (int sN : singleN) {
+                      if (g.nodes[sN].totalH == 2 && g.nodes[sN].neighbors.size() == 1) {
+                          hasUnsubN = true;
+                          break;
+                      }
                   }
-                  if (node.totalH >= 1 || node.neighbors.size() <= 2) {
-                      carbonGroup[i] = GroupType::THIAL;
+
+                  if (hasUnsubN && singleC >= 1) {
+                      carbonGroup[i] = GroupType::THIOAMIDE;
                   } else {
-                      carbonGroup[i] = GroupType::THIONE;
+                      if (singleC == 0 && node.totalH == 0) {
+                          return {false, "", "Carbonothioyl/thiocarbamoyl halide derivatives (rootless thiocarbonyl carbons) are not supported in this phase."};
+                      }
+                      if (node.totalH >= 1 || node.neighbors.size() <= 2) {
+                          carbonGroup[i] = GroupType::THIAL;
+                      } else {
+                          carbonGroup[i] = GroupType::THIONE;
+                      }
                   }
               } else if (!doubleN.empty()) {
                   int singleC = 0;
@@ -8828,19 +8865,20 @@ IupacResult IupacNamer::generateName(int mol) {
                 case GroupType::SULFONYL_HALIDE: return 13;
                 case GroupType::SULFONAMIDE: return 14;
                 case GroupType::AMIDE: return 15;
-                case GroupType::HYDRAZIDE: return 16;
-                case GroupType::NITRILE: return 17;
-                case GroupType::ALDEHYDE: return 18;
-                case GroupType::THIAL: return 19;
-                case GroupType::KETONE: return 20;
-                case GroupType::THIONE: return 21;
-                case GroupType::ALCOHOL: return 22;
-                case GroupType::THIOL: return 23;
-                case GroupType::SELENOL: return 24;
-                case GroupType::TELLUROL: return 25;
-                case GroupType::HYDROPEROXIDE: return 26;
-                case GroupType::AMINE: return 27;
-                case GroupType::IMINE: return 28;
+                case GroupType::THIOAMIDE: return 16;
+                case GroupType::HYDRAZIDE: return 17;
+                case GroupType::NITRILE: return 18;
+                case GroupType::ALDEHYDE: return 19;
+                case GroupType::THIAL: return 20;
+                case GroupType::KETONE: return 21;
+                case GroupType::THIONE: return 22;
+                case GroupType::ALCOHOL: return 23;
+                case GroupType::THIOL: return 24;
+                case GroupType::SELENOL: return 25;
+                case GroupType::TELLUROL: return 26;
+                case GroupType::HYDROPEROXIDE: return 27;
+                case GroupType::AMINE: return 28;
+                case GroupType::IMINE: return 29;
                 case GroupType::PHOSPHINE: return 29;
                 default: return 30;
             }
@@ -9280,7 +9318,7 @@ IupacResult IupacNamer::generateName(int mol) {
         if (winningType == GroupType::NONE) {
             fullName = prefixPart + "naphthalene";
         } else {
-            bool isExocyclic = (winningType == GroupType::ACID || winningType == GroupType::AMIDE || winningType == GroupType::HYDRAZIDE ||
+            bool isExocyclic = (winningType == GroupType::ACID || winningType == GroupType::AMIDE || winningType == GroupType::THIOAMIDE || winningType == GroupType::HYDRAZIDE ||
                                 winningType == GroupType::NITRILE || winningType == GroupType::ALDEHYDE ||
                                 winningType == GroupType::ACYL_HALIDE || winningType == GroupType::ESTER);
             int pCount = static_cast<int>(bestSig.principalLocants.size());
@@ -9289,6 +9327,7 @@ IupacResult IupacNamer::generateName(int mol) {
                 QString sfx;
                 if (winningType == GroupType::ACID) sfx = (pCount == 1) ? "carboxylic acid" : "dicarboxylic acid";
                 else if (winningType == GroupType::AMIDE) sfx = (pCount == 1) ? "carboxamide" : "dicarboxamide";
+                else if (winningType == GroupType::THIOAMIDE) sfx = (pCount == 1) ? "carbothioamide" : "dicarbothioamide";
                 else if (winningType == GroupType::HYDRAZIDE) sfx = (pCount == 1) ? "carbohydrazide" : "dicarbohydrazide";
                 else if (winningType == GroupType::NITRILE) sfx = (pCount == 1) ? "carbonitrile" : "dicarbonitrile";
                 else if (winningType == GroupType::ALDEHYDE) sfx = (pCount == 1) ? "carbaldehyde" : "dicarbaldehyde";
@@ -9732,13 +9771,26 @@ IupacResult IupacNamer::generateName(int mol) {
                   for (int nei : node.neighbors) {
                       if (g.nodes[nei].atomicNumber == 6) singleC++;
                   }
-                  if (singleC == 0 && node.totalH == 0) {
-                      return {false, "", "Carbonothioyl/thiocarbamoyl halide derivatives (rootless thiocarbonyl carbons) are not supported in this phase."};
+
+                  bool hasUnsubN = false;
+                  for (int sN : singleN) {
+                      if (g.nodes[sN].totalH == 2 && g.nodes[sN].neighbors.size() == 1) {
+                          hasUnsubN = true;
+                          break;
+                      }
                   }
-                  if (node.totalH >= 1 || node.neighbors.size() <= 2) {
-                      carbonGroup[i] = GroupType::THIAL;
+
+                  if (hasUnsubN && singleC >= 1) {
+                      carbonGroup[i] = GroupType::THIOAMIDE;
                   } else {
-                      carbonGroup[i] = GroupType::THIONE;
+                      if (singleC == 0 && node.totalH == 0) {
+                          return {false, "", "Carbonothioyl/thiocarbamoyl halide derivatives (rootless thiocarbonyl carbons) are not supported in this phase."};
+                      }
+                      if (node.totalH >= 1 || node.neighbors.size() <= 2) {
+                          carbonGroup[i] = GroupType::THIAL;
+                      } else {
+                          carbonGroup[i] = GroupType::THIONE;
+                      }
                   }
               } else if (!doubleN.empty()) {
                   int singleC = 0;
@@ -9865,19 +9917,20 @@ IupacResult IupacNamer::generateName(int mol) {
             case GroupType::SULFONYL_HALIDE: return 13;
             case GroupType::SULFONAMIDE: return 14;
             case GroupType::AMIDE: return 15;
-            case GroupType::HYDRAZIDE: return 16;
-            case GroupType::NITRILE: return 17;
-            case GroupType::ALDEHYDE: return 18;
-            case GroupType::THIAL: return 19;
-            case GroupType::KETONE: return 20;
-            case GroupType::THIONE: return 21;
-            case GroupType::ALCOHOL: return 22;
-            case GroupType::THIOL: return 23;
-            case GroupType::SELENOL: return 24;
-            case GroupType::TELLUROL: return 25;
-            case GroupType::HYDROPEROXIDE: return 26;
-            case GroupType::AMINE: return 27;
-            case GroupType::IMINE: return 28;
+            case GroupType::THIOAMIDE: return 16;
+            case GroupType::HYDRAZIDE: return 17;
+            case GroupType::NITRILE: return 18;
+            case GroupType::ALDEHYDE: return 19;
+            case GroupType::THIAL: return 20;
+            case GroupType::KETONE: return 21;
+            case GroupType::THIONE: return 22;
+            case GroupType::ALCOHOL: return 23;
+            case GroupType::THIOL: return 24;
+            case GroupType::SELENOL: return 25;
+            case GroupType::TELLUROL: return 26;
+            case GroupType::HYDROPEROXIDE: return 27;
+            case GroupType::AMINE: return 28;
+            case GroupType::IMINE: return 29;
             case GroupType::PHOSPHINE: return 29;
             default: return 30;
         }
@@ -10700,7 +10753,7 @@ IupacResult IupacNamer::generateName(int mol) {
             fullName = prefixPart + rootStr + "e";
         }
     } else {
-        bool isExocyclic = (winningType == GroupType::ACID || winningType == GroupType::AMIDE || winningType == GroupType::HYDRAZIDE ||
+        bool isExocyclic = (winningType == GroupType::ACID || winningType == GroupType::AMIDE || winningType == GroupType::THIOAMIDE || winningType == GroupType::HYDRAZIDE ||
                             winningType == GroupType::NITRILE || winningType == GroupType::ALDEHYDE ||
                             winningType == GroupType::ACYL_HALIDE || winningType == GroupType::ESTER);
         int pCount = static_cast<int>(bestSig.principalLocants.size());
@@ -10709,6 +10762,7 @@ IupacResult IupacNamer::generateName(int mol) {
             QString sfx;
             if (winningType == GroupType::ACID) sfx = (pCount == 1) ? "carboxylic acid" : "dicarboxylic acid";
             else if (winningType == GroupType::AMIDE) sfx = (pCount == 1) ? "carboxamide" : "dicarboxamide";
+            else if (winningType == GroupType::THIOAMIDE) sfx = (pCount == 1) ? "carbothioamide" : "dicarbothioamide";
             else if (winningType == GroupType::HYDRAZIDE) sfx = (pCount == 1) ? "carbohydrazide" : "dicarbohydrazide";
             else if (winningType == GroupType::NITRILE) sfx = (pCount == 1) ? "carbonitrile" : "dicarbonitrile";
             else if (winningType == GroupType::ALDEHYDE) sfx = (pCount == 1) ? "carbaldehyde" : "dicarbaldehyde";
