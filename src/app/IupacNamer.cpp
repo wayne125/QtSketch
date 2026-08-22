@@ -8879,8 +8879,8 @@ IupacResult IupacNamer::generateName(int mol) {
                 case GroupType::HYDROPEROXIDE: return 27;
                 case GroupType::AMINE: return 28;
                 case GroupType::IMINE: return 29;
-                case GroupType::PHOSPHINE: return 29;
-                default: return 30;
+                case GroupType::PHOSPHINE: return 30;
+                default: return 31;
             }
         };
 
@@ -9931,8 +9931,8 @@ IupacResult IupacNamer::generateName(int mol) {
             case GroupType::HYDROPEROXIDE: return 27;
             case GroupType::AMINE: return 28;
             case GroupType::IMINE: return 29;
-            case GroupType::PHOSPHINE: return 29;
-            default: return 30;
+            case GroupType::PHOSPHINE: return 30;
+            default: return 31;
         }
     };
 
