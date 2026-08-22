@@ -46,6 +46,10 @@ imago/
 .qtcreator/
 .claude/
 .codegraph/
+.superpowers/
+
+# Ad-hoc analysis writeups (not needed to build) - kept on disk locally only.
+docs/analysis/
 
 # Session planning docs / notes (not needed to build)
 docs/superpowers/
