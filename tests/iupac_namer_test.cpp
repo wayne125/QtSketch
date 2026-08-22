@@ -60,6 +60,11 @@ int main() {
         {"CCN=NCC", "diethyldiazene"},
         {"CN=NCC", "ethyl(methyl)diazene"},
 
+        // Nitrosamine probe tests
+        {"CN(C)N=O", "dimethylnitrous amide"},
+        {"CNN=O", "methylnitrous amide"},
+        {"CCCCN(CC)N=O", "butyl(ethyl)nitrous amide"},
+
         // Rootless acyl carbon / multiple halogen fixes
         {"ClC(=O)Cl", "", true, "Carbonic acid halides with multiple halogens are not supported in this phase."},
         {"ClC(=O)Br", "", true, "Carbonic acid halides with multiple halogens are not supported in this phase."},

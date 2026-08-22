@@ -2896,6 +2896,61 @@ std::optional<QString> tryNameAzoCompound(int cNode, int nNode, const Graph &g, 
     }
 }
 
+std::optional<QString> tryNameNitrosamine(int cNode, int nNode, const Graph &g, const std::vector<std::set<int>> &allSSSRRings) {
+    int nitrosoNNode = -1;
+    for (int nn : g.nodes[nNode].neighbors) {
+        if (nn != cNode && isNitrosoNitrogen(nn, nNode, g)) {
+            nitrosoNNode = nn;
+            break;
+        }
+    }
+    if (nitrosoNNode == -1) return std::nullopt;
+
+    std::vector<int> cNeighbors;
+    for (int nn : g.nodes[nNode].neighbors) {
+        if (nn != nitrosoNNode && g.nodes[nn].atomicNumber == 6) {
+            cNeighbors.push_back(nn);
+        }
+    }
+
+    if (cNeighbors.size() + 1 != g.nodes[nNode].neighbors.size()) {
+         return std::nullopt;
+    }
+
+    if (cNeighbors.size() == 1 && cNeighbors[0] == cNode) {
+        QString name = nameBranchGraph(g, cNode, nNode, allSSSRRings);
+        if (name.isEmpty()) return ""; 
+        auto stripBrackets = [](QString s) {
+            if (s.startsWith("(") && s.endsWith(")")) return s.mid(1, s.length() - 2);
+            if (s.startsWith("[") && s.endsWith("]")) return s.mid(1, s.length() - 2);
+            return s;
+        };
+        return stripBrackets(name) + "nitrous amide";
+    } else if (cNeighbors.size() == 2) {
+        int farCNode = (cNeighbors[0] == cNode) ? cNeighbors[1] : cNeighbors[0];
+        QString name1 = nameBranchGraph(g, cNode, nNode, allSSSRRings);
+        QString name2 = nameBranchGraph(g, farCNode, nNode, allSSSRRings);
+        if (name1.isEmpty() || name2.isEmpty()) return ""; 
+        
+        auto stripBrackets = [](QString s) {
+            if (s.startsWith("(") && s.endsWith(")")) return s.mid(1, s.length() - 2);
+            if (s.startsWith("[") && s.endsWith("]")) return s.mid(1, s.length() - 2);
+            return s;
+        };
+        QString clean1 = stripBrackets(name1);
+        QString clean2 = stripBrackets(name2);
+        
+        if (clean1 == clean2) {
+            return "di" + clean1 + "nitrous amide";
+        } else {
+            QString a = alphabetizationKey(clean1).toLower() < alphabetizationKey(clean2).toLower() ? clean1 : clean2;
+            QString b = alphabetizationKey(clean1).toLower() < alphabetizationKey(clean2).toLower() ? clean2 : clean1;
+            return a + "(" + b + ")nitrous amide";
+        }
+    }
+    return std::nullopt;
+}
+
 IupacResult IupacNamer::generateName(int mol) {
     if (mol < 0) {
         return {false, "", "Invalid molecule handle."};
@@ -4333,6 +4388,11 @@ IupacResult IupacNamer::generateName(int mol) {
                             if (!azoName->isEmpty()) return {true, *azoName, ""};
                             else return {false, "", "Could not generate names for both sides of the azo group."};
                         }
+                        auto nitrosoName = tryNameNitrosamine(static_cast<int>(i), nNode, g, allSSSRRings);
+                        if (nitrosoName.has_value()) {
+                            if (!nitrosoName->isEmpty()) return {true, *nitrosoName, ""};
+                            else return {false, "", "Could not generate names for all sides of the nitrosamine."};
+                        }
                     }
                     carbonGroup[i] = GroupType::AMINE;
                 } else if (carbonSulfonicAcid.count(i)) {
@@ -5414,6 +5474,11 @@ IupacResult IupacNamer::generateName(int mol) {
                         if (azoName.has_value()) {
                             if (!azoName->isEmpty()) return {true, *azoName, ""};
                             else return {false, "", "Could not generate names for both sides of the azo group."};
+                        }
+                        auto nitrosoName = tryNameNitrosamine(rIdx, nei, g, allSSSRRings);
+                        if (nitrosoName.has_value()) {
+                            if (!nitrosoName->isEmpty()) return {true, *nitrosoName, ""};
+                            else return {false, "", "Could not generate names for all sides of the nitrosamine."};
                         }
                         if (!isNitroIsoOrAzide) hasSglN = true;
                     }
@@ -8701,6 +8766,11 @@ IupacResult IupacNamer::generateName(int mol) {
                             if (!azoName->isEmpty()) return {true, *azoName, ""};
                             else return {false, "", "Could not generate names for both sides of the azo group."};
                         }
+                        auto nitrosoName = tryNameNitrosamine(static_cast<int>(i), nNode, g, allSSSRRings);
+                        if (nitrosoName.has_value()) {
+                            if (!nitrosoName->isEmpty()) return {true, *nitrosoName, ""};
+                            else return {false, "", "Could not generate names for all sides of the nitrosamine."};
+                        }
                     }
                     carbonGroup[i] = GroupType::AMINE;
                 } else if (carbonSulfonicAcid.count(i) ) {
@@ -9726,6 +9796,11 @@ IupacResult IupacNamer::generateName(int mol) {
                     if (azoName.has_value()) {
                         if (!azoName->isEmpty()) return {true, *azoName, ""};
                         else return {false, "", "Could not generate names for both sides of the azo group."};
+                    }
+                    auto nitrosoName = tryNameNitrosamine(static_cast<int>(i), nNode, g, allSSSRRings);
+                    if (nitrosoName.has_value()) {
+                        if (!nitrosoName->isEmpty()) return {true, *nitrosoName, ""};
+                        else return {false, "", "Could not generate names for all sides of the nitrosamine."};
                     }
                 }
                 carbonGroup[i] = GroupType::AMINE;
