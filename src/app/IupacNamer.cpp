@@ -170,6 +170,29 @@ bool isNitroNitrogen(int nNode, int fromCarbon, const Graph &g) {
     return oxygenCount == 2;
 }
 
+// Structural check for an azo nitrogen (R-N=N-R') singly bonded to `fromCarbon`.
+// Both R and R' must be attached via carbon atoms.
+bool isAzoNitrogen(int nNode, int fromCarbon, const Graph &g) {
+    const GraphNode &n = g.nodes[nNode];
+    if (n.atomicNumber != 7 || n.totalH != 0 || n.neighbors.size() != 2) return false;
+    for (size_t k = 0; k < n.neighbors.size(); ++k) {
+        int nn = n.neighbors[k];
+        if (nn == fromCarbon) continue;
+        if (g.nodes[nn].atomicNumber == 7 && n.bondOrders[k] == 2) {
+            const GraphNode &farN = g.nodes[nn];
+            if (farN.totalH != 0 || farN.neighbors.size() != 2) return false;
+            for (size_t m = 0; m < farN.neighbors.size(); ++m) {
+                int farNei = farN.neighbors[m];
+                if (farNei == nNode) continue;
+                if (g.nodes[farNei].atomicNumber == 6 && farN.bondOrders[m] == 1) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
 bool isAcylPseudohalide(int i, const Graph &g, const std::map<int, std::vector<int>> &carbonAzide) {
     if (carbonAzide.count(i)) return true;
     const GraphNode &node = g.nodes[i];
@@ -2835,6 +2858,43 @@ std::map<std::pair<int,int>, QChar> computeIndigoBondCIP(int mol) {
     }
     return result;
 }
+std::optional<QString> tryNameAzoCompound(int cNode, int nNode, const Graph &g, const std::vector<std::set<int>> &allSSSRRings) {
+    if (!isAzoNitrogen(nNode, cNode, g)) return std::nullopt;
+    int farNNode = -1;
+    for (int nn : g.nodes[nNode].neighbors) {
+        if (nn != cNode && g.nodes[nn].atomicNumber == 7) {
+            farNNode = nn; break;
+        }
+    }
+    if (farNNode == -1) return std::nullopt;
+    int farCNode = -1;
+    for (int nn : g.nodes[farNNode].neighbors) {
+        if (nn != nNode && g.nodes[nn].atomicNumber == 6) {
+            farCNode = nn; break;
+        }
+    }
+    if (farCNode == -1) return std::nullopt;
+    
+    QString name1 = nameBranchGraph(g, cNode, nNode, allSSSRRings);
+    QString name2 = nameBranchGraph(g, farCNode, farNNode, allSSSRRings);
+    if (name1.isEmpty() || name2.isEmpty()) return ""; // Failed to build, but IS azo
+    
+    auto stripBrackets = [](QString s) {
+        if (s.startsWith("(") && s.endsWith(")")) return s.mid(1, s.length() - 2);
+        if (s.startsWith("[") && s.endsWith("]")) return s.mid(1, s.length() - 2);
+        return s;
+    };
+    QString clean1 = stripBrackets(name1);
+    QString clean2 = stripBrackets(name2);
+    
+    if (clean1 == clean2) {
+        return "di" + clean1 + "diazene";
+    } else {
+        QString a = alphabetizationKey(clean1).toLower() < alphabetizationKey(clean2).toLower() ? clean1 : clean2;
+        QString b = alphabetizationKey(clean1).toLower() < alphabetizationKey(clean2).toLower() ? clean2 : clean1;
+        return a + "(" + b + ")diazene";
+    }
+}
 
 IupacResult IupacNamer::generateName(int mol) {
     if (mol < 0) {
@@ -4267,6 +4327,13 @@ IupacResult IupacNamer::generateName(int mol) {
                         }
                     }
                 } else if (!singleN.empty()) {
+                    for (int nNode : singleN) {
+                        auto azoName = tryNameAzoCompound(static_cast<int>(i), nNode, g, allSSSRRings);
+                        if (azoName.has_value()) {
+                            if (!azoName->isEmpty()) return {true, *azoName, ""};
+                            else return {false, "", "Could not generate names for both sides of the azo group."};
+                        }
+                    }
                     carbonGroup[i] = GroupType::AMINE;
                 } else if (carbonSulfonicAcid.count(i)) {
                     carbonGroup[i] = GroupType::SULFONIC_ACID;
@@ -5343,6 +5410,11 @@ IupacResult IupacNamer::generateName(int mol) {
                         if (isIsocyanateNitrogen(nei, rIdx, g)) isNitroIsoOrAzide = true;
                         if (isNitroNitrogen(nei, rIdx, g)) isNitroIsoOrAzide = true;
                         if (isNitrosoNitrogen(nei, rIdx, g)) isNitroIsoOrAzide = true;
+                        auto azoName = tryNameAzoCompound(rIdx, nei, g, allSSSRRings);
+                        if (azoName.has_value()) {
+                            if (!azoName->isEmpty()) return {true, *azoName, ""};
+                            else return {false, "", "Could not generate names for both sides of the azo group."};
+                        }
                         if (!isNitroIsoOrAzide) hasSglN = true;
                     }
                 }
@@ -8623,6 +8695,13 @@ IupacResult IupacNamer::generateName(int mol) {
                         }
                     }
                 } else if (singleN.size() > 0) {
+                    for (int nNode : singleN) {
+                        auto azoName = tryNameAzoCompound(static_cast<int>(i), nNode, g, allSSSRRings);
+                        if (azoName.has_value()) {
+                            if (!azoName->isEmpty()) return {true, *azoName, ""};
+                            else return {false, "", "Could not generate names for both sides of the azo group."};
+                        }
+                    }
                     carbonGroup[i] = GroupType::AMINE;
                 } else if (carbonSulfonicAcid.count(i) ) {
                     carbonGroup[i] = GroupType::SULFONIC_ACID;
@@ -9642,6 +9721,13 @@ IupacResult IupacNamer::generateName(int mol) {
                     }
                 }
             } else if (!singleN.empty()) {
+                for (int nNode : singleN) {
+                    auto azoName = tryNameAzoCompound(static_cast<int>(i), nNode, g, allSSSRRings);
+                    if (azoName.has_value()) {
+                        if (!azoName->isEmpty()) return {true, *azoName, ""};
+                        else return {false, "", "Could not generate names for both sides of the azo group."};
+                    }
+                }
                 carbonGroup[i] = GroupType::AMINE;
             } else if (carbonSulfonicAcid.count(i) ) {
                 carbonGroup[i] = GroupType::SULFONIC_ACID;

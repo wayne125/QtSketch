@@ -55,6 +55,11 @@ int main() {
         {"CN=O", "nitrosomethane"},
         {"c1ccccc1N=O", "nitrosobenzene"},
 
+        // Azo probe tests
+        {"CN=NC", "dimethyldiazene"},
+        {"CCN=NCC", "diethyldiazene"},
+        {"CN=NCC", "ethyl(methyl)diazene"},
+
         // Rootless acyl carbon / multiple halogen fixes
         {"ClC(=O)Cl", "", true, "Carbonic acid halides with multiple halogens are not supported in this phase."},
         {"ClC(=O)Br", "", true, "Carbonic acid halides with multiple halogens are not supported in this phase."},
