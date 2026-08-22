@@ -20,6 +20,10 @@ run_sketch.bat
 # Vendored Indigo SDK (637 MB third-party tree; kept on disk, not in history.
 # See THIRD-PARTY-NOTICES.md — source: https://github.com/epam/indigo)
 indigo/
+# Separate full Indigo source-tree checkout (distinct from indigo/ above) -
+# accidentally committed via a broad `git add` during an agy-delegate task;
+# untracked here, kept on disk locally only. Includes >50MB font blobs.
+Indigo-indigo-1.45.0/
 # Duplicate/unused copy of the Indigo runtime DLL at repo root — the build
 # links and copies indigo/lib/indigo.dll instead (see CMakeLists.txt).
 /indigo.dll
