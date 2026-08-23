@@ -1519,6 +1519,26 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                     if (subName.isEmpty()) {
                         subName = nameBranchGraph(g, nei, rNode, allIndependentRings, combinedForbidden);
                     }
+                } else if (nZ == 15) {
+                    int dblO = 0, sglO_OH = 0;
+                    std::vector<int> halogens;
+                    for (size_t k = 0; k < g.nodes[nei].neighbors.size(); ++k) {
+                        int nn = g.nodes[nei].neighbors[k];
+                        if (nn == rNode) continue;
+                        int z = g.nodes[nn].atomicNumber;
+                        int ord = g.nodes[nei].bondOrders[k];
+                        if (z == 8 && ord == 2) dblO++;
+                        else if (z == 8 && ord == 1 && (g.nodes[nn].totalH >= 1 || g.nodes[nn].neighbors.size() == 1)) sglO_OH++;
+                        else if (ord == 1 && (z == 9 || z == 17 || z == 35 || z == 53)) halogens.push_back(nn);
+                    }
+                    if (g.nodes[nei].neighbors.size() == 4 && dblO == 1 && sglO_OH == 2) {
+                        subName = "phosphono";
+                    } else if (g.nodes[nei].neighbors.size() == 4 && dblO == 1 && halogens.size() == 2 && g.nodes[halogens[0]].atomicNumber == g.nodes[halogens[1]].atomicNumber) {
+                        subName = "di" + halogenPrefix(g.nodes[halogens[0]].atomicNumber) + "phosphoryl";
+                    }
+                    if (subName.isEmpty()) {
+                        subName = nameBranchGraph(g, nei, rNode, allIndependentRings, combinedForbidden);
+                    }
                 } else if (nZ == 33) {
                     int dblO = 0, sglO_OH = 0;
                     std::vector<int> halogens;
