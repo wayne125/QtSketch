@@ -1338,7 +1338,10 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                     for (int oNei : g.nodes[nei].neighbors) {
                         if (oNei != rNode) { alkylNei = oNei; break; }
                     }
-                    if (alkylNei != -1) {
+                    if (alkylNei != -1 && g.nodes[alkylNei].atomicNumber == 8 &&
+                        g.nodes[alkylNei].totalH >= 1 && g.nodes[alkylNei].neighbors.size() == 1) {
+                        subName = "hydroperoxy";
+                    } else if (alkylNei != -1) {
                         QString alkylName = nameBranchGraph(g, alkylNei, nei, allIndependentRings);
                         if (alkylName.isEmpty()) { candValid = false; break; }
                         if (alkylName.startsWith("(") && alkylName.endsWith(")")) {
