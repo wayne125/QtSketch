@@ -1520,9 +1520,6 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                         subName = nameBranchGraph(g, nei, rNode, allIndependentRings, combinedForbidden);
                     }
                 } else if (nZ == 33) {
-                    // For As, carbonArsonicAcid is computed globally and DOES contain ring atoms.
-                    // But we don't have it threaded here! Oh wait, I MUST thread carbonArsonicAcid!
-                    // Let's check locally for As too to avoid threading ANYTHING.
                     int dblO = 0, sglO_OH = 0;
                     std::vector<int> halogens;
                     for (size_t k = 0; k < g.nodes[nei].neighbors.size(); ++k) {
