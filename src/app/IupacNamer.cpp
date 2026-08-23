@@ -1348,7 +1348,7 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                             subName = "[(" + alkylName.mid(1, alkylName.length() - 2) + ")oxy]";
                         } else if (alkylName.startsWith("[") && alkylName.endsWith("]")) {
                             subName = "[(" + alkylName.mid(1, alkylName.length() - 2) + ")oxy]";
-                        } else if (alkylName == "methyl" || alkylName == "ethyl" || alkylName == "propyl" || alkylName == "butyl") {
+                        } else if (alkylName == "methyl" || alkylName == "ethyl" || alkylName == "propyl" || alkylName == "butyl" || alkylName == "phenyl") {
                             alkylName.chop(2);
                             subName = alkylName + "oxy";
                         } else if (alkylName.endsWith("yl") && !alkylName.contains('(') && !alkylName.contains('[') &&
