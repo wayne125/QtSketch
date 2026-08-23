@@ -266,6 +266,8 @@ int main() {
         // Phase 6: New functional groups
         {"CC(=O)Cl", "ethanoyl chloride"},
         {"CC(O)C(=O)Cl", "2-hydroxypropanoyl chloride"},
+        {"OC1CCCCC1[Se](=O)C", "2-methaneseleninylcyclohexan-1-ol"},
+        {"OC1CCCCC1[Te](=O)C", "2-methanetellurinylcyclohexan-1-ol"},
         {"CS(=O)(=O)O", "methanesulfonic acid"},
         {"CS(=O)(=O)N", "methanesulfonamide"},
         {"NS(=O)(=O)CCC1CC(S(N)(=O)=O)CCC1", "2-(3-sulfamoylcyclohexyl)ethanesulfonamide"},
