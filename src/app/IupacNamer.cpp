@@ -1351,6 +1351,9 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                         } else if (alkylName == "methyl" || alkylName == "ethyl" || alkylName == "propyl" || alkylName == "butyl") {
                             alkylName.chop(2);
                             subName = alkylName + "oxy";
+                        } else if (alkylName.endsWith("yl") && !alkylName.contains('(') && !alkylName.contains('[') &&
+                                   !std::any_of(alkylName.begin(), alkylName.end(), [](QChar c) { return c.isDigit(); })) {
+                            subName = alkylName + "oxy";
                         } else {
                             subName = "[(" + alkylName + ")oxy]";
                         }

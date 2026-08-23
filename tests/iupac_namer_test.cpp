@@ -56,6 +56,7 @@ int main() {
         {"OC(=O)CCC1CCC(B(O)O)CC1", "3-(4-boronocyclohexyl)propanoic acid"},
         {"OS(=O)(=O)c1ccc(B(O)O)cc1", "4-boronobenzene-1-sulfonic acid"},
         {"OC(=O)CCC1CCC(OO)CC1", "3-(4-hydroperoxycyclohexyl)propanoic acid"},
+        {"OC(=O)CCC1CCC(OCCCCC)CC1", "3-(4-pentyloxycyclohexyl)propanoic acid"},
 
         // Phosphinic acid
         {"CCP(=O)(O)CC", "diethylphosphinic acid"},
