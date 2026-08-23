@@ -50,6 +50,8 @@ int main() {
     indigoSetSessionId(sid);
 
     std::vector<TestCase> tests = {
+        {"OC(=O)CCC1CCC(C(=O)O)CC1", "3-(4-carboxycyclohexyl)propanoic acid", false, ""},
+        {"OC(=O)CCC1CCC([As](=O)(O)O)CC1", "3-(4-arsonocyclohexyl)propanoic acid", false, ""},
 
         // Phosphinic acid
         {"CCP(=O)(O)CC", "diethylphosphinic acid"},
@@ -3786,6 +3788,7 @@ int main() {
         }
     }
 
+    
     std::cout << "\nSummary: " << passed << " passed, " << failed << " failed.\n";
     indigoReleaseSessionId(sid);
     return (failed == 0) ? 0 : 1;

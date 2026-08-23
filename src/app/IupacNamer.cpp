@@ -1482,6 +1482,66 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                         if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allIndependentRings, combinedForbidden);
                         if (!alkylName.isEmpty()) subName = alkylName + "telluronyl";
                     }
+                } else if (nZ == 6) {
+                    int dblO = 0, sglO_OH = 0;
+                    int halogenZ = -1, alkNode = -1, esterO = -1;
+                    std::vector<int> halogens;
+                    for (size_t k = 0; k < g.nodes[nei].neighbors.size(); ++k) {
+                        int nn = g.nodes[nei].neighbors[k];
+                        if (nn == rNode) continue;
+                        int z = g.nodes[nn].atomicNumber;
+                        int ord = g.nodes[nei].bondOrders[k];
+                        if (z == 8 && ord == 2) dblO++;
+                        else if (z == 8 && ord == 1) {
+                            if (g.nodes[nn].totalH >= 1 || g.nodes[nn].neighbors.size() == 1) sglO_OH++;
+                            else {
+                                for (int oNei : g.nodes[nn].neighbors) {
+                                    if (oNei != nei && g.nodes[oNei].atomicNumber == 6) alkNode = oNei;
+                                }
+                                if (alkNode != -1) esterO = nn;
+                            }
+                        }
+                        else if (ord == 1 && (z == 9 || z == 17 || z == 35 || z == 53)) halogens.push_back(nn);
+                    }
+                    if (g.nodes[nei].neighbors.size() == 3 && dblO == 1 && sglO_OH == 1) {
+                        subName = "carboxy";
+                    } else if (g.nodes[nei].neighbors.size() == 3 && dblO == 1 && halogens.size() == 1) {
+                        subName = halogenPrefix(g.nodes[halogens[0]].atomicNumber) + "carbonyl";
+                    } else if (g.nodes[nei].neighbors.size() == 3 && dblO == 1 && alkNode != -1) {
+                        QString alkylName = nameBranchGraph(g, alkNode, esterO, allIndependentRings, combinedForbidden);
+                        if (!alkylName.isEmpty() && alkylName.endsWith("yl")) {
+                            alkylName.chop(2);
+                            alkylName += "oxycarbonyl";
+                        }
+                        subName = alkylName;
+                    }
+                    
+                    if (subName.isEmpty()) {
+                        subName = nameBranchGraph(g, nei, rNode, allIndependentRings, combinedForbidden);
+                    }
+                } else if (nZ == 33) {
+                    // For As, carbonArsonicAcid is computed globally and DOES contain ring atoms.
+                    // But we don't have it threaded here! Oh wait, I MUST thread carbonArsonicAcid!
+                    // Let's check locally for As too to avoid threading ANYTHING.
+                    int dblO = 0, sglO_OH = 0;
+                    std::vector<int> halogens;
+                    for (size_t k = 0; k < g.nodes[nei].neighbors.size(); ++k) {
+                        int nn = g.nodes[nei].neighbors[k];
+                        if (nn == rNode) continue;
+                        int z = g.nodes[nn].atomicNumber;
+                        int ord = g.nodes[nei].bondOrders[k];
+                        if (z == 8 && ord == 2) dblO++;
+                        else if (z == 8 && ord == 1 && (g.nodes[nn].totalH >= 1 || g.nodes[nn].neighbors.size() == 1)) sglO_OH++;
+                        else if (ord == 1 && (z == 9 || z == 17 || z == 35 || z == 53)) halogens.push_back(nn);
+                    }
+                    if (g.nodes[nei].neighbors.size() == 4 && dblO == 1 && sglO_OH == 2) {
+                        subName = "arsono";
+                    } else if (g.nodes[nei].neighbors.size() == 4 && dblO == 1 && halogens.size() == 2 && g.nodes[halogens[0]].atomicNumber == g.nodes[halogens[1]].atomicNumber) {
+                        subName = "di" + halogenPrefix(g.nodes[halogens[0]].atomicNumber) + "arsoryl";
+                    }
+                    if (subName.isEmpty()) {
+                        subName = nameBranchGraph(g, nei, rNode, allIndependentRings, combinedForbidden);
+                    }
                 } else if (nZ == 9 || nZ == 17 || nZ == 35 || nZ == 53) {
                     subName = halogenPrefix(nZ);
                 } else if (nZ == 16 && carbonSulfonamide.count(rNode) && carbonSulfonamide.at(rNode) == nei) {
