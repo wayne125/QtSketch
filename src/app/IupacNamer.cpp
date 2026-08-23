@@ -1519,6 +1519,21 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                     if (subName.isEmpty()) {
                         subName = nameBranchGraph(g, nei, rNode, allIndependentRings, combinedForbidden);
                     }
+                } else if (nZ == 5) {
+                    int sglO_OH = 0;
+                    for (size_t k = 0; k < g.nodes[nei].neighbors.size(); ++k) {
+                        int nn = g.nodes[nei].neighbors[k];
+                        if (nn == rNode) continue;
+                        int z = g.nodes[nn].atomicNumber;
+                        int ord = g.nodes[nei].bondOrders[k];
+                        if (z == 8 && ord == 1 && (g.nodes[nn].totalH >= 1 || g.nodes[nn].neighbors.size() == 1)) sglO_OH++;
+                    }
+                    if (g.nodes[nei].neighbors.size() == 3 && sglO_OH == 2) {
+                        subName = "borono";
+                    }
+                    if (subName.isEmpty()) {
+                        subName = nameBranchGraph(g, nei, rNode, allIndependentRings, combinedForbidden);
+                    }
                 } else if (nZ == 15) {
                     int dblO = 0, sglO_OH = 0;
                     std::vector<int> halogens;
@@ -9762,6 +9777,10 @@ IupacResult IupacNamer::generateName(int mol) {
                         } else if (carbonArsonicDihalide.count(rNode) && carbonArsonicDihalide[rNode] == nei && winningType != GroupType::ARSONIC_DIHALIDE) {
                             subName = "di" + halogenPrefix(arsonicDihalideZ[rNode]) + "arsoryl";
                         }
+                    } else if (nz == 5) {
+                        if (carbonBoronicAcid.count(rNode) && carbonBoronicAcid[rNode] == nei && winningType != GroupType::BORONIC_ACID) {
+                            subName = "borono";
+                        }
                     } else if (nz == 6) {
                         if (carbonGroup.count(nei) && winningType != carbonGroup[nei]) {
                             if (carbonGroup[nei] == GroupType::ACID) {
@@ -11179,6 +11198,10 @@ IupacResult IupacNamer::generateName(int mol) {
                         subName = "arsono";
                     } else if (carbonArsonicDihalide.count(rNode) && carbonArsonicDihalide[rNode] == nei && winningType != GroupType::ARSONIC_DIHALIDE) {
                         subName = "di" + halogenPrefix(arsonicDihalideZ[rNode]) + "arsoryl";
+                    }
+                } else if (nz == 5) {
+                    if (carbonBoronicAcid.count(rNode) && carbonBoronicAcid[rNode] == nei && winningType != GroupType::BORONIC_ACID) {
+                        subName = "borono";
                     }
                 } else if (nz == 6) {
                     if (carbonGroup.count(nei) && winningType != carbonGroup[nei]) {
