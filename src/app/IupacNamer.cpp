@@ -1796,8 +1796,11 @@ QString nameBranchGraph(const Graph &g, int rootIdx, int parentIdx, const std::v
             if (alkylName.isEmpty()) return "";
             if (alkylName.startsWith("(") && alkylName.endsWith(")")) {
                 return alkylName + "oxy";
-            } else if (alkylName == "methyl" || alkylName == "ethyl" || alkylName == "propyl" || alkylName == "butyl") {
+            } else if (alkylName == "methyl" || alkylName == "ethyl" || alkylName == "propyl" || alkylName == "butyl" || alkylName == "phenyl") {
                 alkylName.chop(2);
+                return alkylName + "oxy";
+            } else if (alkylName.endsWith("yl") && !alkylName.contains('(') && !alkylName.contains('[') &&
+                       !std::any_of(alkylName.begin(), alkylName.end(), [](QChar c) { return c.isDigit(); })) {
                 return alkylName + "oxy";
             } else {
                 return "(" + alkylName + ")oxy";
@@ -5356,8 +5359,11 @@ IupacResult IupacNamer::generateName(int mol) {
                             if (alkylNei != -1) {
                                 QString alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
                                 if (alkylName.isEmpty()) return {false, "", "Unrecognized or unsupported substituent."};
-                                if (alkylName.endsWith("yl")) {
+                                if (alkylName == "methyl" || alkylName == "ethyl" || alkylName == "propyl" || alkylName == "butyl" || alkylName == "phenyl") {
                                     alkylName.chop(2); alkylName += "oxy";
+                                } else if (alkylName.endsWith("yl") && !alkylName.contains('(') && !alkylName.contains('[') &&
+                                           !std::any_of(alkylName.begin(), alkylName.end(), [](QChar c) { return c.isDigit(); })) {
+                                    alkylName += "oxy";
                                 }
                                 locantSubstituents[locant].append(alkylName);
                             }
@@ -9614,8 +9620,11 @@ IupacResult IupacNamer::generateName(int mol) {
                                 }
                                 if (alkylNei != -1) {
                                     QString alkylName = nameBranchGraph(g, alkylNei, nei);
-                                    if (alkylName.endsWith("yl")) {
+                                    if (alkylName == "methyl" || alkylName == "ethyl" || alkylName == "propyl" || alkylName == "butyl" || alkylName == "phenyl") {
                                         alkylName.chop(2); alkylName += "oxy";
+                                    } else if (alkylName.endsWith("yl") && !alkylName.contains('(') && !alkylName.contains('[') &&
+                                               !std::any_of(alkylName.begin(), alkylName.end(), [](QChar c) { return c.isDigit(); })) {
+                                        alkylName += "oxy";
                                     }
                                     subName = alkylName;
                                 }
@@ -11036,8 +11045,11 @@ IupacResult IupacNamer::generateName(int mol) {
                             }
                             if (alkylNei != -1) {
                                 QString alkylName = nameBranchGraph(g, alkylNei, nei);
-                                if (alkylName.endsWith("yl")) {
+                                if (alkylName == "methyl" || alkylName == "ethyl" || alkylName == "propyl" || alkylName == "butyl" || alkylName == "phenyl") {
                                     alkylName.chop(2); alkylName += "oxy";
+                                } else if (alkylName.endsWith("yl") && !alkylName.contains('(') && !alkylName.contains('[') &&
+                                           !std::any_of(alkylName.begin(), alkylName.end(), [](QChar c) { return c.isDigit(); })) {
+                                    alkylName += "oxy";
                                 }
                                 subName = alkylName;
                             }
