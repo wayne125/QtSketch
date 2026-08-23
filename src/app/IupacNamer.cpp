@@ -1022,6 +1022,15 @@ QString nameBranchGraph(const Graph &g, int rootIdx, int parentIdx,
                                const std::map<int, QChar> &stereoByGraphId = {},
                                std::set<int> *handledBranchStereoIds = nullptr);
 
+QString nameAcyclicChainParentWithSubstituents(
+    const Graph &g,
+    const std::set<int> &seedCarbons,
+    const std::set<int> &principalCarbons,
+    const std::set<int> &excludeNodes,
+    const std::vector<std::pair<int, QString>> &extraSubstituents,
+    GroupType winningType,
+    int acylHalideHalogenZ);
+
 QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, int attachmentNode, int parentLinkNode,
                                      const std::vector<std::set<int>> &allIndependentRings = {},
                                      const std::set<int> &forbiddenNodes = {},
@@ -1034,6 +1043,40 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
     for (int n : ringNodes) combinedForbidden.insert(n);
     int ringSize = static_cast<int>(ringNodes.size());
     if (ringSize != 5 && ringSize != 6) return "";
+
+    std::set<int> thioetherSulfurs, sulfoxideSulfurs, sulfoneSulfurs;
+    std::set<int> selenoetherSeleniums, selenoxideSeleniums, selenoneSeleniums;
+    std::set<int> telluroetherTelluriums, telluroxideTelluriums, telluroneTelluriums;
+    for (int idx = 0; idx < static_cast<int>(g.nodes.size()); ++idx) {
+        int z = g.nodes[idx].atomicNumber;
+        if (z != 16 && z != 34 && z != 52) continue;
+        int sglC = 0, sglN = 0, dblO = 0, sglO = 0;
+        bool hasOtherChalcogen = false;
+        for (size_t k = 0; k < g.nodes[idx].neighbors.size(); ++k) {
+            int nNei = g.nodes[idx].neighbors[k];
+            int order = g.nodes[idx].bondOrders[k];
+            int nz = g.nodes[nNei].atomicNumber;
+            if (nz == 6 && order == 1) sglC++;
+            else if (nz == 7 && order == 1) sglN++;
+            else if (nz == 8 && order == 2) dblO++;
+            else if (nz == 8 && order == 1) sglO++;
+            else if ((nz == 16 || nz == 34 || nz == 52) && nNei != idx) hasOtherChalcogen = true;
+        }
+        if (hasOtherChalcogen || sglO > 0) continue;
+        if ((sglC + sglN) == 2 && dblO == 0 && g.nodes[idx].neighbors.size() == 2) {
+            if (z == 16) thioetherSulfurs.insert(idx);
+            else if (z == 34) selenoetherSeleniums.insert(idx);
+            else if (z == 52) telluroetherTelluriums.insert(idx);
+        } else if (sglC == 2 && dblO == 1 && g.nodes[idx].neighbors.size() == 3) {
+            if (z == 16) sulfoxideSulfurs.insert(idx);
+            else if (z == 34) selenoxideSeleniums.insert(idx);
+            else if (z == 52) telluroxideTelluriums.insert(idx);
+        } else if (sglC == 2 && dblO == 2 && g.nodes[idx].neighbors.size() == 4) {
+            if (z == 16) sulfoneSulfurs.insert(idx);
+            else if (z == 34) selenoneSeleniums.insert(idx);
+            else if (z == 52) telluroneTelluriums.insert(idx);
+        }
+    }
 
     std::vector<int> ringCycle;
     int startNode = *ringNodes.begin();
@@ -1351,6 +1394,93 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                         } else {
                             subName = "amino";
                         }
+                    }
+                } else if (nZ == 16 && thioetherSulfurs.count(nei)) {
+                    int alkylNei = -1;
+                    for (int sNei : g.nodes[nei].neighbors) {
+                        if (sNei != rNode) { alkylNei = sNei; break; }
+                    }
+                    if (alkylNei != -1) {
+                        QString alkylName = nameBranchGraph(g, alkylNei, nei, allIndependentRings, combinedForbidden);
+                        if (!alkylName.isEmpty()) subName = alkylName + "sulfanyl";
+                    }
+                } else if (nZ == 16 && sulfoxideSulfurs.count(nei)) {
+                    int alkylNei = -1;
+                    for (int oNei : g.nodes[nei].neighbors) {
+                        if (g.nodes[oNei].atomicNumber == 6 && oNei != rNode) { alkylNei = oNei; break; }
+                    }
+                    if (alkylNei != -1) {
+                        QString alkylName = nameAcyclicChainParentWithSubstituents(g, {alkylNei}, {alkylNei}, {nei}, {}, GroupType::NONE, -1);
+                        if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allIndependentRings, combinedForbidden);
+                        if (!alkylName.isEmpty()) subName = alkylName + "sulfinyl";
+                    }
+                } else if (nZ == 16 && sulfoneSulfurs.count(nei)) {
+                    int alkylNei = -1;
+                    for (int oNei : g.nodes[nei].neighbors) {
+                        if (g.nodes[oNei].atomicNumber == 6 && oNei != rNode) { alkylNei = oNei; break; }
+                    }
+                    if (alkylNei != -1) {
+                        QString alkylName = nameAcyclicChainParentWithSubstituents(g, {alkylNei}, {alkylNei}, {nei}, {}, GroupType::NONE, -1);
+                        if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allIndependentRings, combinedForbidden);
+                        if (!alkylName.isEmpty()) subName = alkylName + "sulfonyl";
+                    }
+                } else if (nZ == 34 && selenoetherSeleniums.count(nei)) {
+                    int alkylNei = -1;
+                    for (int sNei : g.nodes[nei].neighbors) {
+                        if (sNei != rNode) { alkylNei = sNei; break; }
+                    }
+                    if (alkylNei != -1) {
+                        QString alkylName = nameBranchGraph(g, alkylNei, nei, allIndependentRings, combinedForbidden);
+                        if (!alkylName.isEmpty()) subName = alkylName + "selanyl";
+                    }
+                } else if (nZ == 34 && selenoxideSeleniums.count(nei)) {
+                    int alkylNei = -1;
+                    for (int oNei : g.nodes[nei].neighbors) {
+                        if (g.nodes[oNei].atomicNumber == 6 && oNei != rNode) { alkylNei = oNei; break; }
+                    }
+                    if (alkylNei != -1) {
+                        QString alkylName = nameAcyclicChainParentWithSubstituents(g, {alkylNei}, {alkylNei}, {nei}, {}, GroupType::NONE, -1);
+                        if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allIndependentRings, combinedForbidden);
+                        if (!alkylName.isEmpty()) subName = alkylName + "seleninyl";
+                    }
+                } else if (nZ == 34 && selenoneSeleniums.count(nei)) {
+                    int alkylNei = -1;
+                    for (int oNei : g.nodes[nei].neighbors) {
+                        if (g.nodes[oNei].atomicNumber == 6 && oNei != rNode) { alkylNei = oNei; break; }
+                    }
+                    if (alkylNei != -1) {
+                        QString alkylName = nameAcyclicChainParentWithSubstituents(g, {alkylNei}, {alkylNei}, {nei}, {}, GroupType::NONE, -1);
+                        if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allIndependentRings, combinedForbidden);
+                        if (!alkylName.isEmpty()) subName = alkylName + "selenonyl";
+                    }
+                } else if (nZ == 52 && telluroetherTelluriums.count(nei)) {
+                    int alkylNei = -1;
+                    for (int sNei : g.nodes[nei].neighbors) {
+                        if (sNei != rNode) { alkylNei = sNei; break; }
+                    }
+                    if (alkylNei != -1) {
+                        QString alkylName = nameBranchGraph(g, alkylNei, nei, allIndependentRings, combinedForbidden);
+                        if (!alkylName.isEmpty()) subName = alkylName + "tellanyl";
+                    }
+                } else if (nZ == 52 && telluroxideTelluriums.count(nei)) {
+                    int alkylNei = -1;
+                    for (int oNei : g.nodes[nei].neighbors) {
+                        if (g.nodes[oNei].atomicNumber == 6 && oNei != rNode) { alkylNei = oNei; break; }
+                    }
+                    if (alkylNei != -1) {
+                        QString alkylName = nameAcyclicChainParentWithSubstituents(g, {alkylNei}, {alkylNei}, {nei}, {}, GroupType::NONE, -1);
+                        if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allIndependentRings, combinedForbidden);
+                        if (!alkylName.isEmpty()) subName = alkylName + "tellurinyl";
+                    }
+                } else if (nZ == 52 && telluroneTelluriums.count(nei)) {
+                    int alkylNei = -1;
+                    for (int oNei : g.nodes[nei].neighbors) {
+                        if (g.nodes[oNei].atomicNumber == 6 && oNei != rNode) { alkylNei = oNei; break; }
+                    }
+                    if (alkylNei != -1) {
+                        QString alkylName = nameAcyclicChainParentWithSubstituents(g, {alkylNei}, {alkylNei}, {nei}, {}, GroupType::NONE, -1);
+                        if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allIndependentRings, combinedForbidden);
+                        if (!alkylName.isEmpty()) subName = alkylName + "telluronyl";
                     }
                 } else if (nZ == 9 || nZ == 17 || nZ == 35 || nZ == 53) {
                     subName = halogenPrefix(nZ);

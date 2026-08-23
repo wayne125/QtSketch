@@ -64,6 +64,11 @@ int main() {
         {"CCB(O)Cl", "chloro(ethyl)borinic acid"},
         {"CB(O)c1ccccc1", "methyl(phenyl)borinic acid"},
 
+
+        // Chalcogen-oxide ring-as-substituent bug
+        {"O=C(O)CCC1CCCCC1S(=O)C", "3-(2-methanesulfinylcyclohexyl)propanoic acid"},
+        {"O=C(O)CCC1CCCCC1[Se](=O)C", "3-(2-methaneseleninylcyclohexyl)propanoic acid"},
+        {"O=C(O)CCC1CCCCC1[Te](=O)C", "3-(2-methanetellurinylcyclohexyl)propanoic acid"},
         // Nitroso probe tests
         {"CN=O", "nitrosomethane"},
         {"c1ccccc1N=O", "nitrosobenzene"},
