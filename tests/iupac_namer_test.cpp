@@ -3740,6 +3740,45 @@ int main() {
         }
     }
 
+    {
+        int m = indigoLoadMoleculeFromString("NNC1CCCCC1CCC(=O)O");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "3-(2-hydrazinylcyclohexyl)propanoic acid") {
+            std::cout << "[PASS] Phase 39 hydrazinyl ring substituent -> 3-(2-hydrazinylcyclohexyl)propanoic acid\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Phase 39 hydrazinyl ring substituent -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        int m = indigoLoadMoleculeFromString("NNCCCC(=O)O");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success && r.error.contains("Substituted amine/hydrazine substituents are not supported in this phase.")) {
+            std::cout << "[PASS] NNCCCC(=O)O rejected correctly\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] NNCCCC(=O)O -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        int m = indigoLoadMoleculeFromString("NNC1CCCCC1C(=O)O");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "2-hydrazinylcyclohexanecarboxylic acid") {
+            std::cout << "[PASS] hydrazinyl on primary ring parent -> 2-hydrazinylcyclohexanecarboxylic acid\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] hydrazinyl on primary ring parent -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
     std::cout << "\nSummary: " << passed << " passed, " << failed << " failed.\n";
     indigoReleaseSessionId(sid);
     return (failed == 0) ? 0 : 1;

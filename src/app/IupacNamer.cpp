@@ -174,6 +174,21 @@ bool isNitroNitrogen(int nNode, int fromCarbon, const Graph &g) {
     return oxygenCount == 2;
 }
 
+// Structural check for an unsubstituted hydrazinyl nitrogen (-NH-NH2) singly bonded to `fromNode`
+bool isHydrazinylNitrogen(int nNode, int fromNode, const Graph &g) {
+    const GraphNode &n = g.nodes[nNode];
+    if (n.atomicNumber != 7 || n.neighbors.size() != 2) return false;
+    for (size_t k = 0; k < n.neighbors.size(); ++k) {
+        int nn = n.neighbors[k];
+        if (nn == fromNode) continue;
+        const GraphNode &nNei = g.nodes[nn];
+        if (nNei.atomicNumber == 7 && nNei.totalH == 2 && nNei.neighbors.size() == 1) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Structural check for an azo nitrogen (R-N=N-R') singly bonded to `fromCarbon`.
 // Both R and R' must be attached via carbon atoms.
 bool isAzoNitrogen(int nNode, int fromCarbon, const Graph &g) {
@@ -1331,7 +1346,11 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                         }
                     }
                     if (subName.isEmpty()) {
-                        subName = "amino";
+                        if (isHydrazinylNitrogen(nei, rNode, g)) {
+                            subName = "hydrazinyl";
+                        } else {
+                            subName = "amino";
+                        }
                     }
                 } else if (nZ == 9 || nZ == 17 || nZ == 35 || nZ == 53) {
                     subName = halogenPrefix(nZ);
@@ -9397,7 +9416,11 @@ IupacResult IupacNamer::generateName(int mol) {
                         } else if (isNitrosoNitrogen(nei, rNode, g)) {
                             subName = "nitroso";
                         } else if (!isAzide && order == 1 && winningType != GroupType::AMINE) {
-                            subName = "amino";
+                            if (isHydrazinylNitrogen(nei, rNode, g)) {
+                                subName = "hydrazinyl";
+                            } else {
+                                subName = "amino";
+                            }
                         } else if (!isAzide && order == 2 && carbonImine.count(rNode) && carbonImine[rNode] == nei && winningType != GroupType::IMINE) {
                             subName = "imino";
                         }
@@ -10771,7 +10794,11 @@ IupacResult IupacNamer::generateName(int mol) {
                     } else if (isNitrosoNitrogen(nei, rNode, g)) {
                         subName = "nitroso";
                     } else if (!isAzide && order == 1 && winningType != GroupType::AMINE) {
-                        subName = "amino";
+                        if (isHydrazinylNitrogen(nei, rNode, g)) {
+                            subName = "hydrazinyl";
+                        } else {
+                            subName = "amino";
+                        }
                     } else if (!isAzide && order == 2 && carbonImine.count(rNode) && carbonImine[rNode] == nei && winningType != GroupType::IMINE) {
                         subName = "imino";
                     }
