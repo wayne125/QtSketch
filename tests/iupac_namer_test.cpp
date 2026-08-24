@@ -68,6 +68,8 @@ int main() {
         {"OC(=O)CCC1CCC(N=O)CC1", "3-(4-nitrosocyclohexyl)propanoic acid"},
         {"OC(=O)CCC1CCC(N=C=O)CC1", "3-(4-isocyanatocyclohexyl)propanoic acid"},
         {"OC(=O)CCC1CCC(N=[N+]=[N-])CC1", "3-(4-azidocyclohexyl)propanoic acid"},
+        {"OC(=O)CCC1CCC(=N)CC1", "3-(4-iminocyclohexyl)propanoic acid"},
+        {"OC(=O)CCC1CCC(=O)CC1", "3-(4-oxocyclohexyl)propanoic acid"},
 
         // Phosphinic acid
         {"CCP(=O)(O)CC", "diethylphosphinic acid"},

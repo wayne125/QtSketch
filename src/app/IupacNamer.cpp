@@ -1407,7 +1407,11 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                 int nZ = g.nodes[nei].atomicNumber;
                 QString subName;
 
-                if (nZ == 8 && order == 1) {
+                if (nZ == 8 && order == 2) {
+                    subName = "oxo";
+                } else if (nZ == 7 && order == 2 && g.nodes[nei].totalH >= 1 && g.nodes[nei].neighbors.size() == 1) {
+                    subName = "imino";
+                } else if (nZ == 8 && order == 1) {
                     int alkylNei = -1;
                     for (int oNei : g.nodes[nei].neighbors) {
                         if (oNei != rNode) { alkylNei = oNei; break; }
