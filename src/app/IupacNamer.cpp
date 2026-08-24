@@ -1031,15 +1031,54 @@ QString nameAcyclicChainParentWithSubstituents(
     GroupType winningType,
     int acylHalideHalogenZ);
 
-// Fuses a chalcogen-family suffix ("sulfanyl", "sulfinyl", "selanyl", ...) onto a
+// Fuses a suffix ("sulfanyl", "sulfinyl", "selanyl", "amido", ...) onto a
 // substituent name, re-wrapping the whole compound substituent in fresh enclosure
 // marks if the name is already parenthesized/bracketed (a complex/substituted
 // substituent), mirroring the equivalent logic already used for "-oxy" fusion.
-QString wrapChalcogenSuffix(QString name, const QString &suffix) {
+QString wrapCompoundSuffix(QString name, const QString &suffix) {
     if ((name.startsWith("(") && name.endsWith(")")) || (name.startsWith("[") && name.endsWith("]"))) {
         return "[(" + name.mid(1, name.length() - 2) + ")" + suffix + "]";
     }
     return name + suffix;
+}
+
+// Structural check + construction for an N-acyl "amido" substituent (-NH-CO-R)
+// singly bonded to `fromNode`. Returns an empty string if `nNode` is not an
+// unsubstituted N-acyl nitrogen. Mirrors the equivalent logic already used
+// inside nameRingAsSubstituent.
+QString tryNameAmidoSubstituent(int nNode, int fromNode, const Graph &g,
+                                 const std::vector<std::set<int>> &allIndependentRings) {
+    const GraphNode &n = g.nodes[nNode];
+    if (n.atomicNumber != 7 || n.neighbors.size() != 2) return "";
+    int cAcyl = -1;
+    for (int nNei : n.neighbors) {
+        if (nNei != fromNode && g.nodes[nNei].atomicNumber == 6) {
+            for (size_t k = 0; k < g.nodes[nNei].neighbors.size(); ++k) {
+                int cNei = g.nodes[nNei].neighbors[k];
+                if (g.nodes[cNei].atomicNumber == 8 && g.nodes[nNei].bondOrders[k] == 2) {
+                    cAcyl = nNei; break;
+                }
+            }
+        }
+    }
+    if (cAcyl == -1) return "";
+    int rGroup = -1;
+    for (int aNei : g.nodes[cAcyl].neighbors) {
+        if (aNei != nNode && g.nodes[aNei].atomicNumber != 8) {
+            rGroup = aNei; break;
+        }
+    }
+    if (rGroup == -1) return "";
+    QString rName = nameBranchGraph(g, rGroup, cAcyl, allIndependentRings);
+    if (rName.isEmpty()) return "";
+    if (rName.endsWith("phenyl")) {
+        rName.chop(6);
+        return rName + "benzamido";
+    } else if (rName.endsWith("yl")) {
+        rName.chop(2);
+        return rName + "amido";
+    }
+    return wrapCompoundSuffix(rName, "amido");
 }
 
 QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, int attachmentNode, int parentLinkNode,
@@ -1400,7 +1439,7 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                                     rName.chop(2);
                                     subName = rName + "amido";
                                 } else {
-                                    subName = rName + "amido";
+                                    subName = wrapCompoundSuffix(rName, "amido");
                                 }
                             }
                         }
@@ -1419,7 +1458,7 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                     }
                     if (alkylNei != -1) {
                         QString alkylName = nameBranchGraph(g, alkylNei, nei, allIndependentRings, combinedForbidden);
-                        if (!alkylName.isEmpty()) subName = wrapChalcogenSuffix(alkylName, "sulfanyl");
+                        if (!alkylName.isEmpty()) subName = wrapCompoundSuffix(alkylName, "sulfanyl");
                     }
                 } else if (nZ == 16 && sulfoxideSulfurs.count(nei)) {
                     int alkylNei = -1;
@@ -1429,7 +1468,7 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                     if (alkylNei != -1) {
                         QString alkylName = nameAcyclicChainParentWithSubstituents(g, {alkylNei}, {alkylNei}, {nei}, {}, GroupType::NONE, -1);
                         if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allIndependentRings, combinedForbidden);
-                        if (!alkylName.isEmpty()) subName = wrapChalcogenSuffix(alkylName, "sulfinyl");
+                        if (!alkylName.isEmpty()) subName = wrapCompoundSuffix(alkylName, "sulfinyl");
                     }
                 } else if (nZ == 16 && sulfoneSulfurs.count(nei)) {
                     int alkylNei = -1;
@@ -1439,7 +1478,7 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                     if (alkylNei != -1) {
                         QString alkylName = nameAcyclicChainParentWithSubstituents(g, {alkylNei}, {alkylNei}, {nei}, {}, GroupType::NONE, -1);
                         if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allIndependentRings, combinedForbidden);
-                        if (!alkylName.isEmpty()) subName = wrapChalcogenSuffix(alkylName, "sulfonyl");
+                        if (!alkylName.isEmpty()) subName = wrapCompoundSuffix(alkylName, "sulfonyl");
                     }
                 } else if (nZ == 34 && selenoetherSeleniums.count(nei)) {
                     int alkylNei = -1;
@@ -1448,7 +1487,7 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                     }
                     if (alkylNei != -1) {
                         QString alkylName = nameBranchGraph(g, alkylNei, nei, allIndependentRings, combinedForbidden);
-                        if (!alkylName.isEmpty()) subName = wrapChalcogenSuffix(alkylName, "selanyl");
+                        if (!alkylName.isEmpty()) subName = wrapCompoundSuffix(alkylName, "selanyl");
                     }
                 } else if (nZ == 34 && selenoxideSeleniums.count(nei)) {
                     int alkylNei = -1;
@@ -1458,7 +1497,7 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                     if (alkylNei != -1) {
                         QString alkylName = nameAcyclicChainParentWithSubstituents(g, {alkylNei}, {alkylNei}, {nei}, {}, GroupType::NONE, -1);
                         if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allIndependentRings, combinedForbidden);
-                        if (!alkylName.isEmpty()) subName = wrapChalcogenSuffix(alkylName, "seleninyl");
+                        if (!alkylName.isEmpty()) subName = wrapCompoundSuffix(alkylName, "seleninyl");
                     }
                 } else if (nZ == 34 && selenoneSeleniums.count(nei)) {
                     int alkylNei = -1;
@@ -1468,7 +1507,7 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                     if (alkylNei != -1) {
                         QString alkylName = nameAcyclicChainParentWithSubstituents(g, {alkylNei}, {alkylNei}, {nei}, {}, GroupType::NONE, -1);
                         if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allIndependentRings, combinedForbidden);
-                        if (!alkylName.isEmpty()) subName = wrapChalcogenSuffix(alkylName, "selenonyl");
+                        if (!alkylName.isEmpty()) subName = wrapCompoundSuffix(alkylName, "selenonyl");
                     }
                 } else if (nZ == 52 && telluroetherTelluriums.count(nei)) {
                     int alkylNei = -1;
@@ -1477,7 +1516,7 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                     }
                     if (alkylNei != -1) {
                         QString alkylName = nameBranchGraph(g, alkylNei, nei, allIndependentRings, combinedForbidden);
-                        if (!alkylName.isEmpty()) subName = wrapChalcogenSuffix(alkylName, "tellanyl");
+                        if (!alkylName.isEmpty()) subName = wrapCompoundSuffix(alkylName, "tellanyl");
                     }
                 } else if (nZ == 52 && telluroxideTelluriums.count(nei)) {
                     int alkylNei = -1;
@@ -1487,7 +1526,7 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                     if (alkylNei != -1) {
                         QString alkylName = nameAcyclicChainParentWithSubstituents(g, {alkylNei}, {alkylNei}, {nei}, {}, GroupType::NONE, -1);
                         if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allIndependentRings, combinedForbidden);
-                        if (!alkylName.isEmpty()) subName = wrapChalcogenSuffix(alkylName, "tellurinyl");
+                        if (!alkylName.isEmpty()) subName = wrapCompoundSuffix(alkylName, "tellurinyl");
                     }
                 } else if (nZ == 52 && telluroneTelluriums.count(nei)) {
                     int alkylNei = -1;
@@ -1497,7 +1536,7 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                     if (alkylNei != -1) {
                         QString alkylName = nameAcyclicChainParentWithSubstituents(g, {alkylNei}, {alkylNei}, {nei}, {}, GroupType::NONE, -1);
                         if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allIndependentRings, combinedForbidden);
-                        if (!alkylName.isEmpty()) subName = wrapChalcogenSuffix(alkylName, "telluronyl");
+                        if (!alkylName.isEmpty()) subName = wrapCompoundSuffix(alkylName, "telluronyl");
                     }
                 } else if (nZ == 6) {
                     int dblO = 0, sglO_OH = 0;
@@ -9664,7 +9703,10 @@ IupacResult IupacNamer::generateName(int mol) {
                         } else if (isNitrosoNitrogen(nei, rNode, g)) {
                             subName = "nitroso";
                         } else if (!isAzide && order == 1 && winningType != GroupType::AMINE) {
-                            if (isHydrazinylNitrogen(nei, rNode, g)) {
+                            QString amidoName = tryNameAmidoSubstituent(nei, rNode, g, allSSSRRings);
+                            if (!amidoName.isEmpty()) {
+                                subName = amidoName;
+                            } else if (isHydrazinylNitrogen(nei, rNode, g)) {
                                 subName = "hydrazinyl";
                             } else {
                                 subName = "amino";
@@ -9697,7 +9739,7 @@ IupacResult IupacNamer::generateName(int mol) {
                                 }
                                 if (alkylNei != -1) {
                                     QString alkylName = nameBranchGraph(g, alkylNei, nei);
-                                    subName = wrapChalcogenSuffix(alkylName, "sulfanyl");
+                                    subName = wrapCompoundSuffix(alkylName, "sulfanyl");
                                 }
                             } else if (sulfoxideSulfurs.count(nei)) {
                                 int alkylNei = -1;
@@ -9707,7 +9749,7 @@ IupacResult IupacNamer::generateName(int mol) {
                                 if (alkylNei != -1) {
                                     QString alkylName = nameAcyclicChainParentWithSubstituents(g, {alkylNei}, {alkylNei}, {nei}, {}, GroupType::NONE);
                                     if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
-                                    if (!alkylName.isEmpty()) subName = wrapChalcogenSuffix(alkylName, "sulfinyl");
+                                    if (!alkylName.isEmpty()) subName = wrapCompoundSuffix(alkylName, "sulfinyl");
                                 }
                             } else if (sulfoneSulfurs.count(nei)) {
                                 int alkylNei = -1;
@@ -9717,7 +9759,7 @@ IupacResult IupacNamer::generateName(int mol) {
                                 if (alkylNei != -1) {
                                     QString alkylName = nameAcyclicChainParentWithSubstituents(g, {alkylNei}, {alkylNei}, {nei}, {}, GroupType::NONE);
                                     if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
-                                    if (!alkylName.isEmpty()) subName = wrapChalcogenSuffix(alkylName, "sulfonyl");
+                                    if (!alkylName.isEmpty()) subName = wrapCompoundSuffix(alkylName, "sulfonyl");
                                 }
                             }
                         }
@@ -9732,7 +9774,7 @@ IupacResult IupacNamer::generateName(int mol) {
                                 }
                                 if (alkylNei != -1) {
                                     QString alkylName = nameBranchGraph(g, alkylNei, nei);
-                                    subName = wrapChalcogenSuffix(alkylName, "selanyl");
+                                    subName = wrapCompoundSuffix(alkylName, "selanyl");
                                 }
                             } else if (selenoxideSeleniums.count(nei)) {
                                 int alkylNei = -1;
@@ -9742,7 +9784,7 @@ IupacResult IupacNamer::generateName(int mol) {
                                 if (alkylNei != -1) {
                                     QString alkylName = nameAcyclicChainParentWithSubstituents(g, {alkylNei}, {alkylNei}, {nei}, {}, GroupType::NONE);
                                     if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
-                                    if (!alkylName.isEmpty()) subName = wrapChalcogenSuffix(alkylName, "seleninyl");
+                                    if (!alkylName.isEmpty()) subName = wrapCompoundSuffix(alkylName, "seleninyl");
                                 }
                             } else if (selenoneSeleniums.count(nei)) {
                                 int alkylNei = -1;
@@ -9752,7 +9794,7 @@ IupacResult IupacNamer::generateName(int mol) {
                                 if (alkylNei != -1) {
                                     QString alkylName = nameAcyclicChainParentWithSubstituents(g, {alkylNei}, {alkylNei}, {nei}, {}, GroupType::NONE);
                                     if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
-                                    if (!alkylName.isEmpty()) subName = wrapChalcogenSuffix(alkylName, "selenonyl");
+                                    if (!alkylName.isEmpty()) subName = wrapCompoundSuffix(alkylName, "selenonyl");
                                 }
                             }
                         }
@@ -9767,7 +9809,7 @@ IupacResult IupacNamer::generateName(int mol) {
                                 }
                                 if (alkylNei != -1) {
                                     QString alkylName = nameBranchGraph(g, alkylNei, nei);
-                                    subName = wrapChalcogenSuffix(alkylName, "tellanyl");
+                                    subName = wrapCompoundSuffix(alkylName, "tellanyl");
                                 }
                             } else if (telluroxideTelluriums.count(nei)) {
                                 int alkylNei = -1;
@@ -9777,7 +9819,7 @@ IupacResult IupacNamer::generateName(int mol) {
                                 if (alkylNei != -1) {
                                     QString alkylName = nameAcyclicChainParentWithSubstituents(g, {alkylNei}, {alkylNei}, {nei}, {}, GroupType::NONE);
                                     if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
-                                    if (!alkylName.isEmpty()) subName = wrapChalcogenSuffix(alkylName, "tellurinyl");
+                                    if (!alkylName.isEmpty()) subName = wrapCompoundSuffix(alkylName, "tellurinyl");
                                 }
                             } else if (telluroneTelluriums.count(nei)) {
                                 int alkylNei = -1;
@@ -9787,7 +9829,7 @@ IupacResult IupacNamer::generateName(int mol) {
                                 if (alkylNei != -1) {
                                     QString alkylName = nameAcyclicChainParentWithSubstituents(g, {alkylNei}, {alkylNei}, {nei}, {}, GroupType::NONE);
                                     if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
-                                    if (!alkylName.isEmpty()) subName = wrapChalcogenSuffix(alkylName, "telluronyl");
+                                    if (!alkylName.isEmpty()) subName = wrapCompoundSuffix(alkylName, "telluronyl");
                                 }
                             }
                         }
@@ -11089,7 +11131,10 @@ IupacResult IupacNamer::generateName(int mol) {
                     } else if (isNitrosoNitrogen(nei, rNode, g)) {
                         subName = "nitroso";
                     } else if (!isAzide && order == 1 && winningType != GroupType::AMINE) {
-                        if (isHydrazinylNitrogen(nei, rNode, g)) {
+                        QString amidoName = tryNameAmidoSubstituent(nei, rNode, g, allSSSRRings);
+                        if (!amidoName.isEmpty()) {
+                            subName = amidoName;
+                        } else if (isHydrazinylNitrogen(nei, rNode, g)) {
                             subName = "hydrazinyl";
                         } else {
                             subName = "amino";
@@ -11122,7 +11167,7 @@ IupacResult IupacNamer::generateName(int mol) {
                             }
                             if (alkylNei != -1) {
                                 QString alkylName = nameBranchGraph(g, alkylNei, nei);
-                                subName = wrapChalcogenSuffix(alkylName, "sulfanyl");
+                                subName = wrapCompoundSuffix(alkylName, "sulfanyl");
                             }
                         } else if (sulfoxideSulfurs.count(nei)) {
                             int alkylNei = -1;
@@ -11132,7 +11177,7 @@ IupacResult IupacNamer::generateName(int mol) {
                             if (alkylNei != -1) {
                                 QString alkylName = nameAcyclicChainParentWithSubstituents(g, {alkylNei}, {alkylNei}, {nei}, {}, GroupType::NONE);
                                 if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
-                                if (!alkylName.isEmpty()) subName = wrapChalcogenSuffix(alkylName, "sulfinyl");
+                                if (!alkylName.isEmpty()) subName = wrapCompoundSuffix(alkylName, "sulfinyl");
                             }
                         } else if (sulfoneSulfurs.count(nei)) {
                             int alkylNei = -1;
@@ -11142,7 +11187,7 @@ IupacResult IupacNamer::generateName(int mol) {
                             if (alkylNei != -1) {
                                 QString alkylName = nameAcyclicChainParentWithSubstituents(g, {alkylNei}, {alkylNei}, {nei}, {}, GroupType::NONE);
                                 if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
-                                if (!alkylName.isEmpty()) subName = wrapChalcogenSuffix(alkylName, "sulfonyl");
+                                if (!alkylName.isEmpty()) subName = wrapCompoundSuffix(alkylName, "sulfonyl");
                             }
                         }
                     }
@@ -11157,7 +11202,7 @@ IupacResult IupacNamer::generateName(int mol) {
                             }
                             if (alkylNei != -1) {
                                 QString alkylName = nameBranchGraph(g, alkylNei, nei);
-                                subName = wrapChalcogenSuffix(alkylName, "selanyl");
+                                subName = wrapCompoundSuffix(alkylName, "selanyl");
                             }
                         } else if (selenoxideSeleniums.count(nei)) {
                             int alkylNei = -1;
@@ -11167,7 +11212,7 @@ IupacResult IupacNamer::generateName(int mol) {
                             if (alkylNei != -1) {
                                 QString alkylName = nameAcyclicChainParentWithSubstituents(g, {alkylNei}, {alkylNei}, {nei}, {}, GroupType::NONE);
                                 if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
-                                if (!alkylName.isEmpty()) subName = wrapChalcogenSuffix(alkylName, "seleninyl");
+                                if (!alkylName.isEmpty()) subName = wrapCompoundSuffix(alkylName, "seleninyl");
                             }
                         } else if (selenoneSeleniums.count(nei)) {
                             int alkylNei = -1;
@@ -11177,7 +11222,7 @@ IupacResult IupacNamer::generateName(int mol) {
                             if (alkylNei != -1) {
                                 QString alkylName = nameAcyclicChainParentWithSubstituents(g, {alkylNei}, {alkylNei}, {nei}, {}, GroupType::NONE);
                                 if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
-                                if (!alkylName.isEmpty()) subName = wrapChalcogenSuffix(alkylName, "selenonyl");
+                                if (!alkylName.isEmpty()) subName = wrapCompoundSuffix(alkylName, "selenonyl");
                             }
                         }
                     }
@@ -11192,7 +11237,7 @@ IupacResult IupacNamer::generateName(int mol) {
                             }
                             if (alkylNei != -1) {
                                 QString alkylName = nameBranchGraph(g, alkylNei, nei);
-                                subName = wrapChalcogenSuffix(alkylName, "tellanyl");
+                                subName = wrapCompoundSuffix(alkylName, "tellanyl");
                             }
                         } else if (telluroxideTelluriums.count(nei)) {
                             int alkylNei = -1;
@@ -11202,7 +11247,7 @@ IupacResult IupacNamer::generateName(int mol) {
                             if (alkylNei != -1) {
                                 QString alkylName = nameAcyclicChainParentWithSubstituents(g, {alkylNei}, {alkylNei}, {nei}, {}, GroupType::NONE);
                                 if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
-                                if (!alkylName.isEmpty()) subName = wrapChalcogenSuffix(alkylName, "tellurinyl");
+                                if (!alkylName.isEmpty()) subName = wrapCompoundSuffix(alkylName, "tellurinyl");
                             }
                         } else if (telluroneTelluriums.count(nei)) {
                             int alkylNei = -1;
@@ -11212,7 +11257,7 @@ IupacResult IupacNamer::generateName(int mol) {
                             if (alkylNei != -1) {
                                 QString alkylName = nameAcyclicChainParentWithSubstituents(g, {alkylNei}, {alkylNei}, {nei}, {}, GroupType::NONE);
                                 if (alkylName.isEmpty()) alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
-                                if (!alkylName.isEmpty()) subName = wrapChalcogenSuffix(alkylName, "telluronyl");
+                                if (!alkylName.isEmpty()) subName = wrapCompoundSuffix(alkylName, "telluronyl");
                             }
                         }
                     }
