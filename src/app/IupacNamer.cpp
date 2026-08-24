@@ -160,6 +160,30 @@ bool isNitrosoNitrogen(int nNode, int fromCarbon, const Graph &g) {
     return false;
 }
 
+// Structural check for an azide nitrogen (-N=N=N, terminal charges not checked)
+// singly bonded to `fromNode`. Mirrors the carbonAzide pre-scan detection.
+bool isAzideNitrogen(int nNode, int fromNode, const Graph &g) {
+    const GraphNode &n = g.nodes[nNode];
+    if (n.totalH != 0 || n.neighbors.size() != 2) return false;
+    int midN = -1;
+    for (size_t j = 0; j < n.neighbors.size(); ++j) {
+        int nei = n.neighbors[j];
+        if (nei != fromNode && g.nodes[nei].atomicNumber == 7 && n.bondOrders[j] == 2) {
+            midN = nei;
+        }
+    }
+    if (midN == -1 || g.nodes[midN].totalH != 0 || g.nodes[midN].neighbors.size() != 2) return false;
+    const GraphNode &mNode = g.nodes[midN];
+    int termN = -1;
+    for (size_t k = 0; k < mNode.neighbors.size(); ++k) {
+        int mNei = mNode.neighbors[k];
+        if (mNei != nNode && g.nodes[mNei].atomicNumber == 7 && mNode.bondOrders[k] == 2) {
+            termN = mNei;
+        }
+    }
+    return termN != -1 && g.nodes[termN].neighbors.size() == 1 && g.nodes[termN].totalH == 0;
+}
+
 // Structural check for a nitro nitrogen (-NO2) singly bonded to `fromCarbon`
 bool isNitroNitrogen(int nNode, int fromCarbon, const Graph &g) {
     const GraphNode &n = g.nodes[nNode];
@@ -1410,6 +1434,14 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                     } else {
                         subName = "hydroxy";
                     }
+                } else if (nZ == 7 && order == 1 && isAzideNitrogen(nei, rNode, g)) {
+                    subName = "azido";
+                } else if (nZ == 7 && order == 1 && isIsocyanateNitrogen(nei, rNode, g)) {
+                    subName = "isocyanato";
+                } else if (nZ == 7 && order == 1 && isNitroNitrogen(nei, rNode, g)) {
+                    subName = "nitro";
+                } else if (nZ == 7 && order == 1 && isNitrosoNitrogen(nei, rNode, g)) {
+                    subName = "nitroso";
                 } else if (nZ == 7 && order == 1) {
                     int cAcyl = -1;
                     for (int nNei : g.nodes[nei].neighbors) {

@@ -64,6 +64,10 @@ int main() {
         {"OS(=O)(=O)c1ccc(SCCCl)cc1", "4-[(2-chloroethyl)sulfanyl]benzene-1-sulfonic acid"},
         {"OC(=O)CCC1CCC(NC(=O)CCCl)CC1", "3-{4-[(2-chloroethyl)amido]cyclohexyl}propanoic acid"},
         {"OS(=O)(=O)c1ccc(NC(=O)CCCl)cc1", "4-[(2-chloroethyl)amido]benzene-1-sulfonic acid"},
+        {"OC(=O)CCC1CCC([N+](=O)[O-])CC1", "3-(4-nitrocyclohexyl)propanoic acid"},
+        {"OC(=O)CCC1CCC(N=O)CC1", "3-(4-nitrosocyclohexyl)propanoic acid"},
+        {"OC(=O)CCC1CCC(N=C=O)CC1", "3-(4-isocyanatocyclohexyl)propanoic acid"},
+        {"OC(=O)CCC1CCC(N=[N+]=[N-])CC1", "3-(4-azidocyclohexyl)propanoic acid"},
 
         // Phosphinic acid
         {"CCP(=O)(O)CC", "diethylphosphinic acid"},
