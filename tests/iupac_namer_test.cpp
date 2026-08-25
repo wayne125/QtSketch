@@ -70,6 +70,10 @@ int main() {
         {"OC(=O)CCC1CCC(N=[N+]=[N-])CC1", "3-(4-azidocyclohexyl)propanoic acid"},
         {"OC(=O)CCC1CCC(=N)CC1", "3-(4-iminocyclohexyl)propanoic acid"},
         {"OC(=O)CCC1CCC(=O)CC1", "3-(4-oxocyclohexyl)propanoic acid"},
+        {"CC(NC(=O)C)C(=O)O", "2-ethanamidopropanoic acid"},
+        {"CC(NC=O)C(=O)O", "", true, "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."},
+        {"CC(NC(=O)CC)C(=O)O", "2-propanamidopropanoic acid"},
+        {"CC(NC(=O)CCCCC)C(=O)O", "2-hexanamidopropanoic acid"},
 
         // Phosphinic acid
         {"CCP(=O)(O)CC", "diethylphosphinic acid"},

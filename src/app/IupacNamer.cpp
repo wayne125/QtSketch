@@ -1066,6 +1066,35 @@ QString wrapCompoundSuffix(QString name, const QString &suffix) {
     return name + suffix;
 }
 
+// Counts the length of a plain, unbranched, saturated, all-carbon chain
+// starting at `startNode` and walking away from `fromNode`. Returns 0 if
+// `startNode` itself is not carbon, or -1 if the chain branches, contains a
+// heteroatom, or has a double/triple bond anywhere along it (i.e. it is not a
+// simple substituent name like "methyl"/"ethyl"/"propyl").
+int countPlainAlkylChain(int startNode, int fromNode, const Graph &g) {
+    if (g.nodes[startNode].atomicNumber != 6) return 0;
+    int count = 0;
+    int prev = fromNode;
+    int cur = startNode;
+    while (true) {
+        const GraphNode &node = g.nodes[cur];
+        if (node.atomicNumber != 6) return -1;
+        int nextNode = -1;
+        for (size_t k = 0; k < node.neighbors.size(); ++k) {
+            int nei = node.neighbors[k];
+            if (nei == prev) continue;
+            if (node.bondOrders[k] != 1) return -1;
+            if (g.nodes[nei].atomicNumber == 1) continue;
+            if (nextNode != -1) return -1; // branching
+            nextNode = nei;
+        }
+        ++count;
+        if (nextNode == -1) return count; // terminal carbon reached
+        prev = cur;
+        cur = nextNode;
+    }
+}
+
 // Structural check + construction for an N-acyl "amido" substituent (-NH-CO-R)
 // singly bonded to `fromNode`. Returns an empty string if `nNode` is not an
 // unsubstituted N-acyl nitrogen. Mirrors the equivalent logic already used
@@ -1093,14 +1122,16 @@ QString tryNameAmidoSubstituent(int nNode, int fromNode, const Graph &g,
         }
     }
     if (rGroup == -1) return "";
+    int chainLen = countPlainAlkylChain(rGroup, cAcyl, g);
+    if (chainLen > 0) {
+        QString stem = chainRoot(chainLen + 1);
+        if (!stem.isEmpty()) return stem + "anamido";
+    }
     QString rName = nameBranchGraph(g, rGroup, cAcyl, allIndependentRings);
     if (rName.isEmpty()) return "";
     if (rName.endsWith("phenyl")) {
         rName.chop(6);
         return rName + "benzamido";
-    } else if (rName.endsWith("yl")) {
-        rName.chop(2);
-        return rName + "amido";
     }
     return wrapCompoundSuffix(rName, "amido");
 }
@@ -1447,39 +1478,7 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                 } else if (nZ == 7 && order == 1 && isNitrosoNitrogen(nei, rNode, g)) {
                     subName = "nitroso";
                 } else if (nZ == 7 && order == 1) {
-                    int cAcyl = -1;
-                    for (int nNei : g.nodes[nei].neighbors) {
-                        if (nNei != rNode && g.nodes[nNei].atomicNumber == 6) {
-                            for (size_t k = 0; k < g.nodes[nNei].neighbors.size(); ++k) {
-                                int cNei = g.nodes[nNei].neighbors[k];
-                                if (g.nodes[cNei].atomicNumber == 8 && g.nodes[nNei].bondOrders[k] == 2) {
-                                    cAcyl = nNei; break;
-                                }
-                            }
-                        }
-                    }
-                    if (cAcyl != -1) {
-                        int rGroup = -1;
-                        for (int aNei : g.nodes[cAcyl].neighbors) {
-                            if (aNei != nei && g.nodes[aNei].atomicNumber != 8) {
-                                rGroup = aNei; break;
-                            }
-                        }
-                        if (rGroup != -1) {
-                            QString rName = nameBranchGraph(g, rGroup, cAcyl, allIndependentRings);
-                            if (!rName.isEmpty()) {
-                                if (rName.endsWith("phenyl")) {
-                                    rName.chop(6);
-                                    subName = rName + "benzamido";
-                                } else if (rName.endsWith("yl")) {
-                                    rName.chop(2);
-                                    subName = rName + "amido";
-                                } else {
-                                    subName = wrapCompoundSuffix(rName, "amido");
-                                }
-                            }
-                        }
-                    }
+                    subName = tryNameAmidoSubstituent(nei, rNode, g, allIndependentRings);
                     if (subName.isEmpty()) {
                         if (isHydrazinylNitrogen(nei, rNode, g)) {
                             subName = "hydrazinyl";
@@ -1927,6 +1926,11 @@ QString nameBranchGraph(const Graph &g, int rootIdx, int parentIdx, const std::v
                 }
             }
             if (rGroup != -1) {
+                int chainLen = countPlainAlkylChain(rGroup, cAcyl, g);
+                if (chainLen > 0) {
+                    QString stem = chainRoot(chainLen + 1);
+                    if (!stem.isEmpty()) return stem + "anamido";
+                }
                 QString rName = nameBranchGraph(g, rGroup, cAcyl, allIndependentRings, forbiddenNodes);
                 if (!rName.isEmpty()) {
                     QString cleanName = rName;
@@ -5482,6 +5486,11 @@ IupacResult IupacNamer::generateName(int mol) {
                                 }
                             }
                             if (rGroup != -1) {
+                                int chainLen = countPlainAlkylChain(rGroup, cAcyl, g);
+                                QString stem = chainLen > 0 ? chainRoot(chainLen + 1) : QString();
+                                if (!stem.isEmpty()) {
+                                    locantSubstituents[locant].append(stem + "anamido");
+                                } else {
                                 QString rName = nameBranchGraph(g, rGroup, cAcyl, allSSSRRings);
                                 if (!rName.isEmpty()) {
                                     QString cleanName = rName;
@@ -5506,6 +5515,7 @@ IupacResult IupacNamer::generateName(int mol) {
                                         QString aName = cleanName + "amido";
                                         locantSubstituents[locant].append(cleanName.isEmpty() ? aName : ("(" + aName + ")"));
                                     }
+                                }
                                 }
                             }
                         } else {
