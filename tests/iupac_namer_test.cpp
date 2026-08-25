@@ -74,6 +74,8 @@ int main() {
         {"CC(NC=O)C(=O)O", "", true, "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."},
         {"CC(NC(=O)CC)C(=O)O", "2-propanamidopropanoic acid"},
         {"CC(NC(=O)CCCCC)C(=O)O", "2-hexanamidopropanoic acid"},
+        {"OC(=O)CCC1CCC(B(C)O)CC1", "3-{4-[hydroxy(methyl)boranyl]cyclohexyl}propanoic acid"},
+        {"OS(=O)(=O)c1ccc(B(C)O)cc1", "4-[hydroxy(methyl)boranyl]benzene-1-sulfonic acid"},
 
         // Phosphinic acid
         {"CCP(=O)(O)CC", "diethylphosphinic acid"},

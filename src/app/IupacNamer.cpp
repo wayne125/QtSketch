@@ -1066,6 +1066,16 @@ QString wrapCompoundSuffix(QString name, const QString &suffix) {
     return name + suffix;
 }
 
+// Builds the "hydroxy(R)boranyl" borinic-acid substituent prefix (P-68.1.4.1,
+// preferred prefix e.g. "hydroxy(methyl)boranyl"), pre-wrapped in its own
+// enclosure since the name always contains an internal paren pair around R.
+QString wrapBorinicSubstituent(QString otherName) {
+    if ((otherName.startsWith("(") && otherName.endsWith(")")) || (otherName.startsWith("[") && otherName.endsWith("]"))) {
+        otherName = otherName.mid(1, otherName.length() - 2);
+    }
+    return "[hydroxy(" + otherName + ")boranyl]";
+}
+
 // Counts the length of a plain, unbranched, saturated, all-carbon chain
 // starting at `startNode` and walking away from `fromNode`. Returns 0 if
 // `startNode` itself is not carbon, or -1 if the chain branches, contains a
@@ -1612,15 +1622,25 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                     }
                 } else if (nZ == 5) {
                     int sglO_OH = 0;
+                    int otherSub = -1;
                     for (size_t k = 0; k < g.nodes[nei].neighbors.size(); ++k) {
                         int nn = g.nodes[nei].neighbors[k];
                         if (nn == rNode) continue;
                         int z = g.nodes[nn].atomicNumber;
                         int ord = g.nodes[nei].bondOrders[k];
                         if (z == 8 && ord == 1 && (g.nodes[nn].totalH >= 1 || g.nodes[nn].neighbors.size() == 1)) sglO_OH++;
+                        else if (ord == 1) otherSub = nn;
                     }
                     if (g.nodes[nei].neighbors.size() == 3 && sglO_OH == 2) {
                         subName = "borono";
+                    } else if (g.nodes[nei].neighbors.size() == 3 && sglO_OH == 1 && otherSub != -1) {
+                        int oz = g.nodes[otherSub].atomicNumber;
+                        QString otherName = (oz == 9 || oz == 17 || oz == 35 || oz == 53)
+                            ? halogenPrefix(oz)
+                            : nameBranchGraph(g, otherSub, nei, allIndependentRings, combinedForbidden);
+                        if (!otherName.isEmpty()) {
+                            subName = wrapBorinicSubstituent(otherName);
+                        }
                     }
                     if (subName.isEmpty()) {
                         subName = nameBranchGraph(g, nei, rNode, allIndependentRings, combinedForbidden);
@@ -9894,6 +9914,24 @@ IupacResult IupacNamer::generateName(int mol) {
                     } else if (nz == 5) {
                         if (carbonBoronicAcid.count(rNode) && carbonBoronicAcid[rNode] == nei && winningType != GroupType::BORONIC_ACID) {
                             subName = "borono";
+                        } else if (carbonBorinicAcid.count(rNode) && carbonBorinicAcid[rNode] == nei && winningType != GroupType::BORINIC_ACID) {
+                            int otherSub = -1;
+                            for (size_t k = 0; k < g.nodes[nei].neighbors.size(); ++k) {
+                                int nn = g.nodes[nei].neighbors[k];
+                                if (nn == rNode) continue;
+                                if (g.nodes[nn].atomicNumber == 8) continue;
+                                otherSub = nn;
+                                break;
+                            }
+                            if (otherSub != -1) {
+                                int oz = g.nodes[otherSub].atomicNumber;
+                                QString otherName = (oz == 9 || oz == 17 || oz == 35 || oz == 53)
+                                    ? halogenPrefix(oz)
+                                    : nameBranchGraph(g, otherSub, nei, allSSSRRings);
+                                if (!otherName.isEmpty()) {
+                                    subName = wrapBorinicSubstituent(otherName);
+                                }
+                            }
                         }
                     } else if (nz == 6) {
                         if (carbonGroup.count(nei) && winningType != carbonGroup[nei]) {
@@ -11322,6 +11360,24 @@ IupacResult IupacNamer::generateName(int mol) {
                 } else if (nz == 5) {
                     if (carbonBoronicAcid.count(rNode) && carbonBoronicAcid[rNode] == nei && winningType != GroupType::BORONIC_ACID) {
                         subName = "borono";
+                    } else if (carbonBorinicAcid.count(rNode) && carbonBorinicAcid[rNode] == nei && winningType != GroupType::BORINIC_ACID) {
+                        int otherSub = -1;
+                        for (size_t k = 0; k < g.nodes[nei].neighbors.size(); ++k) {
+                            int nn = g.nodes[nei].neighbors[k];
+                            if (nn == rNode) continue;
+                            if (g.nodes[nn].atomicNumber == 8) continue;
+                            otherSub = nn;
+                            break;
+                        }
+                        if (otherSub != -1) {
+                            int oz = g.nodes[otherSub].atomicNumber;
+                            QString otherName = (oz == 9 || oz == 17 || oz == 35 || oz == 53)
+                                ? halogenPrefix(oz)
+                                : nameBranchGraph(g, otherSub, nei, allSSSRRings);
+                            if (!otherName.isEmpty()) {
+                                subName = wrapBorinicSubstituent(otherName);
+                            }
+                        }
                     }
                 } else if (nz == 6) {
                     if (carbonGroup.count(nei) && winningType != carbonGroup[nei]) {
