@@ -1691,6 +1691,23 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                     subName = "sulfamoyl";
                 } else if (nZ == 16 && carbonSulfinamide.count(rNode) && carbonSulfinamide.at(rNode) == nei) {
                     subName = "sulfinamoyl";
+                } else if (nZ == 16) {
+                    int dblO = 0, sglO_OH = 0;
+                    for (size_t k = 0; k < g.nodes[nei].neighbors.size(); ++k) {
+                        int nn = g.nodes[nei].neighbors[k];
+                        if (nn == rNode) continue;
+                        int z = g.nodes[nn].atomicNumber;
+                        int ord = g.nodes[nei].bondOrders[k];
+                        if (z == 8 && ord == 2) dblO++;
+                        else if (z == 8 && ord == 1 && (g.nodes[nn].totalH >= 1 || g.nodes[nn].neighbors.size() == 1)) sglO_OH++;
+                    }
+                    if (g.nodes[nei].neighbors.size() == 4 && dblO == 2 && sglO_OH == 1) {
+                        subName = "sulfo";
+                    } else if (g.nodes[nei].neighbors.size() == 3 && dblO == 1 && sglO_OH == 1) {
+                        subName = "sulfino";
+                    } else {
+                        subName = nameBranchGraph(g, nei, rNode, allIndependentRings, combinedForbidden);
+                    }
                 } else {
                     subName = nameBranchGraph(g, nei, rNode, allIndependentRings, combinedForbidden);
                 }
@@ -4895,7 +4912,7 @@ IupacResult IupacNamer::generateName(int mol) {
 
         GroupType winningType = GroupType::NONE;
         static const GroupType seniorityOrder[] = {
-            GroupType::SULFONIC_ACID, GroupType::SULFINIC_ACID, GroupType::SULFINAMIDE, GroupType::SULFINYL_HALIDE, GroupType::ACID, GroupType::PHOSPHONIC_ACID, GroupType::PHOSPHINIC_ACID, GroupType::PHOSPHONIC_DIHALIDE, GroupType::ARSONIC_ACID, GroupType::ARSINIC_ACID, GroupType::ARSONIC_DIHALIDE, GroupType::BORONIC_ACID, GroupType::BORINIC_ACID, GroupType::ESTER, GroupType::ACYL_HALIDE, GroupType::SULFONYL_HALIDE, GroupType::SULFONAMIDE, GroupType::AMIDE, GroupType::THIOAMIDE, GroupType::HYDRAZIDE, GroupType::NITRILE,
+            GroupType::ACID, GroupType::SULFONIC_ACID, GroupType::SULFINIC_ACID, GroupType::PHOSPHONIC_ACID, GroupType::PHOSPHINIC_ACID, GroupType::PHOSPHONIC_DIHALIDE, GroupType::ARSONIC_ACID, GroupType::ARSINIC_ACID, GroupType::ARSONIC_DIHALIDE, GroupType::BORONIC_ACID, GroupType::BORINIC_ACID, GroupType::ESTER, GroupType::ACYL_HALIDE, GroupType::SULFONYL_HALIDE, GroupType::SULFINYL_HALIDE, GroupType::AMIDE, GroupType::SULFONAMIDE, GroupType::SULFINAMIDE, GroupType::THIOAMIDE, GroupType::HYDRAZIDE, GroupType::NITRILE,
             GroupType::ALDEHYDE, GroupType::THIAL, GroupType::KETONE, GroupType::THIONE, GroupType::ALCOHOL, GroupType::THIOL, GroupType::SELENOL, GroupType::TELLUROL, GroupType::HYDROPEROXIDE, GroupType::AMINE, GroupType::IMINE, GroupType::PHOSPHINE
         };
 
@@ -9402,24 +9419,24 @@ IupacResult IupacNamer::generateName(int mol) {
 
         auto groupRank = [](GroupType gt) -> int {
             switch (gt) {
-                case GroupType::SULFONIC_ACID: return 1;
-                case GroupType::SULFINIC_ACID: return 2;
-                case GroupType::SULFINAMIDE: return 3;
-                case GroupType::SULFINYL_HALIDE: return 4;
-                case GroupType::ACID: return 5;
-                case GroupType::PHOSPHONIC_ACID: return 6;
-                case GroupType::PHOSPHINIC_ACID: return 7;
-                case GroupType::PHOSPHONIC_DIHALIDE: return 8;
-                case GroupType::ARSONIC_ACID: return 9;
-                case GroupType::ARSINIC_ACID: return 10;
-                case GroupType::ARSONIC_DIHALIDE: return 11;
-                case GroupType::BORONIC_ACID: return 12;
-                case GroupType::BORINIC_ACID: return 13;
-                case GroupType::ESTER: return 14;
-                case GroupType::ACYL_HALIDE: return 15;
-                case GroupType::SULFONYL_HALIDE: return 16;
+                case GroupType::ACID: return 1;
+                case GroupType::SULFONIC_ACID: return 2;
+                case GroupType::SULFINIC_ACID: return 3;
+                case GroupType::PHOSPHONIC_ACID: return 4;
+                case GroupType::PHOSPHINIC_ACID: return 5;
+                case GroupType::PHOSPHONIC_DIHALIDE: return 6;
+                case GroupType::ARSONIC_ACID: return 7;
+                case GroupType::ARSINIC_ACID: return 8;
+                case GroupType::ARSONIC_DIHALIDE: return 9;
+                case GroupType::BORONIC_ACID: return 10;
+                case GroupType::BORINIC_ACID: return 11;
+                case GroupType::ESTER: return 12;
+                case GroupType::ACYL_HALIDE: return 13;
+                case GroupType::SULFONYL_HALIDE: return 14;
+                case GroupType::SULFINYL_HALIDE: return 15;
+                case GroupType::AMIDE: return 16;
                 case GroupType::SULFONAMIDE: return 17;
-                case GroupType::AMIDE: return 18;
+                case GroupType::SULFINAMIDE: return 18;
                 case GroupType::THIOAMIDE: return 19;
                 case GroupType::HYDRAZIDE: return 20;
                 case GroupType::NITRILE: return 21;
@@ -10656,24 +10673,24 @@ IupacResult IupacNamer::generateName(int mol) {
 
     auto groupRank = [](GroupType gt) -> int {
         switch (gt) {
-            case GroupType::SULFONIC_ACID: return 1;
-            case GroupType::SULFINIC_ACID: return 2;
-            case GroupType::SULFINAMIDE: return 3;
-            case GroupType::SULFINYL_HALIDE: return 4;
-            case GroupType::ACID: return 5;
-            case GroupType::PHOSPHONIC_ACID: return 6;
-            case GroupType::PHOSPHINIC_ACID: return 7;
-            case GroupType::PHOSPHONIC_DIHALIDE: return 8;
-            case GroupType::ARSONIC_ACID: return 9;
-            case GroupType::ARSINIC_ACID: return 10;
-            case GroupType::ARSONIC_DIHALIDE: return 11;
-            case GroupType::BORONIC_ACID: return 12;
-            case GroupType::BORINIC_ACID: return 13;
-            case GroupType::ESTER: return 14;
-            case GroupType::ACYL_HALIDE: return 15;
-            case GroupType::SULFONYL_HALIDE: return 16;
+            case GroupType::ACID: return 1;
+            case GroupType::SULFONIC_ACID: return 2;
+            case GroupType::SULFINIC_ACID: return 3;
+            case GroupType::PHOSPHONIC_ACID: return 4;
+            case GroupType::PHOSPHINIC_ACID: return 5;
+            case GroupType::PHOSPHONIC_DIHALIDE: return 6;
+            case GroupType::ARSONIC_ACID: return 7;
+            case GroupType::ARSINIC_ACID: return 8;
+            case GroupType::ARSONIC_DIHALIDE: return 9;
+            case GroupType::BORONIC_ACID: return 10;
+            case GroupType::BORINIC_ACID: return 11;
+            case GroupType::ESTER: return 12;
+            case GroupType::ACYL_HALIDE: return 13;
+            case GroupType::SULFONYL_HALIDE: return 14;
+            case GroupType::SULFINYL_HALIDE: return 15;
+            case GroupType::AMIDE: return 16;
             case GroupType::SULFONAMIDE: return 17;
-            case GroupType::AMIDE: return 18;
+            case GroupType::SULFINAMIDE: return 18;
             case GroupType::THIOAMIDE: return 19;
             case GroupType::HYDRAZIDE: return 20;
             case GroupType::NITRILE: return 21;

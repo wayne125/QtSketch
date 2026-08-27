@@ -76,6 +76,8 @@ int main() {
         {"CC(NC(=O)CCCCC)C(=O)O", "2-hexanamidopropanoic acid"},
         {"OC(=O)CCC1CCC(B(C)O)CC1", "3-{4-[hydroxy(methyl)boranyl]cyclohexyl}propanoic acid"},
         {"OS(=O)(=O)c1ccc(B(C)O)cc1", "4-[hydroxy(methyl)boranyl]benzene-1-sulfonic acid"},
+        {"OC(=O)CCC1CCC(S(=O)(=O)O)CC1", "3-(4-sulfocyclohexyl)propanoic acid"},
+        {"OC(=O)CCC1CCC(S(=O)O)CC1", "3-(4-sulfinocyclohexyl)propanoic acid"},
 
         // Phosphinic acid
         {"CCP(=O)(O)CC", "diethylphosphinic acid"},
@@ -312,7 +314,7 @@ int main() {
         {"CS(=O)Cl", "methanesulfinyl chloride"},
         {"c1ccccc1S(=O)Cl", "benzenesulfinyl chloride"},
         {"CCS(=O)Br", "ethanesulfinyl bromide"},
-        {"OC(=O)CS(=O)(=O)O", "2-carboxyethanesulfonic acid"},
+        {"OC(=O)CS(=O)(=O)O", "2-sulfoethanoic acid"},
         // Phase 62: Phosphonic acid
         {"CP(=O)(O)O", "methanephosphonic acid"},
         {"CP(=O)(Cl)Cl", "methanephosphonic dichloride"},
@@ -517,11 +519,11 @@ int main() {
         {"Cc1ccoc1CC(=O)O", "2-(3-methylfuran-2-yl)ethanoic acid"},
 
         // Phase 16: Ring-as-parent losing ACID, ESTER, ACYL_HALIDE, SULFONIC_ACID, THIOL
-        {"O=S(=O)(O)c1ccc(C(=O)O)cc1", "4-carboxybenzene-1-sulfonic acid"},
-        {"O=S(=O)(O)C1CCC(C(=O)O)CC1", "4-carboxycyclohexane-1-sulfonic acid"},
+        {"O=S(=O)(O)c1ccc(C(=O)O)cc1", "4-sulfobenzenecarboxylic acid"},
+        {"O=S(=O)(O)C1CCC(C(=O)O)CC1", "4-sulfocyclohexanecarboxylic acid"},
         {"COC(=O)C1CCC(C(=O)O)CC1", "4-methoxycarbonylcyclohexanecarboxylic acid"},
         {"ClC(=O)C1CCC(C(=O)O)CC1", "4-chlorocarbonylcyclohexanecarboxylic acid"},
-        {"O=S(=O)(O)c1cccc2c(C(=O)O)cccc12", "5-carboxynaphthalene-1-sulfonic acid"},
+        {"O=S(=O)(O)c1cccc2c(C(=O)O)cccc12", "5-sulfonaphthalene-1-carboxylic acid"},
         {"COC(=O)c1cccc2c(C(=O)O)cccc12", "5-methoxycarbonylnaphthalene-1-carboxylic acid"},
         {"OC1CCCCC1C(=O)O", "2-hydroxycyclohexanecarboxylic acid"},
 
