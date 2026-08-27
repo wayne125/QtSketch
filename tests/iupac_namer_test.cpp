@@ -80,6 +80,7 @@ int main() {
         {"OC(=O)CCC1CCC(S(=O)O)CC1", "3-(4-sulfinocyclohexyl)propanoic acid"},
         {"CCOC(=O)CCC1CCC(P(=O)(Cl)Cl)CC1", "ethyl 3-(4-dichlorophosphorylcyclohexyl)propanoate"},
         {"CCOC(=O)CCC1CCC([As](=O)(Cl)Cl)CC1", "ethyl 3-(4-dichloroarsorylcyclohexyl)propanoate"},
+        {"NC(=S)CCCS(=O)(=O)N", "4-sulfamoylbutanethioamide"},
 
         // Phosphinic acid
         {"CCP(=O)(O)CC", "diethylphosphinic acid"},

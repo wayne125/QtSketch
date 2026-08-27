@@ -4912,7 +4912,7 @@ IupacResult IupacNamer::generateName(int mol) {
 
         GroupType winningType = GroupType::NONE;
         static const GroupType seniorityOrder[] = {
-            GroupType::ACID, GroupType::SULFONIC_ACID, GroupType::SULFINIC_ACID, GroupType::PHOSPHONIC_ACID, GroupType::PHOSPHINIC_ACID, GroupType::ARSONIC_ACID, GroupType::ARSINIC_ACID, GroupType::BORONIC_ACID, GroupType::BORINIC_ACID, GroupType::ESTER, GroupType::ACYL_HALIDE, GroupType::SULFONYL_HALIDE, GroupType::SULFINYL_HALIDE, GroupType::PHOSPHONIC_DIHALIDE, GroupType::ARSONIC_DIHALIDE, GroupType::AMIDE, GroupType::SULFONAMIDE, GroupType::SULFINAMIDE, GroupType::THIOAMIDE, GroupType::HYDRAZIDE, GroupType::NITRILE,
+            GroupType::ACID, GroupType::SULFONIC_ACID, GroupType::SULFINIC_ACID, GroupType::PHOSPHONIC_ACID, GroupType::PHOSPHINIC_ACID, GroupType::ARSONIC_ACID, GroupType::ARSINIC_ACID, GroupType::BORONIC_ACID, GroupType::BORINIC_ACID, GroupType::ESTER, GroupType::ACYL_HALIDE, GroupType::SULFONYL_HALIDE, GroupType::SULFINYL_HALIDE, GroupType::PHOSPHONIC_DIHALIDE, GroupType::ARSONIC_DIHALIDE, GroupType::AMIDE, GroupType::THIOAMIDE, GroupType::SULFONAMIDE, GroupType::SULFINAMIDE, GroupType::HYDRAZIDE, GroupType::NITRILE,
             GroupType::ALDEHYDE, GroupType::THIAL, GroupType::KETONE, GroupType::THIONE, GroupType::ALCOHOL, GroupType::THIOL, GroupType::SELENOL, GroupType::TELLUROL, GroupType::HYDROPEROXIDE, GroupType::AMINE, GroupType::IMINE, GroupType::PHOSPHINE
         };
 
@@ -9435,9 +9435,9 @@ IupacResult IupacNamer::generateName(int mol) {
                 case GroupType::PHOSPHONIC_DIHALIDE: return 14;
                 case GroupType::ARSONIC_DIHALIDE: return 15;
                 case GroupType::AMIDE: return 16;
-                case GroupType::SULFONAMIDE: return 17;
-                case GroupType::SULFINAMIDE: return 18;
-                case GroupType::THIOAMIDE: return 19;
+                case GroupType::THIOAMIDE: return 17;
+                case GroupType::SULFONAMIDE: return 18;
+                case GroupType::SULFINAMIDE: return 19;
                 case GroupType::HYDRAZIDE: return 20;
                 case GroupType::NITRILE: return 21;
                 case GroupType::ALDEHYDE: return 22;
@@ -10689,9 +10689,9 @@ IupacResult IupacNamer::generateName(int mol) {
             case GroupType::PHOSPHONIC_DIHALIDE: return 14;
             case GroupType::ARSONIC_DIHALIDE: return 15;
             case GroupType::AMIDE: return 16;
-            case GroupType::SULFONAMIDE: return 17;
-            case GroupType::SULFINAMIDE: return 18;
-            case GroupType::THIOAMIDE: return 19;
+            case GroupType::THIOAMIDE: return 17;
+            case GroupType::SULFONAMIDE: return 18;
+            case GroupType::SULFINAMIDE: return 19;
             case GroupType::HYDRAZIDE: return 20;
             case GroupType::NITRILE: return 21;
             case GroupType::ALDEHYDE: return 22;
