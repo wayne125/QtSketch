@@ -78,6 +78,8 @@ int main() {
         {"OS(=O)(=O)c1ccc(B(C)O)cc1", "4-[hydroxy(methyl)boranyl]benzene-1-sulfonic acid"},
         {"OC(=O)CCC1CCC(S(=O)(=O)O)CC1", "3-(4-sulfocyclohexyl)propanoic acid"},
         {"OC(=O)CCC1CCC(S(=O)O)CC1", "3-(4-sulfinocyclohexyl)propanoic acid"},
+        {"CCOC(=O)CCC1CCC(P(=O)(Cl)Cl)CC1", "ethyl 3-(4-dichlorophosphorylcyclohexyl)propanoate"},
+        {"CCOC(=O)CCC1CCC([As](=O)(Cl)Cl)CC1", "ethyl 3-(4-dichloroarsorylcyclohexyl)propanoate"},
 
         // Phosphinic acid
         {"CCP(=O)(O)CC", "diethylphosphinic acid"},
