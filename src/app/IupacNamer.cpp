@@ -1584,7 +1584,7 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                         if (!alkylName.isEmpty()) subName = wrapCompoundSuffix(alkylName, "telluronyl");
                     }
                 } else if (nZ == 6) {
-                    int dblO = 0, sglO_OH = 0;
+                    int dblO = 0, dblS = 0, sglO_OH = 0, sglN_NH2 = 0;
                     int halogenZ = -1, alkNode = -1, esterO = -1;
                     std::vector<int> halogens;
                     for (size_t k = 0; k < g.nodes[nei].neighbors.size(); ++k) {
@@ -1593,6 +1593,8 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                         int z = g.nodes[nn].atomicNumber;
                         int ord = g.nodes[nei].bondOrders[k];
                         if (z == 8 && ord == 2) dblO++;
+                        else if (z == 16 && ord == 2) dblS++;
+                        else if (z == 7 && ord == 1 && g.nodes[nn].totalH >= 2) sglN_NH2++;
                         else if (z == 8 && ord == 1) {
                             if (g.nodes[nn].totalH >= 1 || g.nodes[nn].neighbors.size() == 1) sglO_OH++;
                             else {
@@ -1615,8 +1617,12 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                             alkylName += "oxycarbonyl";
                         }
                         subName = alkylName;
+                    } else if (g.nodes[nei].neighbors.size() == 3 && dblO == 1 && sglN_NH2 == 1) {
+                        subName = "carbamoyl";
+                    } else if (g.nodes[nei].neighbors.size() == 3 && dblS == 1 && sglN_NH2 == 1) {
+                        subName = "carbamothioyl";
                     }
-                    
+
                     if (subName.isEmpty()) {
                         subName = nameBranchGraph(g, nei, rNode, allIndependentRings, combinedForbidden);
                     }
@@ -9968,6 +9974,10 @@ IupacResult IupacNamer::generateName(int mol) {
                                     alkylName += "oxycarbonyl";
                                 }
                                 subName = alkylName;
+                            } else if (carbonGroup[nei] == GroupType::AMIDE) {
+                                subName = "carbamoyl";
+                            } else if (carbonGroup[nei] == GroupType::THIOAMIDE) {
+                                subName = "carbamothioyl";
                             }
                         }
                         if (subName.isEmpty()) {
@@ -11414,6 +11424,10 @@ IupacResult IupacNamer::generateName(int mol) {
                                 alkylName += "oxycarbonyl";
                             }
                             subName = alkylName;
+                        } else if (carbonGroup[nei] == GroupType::AMIDE) {
+                            subName = "carbamoyl";
+                        } else if (carbonGroup[nei] == GroupType::THIOAMIDE) {
+                            subName = "carbamothioyl";
                         }
                     }
                     if (subName.isEmpty()) {
