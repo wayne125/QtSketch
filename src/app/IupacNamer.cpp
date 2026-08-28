@@ -3368,6 +3368,7 @@ struct BicyclicEvalResult {
     std::vector<int> lengths;
     int totalCarbons = 0;
     std::vector<NumberingCand> bestCands;
+    std::vector<NumberingCand> allCands;
 };
 
 BicyclicEvalResult evaluateBicyclicSystem(const Graph& g, const std::set<int>& ringUnionNodes, const std::vector<std::pair<int, QString>>& ringSubstituents) {
@@ -3559,6 +3560,7 @@ BicyclicEvalResult evaluateBicyclicSystem(const Graph& g, const std::set<int>& r
                         res.bestCands.push_back(c);
                     }
                 }
+                res.allCands = cands;
                 res.valid = true;
             } else {
                 res.error = "No valid numbering found.";
@@ -6711,47 +6713,144 @@ IupacResult IupacNamer::generateName(int mol) {
                 if (sharedSpiro.size() == 1) {
                     int spiroAtom = sharedSpiro[0];
                     
-                    bool allCarbonAndIsolated = true;
+                    bool validPreconditions = true;
                     for (int i=0; i<g.nodes.size(); ++i) {
-                        if (g.nodes[i].atomicNumber != 6) {
-                            allCarbonAndIsolated = false; break;
+                        if (g.nodes[i].atomicNumber != 6 && hwSeniorityRank(g.nodes[i].atomicNumber) == 99) {
+                            validPreconditions = false; break;
                         }
                         if (!comp1Nodes.count(i) && !comp2Nodes.count(i)) {
-                            allCarbonAndIsolated = false; break;
+                            validPreconditions = false; break;
                         }
                     }
                     
                     for (const auto &gb : g.bonds) {
                         if (gb.order != 1) {
-                            allCarbonAndIsolated = false; break;
+                            validPreconditions = false; break;
                         }
                     }
                     
-                    if (allCarbonAndIsolated) {
+                    if (validPreconditions) {
                         BicyclicEvalResult res1 = evaluateBicyclicSystem(g, comp1Nodes, {});
                         BicyclicEvalResult res2 = evaluateBicyclicSystem(g, comp2Nodes, {});
                         
                         if (res1.valid && res2.valid && res1.lengths == res2.lengths && res1.totalCarbons == res2.totalCarbons) {
-                            int spiroLoc1 = 999999;
-                            for (const auto& c : res1.bestCands) {
-                                auto it = c.locantOf.find(spiroAtom);
-                                if (it != c.locantOf.end()) spiroLoc1 = std::min(spiroLoc1, it->second);
-                            }
-                            int spiroLoc2 = 999999;
-                            for (const auto& c : res2.bestCands) {
-                                auto it = c.locantOf.find(spiroAtom);
-                                if (it != c.locantOf.end()) spiroLoc2 = std::min(spiroLoc2, it->second);
+                            
+                            struct SpiroLocant {
+                                int num;
+                                bool primed;
+                                bool operator<(const SpiroLocant& o) const {
+                                    if (num != o.num) return num < o.num;
+                                    return primed < o.primed;
+                                }
+                                bool operator==(const SpiroLocant& o) const {
+                                    return num == o.num && primed == o.primed;
+                                }
+                                QString toString() const {
+                                    return QString::number(num) + (primed ? "'" : "");
+                                }
+                            };
+                            
+                            struct SpirobiCandidate {
+                                const NumberingCand* cA;
+                                const NumberingCand* cB;
+                                bool comp1IsA;
+                                int spiroA, spiroB;
+                                std::vector<SpiroLocant> hetLocs;
+                                std::vector<SpiroLocant> hetSenLocs;
+                                std::map<int, std::vector<SpiroLocant>> locsByZ;
+
+                                bool operator<(const SpirobiCandidate& o) const {
+                                    if (spiroA != o.spiroA) return spiroA < o.spiroA;
+                                    if (spiroB != o.spiroB) return spiroB < o.spiroB;
+                                    if (hetLocs != o.hetLocs) return hetLocs < o.hetLocs;
+                                    if (hetSenLocs != o.hetSenLocs) return hetSenLocs < o.hetSenLocs;
+                                    return false;
+                                }
+                            };
+                            
+                            std::vector<SpirobiCandidate> spirobiCands;
+                            for (const auto& c1 : res1.allCands) {
+                                for (const auto& c2 : res2.allCands) {
+                                    for (int swap = 0; swap < 2; ++swap) {
+                                        SpirobiCandidate sc;
+                                        sc.comp1IsA = (swap == 0);
+                                        sc.cA = sc.comp1IsA ? &c1 : &c2;
+                                        sc.cB = sc.comp1IsA ? &c2 : &c1;
+                                        const auto& compA_nodes = sc.comp1IsA ? comp1Nodes : comp2Nodes;
+                                        const auto& compB_nodes = sc.comp1IsA ? comp2Nodes : comp1Nodes;
+                                        sc.spiroA = sc.cA->locantOf.at(spiroAtom);
+                                        sc.spiroB = sc.cB->locantOf.at(spiroAtom);
+                                        if (sc.spiroA > sc.spiroB) continue; // Unprimed should be <= primed for spiro locant
+                                        
+                                        auto getLoc = [&](int n) -> SpiroLocant {
+                                            if (n == spiroAtom) return {sc.spiroA, false};
+                                            if (compA_nodes.count(n)) return {sc.cA->locantOf.at(n), false};
+                                            return {sc.cB->locantOf.at(n), true};
+                                        };
+                                        
+                                        for (int n : comp1Nodes) {
+                                            if (g.nodes[n].atomicNumber != 6) {
+                                                SpiroLocant sl = getLoc(n);
+                                                sc.hetLocs.push_back(sl);
+                                                sc.locsByZ[g.nodes[n].atomicNumber].push_back(sl);
+                                            }
+                                        }
+                                        for (int n : comp2Nodes) {
+                                            if (n != spiroAtom && g.nodes[n].atomicNumber != 6) {
+                                                SpiroLocant sl = getLoc(n);
+                                                sc.hetLocs.push_back(sl);
+                                                sc.locsByZ[g.nodes[n].atomicNumber].push_back(sl);
+                                            }
+                                        }
+                                        std::sort(sc.hetLocs.begin(), sc.hetLocs.end());
+                                        std::map<int, std::vector<SpiroLocant>> locsByRank;
+                                        for (auto& kv : sc.locsByZ) {
+                                            locsByRank[hwSeniorityRank(kv.first)] = kv.second;
+                                            std::sort(kv.second.begin(), kv.second.end());
+                                        }
+                                        for (auto& kv : locsByRank) {
+                                            std::sort(kv.second.begin(), kv.second.end());
+                                            for (auto& sl : kv.second) sc.hetSenLocs.push_back(sl);
+                                        }
+                                        spirobiCands.push_back(sc);
+                                    }
+                                }
                             }
                             
-                            if (spiroLoc1 != 999999 && spiroLoc2 != 999999) {
-                                int unprimed = std::min(spiroLoc1, spiroLoc2);
-                                int primed = std::max(spiroLoc1, spiroLoc2);
+                            if (!spirobiCands.empty()) {
+                                auto bestIt = std::min_element(spirobiCands.begin(), spirobiCands.end());
                                 
                                 QString bracket = QString("bicyclo[%1.%2.%3]alkane").arg(res1.lengths[0]).arg(res1.lengths[1]).arg(res1.lengths[2]);
                                 QString root = chainRoot(res1.totalCarbons);
                                 bracket.replace("alkane", root + "ane");
                                 
-                                QString fullName = QString("%1,%2'-spirobi[%3]").arg(unprimed).arg(primed).arg(bracket);
+                                QString prefix = "";
+                                if (!bestIt->locsByZ.empty()) {
+                                    static const int citationOrder[] = {8, 16, 34, 52, 7, 15, 33, 51, 83, 14, 32, 50, 82, 5};
+                                    QStringList chunks;
+                                    for (int z : citationOrder) {
+                                        auto it = bestIt->locsByZ.find(z);
+                                        if (it != bestIt->locsByZ.end()) {
+                                            QStringList locStrs;
+                                            for (const auto& sl : it->second) locStrs.push_back(sl.toString());
+                                            
+                                            QString aPrefix = hwAPrefix(z);
+                                            QString prefixWord;
+                                            if (it->second.size() == 1) {
+                                                prefixWord = aPrefix;
+                                            } else {
+                                                QString mp = multiPrefix(static_cast<int>(it->second.size()));
+                                                if (mp.endsWith('a') && isVowel(aPrefix[0])) mp.chop(1);
+                                                prefixWord = mp + aPrefix;
+                                            }
+                                            
+                                            chunks.push_back(locStrs.join(",") + "-" + prefixWord);
+                                        }
+                                    }
+                                    prefix = chunks.join("-") + "-";
+                                }
+                                
+                                QString fullName = QString("%1%2,%3'-spirobi[%4]").arg(prefix).arg(bestIt->spiroA).arg(bestIt->spiroB).arg(bracket);
                                 return {true, fullName, ""};
                             }
                         }

@@ -3853,6 +3853,36 @@ int main() {
             failed++;
         }
     }
+
+    {
+        // Phase 29: 5,6-dithia-2,2'-spirobi[bicyclo[2.2.2]octane]
+        // Real Blue Book example has exactly 2 sulfurs total, asymmetrically substituted.
+        int m = indigoLoadMoleculeFromString("C12(C(SS3)CCC3C2)C(CC4)CCC4C1");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "5,6-dithia-2,2'-spirobi[bicyclo[2.2.2]octane]") {
+            std::cout << "[PASS] Phase 29 spirobi hetero 1 -> " << r.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Phase 29 spirobi hetero 1 -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Phase 29: 6,6'-dioxa-3,3'-spirobi[bicyclo[3.2.1]octane]
+        int m = indigoLoadMoleculeFromString("C12(CC(CO3)CC3C1)CC(CO4)CC4C2");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "6,6'-dioxa-3,3'-spirobi[bicyclo[3.2.1]octane]") {
+            std::cout << "[PASS] Phase 29 spirobi hetero 2 -> " << r.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Phase 29 spirobi hetero 2 -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
 std::cout << "\nSummary: " << passed << " passed, " << failed << " failed.\n";
     indigoReleaseSessionId(sid);
     return (failed == 0) ? 0 : 1;
