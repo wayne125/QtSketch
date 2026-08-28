@@ -6676,7 +6676,145 @@ IupacResult IupacNamer::generateName(int mol) {
         }
     }
 
-    
+    // --- Phase 29.5: Dispiroter[bicyclo[a.b.c]alkane] (P-24.4.1) ---
+    if (ringCount == 6 && allSSSRRings.size() == 6) {
+        std::vector<std::pair<int, int>> bicyclicPairs;
+        for (int i = 0; i < 6; ++i) {
+            for (int j = i + 1; j < 6; ++j) {
+                int sharedCount = 0;
+                for (int atom : allSSSRRings[i]) {
+                    if (allSSSRRings[j].count(atom)) sharedCount++;
+                }
+                if (sharedCount >= 2) bicyclicPairs.push_back({i, j});
+            }
+        }
+        
+        if (bicyclicPairs.size() == 3) {
+            std::vector<std::set<int>> comps(3);
+            for (int k = 0; k < 3; ++k) {
+                for (int a : allSSSRRings[bicyclicPairs[k].first]) comps[k].insert(a);
+                for (int a : allSSSRRings[bicyclicPairs[k].second]) comps[k].insert(a);
+            }
+            
+            std::set<int> usedRings;
+            for (auto p : bicyclicPairs) {
+                usedRings.insert(p.first);
+                usedRings.insert(p.second);
+            }
+            
+            if (usedRings.size() == 6) {
+                int midCompIdx = -1;
+                std::vector<int> spiroAtoms;
+                std::vector<int> endComps;
+                
+                for (int i = 0; i < 3; ++i) {
+                    int j1 = (i + 1) % 3;
+                    int j2 = (i + 2) % 3;
+                    
+                    std::vector<int> shared1;
+                    for (int a : comps[i]) {
+                        if (comps[j1].count(a)) shared1.push_back(a);
+                    }
+                    std::vector<int> shared2;
+                    for (int a : comps[i]) {
+                        if (comps[j2].count(a)) shared2.push_back(a);
+                    }
+                    std::vector<int> sharedEnds;
+                    for (int a : comps[j1]) {
+                        if (comps[j2].count(a)) sharedEnds.push_back(a);
+                    }
+                    
+                    if (shared1.size() == 1 && shared2.size() == 1 && sharedEnds.size() == 0) {
+                        midCompIdx = i;
+                        endComps = {j1, j2};
+                        spiroAtoms = {shared1[0], shared2[0]};
+                        break;
+                    }
+                }
+                
+                if (midCompIdx != -1) {
+                    int compM = midCompIdx;
+                    int compE1 = endComps[0];
+                    int compE2 = endComps[1];
+                    int spiro1 = spiroAtoms[0]; // shared between M and E1
+                    int spiro2 = spiroAtoms[1]; // shared between M and E2
+                    
+                    bool validPreconditions = true;
+                    for (int i = 0; i < static_cast<int>(g.nodes.size()); ++i) {
+                        if (g.nodes[i].atomicNumber != 6) {
+                            validPreconditions = false; break;
+                        }
+                        if (!comps[compE1].count(i) && !comps[compM].count(i) && !comps[compE2].count(i)) {
+                            validPreconditions = false; break;
+                        }
+                    }
+                    for (const auto &gb : g.bonds) {
+                        if (gb.order != 1) {
+                            validPreconditions = false; break;
+                        }
+                    }
+                    
+                    if (validPreconditions) {
+                        BicyclicEvalResult resE1 = evaluateBicyclicSystem(g, comps[compE1], {});
+                        BicyclicEvalResult resM = evaluateBicyclicSystem(g, comps[compM], {});
+                        BicyclicEvalResult resE2 = evaluateBicyclicSystem(g, comps[compE2], {});
+                        
+                        if (resE1.valid && resM.valid && resE2.valid && 
+                            resE1.lengths == resM.lengths && resM.lengths == resE2.lengths && 
+                            resE1.totalCarbons == resM.totalCarbons && resM.totalCarbons == resE2.totalCarbons) {
+                            
+                            struct DispiroterCandidate {
+                                int l1, l2, l3, l4;
+                                bool operator<(const DispiroterCandidate& o) const {
+                                    std::vector<int> mySet = {l1, l2, l3, l4};
+                                    std::vector<int> oSet = {o.l1, o.l2, o.l3, o.l4};
+                                    std::sort(mySet.begin(), mySet.end());
+                                    std::sort(oSet.begin(), oSet.end());
+                                    if (mySet != oSet) return mySet < oSet;
+                                    std::vector<int> myCit = {l1, l2, l3, l4};
+                                    std::vector<int> oCit = {o.l1, o.l2, o.l3, o.l4};
+                                    return myCit < oCit;
+                                }
+                            };
+                            
+                            std::vector<DispiroterCandidate> cands;
+                            for (const auto& cE1 : resE1.allCands) {
+                                for (const auto& cM : resM.allCands) {
+                                    for (const auto& cE2 : resE2.allCands) {
+                                        // Forward traversal: E1 -> M -> E2
+                                        int f_l1 = cE1.locantOf.at(spiro1);
+                                        int f_l2 = cM.locantOf.at(spiro1);
+                                        int f_l3 = cM.locantOf.at(spiro2);
+                                        int f_l4 = cE2.locantOf.at(spiro2);
+                                        cands.push_back({f_l1, f_l2, f_l3, f_l4});
+                                        
+                                        // Reverse traversal: E2 -> M -> E1
+                                        int r_l1 = cE2.locantOf.at(spiro2);
+                                        int r_l2 = cM.locantOf.at(spiro2);
+                                        int r_l3 = cM.locantOf.at(spiro1);
+                                        int r_l4 = cE1.locantOf.at(spiro1);
+                                        cands.push_back({r_l1, r_l2, r_l3, r_l4});
+                                    }
+                                }
+                            }
+                            
+                            if (!cands.empty()) {
+                                auto bestIt = std::min_element(cands.begin(), cands.end());
+                                QString bracket = QString("bicyclo[%1.%2.%3]alkane").arg(resE1.lengths[0]).arg(resE1.lengths[1]).arg(resE1.lengths[2]);
+                                QString root = chainRoot(resE1.totalCarbons);
+                                bracket.replace("alkane", root + "ane");
+                                
+                                QString fullName = QString("%1,%2:%3,%4-dispiroter[%5]")
+                                    .arg(bestIt->l1).arg(bestIt->l2).arg(bestIt->l3).arg(bestIt->l4).arg(bracket);
+                                return {true, fullName, ""};
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // --- Phase 29: Spirobi[bicyclo[a.b.c]alkane] ---
     if (ringCount == 4 && allSSSRRings.size() == 4) {
         std::vector<std::pair<int, int>> bicyclicPairs;

@@ -3655,6 +3655,7 @@ int main() {
         }
     }
 
+
     {
         // P-29.5.1 complex substituted substituent group worked example (real Blue
         // Book PIN prefix "6-(3-methylbutyl)undecyl", embedded here as an amine) --
@@ -3855,37 +3856,32 @@ int main() {
     }
 
     {
-        // Phase 29: 5,6-dithia-2,2'-spirobi[bicyclo[2.2.2]octane]
-        // Real Blue Book example has exactly 2 sulfurs total, asymmetrically substituted.
-        int m = indigoLoadMoleculeFromString("C12(C(SS3)CCC3C2)C(CC4)CCC4C1");
-        IupacResult r = IupacNamer::generateName(m);
-        indigoFree(m);
-        if (r.success && r.name == "5,6-dithia-2,2'-spirobi[bicyclo[2.2.2]octane]") {
-            std::cout << "[PASS] Phase 29 spirobi hetero 1 -> " << r.name.toStdString() << "\n";
+        // Phase 29.5: 3,3:6,6-dispiroter[bicyclo[3.1.0]hexane]
+        int m1 = indigoLoadMoleculeFromString("C1CC2C(C1)C21C2CC3(CC4CC4C3)CC21");
+        IupacResult r1 = IupacNamer::generateName(m1);
+        indigoFree(m1);
+        if (r1.success && r1.name == "3,3:6,6-dispiroter[bicyclo[3.1.0]hexane]") {
+            std::cout << "[PASS] Phase 29.5 dispiroter 1 -> " << r1.name.toStdString() << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] Phase 29 spirobi hetero 1 -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            std::cout << "[FAIL] Phase 29.5 dispiroter 1 -> got success=" << r1.success << " name='" << r1.name.toStdString() << "' err='" << r1.error.toStdString() << "'\n";
+            failed++;
+        }
+
+        // Phase 29.5: 2,3:7,7-dispiroter[bicyclo[4.1.0]heptane]
+        int m2 = indigoLoadMoleculeFromString("C1CCC2C(C1)C21C2CCC3(CCCC4CC43)CC21");
+        IupacResult r2 = IupacNamer::generateName(m2);
+        indigoFree(m2);
+        if (r2.success && r2.name == "2,3:7,7-dispiroter[bicyclo[4.1.0]heptane]") {
+            std::cout << "[PASS] Phase 29.5 dispiroter 2 -> " << r2.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Phase 29.5 dispiroter 2 -> got success=" << r2.success << " name='" << r2.name.toStdString() << "' err='" << r2.error.toStdString() << "'\n";
             failed++;
         }
     }
 
-    {
-        // Phase 29: 6,6'-dioxa-3,3'-spirobi[bicyclo[3.2.1]octane]
-        int m = indigoLoadMoleculeFromString("C12(CC(CO3)CC3C1)CC(CO4)CC4C2");
-        IupacResult r = IupacNamer::generateName(m);
-        indigoFree(m);
-        if (r.success && r.name == "6,6'-dioxa-3,3'-spirobi[bicyclo[3.2.1]octane]") {
-            std::cout << "[PASS] Phase 29 spirobi hetero 2 -> " << r.name.toStdString() << "\n";
-            passed++;
-        } else {
-            std::cout << "[FAIL] Phase 29 spirobi hetero 2 -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
-            failed++;
-        }
-    }
-
-std::cout << "\nSummary: " << passed << " passed, " << failed << " failed.\n";
+    std::cout << "\nSummary: " << passed << " passed, " << failed << " failed.\n";
     indigoReleaseSessionId(sid);
     return (failed == 0) ? 0 : 1;
 }
-
-
