@@ -3823,7 +3823,37 @@ int main() {
     }
 
     
-    std::cout << "\nSummary: " << passed << " passed, " << failed << " failed.\n";
+    
+    {
+        // Phase 29: 7,7'-spirobi[bicyclo[4.1.0]heptane]
+        int m = indigoLoadMoleculeFromString("C12(C3CCCCC13)C4CCCCC24");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "7,7'-spirobi[bicyclo[4.1.0]heptane]") {
+            std::cout << "[PASS] Phase 29 spirobi -> " << r.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Phase 29 spirobi -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Phase 29: another bridge-length composition, e.g. bicyclo[3.1.0]hexane
+        // Component 1: C12CCCC1C2
+        // Spiro atom is the 1-atom bridge.
+        int m = indigoLoadMoleculeFromString("C12(C3CCCC13)C4CCCC24");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "6,6'-spirobi[bicyclo[3.1.0]hexane]") {
+            std::cout << "[PASS] Phase 29 spirobi 2 -> " << r.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Phase 29 spirobi 2 -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+std::cout << "\nSummary: " << passed << " passed, " << failed << " failed.\n";
     indigoReleaseSessionId(sid);
     return (failed == 0) ? 0 : 1;
 }

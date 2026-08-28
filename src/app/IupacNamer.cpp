@@ -3351,6 +3351,225 @@ std::optional<QString> tryNameNitrosamine(int cNode, int nNode, const Graph &g, 
     return std::nullopt;
 }
 
+
+struct NumberingCand {
+    std::map<int,int> locantOf;
+    std::vector<int> heteroatomLocants;
+    std::vector<int> heteroatomSeniorityLocants;
+    std::vector<int> doubleBondLocants;
+    std::vector<int> tripleBondLocants;
+    std::vector<int> subLocants;
+    std::vector<std::pair<QString,int>> namedSubs;
+};
+
+struct BicyclicEvalResult {
+    bool valid = false;
+    QString error;
+    std::vector<int> lengths;
+    int totalCarbons = 0;
+    std::vector<NumberingCand> bestCands;
+};
+
+BicyclicEvalResult evaluateBicyclicSystem(const Graph& g, const std::set<int>& ringUnionNodes, const std::vector<std::pair<int, QString>>& ringSubstituents) {
+    BicyclicEvalResult res;
+    
+    std::vector<int> bridgeheads;
+    bool validDegrees = true;
+
+    for (int n : ringUnionNodes) {
+        int ringDegree = 0;
+        for (int nei : g.nodes[n].neighbors) {
+            if (ringUnionNodes.count(nei)) {
+                ringDegree++;
+            }
+        }
+        if (ringDegree == 3) {
+            bridgeheads.push_back(n);
+        } else if (ringDegree != 2) {
+            validDegrees = false;
+            break;
+        }
+    }
+
+    if (!validDegrees || bridgeheads.size() != 2) {
+        res.error = "Invalid bridgeheads.";
+        return res;
+    }
+
+    int bhA = bridgeheads[0];
+    int bhB = bridgeheads[1];
+
+    std::vector<int> bhANeighbors;
+    for (int nei : g.nodes[bhA].neighbors) {
+        if (ringUnionNodes.count(nei)) {
+            bhANeighbors.push_back(nei);
+        }
+    }
+
+    if (bhANeighbors.size() == 3) {
+        struct Bridge { std::vector<int> interior; int length; };
+        std::vector<Bridge> bridges;
+        bool traceOk = true;
+
+        for (int startNei : bhANeighbors) {
+            Bridge br;
+            br.length = 0;
+            if (startNei == bhB) {
+                bridges.push_back(br); 
+                continue;
+            }
+            int prev = bhA;
+            int curr = startNei;
+            bool reachedB = false;
+            while (true) {
+                if (curr == bhB) { reachedB = true; break; }
+                if ((int)br.interior.size() > (int)ringUnionNodes.size()) break;
+                br.interior.push_back(curr);
+                int nextN = -1;
+                for (int nei : g.nodes[curr].neighbors) {
+                    if (ringUnionNodes.count(nei) && nei != prev) { nextN = nei; break; }
+                }
+                if (nextN == -1) break;
+                prev = curr;
+                curr = nextN;
+            }
+            if (reachedB) { br.length = (int)br.interior.size(); bridges.push_back(br); }
+            else { traceOk = false; break; }
+        }
+
+        if (traceOk && bridges.size() == 3) {
+            int sumBridges = bridges[0].length + bridges[1].length + bridges[2].length;
+            if (sumBridges + 2 != (int)ringUnionNodes.size()) {
+                res.error = "Internal error: invalid bicyclic bridge decomposition.";
+                return res;
+            }
+            int totalCarbons = (int)ringUnionNodes.size();
+            res.totalCarbons = totalCarbons;
+
+            std::vector<int> lengths = {bridges[0].length, bridges[1].length, bridges[2].length};
+            std::sort(lengths.rbegin(), lengths.rend());
+            res.lengths = lengths;
+
+            std::vector<NumberingCand> cands;
+            int starts[2] = { bhA, bhB };
+
+            for (int sIdx = 0; sIdx < 2; ++sIdx) {
+                int S = starts[sIdx];
+                int Other = (S == bhA) ? bhB : bhA;
+                std::vector<int> perm = {0, 1, 2};
+                do {
+                    if (!(bridges[perm[0]].length >= bridges[perm[1]].length &&
+                          bridges[perm[1]].length >= bridges[perm[2]].length)) continue;
+
+                    NumberingCand cand;
+                    int loc = 1;
+                    cand.locantOf[S] = loc; 
+
+                    {
+                        std::vector<int> path = bridges[perm[0]].interior;
+                        if (S == bhB) std::reverse(path.begin(), path.end());
+                        for (int atom : path) { loc++; cand.locantOf[atom] = loc; }
+                        loc++; cand.locantOf[Other] = loc;
+                    }
+                    {
+                        std::vector<int> path = bridges[perm[1]].interior;
+                        if (S == bhA) std::reverse(path.begin(), path.end());
+                        for (int atom : path) { loc++; cand.locantOf[atom] = loc; }
+                    }
+                    {
+                        std::vector<int> path = bridges[perm[2]].interior;
+                        if (S == bhB) std::reverse(path.begin(), path.end());
+                        for (int atom : path) { loc++; cand.locantOf[atom] = loc; }
+                    }
+
+                    if ((int)cand.locantOf.size() != totalCarbons) continue;
+
+                    for (int n : ringUnionNodes) {
+                        if (g.nodes[n].atomicNumber != 6) {
+                            cand.heteroatomLocants.push_back(cand.locantOf[n]);
+                        }
+                    }
+                    std::sort(cand.heteroatomLocants.begin(), cand.heteroatomLocants.end());
+                    
+                    std::map<int, std::vector<int>> locsByRank;
+                    for (int n : ringUnionNodes) {
+                        if (g.nodes[n].atomicNumber != 6) {
+                            locsByRank[hwSeniorityRank(g.nodes[n].atomicNumber)].push_back(cand.locantOf[n]);
+                        }
+                    }
+                    for (auto &kv : locsByRank) {
+                        std::sort(kv.second.begin(), kv.second.end());
+                        for (int l : kv.second) cand.heteroatomSeniorityLocants.push_back(l);
+                    }
+
+                    for (const auto &rs : ringSubstituents) {
+                        auto it = cand.locantOf.find(rs.first);
+                        if (it == cand.locantOf.end()) { cand.subLocants.clear(); break; }
+                        cand.subLocants.push_back(it->second);
+                        cand.namedSubs.push_back({rs.second, it->second});
+                    }
+                    std::sort(cand.subLocants.begin(), cand.subLocants.end());
+
+                    for (const auto &gb : g.bonds) {
+                        if (ringUnionNodes.count(gb.u) && ringUnionNodes.count(gb.v)) {
+                            if (gb.order == 2 || gb.order == 3) {
+                                auto itU = cand.locantOf.find(gb.u);
+                                auto itV = cand.locantOf.find(gb.v);
+                                if (itU != cand.locantOf.end() && itV != cand.locantOf.end()) {
+                                    int minLoc = std::min(itU->second, itV->second);
+                                    if (gb.order == 2) cand.doubleBondLocants.push_back(minLoc);
+                                    if (gb.order == 3) cand.tripleBondLocants.push_back(minLoc);
+                                }
+                            }
+                        }
+                    }
+                    std::sort(cand.doubleBondLocants.begin(), cand.doubleBondLocants.end());
+                    std::sort(cand.tripleBondLocants.begin(), cand.tripleBondLocants.end());
+
+                    cands.push_back(cand);
+                } while (std::next_permutation(perm.begin(), perm.end()));
+            }
+
+            if (!cands.empty()) {
+                auto isLess = [](const NumberingCand &a, const NumberingCand &b) {
+                    if (a.heteroatomLocants != b.heteroatomLocants) return a.heteroatomLocants < b.heteroatomLocants;
+                    if (a.heteroatomSeniorityLocants != b.heteroatomSeniorityLocants) return a.heteroatomSeniorityLocants < b.heteroatomSeniorityLocants;
+                    if (a.doubleBondLocants != b.doubleBondLocants) return a.doubleBondLocants < b.doubleBondLocants;
+                    if (a.tripleBondLocants != b.tripleBondLocants) return a.tripleBondLocants < b.tripleBondLocants;
+                    if (a.subLocants != b.subLocants) return a.subLocants < b.subLocants;
+                    auto firstAlpha = [](const std::vector<std::pair<QString,int>> &nm) {
+                        return std::min_element(nm.begin(), nm.end(),
+                            [](const auto &x, const auto &y){ return alphabetizationKey(x.first).toLower() < alphabetizationKey(y.first).toLower(); });
+                    };
+                    if (!a.namedSubs.empty()) {
+                        QString alphaName = firstAlpha(a.namedSubs)->first;
+                        auto findLoc = [&](const std::vector<std::pair<QString,int>> &nm) {
+                            int best = INT_MAX;
+                            for (const auto &ns : nm) if (ns.first == alphaName) best = std::min(best, ns.second);
+                            return best;
+                        };
+                        int aLoc = findLoc(a.namedSubs), bLoc = findLoc(b.namedSubs);
+                        if (aLoc != bLoc) return aLoc < bLoc;
+                    }
+                    return false;
+                };
+                auto bestIt = std::min_element(cands.begin(), cands.end(), isLess);
+                for (const auto& c : cands) {
+                    if (!isLess(*bestIt, c) && !isLess(c, *bestIt)) {
+                        res.bestCands.push_back(c);
+                    }
+                }
+                res.valid = true;
+            } else {
+                res.error = "No valid numbering found.";
+            }
+        }
+    } else {
+        res.error = "Invalid bridgeheads trace.";
+    }
+    return res;
+}
+
 IupacResult IupacNamer::generateName(int mol) {
     if (mol < 0) {
         return {false, "", "Invalid molecule handle."};
@@ -6345,217 +6564,21 @@ IupacResult IupacNamer::generateName(int mol) {
 
                 if (validPreconditions) {
                     // Bridgehead identification: ring atoms with ring-degree 3.
-                    std::vector<int> bridgeheads;
-                    bool validDegrees = true;
-
-                    for (int n : ringUnionNodes) {
-                        int ringDegree = 0;
-                        for (int nei : g.nodes[n].neighbors) {
-                            if (ringUnionNodes.count(nei)) {
-                                ringDegree++;
-                            }
+                    
+                    BicyclicEvalResult evalRes = evaluateBicyclicSystem(g, ringUnionNodes, ringSubstituents);
+                    if (evalRes.valid) {
+                    if (true) {
+                    if (true) {
+                    if (true) {
+                        int totalCarbons = evalRes.totalCarbons;
+                        std::vector<int> lengths = evalRes.lengths;
+                        QString root = chainRoot(totalCarbons);
+                        if (root.isEmpty()) {
+                            return {false, "", "Unsupported bicyclic ring size."};
                         }
-                        if (ringDegree == 3) {
-                            bridgeheads.push_back(n);
-                        } else if (ringDegree != 2) {
-                            validDegrees = false;
-                            break;
-                        }
-                    }
+                        
+                        NumberingCand best = evalRes.bestCands[0];
 
-                    if (validDegrees && bridgeheads.size() == 2) {
-                        int bhA = bridgeheads[0];
-                        int bhB = bridgeheads[1];
-
-                        std::vector<int> bhANeighbors;
-                        for (int nei : g.nodes[bhA].neighbors) {
-                            if (ringUnionNodes.count(nei)) {
-                                bhANeighbors.push_back(nei);
-                            }
-                        }
-
-                        if (bhANeighbors.size() == 3) {
-                            // Trace the three bridges from bhA to bhB, capturing the
-                            // ordered INTERIOR atom lists (excluding the bridgeheads)
-                            // needed for P-23.2.3 per-atom numbering.
-                            struct Bridge { std::vector<int> interior; int length; };
-                            std::vector<Bridge> bridges;
-                            bool traceOk = true;
-
-                            for (int startNei : bhANeighbors) {
-                                Bridge br;
-                                br.length = 0;
-                                if (startNei == bhB) {
-                                    bridges.push_back(br); // direct bridgehead-bridgehead bond, length 0
-                                    continue;
-                                }
-                                int prev = bhA;
-                                int curr = startNei;
-                                bool reachedB = false;
-                                while (true) {
-                                    if (curr == bhB) { reachedB = true; break; }
-                                    if ((int)br.interior.size() > (int)ringUnionNodes.size()) break;
-                                    br.interior.push_back(curr);
-                                    int nextN = -1;
-                                    for (int nei : g.nodes[curr].neighbors) {
-                                        if (ringUnionNodes.count(nei) && nei != prev) { nextN = nei; break; }
-                                    }
-                                    if (nextN == -1) break;
-                                    prev = curr;
-                                    curr = nextN;
-                                }
-                                if (reachedB) { br.length = (int)br.interior.size(); bridges.push_back(br); }
-                                else { traceOk = false; break; }
-                            }
-
-                            if (traceOk && bridges.size() == 3) {
-                                int sumBridges = bridges[0].length + bridges[1].length + bridges[2].length;
-                                if (sumBridges + 2 != (int)ringUnionNodes.size()) {
-                                    return {false, "", "Internal error: invalid bicyclic bridge decomposition."};
-                                }
-                                int totalCarbons = (int)ringUnionNodes.size();
-                                QString root = chainRoot(totalCarbons);
-                                if (root.isEmpty()) {
-                                    return {false, "", "Unsupported bicyclic ring size."};
-                                }
-
-                                // Bracket descriptor (descending lengths) is unchanged.
-                                std::vector<int> lengths = {bridges[0].length, bridges[1].length, bridges[2].length};
-                                std::sort(lengths.rbegin(), lengths.rend());
-
-                                // --- P-23.2.3 numbering candidate enumeration ---
-                                // For each choice of starting bridgehead S in {bhA,bhB}
-                                // and each ordering of the three bridges whose lengths
-                                // are non-increasing, walk the fixed algorithm (longest
-                                // bridge first S->T, then second-longest T->S, then the
-                                // shortest "main bridge" S->T) assigning locants. When a
-                                // choice remains (which bridgehead is locant 1, or which
-                                // of equal-length bridges is walked first), keep the
-                                // candidate giving the lowest locant set to the
-                                // substituents present, compared as an ascending-order
-                                // set at the first point of difference -- the same
-                                // convention already used by PathSignature/RingSignature
-                                // elsewhere in this file.
-                                struct NumberingCand {
-                                    std::map<int,int> locantOf;
-                                    std::vector<int> heteroatomLocants;
-                                    std::vector<int> heteroatomSeniorityLocants;
-                                    std::vector<int> doubleBondLocants;
-                                    std::vector<int> tripleBondLocants;
-                                    std::vector<int> subLocants;
-                                    std::vector<std::pair<QString,int>> namedSubs;
-                                };
-                                std::vector<NumberingCand> cands;
-                                int starts[2] = { bhA, bhB };
-
-                                for (int sIdx = 0; sIdx < 2; ++sIdx) {
-                                    int S = starts[sIdx];
-                                    int Other = (S == bhA) ? bhB : bhA;
-                                    std::vector<int> perm = {0, 1, 2};
-                                    do {
-                                        if (!(bridges[perm[0]].length >= bridges[perm[1]].length &&
-                                              bridges[perm[1]].length >= bridges[perm[2]].length)) continue;
-
-                                        NumberingCand cand;
-                                        int loc = 1;
-                                        cand.locantOf[S] = loc; // starting bridgehead = locant 1
-
-                                        // Longest bridge: S -> Other (this assigns Other its locant).
-                                        {
-                                            std::vector<int> path = bridges[perm[0]].interior;
-                                            if (S == bhB) std::reverse(path.begin(), path.end());
-                                            for (int atom : path) { loc++; cand.locantOf[atom] = loc; }
-                                            loc++; cand.locantOf[Other] = loc;
-                                        }
-                                        // Second bridge: Other -> S (interiors only, S already locant 1).
-                                        {
-                                            std::vector<int> path = bridges[perm[1]].interior;
-                                            if (S == bhA) std::reverse(path.begin(), path.end());
-                                            for (int atom : path) { loc++; cand.locantOf[atom] = loc; }
-                                        }
-                                        // Shortest (main) bridge: S -> Other (interiors only).
-                                        {
-                                            std::vector<int> path = bridges[perm[2]].interior;
-                                            if (S == bhB) std::reverse(path.begin(), path.end());
-                                            for (int atom : path) { loc++; cand.locantOf[atom] = loc; }
-                                        }
-
-                                        if ((int)cand.locantOf.size() != totalCarbons) continue;
-
-                                        for (int n : ringUnionNodes) {
-                                            if (g.nodes[n].atomicNumber != 6) {
-                                                cand.heteroatomLocants.push_back(cand.locantOf[n]);
-                                            }
-                                        }
-                                        std::sort(cand.heteroatomLocants.begin(), cand.heteroatomLocants.end());
-                                        
-                                        // P-23.3.2.2: low locants assigned by decreasing heteroatom seniority
-                                        // To implement this, we can group locants by seniority rank (which is already 0=O, 1=S etc)
-                                        // and then concatenate them. Comparing these vectors lexicographically will perfectly match the rule.
-                                        std::map<int, std::vector<int>> locsByRank;
-                                        for (int n : ringUnionNodes) {
-                                            if (g.nodes[n].atomicNumber != 6) {
-                                                locsByRank[hwSeniorityRank(g.nodes[n].atomicNumber)].push_back(cand.locantOf[n]);
-                                            }
-                                        }
-                                        for (auto &kv : locsByRank) {
-                                            std::sort(kv.second.begin(), kv.second.end());
-                                            for (int l : kv.second) cand.heteroatomSeniorityLocants.push_back(l);
-                                        }
-
-                                        for (const auto &rs : ringSubstituents) {
-                                            auto it = cand.locantOf.find(rs.first);
-                                            if (it == cand.locantOf.end()) { cand.subLocants.clear(); break; }
-                                            cand.subLocants.push_back(it->second);
-                                            cand.namedSubs.push_back({rs.second, it->second});
-                                        }
-                                        std::sort(cand.subLocants.begin(), cand.subLocants.end());
-
-                                        for (const auto &gb : g.bonds) {
-                                            if (ringUnionNodes.count(gb.u) && ringUnionNodes.count(gb.v)) {
-                                                if (gb.order == 2 || gb.order == 3) {
-                                                    auto itU = cand.locantOf.find(gb.u);
-                                                    auto itV = cand.locantOf.find(gb.v);
-                                                    if (itU != cand.locantOf.end() && itV != cand.locantOf.end()) {
-                                                        int minLoc = std::min(itU->second, itV->second);
-                                                        if (gb.order == 2) cand.doubleBondLocants.push_back(minLoc);
-                                                        if (gb.order == 3) cand.tripleBondLocants.push_back(minLoc);
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        std::sort(cand.doubleBondLocants.begin(), cand.doubleBondLocants.end());
-                                        std::sort(cand.tripleBondLocants.begin(), cand.tripleBondLocants.end());
-
-                                        cands.push_back(cand);
-                                    } while (std::next_permutation(perm.begin(), perm.end()));
-                                }
-
-                                if (!cands.empty()) {
-                                    auto bestIt = std::min_element(cands.begin(), cands.end(),
-                                        [](const NumberingCand &a, const NumberingCand &b) {
-                                            if (a.heteroatomLocants != b.heteroatomLocants) return a.heteroatomLocants < b.heteroatomLocants;
-                                            if (a.heteroatomSeniorityLocants != b.heteroatomSeniorityLocants) return a.heteroatomSeniorityLocants < b.heteroatomSeniorityLocants;
-                                            if (a.doubleBondLocants != b.doubleBondLocants) return a.doubleBondLocants < b.doubleBondLocants;
-                                            if (a.tripleBondLocants != b.tripleBondLocants) return a.tripleBondLocants < b.tripleBondLocants;
-                                            if (a.subLocants != b.subLocants) return a.subLocants < b.subLocants;
-                                            auto firstAlpha = [](const std::vector<std::pair<QString,int>> &nm) {
-                                                return std::min_element(nm.begin(), nm.end(),
-                                                    [](const auto &x, const auto &y){ return alphabetizationKey(x.first).toLower() < alphabetizationKey(y.first).toLower(); });
-                                            };
-                                            if (!a.namedSubs.empty()) {
-                                                QString alphaName = firstAlpha(a.namedSubs)->first;
-                                                auto findLoc = [&](const std::vector<std::pair<QString,int>> &nm) {
-                                                    int best = INT_MAX;
-                                                    for (const auto &ns : nm) if (ns.first == alphaName) best = std::min(best, ns.second);
-                                                    return best;
-                                                };
-                                                int aLoc = findLoc(a.namedSubs), bLoc = findLoc(b.namedSubs);
-                                                if (aLoc != bLoc) return aLoc < bLoc;
-                                            }
-                                            return false;
-                                        });
-                                    NumberingCand best = *bestIt;
 
                                     // --- Substituent prefix (PrefixGroup convention) ---
                                     std::map<QString, std::vector<int>> prefixLocantsMap;
@@ -6651,7 +6674,94 @@ IupacResult IupacNamer::generateName(int mol) {
         }
     }
 
-    // --- Phase 28: Saturated Unsubstituted Spiro Hydrocarbon Path (spiro[a.b]alkane) ---
+    
+    // --- Phase 29: Spirobi[bicyclo[a.b.c]alkane] ---
+    if (ringCount == 4 && allSSSRRings.size() == 4) {
+        std::vector<std::pair<int, int>> bicyclicPairs;
+        for (int i=0; i<4; ++i) {
+            for (int j=i+1; j<4; ++j) {
+                int sharedCount = 0;
+                for (int atom : allSSSRRings[i]) {
+                    if (allSSSRRings[j].count(atom)) sharedCount++;
+                }
+                if (sharedCount >= 2) bicyclicPairs.push_back({i, j});
+            }
+        }
+        
+        if (bicyclicPairs.size() == 2) {
+            int r1 = bicyclicPairs[0].first;
+            int r2 = bicyclicPairs[0].second;
+            int r3 = bicyclicPairs[1].first;
+            int r4 = bicyclicPairs[1].second;
+            std::set<int> used = {r1, r2, r3, r4};
+            if (used.size() == 4) {
+                std::set<int> comp1Nodes;
+                for (int a : allSSSRRings[r1]) comp1Nodes.insert(a);
+                for (int a : allSSSRRings[r2]) comp1Nodes.insert(a);
+                
+                std::set<int> comp2Nodes;
+                for (int a : allSSSRRings[r3]) comp2Nodes.insert(a);
+                for (int a : allSSSRRings[r4]) comp2Nodes.insert(a);
+                
+                std::vector<int> sharedSpiro;
+                for (int a : comp1Nodes) {
+                    if (comp2Nodes.count(a)) sharedSpiro.push_back(a);
+                }
+                
+                if (sharedSpiro.size() == 1) {
+                    int spiroAtom = sharedSpiro[0];
+                    
+                    bool allCarbonAndIsolated = true;
+                    for (int i=0; i<g.nodes.size(); ++i) {
+                        if (g.nodes[i].atomicNumber != 6) {
+                            allCarbonAndIsolated = false; break;
+                        }
+                        if (!comp1Nodes.count(i) && !comp2Nodes.count(i)) {
+                            allCarbonAndIsolated = false; break;
+                        }
+                    }
+                    
+                    for (const auto &gb : g.bonds) {
+                        if (gb.order != 1) {
+                            allCarbonAndIsolated = false; break;
+                        }
+                    }
+                    
+                    if (allCarbonAndIsolated) {
+                        BicyclicEvalResult res1 = evaluateBicyclicSystem(g, comp1Nodes, {});
+                        BicyclicEvalResult res2 = evaluateBicyclicSystem(g, comp2Nodes, {});
+                        
+                        if (res1.valid && res2.valid && res1.lengths == res2.lengths && res1.totalCarbons == res2.totalCarbons) {
+                            int spiroLoc1 = 999999;
+                            for (const auto& c : res1.bestCands) {
+                                auto it = c.locantOf.find(spiroAtom);
+                                if (it != c.locantOf.end()) spiroLoc1 = std::min(spiroLoc1, it->second);
+                            }
+                            int spiroLoc2 = 999999;
+                            for (const auto& c : res2.bestCands) {
+                                auto it = c.locantOf.find(spiroAtom);
+                                if (it != c.locantOf.end()) spiroLoc2 = std::min(spiroLoc2, it->second);
+                            }
+                            
+                            if (spiroLoc1 != 999999 && spiroLoc2 != 999999) {
+                                int unprimed = std::min(spiroLoc1, spiroLoc2);
+                                int primed = std::max(spiroLoc1, spiroLoc2);
+                                
+                                QString bracket = QString("bicyclo[%1.%2.%3]alkane").arg(res1.lengths[0]).arg(res1.lengths[1]).arg(res1.lengths[2]);
+                                QString root = chainRoot(res1.totalCarbons);
+                                bracket.replace("alkane", root + "ane");
+                                
+                                QString fullName = QString("%1,%2'-spirobi[%3]").arg(unprimed).arg(primed).arg(bracket);
+                                return {true, fullName, ""};
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+// --- Phase 28: Saturated Unsubstituted Spiro Hydrocarbon Path (spiro[a.b]alkane) ---
     if (ringCount == 2) {
         int sssrIter = indigoIterateSSSR(mol);
         if (sssrIter >= 0) {
