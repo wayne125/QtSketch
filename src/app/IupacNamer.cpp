@@ -8656,6 +8656,12 @@ IupacResult IupacNamer::generateName(int mol) {
                             std::vector<int> firstOrder;
                             std::map<int, std::vector<int>> lowerLocs;
                             std::map<int, std::vector<int>> higherLocs;
+                            
+                            bool isFirstOrderSingle = false;
+                            RingType cType = RingType::BENZENE;
+                            QString cPrefix;
+                            QString cLocants;
+
                             bool operator<(const Block& o) const { return text < o.text; }
                         };
 
@@ -8755,26 +8761,52 @@ IupacResult IupacNamer::generateName(int mol) {
                                     std::sort(cBlocks.begin(), cBlocks.end());
                                     
                                     Block b;
-                                    for (const auto& cb : cBlocks) {
-                                        b.text += cb.text;
-                                        b.letters.insert(b.letters.end(), cb.letters.begin(), cb.letters.end());
-                                        b.firstOrder.insert(b.firstOrder.end(), cb.firstOrder.begin(), cb.firstOrder.end());
-                                        for (const auto& kv : cb.lowerLocs) {
-                                            b.lowerLocs[kv.first].insert(b.lowerLocs[kv.first].end(), kv.second.begin(), kv.second.end());
-                                        }
-                                        for (const auto& kv : cb.higherLocs) {
-                                            b.higherLocs[kv.first].insert(b.higherLocs[kv.first].end(), kv.second.begin(), kv.second.end());
-                                        }
-                                    }
-
+                                    
                                     QString myPrefix;
                                     if (u == root) myPrefix = getBaseNameShared(typesN[u]);
                                     else myPrefix = getFusionPrefixShared(typesN[u]);
 
                                     if (u == root) {
+                                        if (cBlocks.size() == 2 && 
+                                            cBlocks[0].isFirstOrderSingle && cBlocks[1].isFirstOrderSingle && 
+                                            cBlocks[0].cType == cBlocks[1].cType && 
+                                            cBlocks[0].cPrefix == cBlocks[1].cPrefix) {
+                                            
+                                            b.text = "di" + cBlocks[0].cPrefix + "[" + cBlocks[0].cLocants + ":" + cBlocks[1].cLocants + "]";
+                                            
+                                            b.letters.insert(b.letters.end(), cBlocks[0].letters.begin(), cBlocks[0].letters.end());
+                                            b.letters.insert(b.letters.end(), cBlocks[1].letters.begin(), cBlocks[1].letters.end());
+                                            
+                                            b.firstOrder.insert(b.firstOrder.end(), cBlocks[0].firstOrder.begin(), cBlocks[0].firstOrder.end());
+                                            b.firstOrder.insert(b.firstOrder.end(), cBlocks[1].firstOrder.begin(), cBlocks[1].firstOrder.end());
+                                        } else {
+                                            for (const auto& cb : cBlocks) {
+                                                b.text += cb.text;
+                                                b.letters.insert(b.letters.end(), cb.letters.begin(), cb.letters.end());
+                                                b.firstOrder.insert(b.firstOrder.end(), cb.firstOrder.begin(), cb.firstOrder.end());
+                                                for (const auto& kv : cb.lowerLocs) {
+                                                    b.lowerLocs[kv.first].insert(b.lowerLocs[kv.first].end(), kv.second.begin(), kv.second.end());
+                                                }
+                                                for (const auto& kv : cb.higherLocs) {
+                                                    b.higherLocs[kv.first].insert(b.higherLocs[kv.first].end(), kv.second.begin(), kv.second.end());
+                                                }
+                                            }
+                                        }
                                         b.text += myPrefix;
                                         return {true, b};
                                     } else {
+                                        for (const auto& cb : cBlocks) {
+                                            b.text += cb.text;
+                                            b.letters.insert(b.letters.end(), cb.letters.begin(), cb.letters.end());
+                                            b.firstOrder.insert(b.firstOrder.end(), cb.firstOrder.begin(), cb.firstOrder.end());
+                                            for (const auto& kv : cb.lowerLocs) {
+                                                b.lowerLocs[kv.first].insert(b.lowerLocs[kv.first].end(), kv.second.begin(), kv.second.end());
+                                            }
+                                            for (const auto& kv : cb.higherLocs) {
+                                                b.higherLocs[kv.first].insert(b.higherLocs[kv.first].end(), kv.second.begin(), kv.second.end());
+                                            }
+                                        }
+
                                         int d = depths[u];
                                         int bhA = sharedNodesPairs[u][p][0];
                                         int bhB = sharedNodesPairs[u][p][1];
@@ -8798,7 +8830,16 @@ IupacResult IupacNamer::generateName(int mol) {
                                             
                                             b.letters.push_back(faceLetter);
                                             b.firstOrder.push_back(uL1); b.firstOrder.push_back(uL2);
-                                            b.text += myPrefix + QString("[%1-%2]").arg(formatLocants({uL1, uL2}, d)).arg(faceLetter);
+                                            
+                                            QString locsStr = QString("%1-%2").arg(formatLocants({uL1, uL2}, d)).arg(faceLetter);
+                                            b.text += myPrefix + "[" + locsStr + "]";
+                                            
+                                            if (cBlocks.empty()) {
+                                                b.isFirstOrderSingle = true;
+                                                b.cType = typesN[u];
+                                                b.cPrefix = myPrefix;
+                                                b.cLocants = locsStr;
+                                            }
                                         } else {
                                             b.lowerLocs[d].push_back(pL1); b.lowerLocs[d].push_back(pL2);
                                             b.higherLocs[d].push_back(uL1); b.higherLocs[d].push_back(uL2);

@@ -2917,6 +2917,8 @@ int main() {
         };
 
         std::vector<Phase44Test> p44Tests = {
+            {"o1ccc2nc3ccoc3cc12", "difuro[3,2-b:5,4-e]pyridine", false, ""},
+            {"o1ccc2nc3cocc3cc12", "difuro[3,2-b:3,4-e]pyridine", false, ""},
             {"o1ccc2nc3ccsc3cc12", "furo[3,2-b]thieno[2,3-e]pyridine", false, ""},
             {"o1ccc2nc3ccsc3nc12", "furo[2,3-b]thieno[3,2-e]pyrazine", false, ""},
 
