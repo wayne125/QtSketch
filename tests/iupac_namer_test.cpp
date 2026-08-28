@@ -3856,11 +3856,16 @@ int main() {
     }
 
     {
-        // Phase 29.5: 3,3:6,6-dispiroter[bicyclo[3.1.0]hexane]
+        // Phase 29.5: 3,3':6',6''-dispiroter[bicyclo[3.1.0]hexane]. P-24.4.1's real
+        // prose ("Locants for the middle ring component are primed and for the
+        // third ring component double primed") requires prime marks the local
+        // Blue Book text extraction drops from its own quoted example -- the same
+        // recurring PDF-conversion artifact already confirmed for other worked
+        // examples elsewhere in this file's history.
         int m1 = indigoLoadMoleculeFromString("C1CC2C(C1)C21C2CC3(CC4CC4C3)CC21");
         IupacResult r1 = IupacNamer::generateName(m1);
         indigoFree(m1);
-        if (r1.success && r1.name == "3,3:6,6-dispiroter[bicyclo[3.1.0]hexane]") {
+        if (r1.success && r1.name == "3,3':6',6''-dispiroter[bicyclo[3.1.0]hexane]") {
             std::cout << "[PASS] Phase 29.5 dispiroter 1 -> " << r1.name.toStdString() << "\n";
             passed++;
         } else {
@@ -3868,11 +3873,11 @@ int main() {
             failed++;
         }
 
-        // Phase 29.5: 2,3:7,7-dispiroter[bicyclo[4.1.0]heptane]
+        // Phase 29.5: 2,3':7',7''-dispiroter[bicyclo[4.1.0]heptane]
         int m2 = indigoLoadMoleculeFromString("C1CCC2C(C1)C21C2CCC3(CCCC4CC43)CC21");
         IupacResult r2 = IupacNamer::generateName(m2);
         indigoFree(m2);
-        if (r2.success && r2.name == "2,3:7,7-dispiroter[bicyclo[4.1.0]heptane]") {
+        if (r2.success && r2.name == "2,3':7',7''-dispiroter[bicyclo[4.1.0]heptane]") {
             std::cout << "[PASS] Phase 29.5 dispiroter 2 -> " << r2.name.toStdString() << "\n";
             passed++;
         } else {

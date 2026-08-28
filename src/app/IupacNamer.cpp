@@ -6804,7 +6804,12 @@ IupacResult IupacNamer::generateName(int mol) {
                                 QString root = chainRoot(resE1.totalCarbons);
                                 bracket.replace("alkane", root + "ane");
                                 
-                                QString fullName = QString("%1,%2:%3,%4-dispiroter[%5]")
+                                // P-24.4.1: "Locants for the middle ring component are primed and
+                                // for the third ring component double primed." l1 belongs to the
+                                // first-cited end component (unprimed), l2/l3 both belong to the
+                                // middle component (single prime on both), l4 belongs to the
+                                // second-cited end component (double prime).
+                                QString fullName = QString("%1,%2':%3',%4''-dispiroter[%5]")
                                     .arg(bestIt->l1).arg(bestIt->l2).arg(bestIt->l3).arg(bestIt->l4).arg(bracket);
                                 return {true, fullName, ""};
                             }
