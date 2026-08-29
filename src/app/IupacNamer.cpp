@@ -3267,6 +3267,32 @@ std::map<std::pair<int,int>, QChar> computeIndigoBondCIP(int mol) {
     }
     return result;
 }
+// Azo (diazene) and N-nitrosamine construction (below) early-return the fully
+// assembled name the moment the R-N=N-R'/R2N-N=O pattern is found, bypassing
+// the GroupType/seniority machinery entirely -- so unlike every other
+// principal-group class, they never check whether some OTHER, more senior
+// competing group exists elsewhere in the molecule before hijacking the
+// whole name. Every GroupType senior to AMINE (which is where azo/
+// nitrosamine's own amine nitrogen would otherwise classify) requires at
+// least one heteroatom of its own (acid/ester/amide's O or N, nitrile's
+// triple-bonded N, halide's halogen, etc.), so a plain heteroatom-count
+// check is a safe, conservative proxy: if the molecule has more heteroatoms
+// than the azo/nitrosamine core itself accounts for, there is a real risk of
+// an unaccounted competing principal group elsewhere -- reject cleanly
+// rather than risk silently hijacking the name (see the disclosed bug this
+// closes: `O=NN(C)C1CCCCC1CCC(=O)O` was wrongly forced through the
+// nitrosamine construction, discarding the coexisting, more senior
+// carboxylic acid chain). This is deliberately conservative -- an unrelated
+// extra plain amine/alcohol elsewhere would also (over-)trigger it -- but
+// never produces a wrong name, only an honest rejection.
+int countHeteroatoms(const Graph &g) {
+    int count = 0;
+    for (const auto &node : g.nodes) {
+        if (node.atomicNumber != 1 && node.atomicNumber != 6) count++;
+    }
+    return count;
+}
+
 std::optional<QString> tryNameAzoCompound(int cNode, int nNode, const Graph &g, const std::vector<std::set<int>> &allSSSRRings) {
     if (!isAzoNitrogen(nNode, cNode, g)) return std::nullopt;
     int farNNode = -1;
@@ -3283,7 +3309,10 @@ std::optional<QString> tryNameAzoCompound(int cNode, int nNode, const Graph &g, 
         }
     }
     if (farCNode == -1) return std::nullopt;
-    
+    if (countHeteroatoms(g) != 2) {
+        return ""; // azo core confirmed, but a competing group may exist elsewhere
+    }
+
     QString name1 = nameBranchGraph(g, cNode, nNode, allSSSRRings);
     QString name2 = nameBranchGraph(g, farCNode, farNNode, allSSSRRings);
     if (name1.isEmpty() || name2.isEmpty()) return ""; // Failed to build, but IS azo
@@ -3324,6 +3353,9 @@ std::optional<QString> tryNameNitrosamine(int cNode, int nNode, const Graph &g, 
 
     if (cNeighbors.size() + 1 != g.nodes[nNode].neighbors.size()) {
          return std::nullopt;
+    }
+    if (countHeteroatoms(g) != 3) {
+        return ""; // nitrosamine core confirmed, but a competing group may exist elsewhere
     }
 
     if (cNeighbors.size() == 1 && cNeighbors[0] == cNode) {
@@ -5084,12 +5116,12 @@ IupacResult IupacNamer::generateName(int mol) {
                         auto azoName = tryNameAzoCompound(static_cast<int>(i), nNode, g, allSSSRRings);
                         if (azoName.has_value()) {
                             if (!azoName->isEmpty()) return {true, *azoName, ""};
-                            else return {false, "", "Could not generate names for both sides of the azo group."};
+                            else return {false, "", "Could not generate names for both sides of the azo group, or a competing principal group elsewhere in the molecule is not supported alongside azo naming."};
                         }
                         auto nitrosoName = tryNameNitrosamine(static_cast<int>(i), nNode, g, allSSSRRings);
                         if (nitrosoName.has_value()) {
                             if (!nitrosoName->isEmpty()) return {true, *nitrosoName, ""};
-                            else return {false, "", "Could not generate names for all sides of the nitrosamine."};
+                            else return {false, "", "Could not generate names for all sides of the nitrosamine, or a competing principal group elsewhere in the molecule is not supported alongside nitrosamine naming."};
                         }
                     }
                     carbonGroup[i] = GroupType::AMINE;
@@ -6309,12 +6341,12 @@ IupacResult IupacNamer::generateName(int mol) {
                         auto azoName = tryNameAzoCompound(rIdx, nei, g, allSSSRRings);
                         if (azoName.has_value()) {
                             if (!azoName->isEmpty()) return {true, *azoName, ""};
-                            else return {false, "", "Could not generate names for both sides of the azo group."};
+                            else return {false, "", "Could not generate names for both sides of the azo group, or a competing principal group elsewhere in the molecule is not supported alongside azo naming."};
                         }
                         auto nitrosoName = tryNameNitrosamine(rIdx, nei, g, allSSSRRings);
                         if (nitrosoName.has_value()) {
                             if (!nitrosoName->isEmpty()) return {true, *nitrosoName, ""};
-                            else return {false, "", "Could not generate names for all sides of the nitrosamine."};
+                            else return {false, "", "Could not generate names for all sides of the nitrosamine, or a competing principal group elsewhere in the molecule is not supported alongside nitrosamine naming."};
                         }
                         if (!isNitroIsoOrAzide) hasSglN = true;
                     }
@@ -9791,12 +9823,12 @@ IupacResult IupacNamer::generateName(int mol) {
                         auto azoName = tryNameAzoCompound(static_cast<int>(i), nNode, g, allSSSRRings);
                         if (azoName.has_value()) {
                             if (!azoName->isEmpty()) return {true, *azoName, ""};
-                            else return {false, "", "Could not generate names for both sides of the azo group."};
+                            else return {false, "", "Could not generate names for both sides of the azo group, or a competing principal group elsewhere in the molecule is not supported alongside azo naming."};
                         }
                         auto nitrosoName = tryNameNitrosamine(static_cast<int>(i), nNode, g, allSSSRRings);
                         if (nitrosoName.has_value()) {
                             if (!nitrosoName->isEmpty()) return {true, *nitrosoName, ""};
-                            else return {false, "", "Could not generate names for all sides of the nitrosamine."};
+                            else return {false, "", "Could not generate names for all sides of the nitrosamine, or a competing principal group elsewhere in the molecule is not supported alongside nitrosamine naming."};
                         }
                     }
                     carbonGroup[i] = GroupType::AMINE;
@@ -11051,12 +11083,12 @@ IupacResult IupacNamer::generateName(int mol) {
                     auto azoName = tryNameAzoCompound(static_cast<int>(i), nNode, g, allSSSRRings);
                     if (azoName.has_value()) {
                         if (!azoName->isEmpty()) return {true, *azoName, ""};
-                        else return {false, "", "Could not generate names for both sides of the azo group."};
+                        else return {false, "", "Could not generate names for both sides of the azo group, or a competing principal group elsewhere in the molecule is not supported alongside azo naming."};
                     }
                     auto nitrosoName = tryNameNitrosamine(static_cast<int>(i), nNode, g, allSSSRRings);
                     if (nitrosoName.has_value()) {
                         if (!nitrosoName->isEmpty()) return {true, *nitrosoName, ""};
-                        else return {false, "", "Could not generate names for all sides of the nitrosamine."};
+                        else return {false, "", "Could not generate names for all sides of the nitrosamine, or a competing principal group elsewhere in the molecule is not supported alongside nitrosamine naming."};
                     }
                 }
                 carbonGroup[i] = GroupType::AMINE;

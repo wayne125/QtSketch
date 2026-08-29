@@ -120,6 +120,15 @@ int main() {
         {"CNN=O", "methylnitrous amide"},
         {"CCCCN(CC)N=O", "butyl(ethyl)nitrous amide"},
 
+        // Azo/nitrosamine constructions early-return and bypass the whole
+        // GroupType/seniority machinery -- must not hijack a molecule that
+        // has a coexisting, more senior principal group elsewhere (a real
+        // disclosed bug: the acid chain here was previously discarded and
+        // fabricated into a nonsense "dihydroxypropyl" fragment while the
+        // ring's nitrosamine group wrongly took over the whole name).
+        {"O=NN(C)C1CCCCC1CCC(=O)O", "", true, "competing principal group"},
+        {"CN=NCC1CCCCC1CCC(=O)O", "", true, "competing principal group"},
+
         // Rootless acyl carbon / multiple halogen fixes
         {"ClC(=O)Cl", "", true, "Carbonic acid halides with multiple halogens are not supported in this phase."},
         {"ClC(=O)Br", "", true, "Carbonic acid halides with multiple halogens are not supported in this phase."},
