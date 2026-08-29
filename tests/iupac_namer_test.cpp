@@ -83,7 +83,10 @@ int main() {
         {"NC(=S)CCCS(=O)(=O)N", "4-sulfamoylbutanethioamide"},
         {"OC(=O)CCC1CCC(C(=O)N)CC1", "3-(4-carbamoylcyclohexyl)propanoic acid"},
         {"OC(=O)CCC1CCC(C(=S)N)CC1", "3-(4-carbamothioylcyclohexyl)propanoic acid"},
+        {"OC(=O)CCC1CCC(C(=N)N)CC1", "3-(4-carbamimidoylcyclohexyl)propanoic acid"},
+        {"OC(=O)C1CCC(C(=N)N)CC1", "4-carbamimidoylcyclohexanecarboxylic acid"},
         {"OS(=O)(=O)c1ccc(C(=O)N)cc1", "4-carbamoylbenzene-1-sulfonic acid"},
+        {"OC(=O)c1ccc(C(=N)N)cc1", "4-carbamimidoylbenzenecarboxylic acid"},
 
         // Phosphinic acid
         {"CCP(=O)(O)CC", "diethylphosphinic acid"},
