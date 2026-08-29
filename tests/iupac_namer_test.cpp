@@ -557,6 +557,18 @@ int main() {
         // name missing an atom.
         {"NNC(=O)CCCC(=O)N", "", true, "Substituted amine/hydrazine substituents are not supported in this phase."},
 
+        // AMIDINE tests (P-66.4.1): amides by functional replacement nomenclature
+        // in which the =O has been replaced by =NH; PIN suffixes are
+        // "-imidamide"/"-carboximidamide" (not "-amidine"/"-carboxamidine").
+        // Real Blue Book worked examples, verified against BlueBookV2.md.
+        {"CCCCCC(=N)N", "hexanimidamide"},
+        {"C1CCCCC1C(=N)N", "cyclohexanecarboximidamide"},
+        {"CC(=N)N", "ethanimidamide"},
+        {"NC(=N)CCCC(=N)N", "pentanediimidamide"},
+        // N-substituted amidine (methyl on the amino nitrogen) -- out of scope
+        // (P-66.4.1.4), must still reject cleanly.
+        {"CC(=N)NC", "", true, "N-substituted imines, oximes, hydrazones, and amidines are not supported in this phase"},
+
         {"CCCC(=O)N=[N+]=[N-]", "", true, "Acyl pseudohalides"},
         {"CCCC(=O)C#N", "", true, "Acyl pseudohalides"},
         {"CCCC(=O)N=C=O", "", true, "Acyl pseudohalides"},
