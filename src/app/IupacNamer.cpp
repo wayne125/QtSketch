@@ -9069,6 +9069,9 @@ IupacResult IupacNamer::generateName(int mol) {
                             RingType cType = RingType::BENZENE;
                             QString cPrefix;
                             QString cLocants;
+                            int parentFaceL1 = -1;
+                            int parentFaceL2 = -1;
+                            char ownLetter = 0;
 
                             bool operator<(const Block& o) const { return text < o.text; }
                         };
@@ -9180,13 +9183,28 @@ IupacResult IupacNamer::generateName(int mol) {
                                             cBlocks[0].cType == cBlocks[1].cType && 
                                             cBlocks[0].cPrefix == cBlocks[1].cPrefix) {
                                             
-                                            b.text = "di" + cBlocks[0].cPrefix + "[" + cBlocks[0].cLocants + ":" + cBlocks[1].cLocants + "]";
-                                            
-                                            b.letters.insert(b.letters.end(), cBlocks[0].letters.begin(), cBlocks[0].letters.end());
-                                            b.letters.insert(b.letters.end(), cBlocks[1].letters.begin(), cBlocks[1].letters.end());
-                                            
-                                            b.firstOrder.insert(b.firstOrder.end(), cBlocks[0].firstOrder.begin(), cBlocks[0].firstOrder.end());
-                                            b.firstOrder.insert(b.firstOrder.end(), cBlocks[1].firstOrder.begin(), cBlocks[1].firstOrder.end());
+                                            if (cBlocks[0].cType == typesN[root]) {
+                                                QString locStr1 = QString("%1,%2-%3").arg(cBlocks[0].parentFaceL1).arg(cBlocks[0].parentFaceL2).arg(cBlocks[0].ownLetter);
+                                                QString locStr2 = QString("%1,%2-%3").arg(cBlocks[1].parentFaceL1).arg(cBlocks[1].parentFaceL2).arg(cBlocks[1].ownLetter);
+                                                b.text = getFusionPrefixShared(typesN[root]) + "[" + locStr1 + ":" + locStr2 + "]" + "di" + getBaseNameShared(cBlocks[0].cType);
+                                                
+                                                b.letters.push_back(cBlocks[0].ownLetter);
+                                                b.letters.push_back(cBlocks[1].ownLetter);
+                                                
+                                                b.firstOrder.push_back(cBlocks[0].parentFaceL1);
+                                                b.firstOrder.push_back(cBlocks[0].parentFaceL2);
+                                                b.firstOrder.push_back(cBlocks[1].parentFaceL1);
+                                                b.firstOrder.push_back(cBlocks[1].parentFaceL2);
+                                                return {true, b};
+                                            } else {
+                                                b.text = "di" + cBlocks[0].cPrefix + "[" + cBlocks[0].cLocants + ":" + cBlocks[1].cLocants + "]";
+                                                
+                                                b.letters.insert(b.letters.end(), cBlocks[0].letters.begin(), cBlocks[0].letters.end());
+                                                b.letters.insert(b.letters.end(), cBlocks[1].letters.begin(), cBlocks[1].letters.end());
+                                                
+                                                b.firstOrder.insert(b.firstOrder.end(), cBlocks[0].firstOrder.begin(), cBlocks[0].firstOrder.end());
+                                                b.firstOrder.insert(b.firstOrder.end(), cBlocks[1].firstOrder.begin(), cBlocks[1].firstOrder.end());
+                                            }
                                         } else {
                                             for (const auto& cb : cBlocks) {
                                                 b.text += cb.text;
@@ -9247,6 +9265,20 @@ IupacResult IupacNamer::generateName(int mol) {
                                                 b.cType = typesN[u];
                                                 b.cPrefix = myPrefix;
                                                 b.cLocants = locsStr;
+                                                int Su = currentNum[u].size();
+                                                bool isStandard = (uL1 < uL2 && !(uL1 == 1 && uL2 == Su)) || (uL1 == Su && uL2 == 1);
+                                                if (isStandard) {
+                                                    b.parentFaceL1 = pL1;
+                                                    b.parentFaceL2 = pL2;
+                                                } else {
+                                                    b.parentFaceL1 = pL2;
+                                                    b.parentFaceL2 = pL1;
+                                                }
+                                                if (std::min(uL1,uL2) == 1 && std::max(uL1,uL2) == Su) {
+                                                    b.ownLetter = 'a' + Su - 1;
+                                                } else {
+                                                    b.ownLetter = 'a' + std::min(uL1,uL2) - 1;
+                                                }
                                             }
                                         } else {
                                             b.lowerLocs[d].push_back(pL1); b.lowerLocs[d].push_back(pL2);
