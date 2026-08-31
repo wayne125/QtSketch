@@ -3681,15 +3681,28 @@ int main() {
         }
     }
     {
-        // P-25.4 generic rejection: 1,4-ethanonaphthalene (out of scope bridge length)
+        // Phase 30.5: 1,4-ethanonaphthalene
         int m = indigoLoadMoleculeFromString("C1CC2C=CC1c3ccccc23");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
-        if (!r.success && r.error.contains("bridged fused ring systems (P-25.4)")) {
-            std::cout << "[PASS] 1,4-ethanonaphthalene rejected as P-25.4\n";
+        if (r.success && r.name == "1,4-ethanonaphthalene") {
+            std::cout << "[PASS] 1,4-ethanonaphthalene\n";
             passed++;
         } else {
-            std::cout << "[FAIL] 1,4-ethanonaphthalene should reject as P-25.4, got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            std::cout << "[FAIL] 1,4-ethanonaphthalene, got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+    {
+        // P-25.4 generic rejection: 1,4-propanonaphthalene (out of scope bridge length)
+        int m = indigoLoadMoleculeFromString("C1CCC2C=CC1c3ccccc23");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success && r.error.contains("bridged fused ring systems (P-25.4)")) {
+            std::cout << "[PASS] 1,4-propanonaphthalene rejected as P-25.4\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] 1,4-propanonaphthalene should reject as P-25.4, got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
             failed++;
         }
     }

@@ -7401,53 +7401,99 @@ IupacResult IupacNamer::generateName(int mol) {
     // --- Phase 30.5: 1,4-epoxynaphthalene (P-25.4 specific narrow case) ---
     if (allSSSRRings.size() == 3) {
         int sixRing = -1;
-        int fiveRing1 = -1;
-        int fiveRing2 = -1;
+        int bridgeRing1 = -1;
+        int bridgeRing2 = -1;
         
+        int numSix = 0, numFive = 0;
         for (int i = 0; i < 3; ++i) {
-            if (allSSSRRings[i].size() == 6) {
-                if (sixRing == -1) sixRing = i;
-                else sixRing = -2;
-            } else if (allSSSRRings[i].size() == 5) {
-                if (fiveRing1 == -1) fiveRing1 = i;
-                else fiveRing2 = i;
+            if (allSSSRRings[i].size() == 6) numSix++;
+            else if (allSSSRRings[i].size() == 5) numFive++;
+        }
+        
+        if (numSix == 1 && numFive == 2) {
+            for (int i = 0; i < 3; ++i) {
+                if (allSSSRRings[i].size() == 6) sixRing = i;
+                else if (bridgeRing1 == -1) bridgeRing1 = i;
+                else bridgeRing2 = i;
+            }
+        } else if (numSix == 3) {
+            for (int i = 0; i < 3; ++i) {
+                for (int j = i + 1; j < 3; ++j) {
+                    int shared = 0;
+                    for (int n : allSSSRRings[i]) if (allSSSRRings[j].count(n)) shared++;
+                    if (shared == 4) {
+                        bridgeRing1 = i;
+                        bridgeRing2 = j;
+                        sixRing = 3 - i - j;
+                    }
+                }
             }
         }
         
-        if (sixRing >= 0 && fiveRing1 != -1 && fiveRing2 != -1) {
-            std::vector<int> sharedBetweenFives;
-            for (int n : allSSSRRings[fiveRing1]) if (allSSSRRings[fiveRing2].count(n)) sharedBetweenFives.push_back(n);
+        if (sixRing >= 0 && bridgeRing1 != -1 && bridgeRing2 != -1) {
+            std::vector<int> sharedBetweenBridgeRings;
+            for (int n : allSSSRRings[bridgeRing1]) if (allSSSRRings[bridgeRing2].count(n)) sharedBetweenBridgeRings.push_back(n);
             
-            if (sharedBetweenFives.size() == 3) {
-                int bridgeAtom = -1;
+            if (sharedBetweenBridgeRings.size() == 3 || sharedBetweenBridgeRings.size() == 4) {
+                std::vector<int> bridgeAtoms;
                 std::vector<int> bridgeheads;
                 QString bridgePrefix;
-                for (int n : sharedBetweenFives) {
+                for (int n : sharedBetweenBridgeRings) {
                     if (g.nodes[n].atomicNumber == 8) {
-                        bridgeAtom = n;
+                        bridgeAtoms.push_back(n);
                         bridgePrefix = "epoxy";
                     } else if (g.nodes[n].atomicNumber == 6 && g.nodes[n].totalH == 2 && g.nodes[n].neighbors.size() == 2) {
-                        bridgeAtom = n;
-                        bridgePrefix = "methano";
+                        bridgeAtoms.push_back(n);
                     } else {
                         bridgeheads.push_back(n);
                     }
                 }
                 
-                if (bridgeAtom != -1 && bridgeheads.size() == 2) {
+                if (bridgePrefix.isEmpty() && bridgeAtoms.size() > 0) {
+                    if (bridgeAtoms.size() == 1) bridgePrefix = "methano";
+                    else if (bridgeAtoms.size() == 2) bridgePrefix = "ethano";
+                }
+                
+                if (!bridgePrefix.isEmpty() && bridgeheads.size() == 2 && bridgeAtoms.size() == (sharedBetweenBridgeRings.size() - 2)) {
                     bool validBridge = false;
-                    if (g.nodes[bridgeAtom].neighbors.size() == 2) {
-                        int n1 = g.nodes[bridgeAtom].neighbors[0];
-                        int n2 = g.nodes[bridgeAtom].neighbors[1];
-                        if ((n1 == bridgeheads[0] && n2 == bridgeheads[1]) || (n1 == bridgeheads[1] && n2 == bridgeheads[0])) {
-                            validBridge = true;
+                    if (bridgeAtoms.size() == 1) {
+                        int b = bridgeAtoms[0];
+                        if (g.nodes[b].neighbors.size() == 2) {
+                            int n1 = g.nodes[b].neighbors[0];
+                            int n2 = g.nodes[b].neighbors[1];
+                            if ((n1 == bridgeheads[0] && n2 == bridgeheads[1]) || (n1 == bridgeheads[1] && n2 == bridgeheads[0])) {
+                                validBridge = true;
+                            }
+                        }
+                    } else if (bridgeAtoms.size() == 2) {
+                        int b1 = bridgeAtoms[0];
+                        int b2 = bridgeAtoms[1];
+                        if (g.nodes[b1].neighbors.size() == 2 && g.nodes[b2].neighbors.size() == 2) {
+                            int b1_n1 = g.nodes[b1].neighbors[0], b1_n2 = g.nodes[b1].neighbors[1];
+                            int b2_n1 = g.nodes[b2].neighbors[0], b2_n2 = g.nodes[b2].neighbors[1];
+                            bool b1_to_b2 = (b1_n1 == b2 || b1_n2 == b2);
+                            if (b1_to_b2) {
+                                int b1_bh = (b1_n1 == b2) ? b1_n2 : b1_n1;
+                                int b2_bh = (b2_n1 == b1) ? b2_n2 : b2_n1;
+                                if ((b1_bh == bridgeheads[0] && b2_bh == bridgeheads[1]) || (b1_bh == bridgeheads[1] && b2_bh == bridgeheads[0])) {
+                                    validBridge = true;
+                                }
+                            }
                         }
                     }
                     
                     if (validBridge) {
                         std::set<int> bridgedSixNodes;
-                        for (int n : allSSSRRings[fiveRing1]) if (n != bridgeAtom) bridgedSixNodes.insert(n);
-                        for (int n : allSSSRRings[fiveRing2]) if (n != bridgeAtom) bridgedSixNodes.insert(n);
+                        for (int n : allSSSRRings[bridgeRing1]) {
+                            bool isB = false;
+                            for (int b : bridgeAtoms) if (n == b) isB = true;
+                            if (!isB) bridgedSixNodes.insert(n);
+                        }
+                        for (int n : allSSSRRings[bridgeRing2]) {
+                            bool isB = false;
+                            for (int b : bridgeAtoms) if (n == b) isB = true;
+                            if (!isB) bridgedSixNodes.insert(n);
+                        }
                         
                         if (bridgedSixNodes.size() == 6) {
                             std::vector<int> sharedFusion;
@@ -7464,7 +7510,9 @@ IupacResult IupacNamer::generateName(int mol) {
                                     
                                     for (int n : ringNodeSet) {
                                         for (int nei : g.nodes[n].neighbors) {
-                                            if (!ringNodeSet.count(nei) && nei != bridgeAtom) {
+                                            bool isB = false;
+                                            for (int b : bridgeAtoms) if (nei == b) isB = true;
+                                            if (!ringNodeSet.count(nei) && !isB) {
                                                 validSkeleton = false;
                                             }
                                         }
