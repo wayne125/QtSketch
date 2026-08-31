@@ -7421,9 +7421,14 @@ IupacResult IupacNamer::generateName(int mol) {
             if (sharedBetweenFives.size() == 3) {
                 int bridgeAtom = -1;
                 std::vector<int> bridgeheads;
+                QString bridgePrefix;
                 for (int n : sharedBetweenFives) {
                     if (g.nodes[n].atomicNumber == 8) {
                         bridgeAtom = n;
+                        bridgePrefix = "epoxy";
+                    } else if (g.nodes[n].atomicNumber == 6 && g.nodes[n].totalH == 2 && g.nodes[n].neighbors.size() == 2) {
+                        bridgeAtom = n;
+                        bridgePrefix = "methano";
                     } else {
                         bridgeheads.push_back(n);
                     }
@@ -7557,7 +7562,7 @@ IupacResult IupacNamer::generateName(int mol) {
                                                 }
                                             }
                                             if (bestPair.first != 999) {
-                                                QString fullName = QString::number(bestPair.first) + "," + QString::number(bestPair.second) + "-epoxynaphthalene";
+                                                QString fullName = QString::number(bestPair.first) + "," + QString::number(bestPair.second) + "-" + bridgePrefix + "naphthalene";
                                                 return {true, fullName, ""};
                                             }
                                         }

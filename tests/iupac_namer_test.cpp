@@ -3668,15 +3668,28 @@ int main() {
         }
     }
     {
-        // Phase XY: 1,4-methanonaphthalene (bridged fused, P-25.4)
-        int m = indigoLoadMoleculeFromString("C1C2C=CC1C3=CC=CC=C23");
+        // Phase 30.5 extension: 1,4-methanonaphthalene (P-25.4 specific narrow case)
+        int m = indigoLoadMoleculeFromString("C1C2C=CC1c3ccccc23");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "1,4-methanonaphthalene") {
+            std::cout << "[PASS] 1,4-methanonaphthalene (P-25.4 specific narrow case)\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] 1,4-methanonaphthalene: got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+    {
+        // P-25.4 generic rejection: 1,4-ethanonaphthalene (out of scope bridge length)
+        int m = indigoLoadMoleculeFromString("C1CC2C=CC1c3ccccc23");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
         if (!r.success && r.error.contains("bridged fused ring systems (P-25.4)")) {
-            std::cout << "[PASS] 1,4-methanonaphthalene rejected as P-25.4\n";
+            std::cout << "[PASS] 1,4-ethanonaphthalene rejected as P-25.4\n";
             passed++;
         } else {
-            std::cout << "[FAIL] 1,4-methanonaphthalene should reject as P-25.4, got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            std::cout << "[FAIL] 1,4-ethanonaphthalene should reject as P-25.4, got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
             failed++;
         }
     }
