@@ -7398,6 +7398,179 @@ IupacResult IupacNamer::generateName(int mol) {
         }
     }
 
+    // --- Phase 30.5: 1,4-epoxynaphthalene (P-25.4 specific narrow case) ---
+    if (allSSSRRings.size() == 3) {
+        int sixRing = -1;
+        int fiveRing1 = -1;
+        int fiveRing2 = -1;
+        
+        for (int i = 0; i < 3; ++i) {
+            if (allSSSRRings[i].size() == 6) {
+                if (sixRing == -1) sixRing = i;
+                else sixRing = -2;
+            } else if (allSSSRRings[i].size() == 5) {
+                if (fiveRing1 == -1) fiveRing1 = i;
+                else fiveRing2 = i;
+            }
+        }
+        
+        if (sixRing >= 0 && fiveRing1 != -1 && fiveRing2 != -1) {
+            std::vector<int> sharedBetweenFives;
+            for (int n : allSSSRRings[fiveRing1]) if (allSSSRRings[fiveRing2].count(n)) sharedBetweenFives.push_back(n);
+            
+            if (sharedBetweenFives.size() == 3) {
+                int bridgeAtom = -1;
+                std::vector<int> bridgeheads;
+                for (int n : sharedBetweenFives) {
+                    if (g.nodes[n].atomicNumber == 8) {
+                        bridgeAtom = n;
+                    } else {
+                        bridgeheads.push_back(n);
+                    }
+                }
+                
+                if (bridgeAtom != -1 && bridgeheads.size() == 2) {
+                    bool validBridge = false;
+                    if (g.nodes[bridgeAtom].neighbors.size() == 2) {
+                        int n1 = g.nodes[bridgeAtom].neighbors[0];
+                        int n2 = g.nodes[bridgeAtom].neighbors[1];
+                        if ((n1 == bridgeheads[0] && n2 == bridgeheads[1]) || (n1 == bridgeheads[1] && n2 == bridgeheads[0])) {
+                            validBridge = true;
+                        }
+                    }
+                    
+                    if (validBridge) {
+                        std::set<int> bridgedSixNodes;
+                        for (int n : allSSSRRings[fiveRing1]) if (n != bridgeAtom) bridgedSixNodes.insert(n);
+                        for (int n : allSSSRRings[fiveRing2]) if (n != bridgeAtom) bridgedSixNodes.insert(n);
+                        
+                        if (bridgedSixNodes.size() == 6) {
+                            std::vector<int> sharedFusion;
+                            for (int n : bridgedSixNodes) if (allSSSRRings[sixRing].count(n)) sharedFusion.push_back(n);
+                            
+                            if (sharedFusion.size() == 2) {
+                                std::set<int> ringNodeSet;
+                                for (int n : bridgedSixNodes) ringNodeSet.insert(n);
+                                for (int n : allSSSRRings[sixRing]) ringNodeSet.insert(n);
+                                
+                                bool validSkeleton = (ringNodeSet.size() == 10);
+                                if (validSkeleton) {
+                                    for (int n : ringNodeSet) if (g.nodes[n].atomicNumber != 6) validSkeleton = false;
+                                    
+                                    for (int n : ringNodeSet) {
+                                        for (int nei : g.nodes[n].neighbors) {
+                                            if (!ringNodeSet.count(nei) && nei != bridgeAtom) {
+                                                validSkeleton = false;
+                                            }
+                                        }
+                                    }
+                                    
+                                    int bhA = sharedFusion[0];
+                                    int bhB = sharedFusion[1];
+                                    bool bhBonded = false;
+                                    for (int nei : g.nodes[bhA].neighbors) if (nei == bhB) bhBonded = true;
+                                    if (!bhBonded) validSkeleton = false;
+                                    
+                                    for (const auto &gb : g.bonds) {
+                                        if (allSSSRRings[sixRing].count(gb.u) && allSSSRRings[sixRing].count(gb.v)) {
+                                            if (gb.order != 4) validSkeleton = false;
+                                        }
+                                    }
+                                    
+                                    if (validSkeleton) {
+                                        int p1_start = -1;
+                                        for (int nei : g.nodes[bhA].neighbors) {
+                                            if (bridgedSixNodes.count(nei) && nei != bhB) {
+                                                p1_start = nei;
+                                                break;
+                                            }
+                                        }
+                                        std::vector<int> ring1Path;
+                                        if (p1_start != -1) {
+                                            int curr = p1_start;
+                                            int prev = bhA;
+                                            for (int i = 0; i < 4; ++i) {
+                                                ring1Path.push_back(curr);
+                                                int nextNode = -1;
+                                                for (int nei : g.nodes[curr].neighbors) {
+                                                    if (bridgedSixNodes.count(nei) && nei != prev) {
+                                                        nextNode = nei;
+                                                        break;
+                                                    }
+                                                }
+                                                prev = curr;
+                                                curr = nextNode;
+                                            }
+                                            if (ring1Path.size() != 4 || curr != bhB) validSkeleton = false;
+                                        } else validSkeleton = false;
+                                        
+                                        int p2_start = -1;
+                                        for (int nei : g.nodes[bhA].neighbors) {
+                                            if (allSSSRRings[sixRing].count(nei) && nei != bhB) {
+                                                p2_start = nei;
+                                                break;
+                                            }
+                                        }
+                                        std::vector<int> ring2Path;
+                                        if (p2_start != -1) {
+                                            int curr = p2_start;
+                                            int prev = bhA;
+                                            for (int i = 0; i < 4; ++i) {
+                                                ring2Path.push_back(curr);
+                                                int nextNode = -1;
+                                                for (int nei : g.nodes[curr].neighbors) {
+                                                    if (allSSSRRings[sixRing].count(nei) && nei != prev) {
+                                                        nextNode = nei;
+                                                        break;
+                                                    }
+                                                }
+                                                prev = curr;
+                                                curr = nextNode;
+                                            }
+                                            if (ring2Path.size() != 4 || curr != bhB) validSkeleton = false;
+                                        } else validSkeleton = false;
+                                        
+                                        if (validSkeleton) {
+                                            std::vector<std::map<int, int>> candidateMaps(4);
+                                            for (int i = 0; i < 4; ++i) candidateMaps[0][ring1Path[i]] = i + 1;
+                                            for (int i = 0; i < 4; ++i) candidateMaps[0][ring2Path[3 - i]] = i + 5;
+                                            
+                                            for (int i = 0; i < 4; ++i) candidateMaps[1][ring2Path[i]] = i + 1;
+                                            for (int i = 0; i < 4; ++i) candidateMaps[1][ring1Path[3 - i]] = i + 5;
+                                            
+                                            for (int i = 0; i < 4; ++i) candidateMaps[2][ring1Path[3 - i]] = i + 1;
+                                            for (int i = 0; i < 4; ++i) candidateMaps[2][ring2Path[i]] = i + 5;
+                                            
+                                            for (int i = 0; i < 4; ++i) candidateMaps[3][ring2Path[3 - i]] = i + 1;
+                                            for (int i = 0; i < 4; ++i) candidateMaps[3][ring1Path[i]] = i + 5;
+                                            
+                                            std::pair<int, int> bestPair = {999, 999};
+                                            for (int i = 0; i < 4; ++i) {
+                                                if (candidateMaps[i].count(bridgeheads[0]) && candidateMaps[i].count(bridgeheads[1])) {
+                                                    int l1 = candidateMaps[i][bridgeheads[0]];
+                                                    int l2 = candidateMaps[i][bridgeheads[1]];
+                                                    if (l1 > l2) std::swap(l1, l2);
+                                                    std::pair<int, int> p = {l1, l2};
+                                                    if (p < bestPair) {
+                                                        bestPair = p;
+                                                    }
+                                                }
+                                            }
+                                            if (bestPair.first != 999) {
+                                                QString fullName = QString::number(bestPair.first) + "," + QString::number(bestPair.second) + "-epoxynaphthalene";
+                                                return {true, fullName, ""};
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // --- Detect unsupported fusion topologies (P-25.3.1.1.2, P-25.4, P-25.5) ---
     {
         int N_rings = allSSSRRings.size();

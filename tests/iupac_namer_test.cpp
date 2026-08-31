@@ -3680,6 +3680,18 @@ int main() {
             failed++;
         }
     }
+    {
+        int m = indigoLoadMoleculeFromString("O1C2C=CC1c3ccccc23");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "1,4-epoxynaphthalene") {
+            std::cout << "[PASS] 1,4-epoxynaphthalene (P-25.4 specific narrow case)\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] 1,4-epoxynaphthalene: got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
 
 
     {
