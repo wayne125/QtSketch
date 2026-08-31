@@ -237,6 +237,9 @@ int main() {
         {"c1cc[te]c1", "tellurophene"},
         {"c1cc[nH]c1", "pyrrole"},
         {"c1ccncc1", "pyridine"},
+        {"N1C=CC=CC1", "1,2-dihydropyridine"},
+        {"CC1=CC=CNC1", "", true, "Saturated or partially unsaturated heterocycles are not yet supported; only the fully aromatic (maximally unsaturated) forms are supported in this phase."},
+        {"C1C=CNC=C1", "", true, "Saturated or partially unsaturated heterocycles are not yet supported; only the fully aromatic (maximally unsaturated) forms are supported in this phase."},
         {"c1ccccp1", "phosphinine"},
 
         // Other ring sizes (only cyclohexane/-ol/-ene/-carboxylic acid were tested at size 6)

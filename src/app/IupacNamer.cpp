@@ -11002,6 +11002,58 @@ IupacResult IupacNamer::generateName(int mol) {
         }
     }
 
+    // --- 1,2-dihydropyridine specific narrow case (P-31) ---
+    if (ringSize == 6 && g.nodes.size() == 6 && ringHeteroNodes.size() == 1 && g.nodes[ringHeteroNodes[0]].atomicNumber == 7) {
+        int nIdx = ringHeteroNodes[0];
+        const GraphNode &nNode = g.nodes[nIdx];
+        if (nNode.totalH == 1 && nNode.neighbors.size() == 2) {
+            int nei1 = nNode.neighbors[0];
+            int nei2 = nNode.neighbors[1];
+            int b1 = nNode.bondOrders[0];
+            int b2 = nNode.bondOrders[1];
+            if (b1 == 1 && b2 == 1) {
+                int satC = -1;
+                if (g.nodes[nei1].totalH == 2 && g.nodes[nei2].totalH == 1) satC = nei1;
+                else if (g.nodes[nei2].totalH == 2 && g.nodes[nei1].totalH == 1) satC = nei2;
+                
+                if (satC != -1) {
+                    auto getBondOrder = [&](int u, int v) {
+                        for (size_t k = 0; k < g.nodes[u].neighbors.size(); ++k) {
+                            if (g.nodes[u].neighbors[k] == v) return g.nodes[u].bondOrders[k];
+                        }
+                        return -1;
+                    };
+                    int path[6];
+                    path[0] = nIdx;
+                    path[1] = satC;
+                    for (int i = 2; i < 6; ++i) {
+                        int curr = path[i-1];
+                        int prev = path[i-2];
+                        int next = -1;
+                        for (int nei : g.nodes[curr].neighbors) {
+                            if (nei != prev) { next = nei; break; }
+                        }
+                        path[i] = next;
+                    }
+                    if (getBondOrder(path[0], path[1]) == 1 &&
+                        getBondOrder(path[1], path[2]) == 1 &&
+                        getBondOrder(path[2], path[3]) == 2 &&
+                        getBondOrder(path[3], path[4]) == 1 &&
+                        getBondOrder(path[4], path[5]) == 2 &&
+                        getBondOrder(path[5], path[0]) == 1) {
+                        bool hOk = true;
+                        for (int i = 2; i <= 5; ++i) {
+                            if (g.nodes[path[i]].totalH != 1) hOk = false;
+                        }
+                        if (hOk) {
+                            return {true, "1,2-dihydropyridine", ""};
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     RingType rType;
     QString parentNameRoot;
 
