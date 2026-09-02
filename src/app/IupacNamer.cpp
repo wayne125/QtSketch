@@ -3889,6 +3889,58 @@ IupacResult IupacNamer::generateName(int mol) {
         indigoFree(stereoIter);
     }
 
+    // --- diphosphoric acid (P-67.2) specific narrow case ---
+    if (g.nodes.size() == 9) {
+        int countP = 0, countO = 0;
+        for (const auto &n : g.nodes) {
+            if (n.atomicNumber == 15) countP++;
+            else if (n.atomicNumber == 8) countO++;
+        }
+        if (countP == 2 && countO == 7) {
+            int bridgingO = -1;
+            int bridgingCount = 0;
+            for (size_t i = 0; i < g.nodes.size(); ++i) {
+                if (g.nodes[i].atomicNumber == 8 && g.nodes[i].neighbors.size() == 2) {
+                    int nei1 = g.nodes[i].neighbors[0];
+                    int nei2 = g.nodes[i].neighbors[1];
+                    if (g.nodes[nei1].atomicNumber == 15 && g.nodes[nei2].atomicNumber == 15 && g.nodes[i].totalH == 0) {
+                        bridgingO = static_cast<int>(i);
+                        bridgingCount++;
+                    }
+                }
+            }
+            if (bridgingCount == 1) {
+                bool valid = true;
+                for (size_t i = 0; i < g.nodes.size(); ++i) {
+                    if (g.nodes[i].atomicNumber == 15) {
+                        if (g.nodes[i].neighbors.size() != 4) { valid = false; break; }
+                        int doubleO = 0, terminalOH = 0, bridgeO = 0;
+                        for (size_t j = 0; j < g.nodes[i].neighbors.size(); ++j) {
+                            int nei = g.nodes[i].neighbors[j];
+                            int order = g.nodes[i].bondOrders[j];
+                            if (g.nodes[nei].atomicNumber == 8) {
+                                if (nei == bridgingO && order == 1) {
+                                    bridgeO++;
+                                } else if (order == 2 && g.nodes[nei].neighbors.size() == 1 && g.nodes[nei].totalH == 0) {
+                                    doubleO++;
+                                } else if (order == 1 && g.nodes[nei].neighbors.size() == 1 && g.nodes[nei].totalH > 0) {
+                                    terminalOH++;
+                                }
+                            }
+                        }
+                        if (doubleO != 1 || terminalOH != 2 || bridgeO != 1) {
+                            valid = false;
+                            break;
+                        }
+                    }
+                }
+                if (valid) {
+                    return {true, "diphosphoric acid", ""};
+                }
+            }
+        }
+    }
+
     std::map<int, int> carbonSulfonicAcid; // carbonNode -> sulfurNode
     std::map<int, int> carbonSulfonamide;  // carbonNode -> sulfurNode
     std::map<int, int> carbonSulfinicAcid; // carbonNode -> sulfurNode
