@@ -106,6 +106,10 @@ int main() {
         // P-67.2 disulfuric acid
         {"OS(=O)(=O)OS(=O)(=O)O", "disulfuric acid"},
         {"OS(=O)OS(=O)O", "", true, "Sulfur-containing groups other than thiols, thioethers, and sulfonic/sulfinic acids are not supported in this phase."},
+
+        // P-67.2 diarsoric acid
+        {"O[As](=O)(O)O[As](=O)(O)O", "diarsoric acid"},
+        {"O[As](=O)(O)[As](=O)(O)O", "", true, "Arsenic-containing groups other than arsonic and arsinic acids are not supported in this phase."},
         {"CCB(O)Cl", "chloro(ethyl)borinic acid"},
         {"CB(O)c1ccccc1", "methyl(phenyl)borinic acid"},
 
