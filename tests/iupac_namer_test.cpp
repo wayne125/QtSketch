@@ -113,6 +113,17 @@ int main() {
         {"CCB(O)Cl", "chloro(ethyl)borinic acid"},
         {"CB(O)c1ccccc1", "methyl(phenyl)borinic acid"},
 
+        // P-66.1.1.3.1 N-Substitution
+        {"CC(=O)NC", "N-methylethanamide"},
+        {"CC(=O)NCC", "N-ethylethanamide"},
+        {"O=CNC", "N-methylmethanamide"},
+        {"CC(=O)N", "ethanamide"},
+        {"CC(=O)N(C)C", "", true, "N,N-disubstituted amides are not supported"},
+        {"CC(=O)NC(C)C", "", true, "Branched or ring N-substituents on amides are not supported"},
+        {"CC(=O)NC(C)=O", "", true, "Acyclic imides (N-acylamides) are not supported"},
+        {"CC(=O)Nc1ccccc1", "", true, "A chain-based principal group outranks the ring in this structure"},
+
+
         // P-66.4.4 Amidoximes
         {"ON=CN", "N-hydroxymethanimidamide"},
         {"CC(N)=NO", "N-hydroxyethanimidamide"},
