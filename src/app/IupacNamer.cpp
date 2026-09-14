@@ -3993,6 +3993,83 @@ IupacResult IupacNamer::generateName(int mol) {
         }
     }
 
+    // --- amidoximes (P-66.4.4) specific narrow case ---
+    {
+        int countC = 0, countN = 0, countO = 0, countOtherHeavy = 0;
+        for (const auto &n : g.nodes) {
+            if (n.atomicNumber == 6) countC++;
+            else if (n.atomicNumber == 7) countN++;
+            else if (n.atomicNumber == 8) countO++;
+            else if (n.atomicNumber > 1) countOtherHeavy++;
+        }
+        if (countN == 2 && countO == 1 && countOtherHeavy == 0) {
+            int amidoximeCarbon = -1, doubleN = -1, singleN = -1;
+            for (size_t i = 0; i < g.nodes.size(); ++i) {
+                if (g.nodes[i].atomicNumber == 6) {
+                    int dN = -1, sN = -1;
+                    for (size_t j = 0; j < g.nodes[i].neighbors.size(); ++j) {
+                        int nei = g.nodes[i].neighbors[j];
+                        int order = g.nodes[i].bondOrders[j];
+                        if (g.nodes[nei].atomicNumber == 7) {
+                            if (order == 2) dN = nei;
+                            else if (order == 1) sN = nei;
+                        }
+                    }
+                    if (dN != -1 && sN != -1) {
+                        amidoximeCarbon = static_cast<int>(i);
+                        doubleN = dN;
+                        singleN = sN;
+                        break;
+                    }
+                }
+            }
+            if (amidoximeCarbon != -1) {
+                bool terminalOH = false;
+                for (size_t j = 0; j < g.nodes[doubleN].neighbors.size(); ++j) {
+                    int nei = g.nodes[doubleN].neighbors[j];
+                    int order = g.nodes[doubleN].bondOrders[j];
+                    if (g.nodes[nei].atomicNumber == 8 && order == 1) {
+                        if (g.nodes[nei].totalH >= 1 || g.nodes[nei].neighbors.size() == 1) {
+                            terminalOH = true;
+                            break;
+                        }
+                    }
+                }
+                bool unsubAmino = false;
+                if (g.nodes[singleN].totalH >= 2 || g.nodes[singleN].neighbors.size() == 1) {
+                    unsubAmino = true;
+                }
+                if (terminalOH && unsubAmino) {
+                    int rStart = -1;
+                    bool validR = true;
+                    for (size_t j = 0; j < g.nodes[amidoximeCarbon].neighbors.size(); ++j) {
+                        int nei = g.nodes[amidoximeCarbon].neighbors[j];
+                        if (nei != doubleN && nei != singleN) {
+                            if (g.nodes[nei].atomicNumber == 6) {
+                                if (rStart != -1 || g.nodes[amidoximeCarbon].bondOrders[j] != 1) {
+                                    validR = false;
+                                }
+                                rStart = nei;
+                            } else if (g.nodes[nei].atomicNumber != 1) {
+                                validR = false;
+                            }
+                        }
+                    }
+                    if (validR) {
+                        int expectedChainLen = 0;
+                        if (rStart != -1) {
+                            expectedChainLen = countPlainAlkylChain(rStart, amidoximeCarbon, g);
+                        }
+                        if (expectedChainLen == countC - 1) {
+                            QString name = "N-hydroxy" + chainRoot(countC) + "animidamide";
+                            return {true, name, ""};
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // --- disulfuric acid (P-67.2) specific narrow case ---
     if (g.nodes.size() == 9) {
         int countS = 0, countO = 0;

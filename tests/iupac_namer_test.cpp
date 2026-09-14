@@ -113,6 +113,14 @@ int main() {
         {"CCB(O)Cl", "chloro(ethyl)borinic acid"},
         {"CB(O)c1ccccc1", "methyl(phenyl)borinic acid"},
 
+        // P-66.4.4 Amidoximes
+        {"ON=CN", "N-hydroxymethanimidamide"},
+        {"CC(N)=NO", "N-hydroxyethanimidamide"},
+        {"CCCCC(N)=NO", "N-hydroxypentanimidamide"},
+        {"CC(NC)=NO", "", true, "N-substituted imines, oximes, hydrazones, and amidines are not supported in this phase; only the unsubstituted C=NH imine and unsubstituted -C(=NH)NH2 amidine are supported."}, // N-substituted rejection
+        {"CC(N)=NOC", "", true, "N-substituted imines, oximes, hydrazones, and amidines are not supported in this phase; only the unsubstituted C=NH imine and unsubstituted -C(=NH)NH2 amidine are supported."}, // O-alkyl rejection
+        {"CC(C)C(N)=NO", "", true, "N-substituted imines, oximes, hydrazones, and amidines are not supported in this phase; only the unsubstituted C=NH imine and unsubstituted -C(=NH)NH2 amidine are supported."}, // Branched R rejection
+
 
         // Chalcogen-oxide ring-as-substituent bug
         {"O=C(O)CCC1CCCCC1S(=O)C", "3-(2-methanesulfinylcyclohexyl)propanoic acid"},
