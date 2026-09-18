@@ -4164,6 +4164,232 @@ IupacResult IupacNamer::generateName(int mol) {
         }
     }
 
+    // --- N-substituted thioamides (P-66.1.1.3.1) narrow case & imide rejection ---
+    {
+        int countC = 0, countN = 0, countS = 0, countOtherHeavy = 0;
+        int numEdges = 0;
+        for (const auto &n : g.nodes) {
+            numEdges += n.neighbors.size();
+            if (n.atomicNumber == 6) countC++;
+            else if (n.atomicNumber == 7) countN++;
+            else if (n.atomicNumber == 16) countS++;
+            else if (n.atomicNumber > 1) countOtherHeavy++;
+        }
+        numEdges /= 2;
+        bool isAcyclic = (numEdges == static_cast<int>(g.nodes.size()) - 1);
+        
+        if (isAcyclic && countN == 1 && (countS == 1 || countS == 2) && countOtherHeavy == 0) {
+            int nNode = -1;
+            for (size_t i = 0; i < g.nodes.size(); ++i) {
+                if (g.nodes[i].atomicNumber == 7) {
+                    nNode = static_cast<int>(i);
+                    break;
+                }
+            }
+            if (nNode != -1) {
+                std::vector<int> acylNeighbors;
+                std::vector<int> alkylNeighbors;
+                for (size_t j = 0; j < g.nodes[nNode].neighbors.size(); ++j) {
+                    int nei = g.nodes[nNode].neighbors[j];
+                    if (g.nodes[nei].atomicNumber == 6) {
+                        bool isAcyl = false;
+                        if (g.nodes[nNode].bondOrders[j] == 1) {
+                            for (size_t k = 0; k < g.nodes[nei].neighbors.size(); ++k) {
+                                if (g.nodes[g.nodes[nei].neighbors[k]].atomicNumber == 16 && g.nodes[nei].bondOrders[k] == 2) {
+                                    isAcyl = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (isAcyl) acylNeighbors.push_back(nei);
+                        else if (g.nodes[nNode].bondOrders[j] == 1) alkylNeighbors.push_back(nei);
+                    }
+                }
+                
+                if (acylNeighbors.size() >= 2) {
+                    return {false, "", "Acyclic imides (N-acylamides) are not supported"};
+                } else if (acylNeighbors.size() == 1) {
+                    if (countS == 1) {
+                        if (alkylNeighbors.size() == 2) {
+                            return {false, "", "N,N-disubstituted thioamides are not supported"};
+                        } else if (alkylNeighbors.size() == 1) {
+                            int c0 = acylNeighbors[0];
+                            int c1 = alkylNeighbors[0];
+                            
+                            int rLen = 0;
+                            int cR = -1;
+                            for (size_t j = 0; j < g.nodes[c0].neighbors.size(); ++j) {
+                                int nei = g.nodes[c0].neighbors[j];
+                                if (nei != nNode && g.nodes[nei].atomicNumber == 6) {
+                                    cR = nei;
+                                    break;
+                                }
+                            }
+                            if (cR != -1) {
+                                rLen = countPlainAlkylChain(cR, c0, g);
+                            }
+                            
+                            int rPrimeLen = countPlainAlkylChain(c1, nNode, g);
+                            
+                            if (rLen == -1 || rPrimeLen == -1) {
+                                if (rPrimeLen == -1) {
+                                    return {false, "", "Branched or ring N-substituents on thioamides are not supported"};
+                                } else {
+                                    return {false, "", "Ring or branched acyl parents on thioamides are not supported"};
+                                }
+                            }
+                            
+                            if (rLen + rPrimeLen + 1 != countC) {
+                                return {false, "", "Thioamides with additional substituents or functional groups are not supported in this phase"};
+                            }
+                            
+                            QString name = "N-" + chainRoot(rPrimeLen) + "yl" + chainRoot(rLen + 1) + "anethioamide";
+                            if (rLen == 0) name = "N-" + chainRoot(rPrimeLen) + "ylmethanethioamide";
+                            return {true, name, ""};
+                        }
+                    } else {
+                        // countS == 2
+                        if (alkylNeighbors.size() >= 1) {
+                            return {false, "", "Thioamides with additional substituents or functional groups are not supported in this phase"};
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // --- N-substituted hydrazides (P-66.3.3.1) narrow case ---
+    {
+        int countC = 0, countN = 0, countO = 0, countOtherHeavy = 0;
+        int numEdges = 0;
+        for (const auto &n : g.nodes) {
+            numEdges += n.neighbors.size();
+            if (n.atomicNumber == 6) countC++;
+            else if (n.atomicNumber == 7) countN++;
+            else if (n.atomicNumber == 8) countO++;
+            else if (n.atomicNumber > 1) countOtherHeavy++;
+        }
+        numEdges /= 2;
+        bool isAcyclic = (numEdges == static_cast<int>(g.nodes.size()) - 1);
+        
+        if (isAcyclic && countN == 2 && countO == 1 && countOtherHeavy == 0) {
+            int nNodeNear = -1;
+            int nNodeFar = -1;
+            for (size_t i = 0; i < g.nodes.size(); ++i) {
+                if (g.nodes[i].atomicNumber == 7) {
+                    for (size_t j = 0; j < g.nodes[i].neighbors.size(); ++j) {
+                        int nei = g.nodes[i].neighbors[j];
+                        if (g.nodes[nei].atomicNumber == 6) {
+                            bool isAcyl = false;
+                            if (g.nodes[i].bondOrders[j] == 1) {
+                                for (size_t k = 0; k < g.nodes[nei].neighbors.size(); ++k) {
+                                    if (g.nodes[g.nodes[nei].neighbors[k]].atomicNumber == 8 && g.nodes[nei].bondOrders[k] == 2) {
+                                        isAcyl = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (isAcyl) {
+                                nNodeNear = static_cast<int>(i);
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (nNodeNear != -1) break;
+            }
+            if (nNodeNear != -1) {
+                for (size_t j = 0; j < g.nodes[nNodeNear].neighbors.size(); ++j) {
+                    int nei = g.nodes[nNodeNear].neighbors[j];
+                    if (g.nodes[nei].atomicNumber == 7) {
+                        nNodeFar = nei;
+                        break;
+                    }
+                }
+                
+                if (nNodeFar != -1) {
+                    std::vector<int> alkylNeighborsNear;
+                    std::vector<int> alkylNeighborsFar;
+                    for (size_t j = 0; j < g.nodes[nNodeNear].neighbors.size(); ++j) {
+                        int nei = g.nodes[nNodeNear].neighbors[j];
+                        if (g.nodes[nei].atomicNumber == 6) {
+                            bool isAcyl = false;
+                            for (size_t k = 0; k < g.nodes[nei].neighbors.size(); ++k) {
+                                if (g.nodes[g.nodes[nei].neighbors[k]].atomicNumber == 8 && g.nodes[nei].bondOrders[k] == 2) {
+                                    isAcyl = true;
+                                    break;
+                                }
+                            }
+                            if (!isAcyl) alkylNeighborsNear.push_back(nei);
+                        }
+                    }
+                    for (size_t j = 0; j < g.nodes[nNodeFar].neighbors.size(); ++j) {
+                        int nei = g.nodes[nNodeFar].neighbors[j];
+                        if (g.nodes[nei].atomicNumber == 6) {
+                            alkylNeighborsFar.push_back(nei);
+                        }
+                    }
+                    
+                    if (alkylNeighborsNear.size() > 0 && alkylNeighborsFar.size() > 0) {
+                        return {false, "", "Hydrazides with substituents on both nitrogens are not supported"};
+                    } else if (alkylNeighborsNear.size() > 1 || alkylNeighborsFar.size() > 1) {
+                        return {false, "", "N',N'-disubstituted hydrazides are not supported"};
+                    } else if (alkylNeighborsNear.size() == 1 || alkylNeighborsFar.size() == 1) {
+                        bool isNear = (alkylNeighborsNear.size() == 1);
+                        int subNode = isNear ? alkylNeighborsNear[0] : alkylNeighborsFar[0];
+                        
+                        int acylCarbon = -1;
+                        for (size_t j = 0; j < g.nodes[nNodeNear].neighbors.size(); ++j) {
+                            int nei = g.nodes[nNodeNear].neighbors[j];
+                            if (g.nodes[nei].atomicNumber == 6 && nei != subNode) {
+                                for (size_t k = 0; k < g.nodes[nei].neighbors.size(); ++k) {
+                                    if (g.nodes[g.nodes[nei].neighbors[k]].atomicNumber == 8 && g.nodes[nei].bondOrders[k] == 2) {
+                                        acylCarbon = nei;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        int rLen = 0;
+                        if (acylCarbon != -1) {
+                            int cR = -1;
+                            for (size_t j = 0; j < g.nodes[acylCarbon].neighbors.size(); ++j) {
+                                int nei = g.nodes[acylCarbon].neighbors[j];
+                                if (nei != nNodeNear && g.nodes[nei].atomicNumber == 6) {
+                                    cR = nei;
+                                    break;
+                                }
+                            }
+                            if (cR != -1) {
+                                rLen = countPlainAlkylChain(cR, acylCarbon, g);
+                            }
+                        }
+                        
+                        int rPrimeLen = countPlainAlkylChain(subNode, isNear ? nNodeNear : nNodeFar, g);
+                        
+                        if (rLen == -1 || rPrimeLen == -1) {
+                            if (rPrimeLen == -1) {
+                                return {false, "", "Branched or ring substituents on hydrazides are not supported"}; // Wait, tests say "Branched or ring substituents..."
+                            } else {
+                                return {false, "", "Ring or branched acyl parents on hydrazides are not supported"};
+                            }
+                        }
+                        
+                        if (rLen + rPrimeLen + 1 != countC) {
+                            return {false, "", "Hydrazides with additional substituents or functional groups are not supported in this phase"};
+                        }
+                        
+                        QString locant = isNear ? "N-" : "N'-";
+                        QString name = locant + chainRoot(rPrimeLen) + "yl" + chainRoot(rLen + 1) + "anehydrazide";
+                        if (rLen == 0) name = locant + chainRoot(rPrimeLen) + "ylmethanehydrazide";
+                        return {true, name, ""};
+                    }
+                }
+            }
+        }
+    }
+
     // --- disulfuric acid (P-67.2) specific narrow case ---
     if (g.nodes.size() == 9) {
         int countS = 0, countO = 0;

@@ -123,6 +123,23 @@ int main() {
         {"CC(=O)NC(C)=O", "", true, "Acyclic imides (N-acylamides) are not supported"},
         {"CC(=O)Nc1ccccc1", "", true, "A chain-based principal group outranks the ring in this structure"},
 
+        // P-66.1.1.3.1 N-Substitution (thioamides)
+        {"CC(=S)NC", "N-methylethanethioamide"},
+        {"CC(=S)NCC", "N-ethylethanethioamide"},
+        {"S=CNC", "N-methylmethanethioamide"},
+        {"CC(=S)N", "ethanethioamide"},
+        {"CC(=S)N(C)C", "", true, "N,N-disubstituted thioamides are not supported"},
+        {"CC(=S)NC(C)C", "", true, "Branched or ring N-substituents on thioamides are not supported"},
+        {"CC(=S)NC(C)=S", "", true, "Acyclic imides (N-acylamides) are not supported"},
+
+        // P-66.3.3.1 Substituted hydrazides
+        {"CC(=O)N(C)N", "N-methylethanehydrazide"}, // Methyl on NEAR nitrogen
+        {"CC(=O)NNC", "N'-methylethanehydrazide"}, // Methyl on FAR nitrogen
+        {"CC(=O)NN", "ethanehydrazide"},
+        {"CC(=O)N(C)NC", "", true, "Hydrazides with substituents on both nitrogens are not supported"},
+        {"CC(=O)NN(C)C", "", true, "N',N'-disubstituted hydrazides are not supported"},
+
+
 
         // P-66.4.4 Amidoximes
         {"ON=CN", "N-hydroxymethanimidamide"},
