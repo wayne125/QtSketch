@@ -4332,7 +4332,9 @@ IupacResult IupacNamer::generateName(int mol) {
                     
                     if (alkylNeighborsNear.size() > 0 && alkylNeighborsFar.size() > 0) {
                         return {false, "", "Hydrazides with substituents on both nitrogens are not supported"};
-                    } else if (alkylNeighborsNear.size() > 1 || alkylNeighborsFar.size() > 1) {
+                    } else if (alkylNeighborsNear.size() > 1) {
+                        return {false, "", "N,N-disubstituted hydrazides are not supported"};
+                    } else if (alkylNeighborsFar.size() > 1) {
                         return {false, "", "N',N'-disubstituted hydrazides are not supported"};
                     } else if (alkylNeighborsNear.size() == 1 || alkylNeighborsFar.size() == 1) {
                         bool isNear = (alkylNeighborsNear.size() == 1);
@@ -4370,7 +4372,7 @@ IupacResult IupacNamer::generateName(int mol) {
                         
                         if (rLen == -1 || rPrimeLen == -1) {
                             if (rPrimeLen == -1) {
-                                return {false, "", "Branched or ring substituents on hydrazides are not supported"}; // Wait, tests say "Branched or ring substituents..."
+                                return {false, "", "Branched or ring substituents on hydrazides are not supported"};
                             } else {
                                 return {false, "", "Ring or branched acyl parents on hydrazides are not supported"};
                             }
