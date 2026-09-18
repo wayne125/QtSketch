@@ -12,6 +12,9 @@ set_source_files_properties(Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 set_source_files_properties(StyleSheets.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_executable(sketch src/app/main.cpp src/app/IndigoService.h src/app/IndigoService.cpp src/app/IupacNamer.h src/app/IupacNamer.cpp src/app/ImagoService.h src/app/ImagoService.cpp src/v8_process.h src/v8_process.cpp src/app/FileIO.h src/app/PlacementEngines.h src/app/PlacementEngines.cpp src/app/PlacementPreviewManager.h src/app/PlacementPreviewManager.cpp src/app/AppController.h src/app/AppController.cpp src/app/DocumentManager.h src/app/DocumentManager.cpp)
+if (WIN32)
+    target_sources(sketch PRIVATE src/app/app_icon.rc)
+endif()
 # FusedRingOrientation/FusedRingDirectionDetector are NOT linked into this target:
 # IupacNamer.cpp has zero calls into them (confirmed 2026-07-29). They're real,
 # tested geometric-orientation modules meant for a future numbering-integration
@@ -65,6 +68,10 @@ qt_add_qml_module(sketch
         js/ThumbnailPainter.js
     RESOURCES
         fonts/materialdesignicons-webfont.ttf
+        icons/app_icon.png
+        icons/app_icon_16.png
+        icons/app_icon_32.png
+        icons/app_icon_48.png
         icons/select.svg
         icons/erase.svg
         icons/single_bond.svg

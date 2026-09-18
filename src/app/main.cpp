@@ -6,6 +6,7 @@
 #include <QTextStream>
 #include <QStandardPaths>
 #include <QDir>
+#include <QIcon>
 
 #include <QUrl>
 #include "IndigoService.h"
@@ -45,6 +46,13 @@ int main(int argc, char *argv[])
     // Required for the QML Settings backing store (tool-panel section states)
     app.setOrganizationName("sketch");
     app.setApplicationName("sketch");
+
+    QIcon appIcon;
+    appIcon.addFile(":/qt/qml/Sketch/App/icons/app_icon_16.png", QSize(16, 16));
+    appIcon.addFile(":/qt/qml/Sketch/App/icons/app_icon_32.png", QSize(32, 32));
+    appIcon.addFile(":/qt/qml/Sketch/App/icons/app_icon_48.png", QSize(48, 48));
+    appIcon.addFile(":/qt/qml/Sketch/App/icons/app_icon.png", QSize(256, 256));
+    app.setWindowIcon(appIcon);
 
     // AppDataLocation depends on organizationName/applicationName above, so this
     // must run after they're set. A relative "qml_errors.log" resolved to whatever
