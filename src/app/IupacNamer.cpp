@@ -1926,14 +1926,34 @@ QString nameBranchGraph(const Graph &g, int rootIdx, int parentIdx, const std::v
                 if (r1.count(rootIdx) || r2.count(rootIdx)) {
                     std::vector<int> shared;
                     for (int n : r1) if (r2.count(n)) shared.push_back(n);
-                    if (shared.size() == 2) {
+                    if (shared.size() == 2 && r1.size() == 6 && r2.size() == 6) {
                         int bhA = shared[0], bhB = shared[1];
                         bool bhBonded = false;
                         for (int nei : g.nodes[bhA].neighbors) if (nei == bhB) { bhBonded = true; break; }
                         if (bhBonded) {
                             std::set<int> naphNodes = r1;
                             for (int n : r2) naphNodes.insert(n);
-                            if (naphNodes.count(rootIdx)) {
+                            // A ring-pair sharing exactly 2 bonded atoms is only naphthalene if
+                            // it's genuinely an all-carbon, fully aromatic 10-atom system -- the
+                            // same validation the properly-guarded ring-is-parent naphthalene
+                            // detector already applies elsewhere in this file. Without this check,
+                            // ANY ortho-fused bicyclic system reached as a substituent (a
+                            // benzothiazole, a penicillin's beta-lactam+thiazolidine core, a
+                            // chromenone) was wrongly labeled "naphthalen-1-yl"/"naphthalen-2-yl"
+                            // -- a real, confirmed bug (amoxicillin and warfarin's real structures
+                            // both hit this, producing garbled names that spuriously mention
+                            // "naphthalen" for ring systems that aren't naphthalene at all).
+                            bool allCarbon = true;
+                            for (int n : naphNodes) {
+                                if (g.nodes[n].atomicNumber != 6) { allCarbon = false; break; }
+                            }
+                            bool allAromatic = true;
+                            for (const auto &gb : g.bonds) {
+                                if (naphNodes.count(gb.u) && naphNodes.count(gb.v)) {
+                                    if (gb.order != 4) { allAromatic = false; break; }
+                                }
+                            }
+                            if (naphNodes.count(rootIdx) && allCarbon && allAromatic && naphNodes.size() == 10) {
                                 bool is1Type = false;
                                 for (int nei : g.nodes[rootIdx].neighbors) {
                                     if (nei == bhA || nei == bhB) { is1Type = true; break; }
@@ -6421,11 +6441,15 @@ IupacResult IupacNamer::generateName(int mol) {
                             if (alkylNei != -1) {
                                 QString alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings);
                                 if (alkylName.isEmpty()) return {false, "", "Unrecognized or unsupported substituent."};
-                                if (alkylName == "methyl" || alkylName == "ethyl" || alkylName == "propyl" || alkylName == "butyl" || alkylName == "phenyl") {
+                                if (alkylName.startsWith("(") && alkylName.endsWith(")")) {
+                                    alkylName += "oxy";
+                                } else if (alkylName == "methyl" || alkylName == "ethyl" || alkylName == "propyl" || alkylName == "butyl" || alkylName == "phenyl") {
                                     alkylName.chop(2); alkylName += "oxy";
                                 } else if (alkylName.endsWith("yl") && !alkylName.contains('(') && !alkylName.contains('[') &&
                                            !std::any_of(alkylName.begin(), alkylName.end(), [](QChar c) { return c.isDigit(); })) {
                                     alkylName += "oxy";
+                                } else {
+                                    alkylName = "(" + alkylName + ")oxy";
                                 }
                                 locantSubstituents[locant].append(alkylName);
                             }
@@ -11125,13 +11149,21 @@ IupacResult IupacNamer::generateName(int mol) {
                                 }
                                 if (alkylNei != -1) {
                                     QString alkylName = nameBranchGraph(g, alkylNei, nei);
-                                    if (alkylName == "methyl" || alkylName == "ethyl" || alkylName == "propyl" || alkylName == "butyl" || alkylName == "phenyl") {
+                                    if (alkylName.isEmpty()) {
+                                        // leave subName empty -- unnameable substituent
+                                    } else if (alkylName.startsWith("(") && alkylName.endsWith(")")) {
+                                        alkylName += "oxy";
+                                        subName = alkylName;
+                                    } else if (alkylName == "methyl" || alkylName == "ethyl" || alkylName == "propyl" || alkylName == "butyl" || alkylName == "phenyl") {
                                         alkylName.chop(2); alkylName += "oxy";
+                                        subName = alkylName;
                                     } else if (alkylName.endsWith("yl") && !alkylName.contains('(') && !alkylName.contains('[') &&
                                                !std::any_of(alkylName.begin(), alkylName.end(), [](QChar c) { return c.isDigit(); })) {
                                         alkylName += "oxy";
+                                        subName = alkylName;
+                                    } else {
+                                        subName = "(" + alkylName + ")oxy";
                                     }
-                                    subName = alkylName;
                                 }
                             } else if (winningType != GroupType::ALCOHOL) {
                                 subName = "hydroxy";
@@ -12639,13 +12671,21 @@ IupacResult IupacNamer::generateName(int mol) {
                                 }
                                 if (alkylNei != -1) {
                                     QString alkylName = nameBranchGraph(g, alkylNei, nei);
-                                    if (alkylName == "methyl" || alkylName == "ethyl" || alkylName == "propyl" || alkylName == "butyl" || alkylName == "phenyl") {
+                                    if (alkylName.isEmpty()) {
+                                        // leave subName empty -- unnameable substituent
+                                    } else if (alkylName.startsWith("(") && alkylName.endsWith(")")) {
+                                        alkylName += "oxy";
+                                        subName = alkylName;
+                                    } else if (alkylName == "methyl" || alkylName == "ethyl" || alkylName == "propyl" || alkylName == "butyl" || alkylName == "phenyl") {
                                         alkylName.chop(2); alkylName += "oxy";
+                                        subName = alkylName;
                                     } else if (alkylName.endsWith("yl") && !alkylName.contains('(') && !alkylName.contains('[') &&
                                                !std::any_of(alkylName.begin(), alkylName.end(), [](QChar c) { return c.isDigit(); })) {
                                         alkylName += "oxy";
+                                        subName = alkylName;
+                                    } else {
+                                        subName = "(" + alkylName + ")oxy";
                                     }
-                                    subName = alkylName;
                                 }
                             } else if (winningType != GroupType::ALCOHOL) {
                                 subName = "hydroxy";

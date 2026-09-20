@@ -4085,12 +4085,9 @@ int main() {
         // whole walked path. These three SMILES (a minimal repro, plus diphenhydramine and
         // fluoxetine's real structures) used to hang the namer indefinitely; this test only
         // asserts they now complete with SOME result -- it deliberately does NOT pin an exact
-        // name string, because the resulting names are not yet verified fully correct (a
-        // separate, pre-existing "oxy" substituent-construction gap for the specific
-        // parent=trivial-methane + complex-bracketed-substituent shape was found to be exposed
-        // by this fix, e.g. "COC(c1ccccc1)c2ccccc2" -> "(1,1-diphenylmethyl)methane", missing
-        // its ether oxygen -- documented as a separate, still-open gap in the coverage doc, not
-        // fixed by this change). The only thing this test guards against is the hang itself.
+        // name string, since exact bracket-nesting styling for these compound cases is not yet
+        // independently verified against a real PIN. The only thing this test guards against is
+        // the hang itself.
         const char *hangRepros[] = {
             "COC(c1ccccc1)c2ccccc2",                          // minimal repro (benzhydryl methyl ether)
             "CN(C)CCOC(c1ccccc1)c2ccccc2",                     // diphenhydramine (real drug)
@@ -4107,6 +4104,74 @@ int main() {
                 std::cout << "[FAIL] no-hang regression (" << smi << ") -> completed but neither success nor error set\n";
                 failed++;
             }
+        }
+    }
+
+    {
+        // Regression guard for a real bug found in the same real-drug validation pass: an
+        // ortho-fused bicyclic ring pair (two rings sharing exactly 2 bonded atoms) reached as
+        // a SUBSTITUENT was unconditionally named "naphthalen-1-yl"/"naphthalen-2-yl" with no
+        // check that it's actually a 6+6 all-carbon aromatic system -- so amoxicillin's real
+        // penicillin core (a beta-lactam fused to a thiazolidine, containing S and N) and
+        // warfarin's real chromenone ring both got wrongly, silently mislabeled "naphthalen...".
+        // Fixed by adding the same ring-size/all-carbon/all-aromatic validation an already-
+        // correct sibling naphthalene detector elsewhere in the file already had. Both molecules
+        // now correctly fall through to an honest rejection instead of a fabricated wrong name
+        // (their real ring systems are genuinely out of scope -- fused, non-naphthalene systems
+        // -- this fix does not attempt to name them correctly, only to stop mislabeling them).
+        int m1 = indigoLoadMoleculeFromString("CC1(C(N2C(S1)C(C2=O)NC(=O)C(C3=CC=C(C=C3)O)N)C(=O)O)C"); // amoxicillin
+        IupacResult r1 = IupacNamer::generateName(m1);
+        indigoFree(m1);
+        if (!r1.success && !r1.name.contains("naphthalen")) {
+            std::cout << "[PASS] amoxicillin no longer mislabeled naphthalene -> " << r1.error.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] amoxicillin -> got success=" << r1.success << " name='" << r1.name.toStdString() << "' err='" << r1.error.toStdString() << "'\n";
+            failed++;
+        }
+
+        int m2 = indigoLoadMoleculeFromString("CC(=O)CC(c1ccccc1)C2=C(c3ccccc3OC2=O)O"); // warfarin
+        IupacResult r2 = IupacNamer::generateName(m2);
+        indigoFree(m2);
+        if (!r2.success && !r2.name.contains("naphthalen")) {
+            std::cout << "[PASS] warfarin no longer mislabeled naphthalene -> " << r2.error.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] warfarin -> got success=" << r2.success << " name='" << r2.name.toStdString() << "' err='" << r2.error.toStdString() << "'\n";
+            failed++;
+        }
+
+        // Genuine naphthalene-as-substituent case must still work (regression check on the fix
+        // itself): a real 6+6 all-carbon aromatic ring pair reached as a substituent.
+        int m3 = indigoLoadMoleculeFromString("OC(=O)CCc1ccc2ccccc2c1"); // 3-(naphthalen-2-yl)propanoic acid
+        IupacResult r3 = IupacNamer::generateName(m3);
+        indigoFree(m3);
+        if (r3.success && r3.name.contains("naphthalen")) {
+            std::cout << "[PASS] genuine naphthalene substituent still recognized -> " << r3.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] genuine naphthalene substituent -> got success=" << r3.success << " name='" << r3.name.toStdString() << "' err='" << r3.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Regression guard for a real bug found while verifying the hang fix above: 3 duplicated
+        // copies of the "ether oxygen substituent" naming logic checked only for a plain
+        // "methyl"/"ethyl"/.../"phenyl" name or a digit-free plain "-yl" name before appending
+        // "oxy" -- any OTHER substituent name (containing digits, e.g. "1,1-diphenylmethyl", or
+        // already bracket-wrapped) silently got NO "oxy" appended at all, dropping the ether
+        // linkage from the name entirely. Fixed by adding the missing fallback case (mirroring
+        // the sibling nameBranchGraph ether-oxygen branch, which already handled this correctly).
+        int m = indigoLoadMoleculeFromString("COC(c1ccccc1)c2ccccc2"); // benzhydryl methyl ether
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name.contains("oxy")) {
+            std::cout << "[PASS] acyloxy/alkoxy 'oxy' no longer silently dropped -> " << r.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] oxy-dropped regression -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
         }
     }
 
