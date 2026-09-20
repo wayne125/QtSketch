@@ -1106,6 +1106,47 @@ int countPlainAlkylChain(int startNode, int fromNode, const Graph &g) {
     }
 }
 
+// Structural check + construction for an acyloxy substituent (-O-CO-R)
+// singly bonded to `fromNode`. Returns an empty string if `oNode` is not an
+// unsubstituted acyloxy oxygen. Mirrors the equivalent logic already used
+// inside nameRingAsSubstituent.
+QString tryNameAcyloxySubstituent(int oNode, int fromNode, const Graph &g,
+                                 const std::vector<std::set<int>> &allIndependentRings) {
+    const GraphNode &n = g.nodes[oNode];
+    if (n.atomicNumber != 8 || n.neighbors.size() != 2) return "";
+    int cAcyl = -1;
+    for (int nNei : n.neighbors) {
+        if (nNei != fromNode && g.nodes[nNei].atomicNumber == 6) {
+            for (size_t k = 0; k < g.nodes[nNei].neighbors.size(); ++k) {
+                int cNei = g.nodes[nNei].neighbors[k];
+                if (g.nodes[cNei].atomicNumber == 8 && g.nodes[nNei].bondOrders[k] == 2) {
+                    cAcyl = nNei; break;
+                }
+            }
+        }
+    }
+    if (cAcyl == -1) return "";
+    int rGroup = -1;
+    for (int aNei : g.nodes[cAcyl].neighbors) {
+        if (aNei != oNode && g.nodes[aNei].atomicNumber != 8) {
+            rGroup = aNei; break;
+        }
+    }
+    if (rGroup == -1) return "";
+    int chainLen = countPlainAlkylChain(rGroup, cAcyl, g);
+    if (chainLen > 0) {
+        QString stem = chainRoot(chainLen + 1);
+        if (!stem.isEmpty()) return stem + "anoyloxy";
+    }
+    QString rName = nameBranchGraph(g, rGroup, cAcyl, allIndependentRings);
+    if (rName.isEmpty()) return "";
+    if (rName.endsWith("phenyl")) {
+        rName.chop(6);
+        return rName + "benzoyloxy";
+    }
+    return wrapCompoundSuffix(rName, "carbonyloxy");
+}
+
 // Structural check + construction for an N-acyl "amido" substituent (-NH-CO-R)
 // singly bonded to `fromNode`. Returns an empty string if `nNode` is not an
 // unsubstituted N-acyl nitrogen. Mirrors the equivalent logic already used
@@ -1454,31 +1495,34 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                 } else if (nZ == 7 && order == 2 && g.nodes[nei].totalH >= 1 && g.nodes[nei].neighbors.size() == 1) {
                     subName = "imino";
                 } else if (nZ == 8 && order == 1) {
-                    int alkylNei = -1;
-                    for (int oNei : g.nodes[nei].neighbors) {
-                        if (oNei != rNode) { alkylNei = oNei; break; }
-                    }
-                    if (alkylNei != -1 && g.nodes[alkylNei].atomicNumber == 8 &&
-                        g.nodes[alkylNei].totalH >= 1 && g.nodes[alkylNei].neighbors.size() == 1) {
-                        subName = "hydroperoxy";
-                    } else if (alkylNei != -1) {
-                        QString alkylName = nameBranchGraph(g, alkylNei, nei, allIndependentRings);
-                        if (alkylName.isEmpty()) { candValid = false; break; }
-                        if (alkylName.startsWith("(") && alkylName.endsWith(")")) {
-                            subName = "[(" + alkylName.mid(1, alkylName.length() - 2) + ")oxy]";
-                        } else if (alkylName.startsWith("[") && alkylName.endsWith("]")) {
-                            subName = "[(" + alkylName.mid(1, alkylName.length() - 2) + ")oxy]";
-                        } else if (alkylName == "methyl" || alkylName == "ethyl" || alkylName == "propyl" || alkylName == "butyl" || alkylName == "phenyl") {
-                            alkylName.chop(2);
-                            subName = alkylName + "oxy";
-                        } else if (alkylName.endsWith("yl") && !alkylName.contains('(') && !alkylName.contains('[') &&
-                                   !std::any_of(alkylName.begin(), alkylName.end(), [](QChar c) { return c.isDigit(); })) {
-                            subName = alkylName + "oxy";
-                        } else {
-                            subName = "[(" + alkylName + ")oxy]";
+                    subName = tryNameAcyloxySubstituent(nei, rNode, g, allIndependentRings);
+                    if (subName.isEmpty()) {
+                        int alkylNei = -1;
+                        for (int oNei : g.nodes[nei].neighbors) {
+                            if (oNei != rNode) { alkylNei = oNei; break; }
                         }
-                    } else {
-                        subName = "hydroxy";
+                        if (alkylNei != -1 && g.nodes[alkylNei].atomicNumber == 8 &&
+                            g.nodes[alkylNei].totalH >= 1 && g.nodes[alkylNei].neighbors.size() == 1) {
+                            subName = "hydroperoxy";
+                        } else if (alkylNei != -1) {
+                            QString alkylName = nameBranchGraph(g, alkylNei, nei, allIndependentRings);
+                            if (alkylName.isEmpty()) { candValid = false; break; }
+                            if (alkylName.startsWith("(") && alkylName.endsWith(")")) {
+                                subName = "[(" + alkylName.mid(1, alkylName.length() - 2) + ")oxy]";
+                            } else if (alkylName.startsWith("[") && alkylName.endsWith("]")) {
+                                subName = "{[" + alkylName.mid(1, alkylName.length() - 2) + "]oxy}";
+                            } else if (alkylName == "methyl" || alkylName == "ethyl" || alkylName == "propyl" || alkylName == "butyl" || alkylName == "phenyl") {
+                                alkylName.chop(2);
+                                subName = alkylName + "oxy";
+                            } else if (alkylName.endsWith("yl") && !alkylName.contains('(') && !alkylName.contains('[') &&
+                                       !std::any_of(alkylName.begin(), alkylName.end(), [](QChar c) { return c.isDigit(); })) {
+                                subName = alkylName + "oxy";
+                            } else {
+                                subName = "[(" + alkylName + ")oxy]";
+                            }
+                        } else {
+                            subName = "hydroxy";
+                        }
                     }
                 } else if (nZ == 7 && order == 1 && isAzideNitrogen(nei, rNode, g)) {
                     subName = "azido";
@@ -4924,6 +4968,7 @@ IupacResult IupacNamer::generateName(int mol) {
 
         int foundAttachChainNode = -1;
         int attachRingNode = -1;
+        bool hasDirectExoGroup = false;
         int mainChainExoCount = 0;
         bool validSubstituent = true;
 
@@ -5008,6 +5053,8 @@ IupacResult IupacNamer::generateName(int mol) {
                                 foundAttachChainNode = nei;
                                 attachRingNode = rNode;
                                 mainChainExoCount++;
+                            } else {
+                                hasDirectExoGroup = true;
                             }
                         } else if (isEsterO) {
                             foundAttachChainNode = nei;
@@ -5019,6 +5066,10 @@ IupacResult IupacNamer::generateName(int mol) {
                     }
                 }
             }
+        }
+
+        if (validSubstituent && hasDirectExoGroup && foundAttachChainNode != -1 && g.nodes[foundAttachChainNode].atomicNumber == 8) {
+            validSubstituent = false;
         }
 
         if (validSubstituent && (mainChainExoCount == 1 || twoRingsAreDisjoint) && foundAttachChainNode != -1 && attachRingNode != -1) {
@@ -12221,6 +12272,13 @@ IupacResult IupacNamer::generateName(int mol) {
                 if (g.nodes[n].atomicNumber != 6) { ringHasHeteroatom = true; break; }
             }
         }
+#ifdef IUPAC_DEBUG_MP
+        qDebug() << "DEBUG: combinedWinner=" << static_cast<int>(combinedWinner)
+                 << " ringCount=" << ringCount
+                 << " chainCount=" << chainCount
+                 << " chainDeepCount=" << chainDeepCount;
+#endif
+        
         if (!ringHasHeteroatom && (chainCount > ringCount || (chainCount == ringCount && chainDeepCount > 0))) {
             // Chain is the senior parent structure. Name it as parent with the ring cited
             // as a substituent prefix. Phase 54: this is no longer acid-only -- the
@@ -12529,23 +12587,26 @@ IupacResult IupacNamer::generateName(int mol) {
                     subName = halogenPrefix(nz);
                 } else if (nz == 8) {
                     if (order == 1) {
-                        if (etherOxygens.count(nei)) {
-                            int alkylNei = -1;
-                            for (int oNei : g.nodes[nei].neighbors) {
-                                if (oNei != rNode) { alkylNei = oNei; break; }
-                            }
-                            if (alkylNei != -1) {
-                                QString alkylName = nameBranchGraph(g, alkylNei, nei);
-                                if (alkylName == "methyl" || alkylName == "ethyl" || alkylName == "propyl" || alkylName == "butyl" || alkylName == "phenyl") {
-                                    alkylName.chop(2); alkylName += "oxy";
-                                } else if (alkylName.endsWith("yl") && !alkylName.contains('(') && !alkylName.contains('[') &&
-                                           !std::any_of(alkylName.begin(), alkylName.end(), [](QChar c) { return c.isDigit(); })) {
-                                    alkylName += "oxy";
+                        subName = tryNameAcyloxySubstituent(nei, rNode, g, allSSSRRings);
+                        if (subName.isEmpty()) {
+                            if (etherOxygens.count(nei)) {
+                                int alkylNei = -1;
+                                for (int oNei : g.nodes[nei].neighbors) {
+                                    if (oNei != rNode) { alkylNei = oNei; break; }
                                 }
-                                subName = alkylName;
+                                if (alkylNei != -1) {
+                                    QString alkylName = nameBranchGraph(g, alkylNei, nei);
+                                    if (alkylName == "methyl" || alkylName == "ethyl" || alkylName == "propyl" || alkylName == "butyl" || alkylName == "phenyl") {
+                                        alkylName.chop(2); alkylName += "oxy";
+                                    } else if (alkylName.endsWith("yl") && !alkylName.contains('(') && !alkylName.contains('[') &&
+                                               !std::any_of(alkylName.begin(), alkylName.end(), [](QChar c) { return c.isDigit(); })) {
+                                        alkylName += "oxy";
+                                    }
+                                    subName = alkylName;
+                                }
+                            } else if (winningType != GroupType::ALCOHOL) {
+                                subName = "hydroxy";
                             }
-                        } else if (winningType != GroupType::ALCOHOL) {
-                            subName = "hydroxy";
                         }
                     } else if (order == 2) {
                         if (winningType != GroupType::ALDEHYDE && winningType != GroupType::KETONE) {

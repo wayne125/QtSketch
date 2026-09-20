@@ -4001,6 +4001,53 @@ int main() {
         }
     }
 
+    {
+        // Issue: Aspirin and other acyloxy ring substituents
+        int m1 = indigoLoadMoleculeFromString("CC(=O)Oc1ccccc1");
+        IupacResult r1 = IupacNamer::generateName(m1);
+        indigoFree(m1);
+        if (r1.success && r1.name == "phenyl ethanoate") {
+            std::cout << "[PASS] phenyl acetate -> " << r1.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] phenyl acetate -> got success=" << r1.success << " name='" << r1.name.toStdString() << "' err='" << r1.error.toStdString() << "'\n";
+            failed++;
+        }
+
+        int m2 = indigoLoadMoleculeFromString("OC(=O)c1ccccc1C(=O)OC");
+        IupacResult r2 = IupacNamer::generateName(m2);
+        indigoFree(m2);
+        if (r2.success && r2.name == "2-methoxycarbonylbenzenecarboxylic acid") {
+            std::cout << "[PASS] 2-methoxycarbonyl... -> " << r2.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] 2-methoxycarbonyl... -> got success=" << r2.success << " name='" << r2.name.toStdString() << "' err='" << r2.error.toStdString() << "'\n";
+            failed++;
+        }
+
+        int m3 = indigoLoadMoleculeFromString("CC(=O)Oc1ccccc1C(=O)O");
+        IupacResult r3 = IupacNamer::generateName(m3);
+        indigoFree(m3);
+        if (r3.success && r3.name == "2-ethanoyloxybenzenecarboxylic acid") {
+            std::cout << "[PASS] aspirin -> " << r3.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] aspirin -> got success=" << r3.success << " name='" << r3.name.toStdString() << "' err='" << r3.error.toStdString() << "'\n";
+            failed++;
+        }
+
+        int m4 = indigoLoadMoleculeFromString("CCC(=O)Oc1ccccc1C(=O)O");
+        IupacResult r4 = IupacNamer::generateName(m4);
+        indigoFree(m4);
+        if (r4.success && r4.name == "2-propanoyloxybenzenecarboxylic acid") {
+            std::cout << "[PASS] propanoyloxy analogue -> " << r4.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] propanoyloxy analogue -> got success=" << r4.success << " name='" << r4.name.toStdString() << "' err='" << r4.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
     std::cout << "\nSummary: " << passed << " passed, " << failed << " failed.\n";
     indigoReleaseSessionId(sid);
     return (failed == 0) ? 0 : 1;
