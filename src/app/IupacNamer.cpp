@@ -12272,13 +12272,6 @@ IupacResult IupacNamer::generateName(int mol) {
                 if (g.nodes[n].atomicNumber != 6) { ringHasHeteroatom = true; break; }
             }
         }
-#ifdef IUPAC_DEBUG_MP
-        qDebug() << "DEBUG: combinedWinner=" << static_cast<int>(combinedWinner)
-                 << " ringCount=" << ringCount
-                 << " chainCount=" << chainCount
-                 << " chainDeepCount=" << chainDeepCount;
-#endif
-        
         if (!ringHasHeteroatom && (chainCount > ringCount || (chainCount == ringCount && chainDeepCount > 0))) {
             // Chain is the senior parent structure. Name it as parent with the ring cited
             // as a substituent prefix. Phase 54: this is no longer acid-only -- the
