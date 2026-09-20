@@ -124,6 +124,23 @@ int main() {
         {"CN(CC)C(C)C", "", true, "Branched, ring, or unsaturated chains on N-substituted amines are not supported"},
         {"CN(C)C1CCCCC1", "", true, "A chain-based principal group outranks the ring in this structure; chain-as-parent seniority (P-44.1.1) for this ring/class combination is not yet supported."},
 
+        // Regression guard for a real bug found in the same real-drug validation pass: the
+        // monocyclic ring-parent carboxamide/carboxylic-acid suffix construction unconditionally
+        // omitted the principal-group locant whenever there was exactly one principal group,
+        // regardless of whether the ring is actually symmetric enough for that to be
+        // unambiguous. Benzene and cyclohexane are genuinely symmetric (any single-substituent
+        // position is equivalent), but pyridine/pyrazine/pyrimidine are NOT (a heteroatom breaks
+        // the symmetry) -- nicotinamide and pyrazinamide were both silently losing their locant
+        // ("pyridinecarboxamide"/"pyrazinecarboxamide" instead of the real, structurally
+        // necessary "pyridine-3-carboxamide"/"pyrazine-2-carboxamide"). Real PubChem names
+        // confirmed exact matches after the fix.
+        {"NC(=O)C1=CN=CC=C1", "pyridine-3-carboxamide"},          // nicotinamide
+        {"OC(=O)C1=CN=CC=C1", "pyridine-3-carboxylic acid"},      // nicotinic acid
+        {"NC(=O)C1=NC=CN=C1", "pyrazine-2-carboxamide"},          // pyrazinamide
+        {"OC(=O)C1=CN=CN=C1", "pyrimidine-5-carboxylic acid"},
+        {"NC(=O)C1=CC=CC=C1", "benzenecarboxamide"},              // regression: benzene still omits the locant
+        {"OC(=O)C1CCCCC1", "cyclohexanecarboxylic acid"},         // regression: cyclohexane still omits the locant
+
         // P-66.1.1.3.1 N-Substitution
         {"CC(=O)NC", "N-methylethanamide"},
 

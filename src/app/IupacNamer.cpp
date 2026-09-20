@@ -13333,7 +13333,18 @@ IupacResult IupacNamer::generateName(int mol) {
                 sfx = (pCount == 1) ? ("carbonyl " + hName) : ("dicarbonyl " + hName);
             }
 
-            if (pCount == 1) {
+            // The principal-group locant is only safely omittable when the ring itself is
+            // symmetric enough that a single substituent's position is unambiguous without
+            // it (benzene, cyclohexane -- any position is equivalent by symmetry). Every
+            // other ring type here is asymmetric (a heteroatom, or a ring double bond,
+            // breaks the symmetry), so pyridine-2-, pyridine-3-, and pyridine-4-carboxamide
+            // are genuinely different compounds and the locant is mandatory even when
+            // pCount == 1. Confirmed real bug: nicotinamide (pyridine-3-carboxamide) and
+            // pyrazinamide (pyrazine-2-carboxamide) were both silently losing their locant
+            // ("pyridinecarboxamide"/"pyrazinecarboxamide"), found via a real-drug validation
+            // pass and cross-check against PubChem's own names.
+            bool ringSymmetricEnoughToOmitLocant = (rType == RingType::BENZENE || rType == RingType::CYCLOALKANE);
+            if (pCount == 1 && ringSymmetricEnoughToOmitLocant) {
                 // No space between the ring root and the suffix -- "carboxylic acid"'s own
                 // internal space (between "carboxylic" and "acid") is already correctly
                 // placed; the root concatenates directly onto it: "cyclohexanecarboxylic acid".
