@@ -4048,6 +4048,33 @@ int main() {
         }
     }
 
+    {
+        // Issue: N-substituted imidazole and pyrazole
+        // Metronidazole
+        int m = indigoLoadMoleculeFromString("CC1=NC=C(N1CCO)[N+](=O)[O-]");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "2-(2-methyl-5-nitroimidazol-1-yl)ethanol") {
+            std::cout << "[PASS] metronidazole -> " << r.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] metronidazole -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+
+        // N-substituted pyrazole (1-methylpyrazole)
+        int m2 = indigoLoadMoleculeFromString("Cn1nccc1");
+        IupacResult r2 = IupacNamer::generateName(m2);
+        indigoFree(m2);
+        if (r2.success && r2.name == "1-methylpyrazole") {
+            std::cout << "[PASS] 1-methylpyrazole -> " << r2.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] 1-methylpyrazole -> got success=" << r2.success << " name='" << r2.name.toStdString() << "' err='" << r2.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
     std::cout << "\nSummary: " << passed << " passed, " << failed << " failed.\n";
     indigoReleaseSessionId(sid);
     return (failed == 0) ? 0 : 1;

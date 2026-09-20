@@ -964,9 +964,16 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
             int h1Count = g.nodes[h1].totalH;
             int h2Count = g.nodes[h2].totalH;
 
-            if (ringSize == 5 && dist == 1 && ((h1Count >= 1 && h2Count <= 0) || (h1Count <= 0 && h2Count >= 1))) {
+            int h1Deg = g.nodes[h1].neighbors.size();
+            int h2Deg = g.nodes[h2].neighbors.size();
+            bool h1Pyrrole = (h1Count >= 1 || h1Deg == 3);
+            bool h1Pyridine = (h1Deg == 2 && h1Count <= 0);
+            bool h2Pyrrole = (h2Count >= 1 || h2Deg == 3);
+            bool h2Pyridine = (h2Deg == 2 && h2Count <= 0);
+            bool isAzole = (h1Pyrrole && h2Pyridine) || (h1Pyridine && h2Pyrrole);
+            if (ringSize == 5 && dist == 1 && isAzole) {
                 outType = RingType::PYRAZOLE; outNameRoot = "pyrazole"; return true;
-            } else if (ringSize == 5 && dist == 2 && ((h1Count >= 1 && h2Count <= 0) || (h1Count <= 0 && h2Count >= 1))) {
+            } else if (ringSize == 5 && dist == 2 && isAzole) {
                 outType = RingType::IMIDAZOLE; outNameRoot = "imidazole"; return true;
             } else if (ringSize == 6 && dist == 1 && h1Count <= 0 && h2Count <= 0) {
                 outType = RingType::PYRIDAZINE; outNameRoot = "pyridazine"; return true;
@@ -1312,7 +1319,7 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
         ringCandidates.push_back(bwd);
     } else if (rType == RingType::IMIDAZOLE || rType == RingType::PYRAZOLE) {
         int hNH = -1, hN = -1;
-        if (g.nodes[ringHeteroNodes[0]].totalH >= 1) {
+        if (g.nodes[ringHeteroNodes[0]].totalH >= 1 || g.nodes[ringHeteroNodes[0]].neighbors.size() == 3) {
             hNH = ringHeteroNodes[0]; hN = ringHeteroNodes[1];
         } else {
             hNH = ringHeteroNodes[1]; hN = ringHeteroNodes[0];
@@ -1885,6 +1892,10 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
         else if (rType == RingType::TETRAHYDROTHIOPHENE) stem = "tetrahydrothiophen";
         else if (rType == RingType::GENERAL_HETEROCYCLE) stem = best.hwNameRoot;
         else stem = parentNameRoot;
+
+        if (!prefixPart.isEmpty() && !stem.isEmpty() && stem[0].isDigit()) {
+            prefixPart += "-";
+        }
 
         QString suffix = QString("-%1-yl").arg(best.attachLocant);
         res = prefixPart + stem + suffix;
@@ -5718,7 +5729,9 @@ IupacResult IupacNamer::generateName(int mol) {
                         }
                     }
                 } else if (!singleN.empty()) {
+                    bool hasNonRingN = false;
                     for (int nNode : singleN) {
+                        if (allSSSRNodes.count(nNode) == 0) hasNonRingN = true;
                         auto azoName = tryNameAzoCompound(static_cast<int>(i), nNode, g, allSSSRRings);
                         if (azoName.has_value()) {
                             if (!azoName->isEmpty()) return {true, *azoName, ""};
@@ -5730,7 +5743,7 @@ IupacResult IupacNamer::generateName(int mol) {
                             else return {false, "", "Could not generate names for all sides of the nitrosamine, or a competing principal group elsewhere in the molecule is not supported alongside nitrosamine naming."};
                         }
                     }
-                    carbonGroup[i] = GroupType::AMINE;
+                    if (hasNonRingN) carbonGroup[i] = GroupType::AMINE;
                 } else if (carbonSulfonicAcid.count(i)) {
                     carbonGroup[i] = GroupType::SULFONIC_ACID;
                 } else if (carbonSulfonamide.count(i)) {
@@ -9177,7 +9190,7 @@ IupacResult IupacNamer::generateName(int mol) {
                                                 } else if (t == RingType::IMIDAZOLE || t == RingType::PYRAZOLE) {
                                                     if (hNodes.size() == 2) {
                                                         int hNH = -1, hN = -1;
-                                                        if (g.nodes[hNodes[0]].totalH >= 1) {
+                                                        if (g.nodes[hNodes[0]].totalH >= 1 || g.nodes[hNodes[0]].neighbors.size() == 3) {
                                                             hNH = hNodes[0];
                                                             hN = hNodes[1];
                                                         } else {
@@ -9733,7 +9746,7 @@ IupacResult IupacNamer::generateName(int mol) {
                         } else if (t == RingType::IMIDAZOLE || t == RingType::PYRAZOLE) {
                             if (hNodes.size() == 2) {
                                 int hNH = -1, hN = -1;
-                                if (g.nodes[hNodes[0]].totalH >= 1) { hNH = hNodes[0]; hN = hNodes[1]; }
+                                if (g.nodes[hNodes[0]].totalH >= 1 || g.nodes[hNodes[0]].neighbors.size() == 3) { hNH = hNodes[0]; hN = hNodes[1]; }
                                 else { hNH = hNodes[1]; hN = hNodes[0]; }
                                 int hIdx = -1;
                                 for (int i = 0; i < rSize; ++i) if (rCycle[i] == hNH) { hIdx = i; break; }
@@ -10683,7 +10696,9 @@ IupacResult IupacNamer::generateName(int mol) {
                         }
                     }
                 } else if (singleN.size() > 0) {
+                    bool hasNonRingN = false;
                     for (int nNode : singleN) {
+                        if (allSSSRNodes.count(nNode) == 0) hasNonRingN = true;
                         auto azoName = tryNameAzoCompound(static_cast<int>(i), nNode, g, allSSSRRings);
                         if (azoName.has_value()) {
                             if (!azoName->isEmpty()) return {true, *azoName, ""};
@@ -10695,7 +10710,7 @@ IupacResult IupacNamer::generateName(int mol) {
                             else return {false, "", "Could not generate names for all sides of the nitrosamine, or a competing principal group elsewhere in the molecule is not supported alongside nitrosamine naming."};
                         }
                     }
-                    carbonGroup[i] = GroupType::AMINE;
+                    if (hasNonRingN) carbonGroup[i] = GroupType::AMINE;
                 } else if (carbonSulfonicAcid.count(i) ) {
                     carbonGroup[i] = GroupType::SULFONIC_ACID;
                 } else if (carbonSulfonamide.count(i) ) {
@@ -11995,7 +12010,9 @@ IupacResult IupacNamer::generateName(int mol) {
                     }
                 }
             } else if (!singleN.empty()) {
+                bool hasNonRingN = false;
                 for (int nNode : singleN) {
+                    if (ringNodeSet.count(nNode) == 0) hasNonRingN = true;
                     auto azoName = tryNameAzoCompound(static_cast<int>(i), nNode, g, allSSSRRings);
                     if (azoName.has_value()) {
                         if (!azoName->isEmpty()) return {true, *azoName, ""};
@@ -12007,7 +12024,7 @@ IupacResult IupacNamer::generateName(int mol) {
                         else return {false, "", "Could not generate names for all sides of the nitrosamine, or a competing principal group elsewhere in the molecule is not supported alongside nitrosamine naming."};
                     }
                 }
-                carbonGroup[i] = GroupType::AMINE;
+                if (hasNonRingN) carbonGroup[i] = GroupType::AMINE;
             } else if (carbonSulfonicAcid.count(i) ) {
                 carbonGroup[i] = GroupType::SULFONIC_ACID;
             } else if (carbonSulfonamide.count(i) ) {
@@ -12352,7 +12369,7 @@ IupacResult IupacNamer::generateName(int mol) {
         ringCandidates.push_back(bwd);
     } else if (rType == RingType::IMIDAZOLE || rType == RingType::PYRAZOLE) {
         int hNH = -1, hN = -1;
-        if (g.nodes[ringHeteroNodes[0]].totalH >= 1) {
+        if (g.nodes[ringHeteroNodes[0]].totalH >= 1 || g.nodes[ringHeteroNodes[0]].neighbors.size() == 3) {
             hNH = ringHeteroNodes[0];
             hN = ringHeteroNodes[1];
         } else {
