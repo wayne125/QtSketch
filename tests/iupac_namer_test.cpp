@@ -113,8 +113,20 @@ int main() {
         {"CCB(O)Cl", "chloro(ethyl)borinic acid"},
         {"CB(O)c1ccccc1", "methyl(phenyl)borinic acid"},
 
+        // P-62.2.4 N-Substitution of amines
+        {"CN(CC)CC", "N-ethyl-N-methylethanamine"},
+        {"CCNCC", "N-ethylethanamine"},
+        {"CN(C)CC", "N,N-dimethylethanamine"},
+        {"CCCN(CC)C", "N-ethyl-N-methylpropan-1-amine"},
+        {"CCCN", "propan-1-amine"},
+        {"CCN", "ethanamine"},
+        {"CCCN(CCC)CCC", "N,N-dipropylpropan-1-amine"},
+        {"CN(CC)C(C)C", "", true, "Branched, ring, or unsaturated chains on N-substituted amines are not supported"},
+        {"CN(C)C1CCCCC1", "", true, "A chain-based principal group outranks the ring in this structure; chain-as-parent seniority (P-44.1.1) for this ring/class combination is not yet supported."},
+
         // P-66.1.1.3.1 N-Substitution
         {"CC(=O)NC", "N-methylethanamide"},
+
         {"CC(=O)NCC", "N-ethylethanamide"},
         {"O=CNC", "N-methylmethanamide"},
         {"CC(=O)N", "ethanamide"},

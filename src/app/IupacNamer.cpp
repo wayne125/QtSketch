@@ -4178,6 +4178,104 @@ IupacResult IupacNamer::generateName(int mol) {
         }
     }
 
+    // --- N-substituted amines (P-62.2.4) narrow case ---
+    {
+        int countC = 0, countN = 0, countOtherHeavy = 0;
+        int numEdges = 0;
+        for (const auto &n : g.nodes) {
+            numEdges += n.neighbors.size();
+            if (n.atomicNumber == 6) countC++;
+            else if (n.atomicNumber == 7) countN++;
+            else if (n.atomicNumber > 1) countOtherHeavy++;
+        }
+        numEdges /= 2;
+        bool isAcyclic = (numEdges == static_cast<int>(g.nodes.size()) - 1);
+        
+        if (isAcyclic && countN == 1 && countOtherHeavy == 0) {
+            int nNode = -1;
+            for (size_t i = 0; i < g.nodes.size(); ++i) {
+                if (g.nodes[i].atomicNumber == 7) {
+                    nNode = static_cast<int>(i);
+                    break;
+                }
+            }
+            if (nNode != -1) {
+                std::vector<int> alkylNeighbors;
+                for (size_t j = 0; j < g.nodes[nNode].neighbors.size(); ++j) {
+                    int nei = g.nodes[nNode].neighbors[j];
+                    if (g.nodes[nei].atomicNumber == 6 && g.nodes[nNode].bondOrders[j] == 1) {
+                        alkylNeighbors.push_back(nei);
+                    }
+                }
+                
+                if (alkylNeighbors.size() >= 2) {
+                    std::vector<int> chainLengths;
+                    bool invalidChain = false;
+                    int sumLengths = 0;
+                    for (int cNode : alkylNeighbors) {
+                        int len = countPlainAlkylChain(cNode, nNode, g);
+                        if (len == -1) {
+                            invalidChain = true;
+                            break;
+                        }
+                        chainLengths.push_back(len);
+                        sumLengths += len;
+                    }
+                    
+                    if (invalidChain) {
+                        return {false, "", "Branched, ring, or unsaturated chains on N-substituted amines are not supported"};
+                    }
+                    
+                    if (sumLengths != countC) {
+                        return {false, "", "Amines with additional substituents or functional groups are not supported in this phase"};
+                    }
+                    
+                    int maxIdx = 0;
+                    for (size_t i = 1; i < chainLengths.size(); ++i) {
+                        if (chainLengths[i] > chainLengths[maxIdx]) {
+                            maxIdx = i;
+                        }
+                    }
+                    
+                    int parentLen = chainLengths[maxIdx];
+                    std::vector<int> substituentLengths;
+                    for (size_t i = 0; i < chainLengths.size(); ++i) {
+                        if (i != static_cast<size_t>(maxIdx)) substituentLengths.push_back(chainLengths[i]);
+                    }
+                    
+                    QString parentName = chainRoot(parentLen) + "an";
+                    if (parentLen <= 2) {
+                        parentName += "amine";
+                    } else {
+                        parentName += "-1-amine";
+                    }
+                    
+                    if (substituentLengths.size() == 1) {
+                        QString subName = chainRoot(substituentLengths[0]) + "yl";
+                        QString name = "N-" + subName + parentName;
+                        return {true, name, ""};
+                    } else if (substituentLengths.size() == 2) {
+                        int l1 = substituentLengths[0];
+                        int l2 = substituentLengths[1];
+                        if (l1 == l2) {
+                            QString subName = chainRoot(l1) + "yl";
+                            QString name = "N,N-di" + subName + parentName;
+                            return {true, name, ""};
+                        } else {
+                            QString sub1 = chainRoot(l1) + "yl";
+                            QString sub2 = chainRoot(l2) + "yl";
+                            if (alphabetizationKey(sub1).toLower() > alphabetizationKey(sub2).toLower()) {
+                                std::swap(sub1, sub2);
+                            }
+                            QString name = "N-" + sub1 + "-N-" + sub2 + parentName;
+                            return {true, name, ""};
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // --- N-substituted amides (P-66.1.1.3.1) narrow case & imide rejection ---
     {
         int countC = 0, countN = 0, countO = 0, countOtherHeavy = 0;
