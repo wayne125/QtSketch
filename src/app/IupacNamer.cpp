@@ -2067,10 +2067,25 @@ QString nameBranchGraph(const Graph &g, int rootIdx, int parentIdx, const std::v
         return "";
     }
 
+    // A ring atom must never be absorbed into this plain-chain walk as if it were a
+    // continuing chain carbon -- it belongs to a separate ring system that needs its
+    // own nameRingAsSubstituent naming (already handled correctly when this function
+    // recurses onto it directly, see the substituent-collection loop below). Without
+    // this exclusion, a root carbon bonded to a ring (e.g. the shared carbon of a
+    // diaryl ether/methane) can wander into the ring here, and since only the single
+    // immediately-previous node is excluded from re-visiting (not the whole walked
+    // path), it loops around the ring's cycle forever -- a real, confirmed infinite
+    // hang (e.g. "COC(c1ccccc1)c2ccccc2", benzhydryl methyl ether).
+    std::set<int> allRingAtoms;
+    for (const auto &rNodes : allIndependentRings) {
+        allRingAtoms.insert(rNodes.begin(), rNodes.end());
+    }
+
     std::vector<int> path;
     int curr = rootIdx;
     int prev = parentIdx;
     path.push_back(curr);
+    std::set<int> visitedPath = {curr};
 
     while (true) {
         int nextC = -1;
@@ -2079,7 +2094,8 @@ QString nameBranchGraph(const Graph &g, int rootIdx, int parentIdx, const std::v
         for (size_t i = 0; i < g.nodes[curr].neighbors.size(); ++i) {
             int nei = g.nodes[curr].neighbors[i];
             if (nei == prev) continue;
-            if (g.nodes[nei].atomicNumber == 6 && !forbiddenNodes.count(nei)) {
+            if (visitedPath.count(nei)) continue;
+            if (g.nodes[nei].atomicNumber == 6 && !forbiddenNodes.count(nei) && !allRingAtoms.count(nei)) {
                 std::vector<int> stack = {nei};
                 std::map<int, int> dist;
                 dist[nei] = 1;
@@ -2091,7 +2107,8 @@ QString nameBranchGraph(const Graph &g, int rootIdx, int parentIdx, const std::v
                     int d = dist[u];
                     if (d > localMax) localMax = d;
                     for (int nxt : g.nodes[u].neighbors) {
-                        if (g.nodes[nxt].atomicNumber == 6 && dist.find(nxt) == dist.end() && nxt != prev && !forbiddenNodes.count(nxt)) {
+                        if (g.nodes[nxt].atomicNumber == 6 && dist.find(nxt) == dist.end() && nxt != prev &&
+                            !forbiddenNodes.count(nxt) && !allRingAtoms.count(nxt)) {
                             dist[nxt] = d + 1;
                             stack.push_back(nxt);
                         }
@@ -2107,6 +2124,7 @@ QString nameBranchGraph(const Graph &g, int rootIdx, int parentIdx, const std::v
         prev = curr;
         curr = nextC;
         path.push_back(curr);
+        visitedPath.insert(curr);
     }
 
     int bLen = static_cast<int>(path.size());
@@ -3142,12 +3160,24 @@ QString formatBranchStereoPrefix(
     int rootIdx,
     int parentIdx,
     const std::map<int, QChar> &stereoByGraphId,
-    std::set<int> &handledBranchStereoIds)
+    std::set<int> &handledBranchStereoIds,
+    const std::vector<std::set<int>> &allRings = {})
 {
+    // Same ring-exclusion fix as nameBranchGraph's identical chain-walk (see the
+    // comment there): a ring atom must never be treated as a continuing chain
+    // carbon here, or this walk can wander into a ring and loop forever, since
+    // only the single immediately-previous node is excluded from re-visiting.
+    // Confirmed hang: warfarin's own real structure reaches this exact path.
+    std::set<int> allRingAtoms;
+    for (const auto &rNodes : allRings) {
+        allRingAtoms.insert(rNodes.begin(), rNodes.end());
+    }
+
     std::vector<int> path;
     int curr = rootIdx;
     int prev = parentIdx;
     path.push_back(curr);
+    std::set<int> visitedPath = {curr};
 
     while (true) {
         int nextC = -1;
@@ -3156,7 +3186,8 @@ QString formatBranchStereoPrefix(
         for (size_t i = 0; i < g.nodes[curr].neighbors.size(); ++i) {
             int nei = g.nodes[curr].neighbors[i];
             if (nei == prev) continue;
-            if (g.nodes[nei].atomicNumber == 6) {
+            if (visitedPath.count(nei)) continue;
+            if (g.nodes[nei].atomicNumber == 6 && !allRingAtoms.count(nei)) {
                 std::vector<int> stack = {nei};
                 std::map<int, int> dist;
                 dist[nei] = 1;
@@ -3168,7 +3199,8 @@ QString formatBranchStereoPrefix(
                     int d = dist[u];
                     if (d > localMax) localMax = d;
                     for (int nxt : g.nodes[u].neighbors) {
-                        if (g.nodes[nxt].atomicNumber == 6 && dist.find(nxt) == dist.end() && nxt != prev) {
+                        if (g.nodes[nxt].atomicNumber == 6 && dist.find(nxt) == dist.end() && nxt != prev &&
+                            !allRingAtoms.count(nxt)) {
                             dist[nxt] = d + 1;
                             stack.push_back(nxt);
                         }
@@ -3184,6 +3216,7 @@ QString formatBranchStereoPrefix(
         prev = curr;
         curr = nextC;
         path.push_back(curr);
+        visitedPath.insert(curr);
     }
 
     std::vector<std::pair<int, QChar>> locantStereo;
@@ -6503,7 +6536,7 @@ IupacResult IupacNamer::generateName(int mol) {
                             // must fail the whole name, not silently drop the substituent
                             return {false, "", "Unrecognized or unsupported substituent."};
                         }
-                        QString branchStereo = neiIsInRing ? QString() : formatBranchStereoPrefix(g, nei, cNode, stereoByGraphId, handledBranchStereoIds);
+                        QString branchStereo = neiIsInRing ? QString() : formatBranchStereoPrefix(g, nei, cNode, stereoByGraphId, handledBranchStereoIds, allSSSRRings);
                         if (!branchStereo.isEmpty()) {
                             if (bName.startsWith("(") && bName.endsWith(")")) {
                                 QString inner = bName.mid(1, bName.length() - 2);
@@ -11318,7 +11351,7 @@ IupacResult IupacNamer::generateName(int mol) {
                         if (subName.isEmpty()) {
                             subName = nameBranchGraph(g, nei, rNode, allSSSRRings, ring2Nodes);
                             if (!subName.isEmpty()) {
-                                QString branchStereo = formatBranchStereoPrefix(g, nei, rNode, stereoByGraphId, sig.handledBranchStereoIds);
+                                QString branchStereo = formatBranchStereoPrefix(g, nei, rNode, stereoByGraphId, sig.handledBranchStereoIds, allSSSRRings);
                                 if (!branchStereo.isEmpty()) {
                                     if (subName.startsWith("(") && subName.endsWith(")")) {
                                         QString inner = subName.mid(1, subName.length() - 2);
@@ -12833,7 +12866,7 @@ IupacResult IupacNamer::generateName(int mol) {
                     if (subName.isEmpty()) {
                         subName = nameBranchGraph(g, nei, rNode, allSSSRRings, ringNodeSet);
                         if (!subName.isEmpty()) {
-                            QString branchStereo = formatBranchStereoPrefix(g, nei, rNode, stereoByGraphId, sig.handledBranchStereoIds);
+                            QString branchStereo = formatBranchStereoPrefix(g, nei, rNode, stereoByGraphId, sig.handledBranchStereoIds, allSSSRRings);
                             if (!branchStereo.isEmpty()) {
                                 if (subName.startsWith("(") && subName.endsWith(")")) {
                                     QString inner = subName.mid(1, subName.length() - 2);

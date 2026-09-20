@@ -4075,6 +4075,41 @@ int main() {
         }
     }
 
+    {
+        // Regression guard for a real, confirmed infinite-hang bug (found via a real-drug
+        // validation pass): nameBranchGraph's / formatBranchStereoPrefix's generic
+        // "find the longest carbon chain" walk did not exclude ring atoms from being chosen
+        // as a chain-continuation candidate, so a root carbon bonded to a ring (reached via
+        // an ether oxygen) could wander into the ring and loop around its cycle forever, since
+        // only the single immediately-previous atom was excluded from re-visiting, not the
+        // whole walked path. These three SMILES (a minimal repro, plus diphenhydramine and
+        // fluoxetine's real structures) used to hang the namer indefinitely; this test only
+        // asserts they now complete with SOME result -- it deliberately does NOT pin an exact
+        // name string, because the resulting names are not yet verified fully correct (a
+        // separate, pre-existing "oxy" substituent-construction gap for the specific
+        // parent=trivial-methane + complex-bracketed-substituent shape was found to be exposed
+        // by this fix, e.g. "COC(c1ccccc1)c2ccccc2" -> "(1,1-diphenylmethyl)methane", missing
+        // its ether oxygen -- documented as a separate, still-open gap in the coverage doc, not
+        // fixed by this change). The only thing this test guards against is the hang itself.
+        const char *hangRepros[] = {
+            "COC(c1ccccc1)c2ccccc2",                          // minimal repro (benzhydryl methyl ether)
+            "CN(C)CCOC(c1ccccc1)c2ccccc2",                     // diphenhydramine (real drug)
+            "CNCCC(c1ccccc1)Oc2ccc(cc2)C(F)(F)F",              // fluoxetine (real drug)
+        };
+        for (const char *smi : hangRepros) {
+            int m = indigoLoadMoleculeFromString(smi);
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            if (r.success || !r.error.isEmpty()) {
+                std::cout << "[PASS] no-hang regression (" << smi << ") -> completed, name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] no-hang regression (" << smi << ") -> completed but neither success nor error set\n";
+                failed++;
+            }
+        }
+    }
+
     std::cout << "\nSummary: " << passed << " passed, " << failed << " failed.\n";
     indigoReleaseSessionId(sid);
     return (failed == 0) ? 0 : 1;
