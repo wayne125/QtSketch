@@ -150,6 +150,7 @@ int main() {
         {"NC1CCNCC1", "piperidin-4-amine"},
         {"CN1CCC(N)CC1", "1-methylpiperidin-4-amine"},
         {"CN1CCC(CC1)N(CC2=CC=CS2)C3=CC=CC=C3", "1-methyl-N-phenyl-N-(thiophen-2-ylmethyl)piperidin-4-amine"},
+        {"CN(C)C1CCNCC1", "N,N-dimethylpiperidin-4-amine"},
 
         // Regression guard for a real bug found in the same real-drug validation pass: the
         // monocyclic ring-parent carboxamide/carboxylic-acid suffix construction unconditionally
