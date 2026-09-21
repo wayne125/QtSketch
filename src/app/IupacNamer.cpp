@@ -4180,18 +4180,19 @@ IupacResult IupacNamer::generateName(int mol) {
 
     // --- N-substituted diamines (P-62.2.4) narrow case ---
     {
-        int countC = 0, countN = 0, countHalogen = 0, countOtherHeavy = 0;
+        int countC = 0, countN = 0, countHalogen = 0, countOtherHeavy = 0, countOxygen = 0;
         int numEdges = 0;
         for (const auto &n : g.nodes) {
             numEdges += n.neighbors.size();
             if (n.atomicNumber == 6) countC++;
             else if (n.atomicNumber == 7) countN++;
             else if (n.atomicNumber == 9 || n.atomicNumber == 17 || n.atomicNumber == 35 || n.atomicNumber == 53) countHalogen++;
+            else if (n.atomicNumber == 8) countOxygen++;
             else if (n.atomicNumber > 1) countOtherHeavy++;
         }
         numEdges /= 2;
         
-        if (countN >= 2 && countOtherHeavy == 0 && countHalogen == 0) {
+        if (countN >= 2 && countOtherHeavy == 0) {
             std::vector<std::set<int>> sssrRings;
             int sssrIter = indigoIterateSSSR(mol);
             if (sssrIter >= 0) {
@@ -4363,6 +4364,8 @@ IupacResult IupacNamer::generateName(int mol) {
                                             }
                                             int ringsInHeavy = 0;
                                             bool isSimpleUnsubstituted = false;
+                                            bool isAllowedSubstitutedRing = false;
+                                            std::set<int> matchedRing;
                                             for (const auto& r : sssrRings) {
                                                 bool isSubset = true;
                                                 for (int node : r) {
@@ -4372,15 +4375,66 @@ IupacResult IupacNamer::generateName(int mol) {
                                                     ringsInHeavy++;
                                                     if (r == reachableHeavy) {
                                                         isSimpleUnsubstituted = true;
+                                                        matchedRing = r;
+                                                    } else if (len == 0 || len == 1) {
+                                                        std::set<int> extraAtoms;
+                                                        for (int h : reachableHeavy) {
+                                                            if (!r.count(h)) extraAtoms.insert(h);
+                                                        }
+                                                        if (extraAtoms.size() == 1) {
+                                                            int ext = *extraAtoms.begin();
+                                                            int atNum = g.nodes[ext].atomicNumber;
+                                                            bool attachedToRingC = false;
+                                                            for (int nn : g.nodes[ext].neighbors) {
+                                                                if (r.count(nn) && g.nodes[nn].atomicNumber == 6) attachedToRingC = true;
+                                                            }
+                                                            if (attachedToRingC) {
+                                                                if (atNum == 9 || atNum == 17 || atNum == 35 || atNum == 53) {
+                                                                    isAllowedSubstitutedRing = true;
+                                                                    matchedRing = r;
+                                                                } else if (atNum == 6) {
+                                                                    int heavyDegree = 0;
+                                                                    for (int nn : g.nodes[ext].neighbors) {
+                                                                        if (g.nodes[nn].atomicNumber > 1) heavyDegree++;
+                                                                    }
+                                                                    if (heavyDegree == 1) {
+                                                                        isAllowedSubstitutedRing = true;
+                                                                        matchedRing = r;
+                                                                    }
+                                                                }
+                                                            }
+                                                        } else if (extraAtoms.size() == 2) {
+                                                            int oxygenNode = -1, carbonNode = -1;
+                                                            for (int ext : extraAtoms) {
+                                                                if (g.nodes[ext].atomicNumber == 8) oxygenNode = ext;
+                                                                else if (g.nodes[ext].atomicNumber == 6) carbonNode = ext;
+                                                            }
+                                                            if (oxygenNode != -1 && carbonNode != -1) {
+                                                                bool oAttachedToRingC = false;
+                                                                bool cAttachedToO = false;
+                                                                int cHeavyDegree = 0;
+                                                                for (int nn : g.nodes[oxygenNode].neighbors) {
+                                                                    if (r.count(nn) && g.nodes[nn].atomicNumber == 6) oAttachedToRingC = true;
+                                                                    if (nn == carbonNode) cAttachedToO = true;
+                                                                }
+                                                                for (int nn : g.nodes[carbonNode].neighbors) {
+                                                                    if (g.nodes[nn].atomicNumber > 1) cHeavyDegree++;
+                                                                }
+                                                                if (oAttachedToRingC && cAttachedToO && cHeavyDegree == 1) {
+                                                                    isAllowedSubstitutedRing = true;
+                                                                    matchedRing = r;
+                                                                }
+                                                            }
+                                                        }
                                                     }
                                                 }
                                             }
-                                            if (ringsInHeavy != 1 || !isSimpleUnsubstituted) { invalidBranch = true; return false; }
+                                            if (ringsInHeavy != 1 || (!isSimpleUnsubstituted && !isAllowedSubstitutedRing)) { invalidBranch = true; return false; }
                                             
-                                            if (reachableHeavy.size() != 6) { invalidBranch = true; return false; }
+                                            if (matchedRing.size() != 6) { invalidBranch = true; return false; }
                                             int ringNitrogens = 0;
                                             int ringCarbons = 0;
-                                            for (int node : reachableHeavy) {
+                                            for (int node : matchedRing) {
                                                 if (g.nodes[node].atomicNumber == 7) ringNitrogens++;
                                                 else if (g.nodes[node].atomicNumber == 6) ringCarbons++;
                                             }
@@ -4401,13 +4455,15 @@ IupacResult IupacNamer::generateName(int mol) {
                                             } else if (bName.startsWith("(1-") && bName.endsWith("methyl)")) {
                                                 QString inner = bName.mid(3, bName.length() - 10);
                                                 if (inner.startsWith("(") && inner.endsWith(")")) {
-                                                    inner = inner.mid(1, inner.length() - 2);
+                                                    bName = "[" + inner + "methyl]";
+                                                } else {
                                                     bName = "(" + inner + "methyl)";
                                                 }
                                             } else if (bName.startsWith("1-") && bName.endsWith("methyl")) {
                                                 QString inner = bName.mid(2, bName.length() - 8);
                                                 if (inner.startsWith("(") && inner.endsWith(")")) {
-                                                    inner = inner.mid(1, inner.length() - 2);
+                                                    bName = "[" + inner + "methyl]";
+                                                } else {
                                                     bName = "(" + inner + "methyl)";
                                                 }
                                             }
@@ -4451,7 +4507,7 @@ IupacResult IupacNamer::generateName(int mol) {
                             if (!ok1 || !ok2) {
                                 if (invalidBranch) return {false, "", "Branched, ring, or unsaturated chains on N-substituted diamines are not supported"};
                             } else {
-                                if (countC + countN == backboneLen + 2 + totalBranchAtoms && totalBranchAtoms > 0) {
+                                if (countC + countN + countOxygen + countHalogen == backboneLen + 2 + totalBranchAtoms && totalBranchAtoms > 0) {
                                     int bareMol = indigoClone(mol);
                                     bool removeOk = true;
                                     std::vector<int> handlesToRemove;
