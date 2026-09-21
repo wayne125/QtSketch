@@ -4356,7 +4356,39 @@ IupacResult IupacNamer::generateName(int mol) {
                     if (invalidBranch) {
                         return {false, "", "Branched, ring, or unsaturated chains on N-substituted amines are not supported"};
                     }
-                    
+
+                    // A ring bonded DIRECTLY to N (a branch with len == 0, e.g. the phenyl of
+                    // N-methylaniline, or the cyclohexyl of N,N-dimethylcyclohexan-1-amine) can
+                    // never correctly be reduced to "just another N-substituent" the way a
+                    // chain-then-ring branch (e.g. alverine's 3-phenylpropyl, len >= 1) can --
+                    // real IUPAC parent selection between a ring and a competing chain follows
+                    // P-44 ring-vs-chain seniority (a ring generally outranks a short chain as
+                    // parent), and for the specific "aniline" shape (a ring's own -NH2/-NHR/-NR2)
+                    // the real Blue Book rule is stronger still: "the retained name 'aniline'
+                    // must be used for all its N derivatives" (BlueBookV2.md, confirmed against
+                    // the real quoted PIN "N-methylaniline (PIN)") -- a MANDATORY retained parent
+                    // this codebase does not implement anywhere. A length-only "longest chain
+                    // wins" comparison can never make either of these calls correctly, and a
+                    // direct-ring branch's length is always 0, so it can never even be considered
+                    // as a candidate parent by that comparison -- confirmed producing wrong
+                    // parent-choice output for both shapes (N-methylaniline -> wrongly
+                    // "N-phenylmethanamine"; N,N-dimethylcyclohexan-1-amine -> wrongly
+                    // "N-cyclohexyl-N-methylmethanamine", silently overriding the correct,
+                    // already-existing "chain-as-parent seniority (P-44.1.1)... not yet
+                    // supported" honest rejection for that exact molecule). Bail out of this
+                    // whole narrow block for any such case rather than guess: falls through to
+                    // whatever this codebase's separate, existing ring-vs-chain seniority
+                    // machinery already does for the molecule (an honest rejection today; real
+                    // support for either the general seniority comparison or the mandatory
+                    // aniline case is a distinct, larger, separate feature).
+                    bool hasDirectRingOnN = false;
+                    for (const auto &b : branches) {
+                        if (b.len == 0) { hasDirectRingOnN = true; break; }
+                    }
+                    if (hasDirectRingOnN) {
+                        goto skip_n_substituted_amines;
+                    }
+
                     if (sumHeavyAtoms != countC + countOtherHeavy) {
                         return {false, "", "Amines with additional substituents or functional groups are not supported in this phase"};
                     }
@@ -4391,6 +4423,13 @@ IupacResult IupacNamer::generateName(int mol) {
                         if (static_cast<int>(i) == maxIdx) {
                             if (branches[i].ringNode != -1) {
                                 QString rName = nameBranchGraph(g, branches[i].ringNode, branches[i].ringAttachCarbon, sssrRings);
+                                // Real PubChem confirmed (N-methylbenzylamine -> real official
+                                // name "N-methyl-1-phenylmethanamine"): the "1-" locant on a
+                                // 1-carbon parent chain is NOT elided here, unlike the plain
+                                // no-N-substituent case ("phenylmethanol", no locant) -- when an
+                                // N-locant substituent is also present in the name, the ring's own
+                                // locant stays explicit. Verified empirically, do not "fix" this
+                                // to match the unrelated phenylmethanol precedent.
                                 substituents.push_back({QString::number(branches[i].len) + "-" + rName, rName});
                             }
                         } else {
