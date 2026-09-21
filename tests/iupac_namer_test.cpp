@@ -705,7 +705,8 @@ int main() {
         {"O=C(N=C=O)c1ccc2ccccc2c1", "", true, "Acyl pseudohalides"},
 
         {"CC(=O)OO", "", true, "Peroxycarboxylic acids"},
-        {"OOC(=O)c1ccccc1", "", true, "Peroxycarboxylic acids"}
+        {"OOC(=O)c1ccccc1", "", true, "Peroxycarboxylic acids"},
+        {"CN(C)CCN(CC1=CC=CC=C1)C2=CC=CC=N2", "N1-benzyl-N2,N2-dimethyl-N1-(pyridin-2-yl)ethane-1,2-diamine"}
     };
 
     int passed = 0;

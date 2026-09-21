@@ -4191,47 +4191,48 @@ IupacResult IupacNamer::generateName(int mol) {
         }
         numEdges /= 2;
         
-        if (countN == 2 && countOtherHeavy == 0 && countHalogen == 0) {
+        if (countN >= 2 && countOtherHeavy == 0 && countHalogen == 0) {
+            std::vector<std::set<int>> sssrRings;
+            int sssrIter = indigoIterateSSSR(mol);
+            if (sssrIter >= 0) {
+                int subMol = 0;
+                while ((subMol = indigoNext(sssrIter)) != 0) {
+                    std::set<int> rNodes;
+                    int ringAtomIter = indigoIterateAtoms(subMol);
+                    if (ringAtomIter >= 0) {
+                        int atomHandle = 0;
+                        while ((atomHandle = indigoNext(ringAtomIter)) != 0) {
+                            int idx = indigoIndex(atomHandle);
+                            if (indigoToGraphIdx.count(idx)) {
+                                rNodes.insert(indigoToGraphIdx.at(idx));
+                            }
+                            indigoFree(atomHandle);
+                        }
+                        indigoFree(ringAtomIter);
+                    }
+                    sssrRings.push_back(rNodes);
+                    indigoFree(subMol);
+                }
+                indigoFree(sssrIter);
+            }
+
             int nNode1 = -1, nNode2 = -1;
+            int acyclicNCount = 0;
             for (size_t i = 0; i < g.nodes.size(); ++i) {
                 if (g.nodes[i].atomicNumber == 7) {
-                    if (nNode1 == -1) nNode1 = static_cast<int>(i);
-                    else nNode2 = static_cast<int>(i);
+                    bool inRing = false;
+                    for (const auto& r : sssrRings) {
+                        if (r.count(i)) { inRing = true; break; }
+                    }
+                    if (!inRing) {
+                        acyclicNCount++;
+                        if (nNode1 == -1) nNode1 = static_cast<int>(i);
+                        else if (nNode2 == -1) nNode2 = static_cast<int>(i);
+                    }
                 }
             }
             
-            if (nNode1 != -1 && nNode2 != -1) {
-                std::vector<std::set<int>> sssrRings;
-                int sssrIter = indigoIterateSSSR(mol);
-                if (sssrIter >= 0) {
-                    int subMol = 0;
-                    while ((subMol = indigoNext(sssrIter)) != 0) {
-                        std::set<int> rNodes;
-                        int ringAtomIter = indigoIterateAtoms(subMol);
-                        if (ringAtomIter >= 0) {
-                            int atomHandle = 0;
-                            while ((atomHandle = indigoNext(ringAtomIter)) != 0) {
-                                int idx = indigoIndex(atomHandle);
-                                if (indigoToGraphIdx.count(idx)) {
-                                    rNodes.insert(indigoToGraphIdx.at(idx));
-                                }
-                                indigoFree(atomHandle);
-                            }
-                            indigoFree(ringAtomIter);
-                        }
-                        sssrRings.push_back(rNodes);
-                        indigoFree(subMol);
-                    }
-                    indigoFree(sssrIter);
-                }
-
-                bool nInRing = false;
-                for (const auto& r : sssrRings) {
-                    if (r.count(nNode1) || r.count(nNode2)) { nInRing = true; break; }
-                }
-                if (nInRing) {
-                    goto skip_n_substituted_diamines;
-                }
+            if (acyclicNCount == 2 && nNode1 != -1 && nNode2 != -1) {
 
                 std::map<int, int> parentMap;
                 std::vector<int> q;
@@ -4276,46 +4277,160 @@ IupacResult IupacNamer::generateName(int mol) {
                         
                         if (isUnbranched) {
                             bool invalidBranch = false;
-                            auto gatherSubsts = [&](int nNode, int backboneNeighbor, std::vector<QString>& subNames, std::vector<int>& atomsToRemove, int& totalBranchC) -> bool {
+                            auto gatherSubsts = [&](int nNode, int backboneNeighbor, std::vector<QString>& subNames, std::vector<int>& atomsToRemove, int& totalBranchAtoms) -> bool {
                                 for (size_t i = 0; i < g.nodes[nNode].neighbors.size(); ++i) {
                                     int nei = g.nodes[nNode].neighbors[i];
                                     if (nei == backboneNeighbor) continue;
                                     if (g.nodes[nNode].bondOrders[i] != 1) { invalidBranch = true; return false; }
                                     if (g.nodes[nei].atomicNumber > 1) {
-                                        if (g.nodes[nei].atomicNumber != 6) { invalidBranch = true; return false; }
+                                        int curr = nei;
+                                        int prev = nNode;
                                         int len = 0;
-                                        int currC = nei;
-                                        int prevC = nNode;
-                                        while (true) {
-                                            len++;
-                                            atomsToRemove.push_back(currC);
-                                            int nextC = -1;
-                                            int heavyCount = 0;
-                                            for (size_t j = 0; j < g.nodes[currC].neighbors.size(); ++j) {
-                                                int nn = g.nodes[currC].neighbors[j];
-                                                if (nn == prevC) continue;
-                                                if (g.nodes[currC].bondOrders[j] != 1) { invalidBranch = true; return false; }
-                                                if (g.nodes[nn].atomicNumber > 1) {
-                                                    heavyCount++;
-                                                    if (g.nodes[nn].atomicNumber == 6) nextC = nn;
+                                        int ringNode = -1;
+                                        int ringAttachCarbon = -1;
+                                        
+                                        bool isRingNode = false;
+                                        for (const auto& r : sssrRings) {
+                                            if (r.count(curr)) { isRingNode = true; break; }
+                                        }
+                                        
+                                        if (isRingNode) {
+                                            len = 0;
+                                            ringNode = curr;
+                                            ringAttachCarbon = prev;
+                                        } else {
+                                            while (true) {
+                                                len++;
+                                                int heavyCount = 0;
+                                                int nextC = -1;
+                                                int rNei = -1;
+                                                
+                                                for (int nn : g.nodes[curr].neighbors) {
+                                                    if (nn == prev) continue;
+                                                    if (g.nodes[nn].atomicNumber > 1) {
+                                                        heavyCount++;
+                                                        bool isR = false;
+                                                        for (const auto& r : sssrRings) {
+                                                            if (r.count(nn)) { isR = true; break; }
+                                                        }
+                                                        if (isR) rNei = nn;
+                                                        else if (g.nodes[nn].atomicNumber == 6) nextC = nn;
+                                                    }
+                                                }
+                                                
+                                                if (heavyCount == 0) {
+                                                    break;
+                                                } else if (heavyCount == 1) {
+                                                    if (rNei != -1) {
+                                                        ringNode = rNei;
+                                                        ringAttachCarbon = curr;
+                                                        break;
+                                                    } else {
+                                                        prev = curr;
+                                                        curr = nextC;
+                                                    }
+                                                } else {
+                                                    len = -1;
+                                                    break;
                                                 }
                                             }
-                                            if (heavyCount == 0) break;
-                                            if (heavyCount == 1 && nextC != -1) {
-                                                prevC = currC;
-                                                currC = nextC;
-                                            } else { invalidBranch = true; return false; }
                                         }
-                                        totalBranchC += len;
-                                        if (len == 1) subNames.push_back("methyl");
-                                        else if (len == 2) subNames.push_back("ethyl");
-                                        else if (len == 3) subNames.push_back("propyl");
-                                        else if (len == 4) subNames.push_back("butyl");
-                                        else if (len == 5) subNames.push_back("pentyl");
-                                        else if (len == 6) subNames.push_back("hexyl");
-                                        else if (len == 7) subNames.push_back("heptyl");
-                                        else if (len == 8) subNames.push_back("octyl");
-                                        else { invalidBranch = true; return false; }
+
+                                        if (len == -1) { invalidBranch = true; return false; }
+
+                                        if (ringNode != -1) {
+                                            if (len > 1) { invalidBranch = true; return false; }
+                                            std::set<int> reachableHeavy;
+                                            std::vector<int> q;
+                                            q.push_back(ringNode);
+                                            reachableHeavy.insert(ringNode);
+                                            while (!q.empty()) {
+                                                int node = q.front();
+                                                q.erase(q.begin());
+                                                atomsToRemove.push_back(node);
+                                                for (int nn : g.nodes[node].neighbors) {
+                                                    if (nn == ringAttachCarbon) continue;
+                                                    if (g.nodes[nn].atomicNumber > 1 && !reachableHeavy.count(nn)) {
+                                                        reachableHeavy.insert(nn);
+                                                        q.push_back(nn);
+                                                    }
+                                                }
+                                            }
+                                            int ringsInHeavy = 0;
+                                            bool isSimpleUnsubstituted = false;
+                                            for (const auto& r : sssrRings) {
+                                                bool isSubset = true;
+                                                for (int node : r) {
+                                                    if (!reachableHeavy.count(node)) { isSubset = false; break; }
+                                                }
+                                                if (isSubset) {
+                                                    ringsInHeavy++;
+                                                    if (r == reachableHeavy) {
+                                                        isSimpleUnsubstituted = true;
+                                                    }
+                                                }
+                                            }
+                                            if (ringsInHeavy != 1 || !isSimpleUnsubstituted) { invalidBranch = true; return false; }
+                                            
+                                            if (reachableHeavy.size() != 6) { invalidBranch = true; return false; }
+                                            int ringNitrogens = 0;
+                                            int ringCarbons = 0;
+                                            for (int node : reachableHeavy) {
+                                                if (g.nodes[node].atomicNumber == 7) ringNitrogens++;
+                                                else if (g.nodes[node].atomicNumber == 6) ringCarbons++;
+                                            }
+                                            if (!((ringCarbons == 6 && ringNitrogens == 0) || (ringCarbons == 5 && ringNitrogens == 1))) {
+                                                invalidBranch = true; return false;
+                                            }
+                                            
+                                            totalBranchAtoms += len + reachableHeavy.size();
+                                            if (len == 1) {
+                                                atomsToRemove.push_back(nei);
+                                            }
+                                            
+                                            QString bName = nameBranchGraph(g, nei, nNode, sssrRings);
+                                            if (bName.isEmpty()) { invalidBranch = true; return false; }
+                                            
+                                            if (bName == "(1-phenylmethyl)" || bName == "1-phenylmethyl") {
+                                                bName = "benzyl";
+                                            } else if (bName.startsWith("(1-") && bName.endsWith("methyl)")) {
+                                                QString inner = bName.mid(3, bName.length() - 10);
+                                                if (inner.startsWith("(") && inner.endsWith(")")) {
+                                                    inner = inner.mid(1, inner.length() - 2);
+                                                    bName = "(" + inner + "methyl)";
+                                                }
+                                            } else if (bName.startsWith("1-") && bName.endsWith("methyl")) {
+                                                QString inner = bName.mid(2, bName.length() - 8);
+                                                if (inner.startsWith("(") && inner.endsWith(")")) {
+                                                    inner = inner.mid(1, inner.length() - 2);
+                                                    bName = "(" + inner + "methyl)";
+                                                }
+                                            }
+                                            
+                                            subNames.push_back(bName);
+                                        } else {
+                                            int c = nei;
+                                            int p = nNode;
+                                            for (int k = 0; k < len; ++k) {
+                                                atomsToRemove.push_back(c);
+                                                int nxt = -1;
+                                                for (int nn : g.nodes[c].neighbors) {
+                                                    if (nn != p && g.nodes[nn].atomicNumber > 1) { nxt = nn; break; }
+                                                }
+                                                p = c;
+                                                c = nxt;
+                                            }
+                                            totalBranchAtoms += len;
+                                            if (len == 1) subNames.push_back("methyl");
+                                            else if (len == 2) subNames.push_back("ethyl");
+                                            else if (len == 3) subNames.push_back("propyl");
+                                            else if (len == 4) subNames.push_back("butyl");
+                                            else if (len == 5) subNames.push_back("pentyl");
+                                            else if (len == 6) subNames.push_back("hexyl");
+                                            else if (len == 7) subNames.push_back("heptyl");
+                                            else if (len == 8) subNames.push_back("octyl");
+                                            else { invalidBranch = true; return false; }
+                                        }
                                     }
                                 }
                                 return true;
@@ -4323,15 +4438,15 @@ IupacResult IupacNamer::generateName(int mol) {
                             
                             std::vector<QString> n1Substs, n2Substs;
                             std::vector<int> atomsToRemove;
-                            int totalBranchC = 0;
+                            int totalBranchAtoms = 0;
                             
-                            bool ok1 = gatherSubsts(nNode1, path[1], n1Substs, atomsToRemove, totalBranchC);
-                            bool ok2 = gatherSubsts(nNode2, path[path.size()-2], n2Substs, atomsToRemove, totalBranchC);
+                            bool ok1 = gatherSubsts(nNode1, path[1], n1Substs, atomsToRemove, totalBranchAtoms);
+                            bool ok2 = gatherSubsts(nNode2, path[path.size()-2], n2Substs, atomsToRemove, totalBranchAtoms);
                             
                             if (!ok1 || !ok2) {
                                 if (invalidBranch) return {false, "", "Branched, ring, or unsaturated chains on N-substituted diamines are not supported"};
                             } else {
-                                if (countC == backboneLen + totalBranchC && totalBranchC > 0) {
+                                if (countC + countN == backboneLen + 2 + totalBranchAtoms && totalBranchAtoms > 0) {
                                     int bareMol = indigoClone(mol);
                                     bool removeOk = true;
                                     std::vector<int> handlesToRemove;
@@ -4861,7 +4976,7 @@ IupacResult IupacNamer::generateName(int mol) {
             else if (n.atomicNumber > 1 && n.atomicNumber != 6 && n.atomicNumber != 16) countOtherHeavy++;
         }
         
-        if (countN == 2 && countOtherHeavy == 0 && countHalogen == 0) {
+        if (countN >= 2 && countOtherHeavy == 0 && countHalogen == 0) {
             int nNode1 = -1, nNode2 = -1;
             for (size_t i = 0; i < g.nodes.size(); ++i) {
                 if (g.nodes[i].atomicNumber == 7) {
