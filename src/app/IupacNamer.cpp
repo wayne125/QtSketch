@@ -4299,15 +4299,18 @@ IupacResult IupacNamer::generateName(int mol) {
                                             ringNode = curr;
                                             ringAttachCarbon = prev;
                                         } else {
+                                            bool unsaturated = false;
                                             while (true) {
                                                 len++;
                                                 int heavyCount = 0;
                                                 int nextC = -1;
                                                 int rNei = -1;
-                                                
-                                                for (int nn : g.nodes[curr].neighbors) {
+
+                                                for (size_t j = 0; j < g.nodes[curr].neighbors.size(); ++j) {
+                                                    int nn = g.nodes[curr].neighbors[j];
                                                     if (nn == prev) continue;
                                                     if (g.nodes[nn].atomicNumber > 1) {
+                                                        if (g.nodes[curr].bondOrders[j] != 1) { unsaturated = true; }
                                                         heavyCount++;
                                                         bool isR = false;
                                                         for (const auto& r : sssrRings) {
@@ -4317,7 +4320,9 @@ IupacResult IupacNamer::generateName(int mol) {
                                                         else if (g.nodes[nn].atomicNumber == 6) nextC = nn;
                                                     }
                                                 }
-                                                
+
+                                                if (unsaturated) { len = -1; break; }
+
                                                 if (heavyCount == 0) {
                                                     break;
                                                 } else if (heavyCount == 1) {
@@ -4976,7 +4981,7 @@ IupacResult IupacNamer::generateName(int mol) {
             else if (n.atomicNumber > 1 && n.atomicNumber != 6 && n.atomicNumber != 16) countOtherHeavy++;
         }
         
-        if (countN >= 2 && countOtherHeavy == 0 && countHalogen == 0) {
+        if (countN == 2 && countOtherHeavy == 0 && countHalogen == 0) {
             int nNode1 = -1, nNode2 = -1;
             for (size_t i = 0; i < g.nodes.size(); ++i) {
                 if (g.nodes[i].atomicNumber == 7) {
@@ -4984,7 +4989,7 @@ IupacResult IupacNamer::generateName(int mol) {
                     else nNode2 = static_cast<int>(i);
                 }
             }
-            
+
             if (nNode1 != -1 && nNode2 != -1) {
                 std::vector<std::set<int>> sssrRings;
                 int sssrIter = indigoIterateSSSR(mol);
