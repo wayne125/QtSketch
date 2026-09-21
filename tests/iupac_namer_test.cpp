@@ -122,7 +122,7 @@ int main() {
         {"CCN", "ethanamine"},
         {"CCCN(CCC)CCC", "N,N-dipropylpropan-1-amine"},
         {"CN(CC)C(C)C", "", true, "Branched, ring, or unsaturated chains on N-substituted amines are not supported"},
-        {"CN(C)C1CCCCC1", "", true, "A chain-based principal group outranks the ring in this structure; chain-as-parent seniority (P-44.1.1) for this ring/class combination is not yet supported."},
+        {"CN(C)C1CCCCC1", "N-cyclohexyl-N-methylmethanamine"},
 
         // Regression guard for a real bug found in the same real-drug validation pass: the
         // monocyclic ring-parent carboxamide/carboxylic-acid suffix construction unconditionally
@@ -143,6 +143,11 @@ int main() {
 
         // P-66.1.1.3.1 N-Substitution
         {"CC(=O)NC", "N-methylethanamide"},
+        {"CCN(CCCC1=CC=CC=C1)CCCC1=CC=CC=C1", "N-ethyl-3-phenyl-N-(3-phenylpropyl)propan-1-amine"},
+        {"c1ccccc1NC", "N-phenylmethanamine"},
+        {"c1ccccc1CNC", "N-methyl-1-phenylmethanamine"},
+        {"c1ccccc1CCC(=O)O", "3-phenylpropanoic acid"},
+        {"c1ccccc1C(=O)O", "benzenecarboxylic acid"},
 
         {"CC(=O)NCC", "N-ethylethanamide"},
         {"O=CNC", "N-methylmethanamide"},
