@@ -4365,30 +4365,49 @@ IupacResult IupacNamer::generateName(int mol) {
                                             std::sort(n1Sorted.begin(), n1Sorted.end(), cmpAlpha);
                                             std::sort(n2Sorted.begin(), n2Sorted.end(), cmpAlpha);
                                             
+                                            // P-14.4: lowest locants go to the numbering that puts more
+                                            // detachable-prefix citations at the lower locant, so the side
+                                            // with MORE substituents claims N1 first (e.g. N,N-dimethyl on
+                                            // one N vs N-methyl on the other -> the dimethyl N is N1). Only
+                                            // when both sides carry the same number of substituents does the
+                                            // tie fall to P-14.5.2 (locant to the prefix cited first
+                                            // alphabetically).
                                             bool n1IsFirst = true;
-                                            for (size_t i = 0; i < std::min(n1Sorted.size(), n2Sorted.size()); ++i) {
-                                                if (cmpAlpha(n1Sorted[i], n2Sorted[i])) { n1IsFirst = true; break; }
-                                                if (cmpAlpha(n2Sorted[i], n1Sorted[i])) { n1IsFirst = false; break; }
-                                            }
-                                            if (n1Sorted == n2Sorted) {
-                                                if (n1Sorted.size() < n2Sorted.size()) n1IsFirst = false;
+                                            if (n1Sorted.size() != n2Sorted.size()) {
+                                                n1IsFirst = n1Sorted.size() > n2Sorted.size();
+                                            } else {
+                                                for (size_t i = 0; i < n1Sorted.size(); ++i) {
+                                                    if (cmpAlpha(n1Sorted[i], n2Sorted[i])) { n1IsFirst = true; break; }
+                                                    if (cmpAlpha(n2Sorted[i], n1Sorted[i])) { n1IsFirst = false; break; }
+                                                }
                                             }
                                             
-                                            QString locN1 = n1IsFirst ? "N" : "N'";
-                                            QString locN2 = n1IsFirst ? "N'" : "N";
-                                            
+                                            // P-16.9.2 / P-62.2.4.1.2: superscript arabic numbers (the parent
+                                            // structure's own locants) differentiate the nitrogen atoms of
+                                            // di- and polyamines -- primes were formerly used but are no longer
+                                            // PIN-correct (e.g. "N1-ethyl-N2-methylethane-1,2-diamine (PIN)").
+                                            // The far-end carbon locant equals backboneLen (a straight chain of
+                                            // backboneLen carbons numbers its two ends 1 and backboneLen).
+                                            QString locN1 = n1IsFirst ? "N1" : ("N" + QString::number(backboneLen));
+                                            QString locN2 = n1IsFirst ? ("N" + QString::number(backboneLen)) : "N1";
+
                                             std::map<QString, QStringList> subGroups;
                                             for (const QString& s : n1Substs) subGroups[s].append(locN1);
                                             for (const QString& s : n2Substs) subGroups[s].append(locN2);
-                                            
+
                                             struct SubGroup {
                                                 QString name;
                                                 QStringList locs;
                                             };
+                                            auto nLocantValue = [](const QString& loc) -> int {
+                                                return loc.mid(1).toInt();
+                                            };
                                             std::vector<SubGroup> groups;
                                             for (auto it = subGroups.begin(); it != subGroups.end(); ++it) {
                                                 QStringList sortedLocs = it->second;
-                                                sortedLocs.sort(); 
+                                                std::sort(sortedLocs.begin(), sortedLocs.end(), [&](const QString& a, const QString& b) {
+                                                    return nLocantValue(a) < nLocantValue(b);
+                                                });
                                                 groups.push_back({it->first, sortedLocs});
                                             }
                                             std::sort(groups.begin(), groups.end(), [](const SubGroup& a, const SubGroup& b) {
