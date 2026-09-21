@@ -124,10 +124,13 @@ int main() {
         {"CN(CC)C(C)C", "", true, "Branched, ring, or unsaturated chains on N-substituted amines are not supported"},
         {"CN(C)C1CCCCC1", "N,N-dimethylcyclohexanamine"},
         {"c1ccccc1N", "aniline"},
+        {"Nc1ccc(Cl)cc1", "4-chloroaniline"},
         {"c1ccccc1NC", "N-methylaniline"},
         {"c1ccccc1N(C)C", "N,N-dimethylaniline"},
         {"c1ccccc1Nc1ccccc1", "N-phenylaniline"},
-        {"c1cc(Cl)ccc1NC", "", true, "A chain-based principal group outranks the ring in this structure; chain-as-parent seniority (P-44.1.1) for this ring/class combination is not yet supported."},
+        {"CNc1ccc(Cl)cc1", "4-chloro-N-methylaniline"},
+        {"Cc1ccc(NC)cc1", "4-methyl-N-methylaniline"},
+        {"c1cc(Cl)cc(Cl)c1NC", "", true, "A chain-based principal group outranks the ring in this structure; chain-as-parent seniority (P-44.1.1) for this ring/class combination is not yet supported."},
         {"c1ccc2c(c1)cccc2NC", "", true, "Branched, ring, or unsaturated chains on N-substituted amines are not supported"},
 
         // Regression guard for a real bug found in the same real-drug validation pass: the

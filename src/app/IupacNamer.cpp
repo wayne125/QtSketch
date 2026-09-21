@@ -4180,12 +4180,13 @@ IupacResult IupacNamer::generateName(int mol) {
 
     // --- N-substituted amines (P-62.2.4) narrow case ---
     {
-        int countC = 0, countN = 0, countOtherHeavy = 0;
+        int countC = 0, countN = 0, countHalogen = 0, countOtherHeavy = 0;
         int numEdges = 0;
         for (const auto &n : g.nodes) {
             numEdges += n.neighbors.size();
             if (n.atomicNumber == 6) countC++;
             else if (n.atomicNumber == 7) countN++;
+            else if (n.atomicNumber == 9 || n.atomicNumber == 17 || n.atomicNumber == 35 || n.atomicNumber == 53) countHalogen++;
             else if (n.atomicNumber > 1) countOtherHeavy++;
         }
         numEdges /= 2;
@@ -4335,14 +4336,24 @@ IupacResult IupacNamer::generateName(int mol) {
                             }
                             
                             bool isSimpleUnsubstitutedRing = false;
+                            bool isAllowedSubstitutedPhenyl = false;
+                            int ringsInHeavy = 0;
                             for (const auto& r : sssrRings) {
-                                if (r == reachableHeavy) {
-                                    isSimpleUnsubstitutedRing = true;
-                                    break;
+                                bool isSubset = true;
+                                for (int node : r) {
+                                    if (!reachableHeavy.count(node)) { isSubset = false; break; }
+                                }
+                                if (isSubset) {
+                                    ringsInHeavy++;
+                                    if (r == reachableHeavy) {
+                                        isSimpleUnsubstitutedRing = true;
+                                    } else if (b.len == 0 && r.size() == 6) {
+                                        isAllowedSubstitutedPhenyl = true;
+                                    }
                                 }
                             }
                             
-                            if (!isSimpleUnsubstitutedRing) {
+                            if (ringsInHeavy != 1 || (!isSimpleUnsubstitutedRing && !isAllowedSubstitutedPhenyl)) {
                                 invalidBranch = true;
                                 break;
                             }
@@ -4391,25 +4402,51 @@ IupacResult IupacNamer::generateName(int mol) {
                         }
                     }
                     
-                    if (sumHeavyAtoms != countC + countOtherHeavy) {
+                    if (sumHeavyAtoms != countC + countOtherHeavy + countHalogen) {
                         return {false, "", "Amines with additional substituents or functional groups are not supported in this phase"};
                     }
 
                     int maxIdx = -1;
                     QString parentName = "";
+                    
+                    struct Substituent {
+                        QString formatted;
+                        QString sortKey;
+                    };
+                    std::vector<Substituent> substituents;
 
                     if (hasDirectRingOnN) {
                         maxIdx = directRingIdx;
                         QString rName = nameBranchGraph(g, branches[maxIdx].ringNode, branches[maxIdx].ringAttachCarbon, sssrRings);
                         if (rName.isEmpty()) goto skip_n_substituted_amines;
                         
-                        if (rName == "phenyl") {
+                        QString cleanName = rName;
+                        if (cleanName.startsWith("(") && cleanName.endsWith(")")) {
+                            cleanName = cleanName.mid(1, cleanName.length() - 2);
+                        }
+                        
+                        if (cleanName == "phenyl") {
                             parentName = "aniline";
-                        } else if (rName.endsWith("yl")) {
-                            if (!rName.contains("-yl")) {
-                                parentName = rName.left(rName.length() - 2) + "anamine";
+                        } else if (cleanName.endsWith("phenyl")) {
+                            QString prefix = cleanName.left(cleanName.length() - 6);
+                            if (prefix.count("-") == 1) {
+                                QString subName = prefix.split("-").last();
+                                if (subName == "fluoro" || subName == "chloro" || subName == "bromo" || subName == "iodo" ||
+                                    subName == "methyl" || subName == "ethyl" || subName == "propyl" || subName == "butyl" ||
+                                    subName == "pentyl" || subName == "hexyl" || subName == "heptyl" || subName == "octyl") {
+                                    parentName = "aniline";
+                                    substituents.push_back({prefix, subName});
+                                } else {
+                                    goto skip_n_substituted_amines;
+                                }
                             } else {
-                                parentName = rName.left(rName.length() - 2) + "amine";
+                                goto skip_n_substituted_amines;
+                            }
+                        } else if (cleanName.endsWith("yl")) {
+                            if (!cleanName.contains("-yl")) {
+                                parentName = cleanName.left(cleanName.length() - 2) + "anamine";
+                            } else {
+                                parentName = cleanName.left(cleanName.length() - 2) + "amine";
                             }
                         } else {
                             goto skip_n_substituted_amines;
@@ -4435,11 +4472,6 @@ IupacResult IupacNamer::generateName(int mol) {
                         }
                     }
 
-                    struct Substituent {
-                        QString formatted;
-                        QString sortKey;
-                    };
-                    std::vector<Substituent> substituents;
 
                     for (size_t i = 0; i < branches.size(); ++i) {
                         if (static_cast<int>(i) == maxIdx) {
