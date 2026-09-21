@@ -4852,6 +4852,342 @@ IupacResult IupacNamer::generateName(int mol) {
         }
     }
 
+    // --- N-substituted exocyclic amines on saturated N-heterocycle ring parent ---
+    {
+        int countN = 0, countOtherHeavy = 0, countHalogen = 0;
+        for (const auto &n : g.nodes) {
+            if (n.atomicNumber == 7) countN++;
+            else if (n.atomicNumber == 9 || n.atomicNumber == 17 || n.atomicNumber == 35 || n.atomicNumber == 53) countHalogen++;
+            else if (n.atomicNumber > 1 && n.atomicNumber != 6 && n.atomicNumber != 16) countOtherHeavy++;
+        }
+        
+        if (countN == 2 && countOtherHeavy == 0 && countHalogen == 0) {
+            int nNode1 = -1, nNode2 = -1;
+            for (size_t i = 0; i < g.nodes.size(); ++i) {
+                if (g.nodes[i].atomicNumber == 7) {
+                    if (nNode1 == -1) nNode1 = static_cast<int>(i);
+                    else nNode2 = static_cast<int>(i);
+                }
+            }
+            
+            if (nNode1 != -1 && nNode2 != -1) {
+                std::vector<std::set<int>> sssrRings;
+                int sssrIter = indigoIterateSSSR(mol);
+                if (sssrIter >= 0) {
+                    int subMol = 0;
+                    while ((subMol = indigoNext(sssrIter)) != 0) {
+                        std::set<int> rNodes;
+                        int ringAtomIter = indigoIterateAtoms(subMol);
+                        if (ringAtomIter >= 0) {
+                            int atomHandle = 0;
+                            while ((atomHandle = indigoNext(ringAtomIter)) != 0) {
+                                int idx = indigoIndex(atomHandle);
+                                if (indigoToGraphIdx.count(idx)) {
+                                    rNodes.insert(indigoToGraphIdx.at(idx));
+                                }
+                                indigoFree(atomHandle);
+                            }
+                            indigoFree(ringAtomIter);
+                        }
+                        sssrRings.push_back(rNodes);
+                        indigoFree(subMol);
+                    }
+                    indigoFree(sssrIter);
+                }
+
+                int ringN = -1;
+                int exoN = -1;
+                std::set<int> parentRing;
+                for (const auto& r : sssrRings) {
+                    bool n1InRing = r.count(nNode1);
+                    bool n2InRing = r.count(nNode2);
+                    if (n1InRing && !n2InRing) {
+                        ringN = nNode1; exoN = nNode2; parentRing = r; break;
+                    } else if (!n1InRing && n2InRing) {
+                        ringN = nNode2; exoN = nNode1; parentRing = r; break;
+                    }
+                }
+                
+                if (ringN != -1 && exoN != -1) {
+                    bool bondedToSameRing = false;
+                    for (int nei : g.nodes[exoN].neighbors) {
+                        if (parentRing.count(nei)) {
+                            bondedToSameRing = true;
+                            break;
+                        }
+                    }
+                    
+                    if (bondedToSameRing) {
+                        std::vector<int> alkylNeighbors;
+                        for (size_t j = 0; j < g.nodes[exoN].neighbors.size(); ++j) {
+                            int nei = g.nodes[exoN].neighbors[j];
+                            if (!parentRing.count(nei) && g.nodes[nei].atomicNumber == 6 && g.nodes[exoN].bondOrders[j] == 1) {
+                                alkylNeighbors.push_back(nei);
+                            }
+                        }
+                        
+                        if (alkylNeighbors.size() > 0 && alkylNeighbors.size() <= 2) {
+                            struct ExoBranch {
+                                int alkylNeighbor;
+                                int len;
+                                int ringNode;
+                                int ringAttachCarbon;
+                            };
+                            std::vector<ExoBranch> branches;
+                            bool invalidBranch = false;
+                            std::vector<int> atomsToRemove;
+
+                            for (int cNode : alkylNeighbors) {
+                                ExoBranch b;
+                                b.alkylNeighbor = cNode;
+                                b.len = 0;
+                                b.ringNode = -1;
+                                b.ringAttachCarbon = -1;
+
+                                int curr = cNode;
+                                int prev = exoN;
+                                
+                                bool isRingNode = false;
+                                for (const auto& r : sssrRings) {
+                                    if (r.count(curr)) {
+                                        isRingNode = true; break;
+                                    }
+                                }
+
+                                if (isRingNode) {
+                                    b.len = 0;
+                                    b.ringNode = curr;
+                                    b.ringAttachCarbon = prev;
+                                } else {
+                                    while (true) {
+                                        b.len++;
+                                        int heavyCount = 0;
+                                        int nextC = -1;
+                                        int rNei = -1;
+                                        
+                                        for (size_t j = 0; j < g.nodes[curr].neighbors.size(); ++j) {
+                                            int nei = g.nodes[curr].neighbors[j];
+                                            if (nei == prev) continue;
+                                            if (g.nodes[curr].bondOrders[j] != 1) { invalidBranch = true; break; }
+                                            if (g.nodes[nei].atomicNumber > 1) {
+                                                heavyCount++;
+                                                bool isR = false;
+                                                for (const auto& r : sssrRings) {
+                                                    if (r.count(nei)) { isR = true; break; }
+                                                }
+                                                if (isR) rNei = nei;
+                                                else if (g.nodes[nei].atomicNumber == 6) nextC = nei;
+                                                else { invalidBranch = true; break; }
+                                            }
+                                        }
+                                        if (invalidBranch) break;
+                                        
+                                        if (heavyCount == 0) {
+                                            break;
+                                        } else if (heavyCount == 1) {
+                                            if (rNei != -1) {
+                                                b.ringNode = rNei;
+                                                b.ringAttachCarbon = curr;
+                                                break;
+                                            } else if (nextC != -1) {
+                                                prev = curr;
+                                                curr = nextC;
+                                            }
+                                        } else {
+                                            invalidBranch = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                                
+                                if (invalidBranch) break;
+                                
+                                if (b.ringNode != -1 && b.len > 1) {
+                                    invalidBranch = true;
+                                    break;
+                                }
+                                branches.push_back(b);
+                                
+                                std::vector<int> q;
+                                std::set<int> visited;
+                                q.push_back(cNode);
+                                visited.insert(cNode);
+                                while (!q.empty()) {
+                                    int front = q.front();
+                                    q.erase(q.begin());
+                                    atomsToRemove.push_back(front);
+                                    for (int nei : g.nodes[front].neighbors) {
+                                        if (nei != exoN && !visited.count(nei) && g.nodes[nei].atomicNumber > 1) {
+                                            visited.insert(nei);
+                                            q.push_back(nei);
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            if (invalidBranch) {
+                                return {false, "", "Branched, ring, or unsaturated chains on N-substituted exocyclic amines are not supported"};
+                            }
+
+                            std::vector<QString> exoSubsts;
+                            for (const auto& b : branches) {
+                                QString s = nameBranchGraph(g, b.alkylNeighbor, exoN, sssrRings);
+                                if (s.isEmpty()) { invalidBranch = true; break; }
+                                
+                                if (s == "(1-phenylmethyl)" || s == "1-phenylmethyl") {
+                                    s = "benzyl";
+                                } else if (s.startsWith("(1-") && s.endsWith("methyl)")) {
+                                    QString inner = s.mid(3, s.length() - 10);
+                                    if (inner.startsWith("(") && inner.endsWith(")")) {
+                                        inner = inner.mid(1, inner.length() - 2);
+                                        s = "(" + inner + "methyl)";
+                                    }
+                                } else if (s.startsWith("1-") && s.endsWith("methyl")) {
+                                    QString inner = s.mid(2, s.length() - 8);
+                                    if (inner.startsWith("(") && inner.endsWith(")")) {
+                                        inner = inner.mid(1, inner.length() - 2);
+                                        s = "(" + inner + "methyl)";
+                                    }
+                                }
+                                
+                                exoSubsts.push_back(s);
+                            }
+                            if (invalidBranch) {
+                                return {false, "", "Branched, ring, or unsaturated chains on N-substituted exocyclic amines are not supported"};
+                            }
+
+                            int bareMol = indigoClone(mol);
+                            bool removeOk = true;
+                            std::vector<int> handlesToRemove;
+                            for (int graphIdx : atomsToRemove) {
+                                int indIdx = -1;
+                                for (auto it = indigoToGraphIdx.begin(); it != indigoToGraphIdx.end(); ++it) {
+                                    if (it->second == graphIdx) { indIdx = it->first; break; }
+                                }
+                                if (indIdx != -1) {
+                                    int aHandle = indigoGetAtom(bareMol, indIdx);
+                                    if (aHandle > 0) handlesToRemove.push_back(aHandle);
+                                    else removeOk = false;
+                                } else removeOk = false;
+                            }
+                            
+                            if (removeOk) {
+                                for (int h : handlesToRemove) {
+                                    indigoRemove(h);
+                                    indigoFree(h);
+                                }
+                                IupacResult bareRes = generateName(bareMol);
+                                indigoFree(bareMol);
+                                
+                                if (bareRes.success && bareRes.name.endsWith("amine")) {
+                                    QString bareParent = bareRes.name;
+                                    struct Substituent {
+                                        QString formatted;
+                                        QString sortKey;
+                                    };
+                                    std::vector<Substituent> substituents;
+                                    
+                                    int dashPos = bareParent.indexOf("-");
+                                    if (dashPos > 0) {
+                                        QString locantStr = bareParent.left(dashPos);
+                                        bool isDigit = true;
+                                        for (int i=0; i<locantStr.length(); ++i) {
+                                            if (!locantStr.at(i).isDigit()) { isDigit = false; break; }
+                                        }
+                                        if (isDigit) {
+                                            QString remainder = bareParent.mid(dashPos + 1);
+                                            std::vector<QString> knownAlkyls = {"methyl", "ethyl", "propyl", "butyl", "pentyl", "hexyl", "heptyl", "octyl"};
+                                            for (const QString& alkyl : knownAlkyls) {
+                                                if (remainder.startsWith(alkyl)) {
+                                                    substituents.push_back({locantStr + "-" + alkyl, alkyl});
+                                                    bareParent = remainder.mid(alkyl.length());
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    
+                                    for (const auto& exoSub : exoSubsts) {
+                                        substituents.push_back({"N-" + exoSub, exoSub});
+                                    }
+
+                                    std::vector<QString> locants;
+                                    for (const auto &s : substituents) {
+                                        int dIdx = s.formatted.indexOf("-");
+                                        locants.push_back(dIdx >= 0 ? s.formatted.left(dIdx) : QString());
+                                    }
+
+                                    std::vector<size_t> order(substituents.size());
+                                    for (size_t i = 0; i < order.size(); ++i) order[i] = i;
+                                    std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+                                        return alphabetizationKey(substituents[a].sortKey).toLower() < alphabetizationKey(substituents[b].sortKey).toLower();
+                                    });
+                                    std::vector<Substituent> sortedSubs;
+                                    std::vector<QString> sortedLocants;
+                                    for (size_t idx : order) {
+                                        sortedSubs.push_back(substituents[idx]);
+                                        sortedLocants.push_back(locants[idx]);
+                                    }
+                                    substituents = sortedSubs;
+                                    locants = sortedLocants;
+
+                                    std::vector<Substituent> groupedSubstituents;
+                                    for (size_t i = 0; i < substituents.size(); ) {
+                                        size_t j = i + 1;
+                                        while (j < substituents.size() && substituents[j].sortKey == substituents[i].sortKey) {
+                                            j++;
+                                        }
+                                        int count = static_cast<int>(j - i);
+                                        if (count == 1) {
+                                            groupedSubstituents.push_back(substituents[i]);
+                                        } else {
+                                            QString prefix = (count == 2) ? "di" : "tri";
+                                            QString base = substituents[i].sortKey;
+                                            if (base.startsWith("(") || base.contains("phenyl")) {
+                                                prefix = (count == 2) ? "bis" : "tris";
+                                                if (!base.startsWith("(")) base = "(" + base + ")";
+                                            } else {
+                                                prefix = "di";
+                                            }
+                                            std::vector<QString> nLocs, numLocs;
+                                            for (size_t k = i; k < j; ++k) {
+                                                if (locants[k].startsWith("N")) nLocs.push_back(locants[k]);
+                                                else numLocs.push_back(locants[k]);
+                                            }
+                                            std::sort(numLocs.begin(), numLocs.end(), [](const QString &a, const QString &b) {
+                                                return a.toInt() < b.toInt();
+                                            });
+                                            QStringList combined;
+                                            for (const auto &l : nLocs) combined << l;
+                                            for (const auto &l : numLocs) combined << l;
+                                            QString locPrefix = combined.join(",") + "-";
+                                            groupedSubstituents.push_back({locPrefix + prefix + base, substituents[i].sortKey});
+                                        }
+                                        i = j;
+                                    }
+
+                                    QString fullName = "";
+                                    for (const auto& sub : groupedSubstituents) {
+                                        fullName += sub.formatted;
+                                        if (!fullName.endsWith("-")) fullName += "-";
+                                    }
+                                    if (fullName.endsWith("-")) fullName.chop(1);
+                                    if (!fullName.isEmpty() && bareParent.at(0).isDigit()) {
+                                        fullName += "-";
+                                    }
+                                    fullName += bareParent;
+
+                                    return {true, fullName, ""};
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+
     // --- N-substituted amides (P-66.1.1.3.1) narrow case & imide rejection ---
     {
         int countC = 0, countN = 0, countO = 0, countOtherHeavy = 0;
@@ -14465,6 +14801,9 @@ std::map<int, QString> computePeripheralNumberingForMol(int mol) {
 
     return computePeripheralNumbering(g, ring1Nodes, ring2Nodes, bhA, bhB);
 }
+
+
+
 
 
 
