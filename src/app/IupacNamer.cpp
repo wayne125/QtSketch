@@ -4382,35 +4382,57 @@ IupacResult IupacNamer::generateName(int mol) {
                     // support for either the general seniority comparison or the mandatory
                     // aniline case is a distinct, larger, separate feature).
                     bool hasDirectRingOnN = false;
-                    for (const auto &b : branches) {
-                        if (b.len == 0) { hasDirectRingOnN = true; break; }
+                    int directRingIdx = -1;
+                    for (size_t i = 0; i < branches.size(); ++i) {
+                        if (branches[i].len == 0) {
+                            hasDirectRingOnN = true;
+                            directRingIdx = i;
+                            break;
+                        }
                     }
-                    if (hasDirectRingOnN) {
-                        goto skip_n_substituted_amines;
-                    }
-
+                    
                     if (sumHeavyAtoms != countC + countOtherHeavy) {
                         return {false, "", "Amines with additional substituents or functional groups are not supported in this phase"};
                     }
 
-                    int maxLen = 0;
                     int maxIdx = -1;
-                    for (size_t i = 0; i < branches.size(); ++i) {
-                        if (branches[i].len > maxLen) {
-                            maxLen = branches[i].len;
-                            maxIdx = i;
+                    QString parentName = "";
+
+                    if (hasDirectRingOnN) {
+                        maxIdx = directRingIdx;
+                        QString rName = nameBranchGraph(g, branches[maxIdx].ringNode, branches[maxIdx].ringAttachCarbon, sssrRings);
+                        if (rName.isEmpty()) goto skip_n_substituted_amines;
+                        
+                        if (rName == "phenyl") {
+                            parentName = "aniline";
+                        } else if (rName.endsWith("yl")) {
+                            if (!rName.contains("-yl")) {
+                                parentName = rName.left(rName.length() - 2) + "anamine";
+                            } else {
+                                parentName = rName.left(rName.length() - 2) + "amine";
+                            }
+                        } else {
+                            goto skip_n_substituted_amines;
                         }
-                    }
-
-                    if (maxIdx == -1 || maxLen == 0) {
-                        goto skip_n_substituted_amines;
-                    }
-
-                    QString parentName = chainRoot(maxLen) + "an";
-                    if (maxLen <= 2) {
-                        parentName += "amine";
                     } else {
-                        parentName += "-1-amine";
+                        int maxLen = 0;
+                        for (size_t i = 0; i < branches.size(); ++i) {
+                            if (branches[i].len > maxLen) {
+                                maxLen = branches[i].len;
+                                maxIdx = i;
+                            }
+                        }
+
+                        if (maxIdx == -1 || maxLen == 0) {
+                            goto skip_n_substituted_amines;
+                        }
+
+                        parentName = chainRoot(maxLen) + "an";
+                        if (maxLen <= 2) {
+                            parentName += "amine";
+                        } else {
+                            parentName += "-1-amine";
+                        }
                     }
 
                     struct Substituent {
@@ -4421,7 +4443,7 @@ IupacResult IupacNamer::generateName(int mol) {
 
                     for (size_t i = 0; i < branches.size(); ++i) {
                         if (static_cast<int>(i) == maxIdx) {
-                            if (branches[i].ringNode != -1) {
+                            if (!hasDirectRingOnN && branches[i].ringNode != -1) {
                                 QString rName = nameBranchGraph(g, branches[i].ringNode, branches[i].ringAttachCarbon, sssrRings);
                                 // Real PubChem confirmed (N-methylbenzylamine -> real official
                                 // name "N-methyl-1-phenylmethanamine"): the "1-" locant on a
@@ -13624,6 +13646,8 @@ IupacResult IupacNamer::generateName(int mol) {
             }
             if (rType == RingType::BENZENE && winningType == GroupType::ALCOHOL && pCount == 1) {
                 fullName = prefixPart + "phenol";
+            } else if (rType == RingType::BENZENE && winningType == GroupType::AMINE && pCount == 1) {
+                fullName = prefixPart + "aniline";
             } else {
                 QString stem = rootStr;
                 if (stem.endsWith("e") && !sfx.isEmpty() && isVowel(sfx[0])) stem.chop(1);
