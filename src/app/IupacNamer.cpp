@@ -4473,6 +4473,17 @@ IupacResult IupacNamer::generateName(int mol) {
                     }
 
 
+                    // Each substituent now tracks its own locant separately from its formatted
+                    // citation string, so identical substituents can be grouped together
+                    // regardless of whether their locants are "N"-type or numeric -- real PubChem
+                    // confirmed a ring-locant substituent CAN and MUST group with an identical
+                    // N-locant substituent (Cc1ccc(NC)cc1, 4-methyl-N-methylaniline's un-grouped
+                    // shape, is really "N,4-dimethylaniline" -- combined locant list, one "di"
+                    // multiplying prefix, not cited twice separately). The prior version of this
+                    // loop only ever grouped two "N-" prefixed entries together (hardcoded
+                    // "N,N-"), which was correct back when only N-locant substituents could ever
+                    // appear in this list, but is wrong now that a ring-locant substituent can
+                    // too.
                     for (size_t i = 0; i < branches.size(); ++i) {
                         if (static_cast<int>(i) == maxIdx) {
                             if (!hasDirectRingOnN && branches[i].ringNode != -1) {
@@ -4491,18 +4502,39 @@ IupacResult IupacNamer::generateName(int mol) {
                             substituents.push_back({"N-" + subName, subName});
                         }
                     }
+                    // Every substituent's own locant is recovered from its formatted string
+                    // (each one is either "N-<name>" or "<digit(s)>-<name>", so splitting on the
+                    // first "-" reliably recovers "N" or the digit locant) rather than tracked
+                    // separately, so the ring-substituent-on-the-parent entry (pushed earlier,
+                    // inside the maxIdx branch above the aniline/cyclic-parent special-casing)
+                    // doesn't need its own bookkeeping thread.
+                    std::vector<QString> locants;
+                    for (const auto &s : substituents) {
+                        int dashIdx = s.formatted.indexOf('-');
+                        locants.push_back(dashIdx >= 0 ? s.formatted.left(dashIdx) : QString());
+                    }
 
-                    std::sort(substituents.begin(), substituents.end(), [](const Substituent& a, const Substituent& b) {
-                        return alphabetizationKey(a.sortKey).toLower() < alphabetizationKey(b.sortKey).toLower();
+                    std::vector<size_t> order(substituents.size());
+                    for (size_t i = 0; i < order.size(); ++i) order[i] = i;
+                    std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+                        return alphabetizationKey(substituents[a].sortKey).toLower() < alphabetizationKey(substituents[b].sortKey).toLower();
                     });
+                    std::vector<Substituent> sortedSubs;
+                    std::vector<QString> sortedLocants;
+                    for (size_t idx : order) {
+                        sortedSubs.push_back(substituents[idx]);
+                        sortedLocants.push_back(locants[idx]);
+                    }
+                    substituents = sortedSubs;
+                    locants = sortedLocants;
 
                     std::vector<Substituent> groupedSubstituents;
                     for (size_t i = 0; i < substituents.size(); ) {
                         size_t j = i + 1;
-                        while (j < substituents.size() && substituents[j].sortKey == substituents[i].sortKey && substituents[j].formatted.startsWith("N-") && substituents[i].formatted.startsWith("N-")) {
+                        while (j < substituents.size() && substituents[j].sortKey == substituents[i].sortKey) {
                             j++;
                         }
-                        int count = j - i;
+                        int count = static_cast<int>(j - i);
                         if (count == 1) {
                             groupedSubstituents.push_back(substituents[i]);
                         } else {
@@ -4514,8 +4546,24 @@ IupacResult IupacNamer::generateName(int mol) {
                             } else {
                                 prefix = "di";
                             }
-                            QString N_prefix = "N,N-";
-                            groupedSubstituents.push_back({N_prefix + prefix + base, substituents[i].sortKey});
+                            // Combine this group's locants: "N"-type locants first (in their own
+                            // relative order), then numeric locants in ascending order -- matches
+                            // the real confirmed PubChem order ("N,4-dimethylaniline", N before
+                            // the numeric ring locant; "N,N,N',N'-tetramethyl..." for TMEDA,
+                            // N-type locants grouped together).
+                            std::vector<QString> nLocs, numLocs;
+                            for (size_t k = i; k < j; ++k) {
+                                if (locants[k].startsWith("N")) nLocs.push_back(locants[k]);
+                                else numLocs.push_back(locants[k]);
+                            }
+                            std::sort(numLocs.begin(), numLocs.end(), [](const QString &a, const QString &b) {
+                                return a.toInt() < b.toInt();
+                            });
+                            QStringList combined;
+                            for (const auto &l : nLocs) combined << l;
+                            for (const auto &l : numLocs) combined << l;
+                            QString locPrefix = combined.join(",") + "-";
+                            groupedSubstituents.push_back({locPrefix + prefix + base, substituents[i].sortKey});
                         }
                         i = j;
                     }

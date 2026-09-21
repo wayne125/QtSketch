@@ -129,7 +129,12 @@ int main() {
         {"c1ccccc1N(C)C", "N,N-dimethylaniline"},
         {"c1ccccc1Nc1ccccc1", "N-phenylaniline"},
         {"CNc1ccc(Cl)cc1", "4-chloro-N-methylaniline"},
-        {"Cc1ccc(NC)cc1", "4-methyl-N-methylaniline"},
+        // Real PubChem confirmed: when the ring's own substituent and an N-substituent are
+        // chemically identical (both "methyl" here, just at different locants), they group into
+        // one combined "N,4-dimethyl" citation -- NOT cited twice separately as
+        // "4-methyl-N-methyl". Caught during independent review of the delegated commit that
+        // first shipped this test with the wrong (ungrouped) expected value.
+        {"Cc1ccc(NC)cc1", "N,4-dimethylaniline"},
         {"c1cc(Cl)cc(Cl)c1NC", "", true, "A chain-based principal group outranks the ring in this structure; chain-as-parent seniority (P-44.1.1) for this ring/class combination is not yet supported."},
         {"c1ccc2c(c1)cccc2NC", "", true, "Branched, ring, or unsaturated chains on N-substituted amines are not supported"},
 
