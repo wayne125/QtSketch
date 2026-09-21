@@ -4294,7 +4294,17 @@ IupacResult IupacNamer::generateName(int mol) {
                                         for (const auto& r : sssrRings) {
                                             if (r.count(curr)) { isRingNode = true; break; }
                                         }
-                                        
+
+                                        // The first atom of a non-ring branch must itself be carbon --
+                                        // a halogen or other heteroatom bonded directly to N (e.g. an
+                                        // N-Cl bond) is neither a ring atom nor a valid chain start, and
+                                        // without this check it would silently fall through the "plain
+                                        // alkyl chain" path below and get mis-named as "methyl".
+                                        if (!isRingNode && g.nodes[curr].atomicNumber != 6) {
+                                            invalidBranch = true;
+                                            return false;
+                                        }
+
                                         if (isRingNode) {
                                             len = 0;
                                             ringNode = curr;
@@ -4331,9 +4341,18 @@ IupacResult IupacNamer::generateName(int mol) {
                                                         ringNode = rNei;
                                                         ringAttachCarbon = curr;
                                                         break;
-                                                    } else {
+                                                    } else if (nextC != -1) {
                                                         prev = curr;
                                                         curr = nextC;
+                                                    } else {
+                                                        // The single heavy neighbor is neither a ring
+                                                        // atom nor carbon (e.g. a non-ring ether oxygen)
+                                                        // -- not a supported branch shape. Reject rather
+                                                        // than advance curr to -1, which would crash the
+                                                        // next iteration's out-of-bounds g.nodes[curr]
+                                                        // access.
+                                                        len = -1;
+                                                        break;
                                                     }
                                                 } else {
                                                     len = -1;

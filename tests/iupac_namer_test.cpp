@@ -708,7 +708,10 @@ int main() {
         {"OOC(=O)c1ccccc1", "", true, "Peroxycarboxylic acids"},
         {"CN(C)CCN(CC1=CC=CC=C1)C2=CC=CC=N2", "N1-benzyl-N2,N2-dimethyl-N1-(pyridin-2-yl)ethane-1,2-diamine"},
         {"CN(C)CCN(CC1=CC=C(C=C1)OC)C2=CC=CC=N2", "N1-[(4-methoxyphenyl)methyl]-N2,N2-dimethyl-N1-(pyridin-2-yl)ethane-1,2-diamine"},
-        {"C=CCNCCN", "", true, "Branched, ring, or unsaturated chains on N-substituted diamines are not supported"}
+        {"C=CCNCCN", "", true, "Branched, ring, or unsaturated chains on N-substituted diamines are not supported"},
+        {"ClN(C)CCN", "", true, "Branched, ring, or unsaturated chains on N-substituted diamines are not supported"},
+        {"CN(C)CCNCc1ccc(Cl)cc1", "N2-[(4-chlorophenyl)methyl]-N1,N1-dimethylethane-1,2-diamine"},
+        {"CN(COC)CCN", "", true, "Branched, ring, or unsaturated chains on N-substituted diamines are not supported"}
     };
 
     int passed = 0;
