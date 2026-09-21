@@ -183,6 +183,7 @@ int main() {
         {"CCN(C)C(C)=O", "N-ethyl-N-methylethanamide"},
         {"CC(=O)NC(C)C", "", true, "Branched or ring N-substituents on amides are not supported"},
         {"CC(=O)N(C)C(C)C", "", true, "Branched or ring N-substituents on amides are not supported"},
+        {"O=CN(C)C", "N,N-dimethylmethanamide"},
         {"CC(=O)NC(C)=O", "", true, "Acyclic imides (N-acylamides) are not supported"},
         {"CC(=O)Nc1ccccc1", "", true, "A chain-based principal group outranks the ring in this structure"},
 
