@@ -189,7 +189,7 @@ add_custom_command(TARGET sketch POST_BUILD
         ${CMAKE_CURRENT_SOURCE_DIR}/indigo/data/molecules/basic/monomer_library.ket
 )
 
-qt_add_executable(iupac_namer_test tests/iupac_namer_test.cpp src/app/IupacNamer.h src/app/IupacNamer.cpp)
+qt_add_executable(iupac_namer_test tests/iupac_namer_test.cpp src/app/IupacNamer.h src/app/IupacNamer.cpp src/app/BondStereoPerception.h src/app/BondStereoPerception.cpp)
 target_include_directories(iupac_namer_test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/src/app
@@ -251,6 +251,8 @@ add_library(molecule_model STATIC
     src/app/molecule/RenderPrimitivesToVariant.cpp
     src/app/BondAngleSuggester.h
     src/app/BondAngleSuggester.cpp
+    src/app/BondStereoPerception.h
+    src/app/BondStereoPerception.cpp
 )
 target_include_directories(molecule_model PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src

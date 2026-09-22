@@ -1,5 +1,6 @@
 #include "IndigoService.h"
 #include "IupacNamer.h"
+#include "BondStereoPerception.h"
 #include <cmath>
 #include <QDebug>
 #include <QGuiApplication>

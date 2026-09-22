@@ -7,7 +7,7 @@
 #include <cmath>
 #include <QSet>
 #include <map>
-#include "../IupacNamer.h"
+#include "../BondStereoPerception.h"
 
 EditableMolecule::EditableMolecule(const QString& initialStructure) {
     m_session = indigoAllocSessionId();
