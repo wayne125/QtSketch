@@ -19,6 +19,7 @@ Rectangle {
         return (atomCount + bondCount) > 1
     }
     readonly property bool hasContextSelection: selAtom !== null || selBond !== null || selArrow !== null || hasMultiSelection
+    property bool drugPropertiesExpanded: true
 
     property string molName: ""
     property var sdfProps: ({})
@@ -241,11 +242,29 @@ Rectangle {
 
             Rectangle { Layout.fillWidth: true; height: 1; color: Theme.outline; opacity: 0.5 }
 
-            Text {
-                textFormat: Text.PlainText
-                text: "Drug Properties"
-                color: Theme.textSecondary
-                font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontFamily }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 4
+
+                Text {
+                    textFormat: Text.PlainText
+                    text: "Drug Properties"
+                    color: Theme.textSecondary
+                    font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontFamily }
+                    Layout.fillWidth: true
+                }
+                Text {
+                    textFormat: Text.PlainText
+                    text: root.drugPropertiesExpanded ? "\u25be" : "\u25b8"
+                    color: Theme.textSecondary
+                    font { pixelSize: Theme.fontSizeCaption; family: Theme.fontFamily }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.drugPropertiesExpanded = !root.drugPropertiesExpanded
+                }
             }
 
             Grid {
@@ -253,6 +272,7 @@ Rectangle {
                 columnSpacing: 12
                 rowSpacing: 4
                 Layout.fillWidth: true
+                visible: root.drugPropertiesExpanded
 
                 Text { textFormat: Text.PlainText; text: "TPSA";   color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontFamily } }
                 Text { textFormat: Text.PlainText; text: root._fmtNum(root.molTPSA, 2, " Å²");  color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
