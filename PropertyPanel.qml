@@ -12,6 +12,14 @@ Rectangle {
     readonly property var selBond: canvas ? canvas.selectedBond : null
     readonly property var selArrow: canvas ? canvas.selectedRxnArrow : null
 
+    readonly property bool hasMultiSelection: {
+        if (!canvas || !canvas.sketch) return false
+        let atomCount = canvas.sketch.selection.atom_ids ? canvas.sketch.selection.atom_ids.length : 0
+        let bondCount = canvas.sketch.selection.bond_ids ? canvas.sketch.selection.bond_ids.length : 0
+        return (atomCount + bondCount) > 1
+    }
+    readonly property bool hasContextSelection: selAtom !== null || selBond !== null || selArrow !== null || hasMultiSelection
+
     property string molName: ""
     property var sdfProps: ({})
     property double molMW:       0
@@ -63,6 +71,18 @@ Rectangle {
     }
     function _fmtInt(v) { return (root.calcFailed || v < 0) ? "—" : v.toString() }
     function _formulaHtml(f) { return f.replace(/([0-9]+)/g, "<sub>$1</sub>") }
+    function _panelTitle() {
+        if (root.selAtom !== null) return "Atom \u00b7 " + (root.selAtom.label || "?") + root.selAtom.id
+        if (root.selBond !== null) return "Bond \u00b7 #" + root.selBond.id
+        if (root.selArrow !== null) return "Reaction"
+        if (root.hasMultiSelection) {
+            let atomCount = (root.canvas && root.canvas.sketch && root.canvas.sketch.selection.atom_ids) ? root.canvas.sketch.selection.atom_ids.length : 0
+            let bondCount = (root.canvas && root.canvas.sketch && root.canvas.sketch.selection.bond_ids) ? root.canvas.sketch.selection.bond_ids.length : 0
+            return "Selection \u00b7 " + (atomCount + bondCount) + " objects"
+        }
+        if (root.molAtoms > 0) return "Molecule"
+        return "Properties"
+    }
 
     // Indigo reports check types as raw keys ("ambiguous_h", "overlap_atom").
     // Shown verbatim they read as defects in the drawing rather than what they
@@ -95,7 +115,7 @@ Rectangle {
 
         Text {
             textFormat: Text.PlainText
-            text: "Properties"
+            text: root._panelTitle()
             color: Theme.textSecondary
             font {
                 pixelSize: Theme.fontSizeCaption
@@ -115,7 +135,7 @@ Rectangle {
         // Molecular Properties (auto-updated)
         ColumnLayout {
             Layout.fillWidth: true
-            visible: root.molAtoms > 0
+            visible: root.molAtoms > 0 && !root.hasContextSelection
             spacing: 6
 
             TextField {
@@ -326,12 +346,7 @@ Rectangle {
         // Multi-select summary
         ColumnLayout {
             Layout.fillWidth: true
-            visible: {
-                if (!root.canvas || !root.canvas.sketch) return false;
-                let atomCount = root.canvas.sketch.selection.atom_ids ? root.canvas.sketch.selection.atom_ids.length : 0;
-                let bondCount = root.canvas.sketch.selection.bond_ids ? root.canvas.sketch.selection.bond_ids.length : 0;
-                return (atomCount + bondCount) > 1;
-            }
+            visible: root.hasMultiSelection
             spacing: Theme.spacingMedium
 
             Text {
@@ -692,7 +707,7 @@ Rectangle {
             Layout.fillHeight: true
             StatusPlaceholder {
                 anchors.centerIn: parent
-                visible: root.selAtom === null && root.selBond === null && root.selArrow === null
+                visible: !root.hasContextSelection && root.molAtoms === 0
                 mode: "empty"
                 message: "Nothing selected"
                 detail: "Click an atom, bond, or arrow\nto edit its properties"
