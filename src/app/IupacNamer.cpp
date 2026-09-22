@@ -5688,7 +5688,48 @@ IupacResult IupacNamer::generateName(int mol) {
                     } else if (alkylNeighborsNear.size() > 1) {
                         return {false, "", "N,N-disubstituted hydrazides are not supported"};
                     } else if (alkylNeighborsFar.size() > 1) {
-                        return {false, "", "N',N'-disubstituted hydrazides are not supported"};
+                        int c0 = -1;
+                        for (size_t j = 0; j < g.nodes[nNodeNear].neighbors.size(); ++j) {
+                            int nei = g.nodes[nNodeNear].neighbors[j];
+                            if (nei != nNodeFar && g.nodes[nei].atomicNumber == 6) { c0 = nei; break; }
+                        }
+                        int rLen = 0;
+                        int cR = -1;
+                        if (c0 != -1) {
+                            for (size_t j = 0; j < g.nodes[c0].neighbors.size(); ++j) {
+                                int nei = g.nodes[c0].neighbors[j];
+                                if (nei != nNodeNear && g.nodes[nei].atomicNumber == 6) { cR = nei; break; }
+                            }
+                            if (cR != -1) { rLen = countPlainAlkylChain(cR, c0, g); }
+                        }
+                        int c1 = alkylNeighborsFar[0];
+                        int c2 = alkylNeighborsFar[1];
+                        int rPrimeLen1 = countPlainAlkylChain(c1, nNodeFar, g);
+                        int rPrimeLen2 = countPlainAlkylChain(c2, nNodeFar, g);
+                        if (rLen == -1 || rPrimeLen1 == -1 || rPrimeLen2 == -1) {
+                            if (rPrimeLen1 == -1 || rPrimeLen2 == -1) {
+                                return {false, "", "Branched or ring substituents on hydrazides are not supported"};
+                            } else {
+                                return {false, "", "Ring or branched acyl parents on hydrazides are not supported"};
+                            }
+                        }
+                        if (rLen + rPrimeLen1 + rPrimeLen2 + 1 != countC) {
+                            return {false, "", "Hydrazides with additional substituents or functional groups are not supported in this phase"};
+                        }
+                        QString sub1 = chainRoot(rPrimeLen1) + "yl";
+                        QString sub2 = chainRoot(rPrimeLen2) + "yl";
+                        QString prefix;
+                        if (rPrimeLen1 == rPrimeLen2) {
+                            prefix = "N',N'-" + multiPrefix(2) + sub1;
+                        } else {
+                            QString first = sub1;
+                            QString second = sub2;
+                            if (alphabetizationKey(sub2) < alphabetizationKey(sub1)) { first = sub2; second = sub1; }
+                            prefix = "N'-" + first + "-N'-" + second;
+                        }
+                        QString name = prefix + chainRoot(rLen + 1) + "anehydrazide";
+                        if (rLen == 0) name = prefix + "methanehydrazide";
+                        return {true, name, ""};
                     } else if (alkylNeighborsNear.size() == 1 || alkylNeighborsFar.size() == 1) {
                         bool isNear = (alkylNeighborsNear.size() == 1);
                         int subNode = isNear ? alkylNeighborsNear[0] : alkylNeighborsFar[0];

@@ -204,7 +204,9 @@ int main() {
         {"CC(=O)NNC", "N'-methylethanehydrazide"}, // Methyl on FAR nitrogen
         {"CC(=O)NN", "ethanehydrazide"},
         {"CC(=O)N(C)NC", "", true, "Hydrazides with substituents on both nitrogens are not supported"},
-        {"CC(=O)NN(C)C", "", true, "N',N'-disubstituted hydrazides are not supported"},
+        {"CC(=O)NN(C)C", "N',N'-dimethylethanehydrazide"}, // N',N'-dimethyl on FAR nitrogen
+        {"CC(=O)NN(C)CC", "N'-ethyl-N'-methylethanehydrazide"}, // N'-ethyl-N'-methyl on FAR nitrogen
+        {"CC(=O)NN(C)C(C)C", "", true, "Branched or ring substituents on hydrazides are not supported"}, // Branched far-N substituent
 
 
 
