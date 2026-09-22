@@ -113,6 +113,7 @@
 #include <QString>
 #include <QHash>
 #include <QList>
+#include <QMap>
 #include <QPointF>
 #include <functional>
 #include "ExtensionData.h"
@@ -382,6 +383,7 @@ public:
     // API applied to a double bond's own atoms -- this accessor is atom-only, matching Indigo's
     // own "does not represent an atom" rejection of a bond handle.
     int atomCipDescriptor(AtomId id) const;
+    QMap<BondId, QString> allBondCipLabels() const;
 
     int addDataSGroup(const QList<AtomId>& atoms, const QString& description, const QString& data);
     int dataSGroupCount() const;

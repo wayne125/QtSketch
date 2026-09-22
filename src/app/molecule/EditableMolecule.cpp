@@ -6,6 +6,8 @@
 #include <utility>
 #include <cmath>
 #include <QSet>
+#include <map>
+#include "../IupacNamer.h"
 
 EditableMolecule::EditableMolecule(const QString& initialStructure) {
     m_session = indigoAllocSessionId();
@@ -1389,6 +1391,44 @@ int EditableMolecule::atomCipDescriptor(AtomId id) const {
     indigoFree(a);
     indigoFree(clone);
     return cip > 0 ? cip : 0;
+}
+
+QMap<BondId, QString> EditableMolecule::allBondCipLabels() const {
+    QMap<BondId, QString> result;
+    if (m_mol < 0) return result;
+    activateSession();
+    QString ket = toKetJson();
+    if (ket.isEmpty()) return result;
+
+    unsigned long long sid = indigoAllocSessionId();
+    indigoSetSessionId(sid);
+    int mol = -1;
+    std::map<std::pair<int, int>, QChar> bondCip;
+    try {
+        mol = indigoLoadMoleculeFromString(ket.toUtf8().constData());
+        if (mol >= 0) {
+            indigoAddCIPStereoDescriptors(mol);
+            bondCip = computeIndigoBondCIP(mol);
+            indigoFree(mol);
+        }
+        indigoReleaseSessionId(sid);
+        activateSession();
+    } catch (...) {
+        indigoReleaseSessionId(sid);
+        activateSession();
+    }
+
+    if (mol < 0) return result;
+
+    for (BondId bid : bondIds()) {
+        AtomId a1 = -1, a2 = -1;
+        if (!bondEndpoints(bid, a1, a2)) continue;
+        if (!m_atomIdx.contains(a1) || !m_atomIdx.contains(a2)) continue;
+        int i1 = m_atomIdx.value(a1), i2 = m_atomIdx.value(a2);
+        auto it = bondCip.find({std::min(i1, i2), std::max(i1, i2)});
+        if (it != bondCip.end()) result[bid] = QString(it->second);
+    }
+    return result;
 }
 
 QList<SGroupId> EditableMolecule::sgroupIds() const {

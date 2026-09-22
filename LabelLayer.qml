@@ -509,6 +509,43 @@ Item {
                     ctx.stroke()
                 }
             }
+            // Bond CIP labels
+            if (canvas.sketch.primitives.bonds && canvas.sketch.primitives.atomsById) {
+                const bondsList = canvas.sketch.primitives.bonds
+                for (let bi = 0; bi < bondsList.length; bi++) {
+                    const bb = bondsList[bi]
+                    if (!bb.cipLabel) continue
+
+                    const beginA = canvas.sketch.primitives.atomsById[bb.begin.toString()]
+                    const endA = canvas.sketch.primitives.atomsById[bb.end.toString()]
+                    if (!beginA || !endA) continue
+
+                    const p1 = canvas.chemToCanvas(beginA.x, beginA.y)
+                    const p2 = canvas.chemToCanvas(endA.x, endA.y)
+
+                    const midX = (p1.x + p2.x) / 2
+                    const midY = (p1.y + p2.y) / 2
+
+                    const bdx = p2.x - p1.x
+                    const bdy = p2.y - p1.y
+                    const blen = Math.sqrt(bdx * bdx + bdy * bdy)
+                    if (blen === 0) continue
+
+                    const dirX = bdx / blen
+                    const dirY = bdy / blen
+                    const perpX = -dirY
+                    const perpY = dirX
+
+                    const cipFontSize = Math.max(9, 11 * root.scale)
+                    const cipOffset = 10 * root.scale
+
+                    ctx.font = "bold " + cipFontSize + "px " + Theme.fontFamilyCss
+                    ctx.textAlign = "center"
+                    ctx.textBaseline = "middle"
+                    ctx.fillStyle = Theme.accent
+                    ctx.fillText(bb.cipLabel, midX + perpX * cipOffset, midY + perpY * cipOffset)
+                }
+            }
 
             // Images
             if (canvas.sketch.primitives.images) {

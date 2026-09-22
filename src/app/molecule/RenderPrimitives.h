@@ -12,9 +12,7 @@
 // sub-projects 1-3, until dispatch-layer removal (sub-project 7).
 //
 // Documented gaps, not silently guessed at: BondPrim::reactingCenterStatus (reaction-specific,
-// always 0, no reaction objects exist in this port yet), BondPrim::cipLabel (always empty --
-// confirmed by direct probe that no bond-level E/Z CIP path exists through Indigo's public C
-// API). R-group and bracket rendering (RGroupPrim/BracketPrim below) were added once sub-project
+// always 0, no reaction objects exist in this port yet). R-group and bracket rendering (RGroupPrim/BracketPrim below) were added once sub-project
 // 3e gave R-groups and brackets a real data model -- see 10-state.js:1374-1393 for the source
 // shape these mirror exactly.
 
@@ -44,7 +42,7 @@ struct BondPrim {
     int type = 1;             // bond order, including Indigo's aromatic (4)
     int stereo = 0;
     bool inAromaticRing = false, invalidStereo = false, beginIsSgroup = false, endIsSgroup = false;
-    QString checkWarning, cipLabel;   // cipLabel always empty -- see file header
+    QString checkWarning, cipLabel;
     int reactingCenterStatus = 0;     // always 0 -- see file header
     bool hasRingCenter = false;
     double ringCenterX = 0, ringCenterY = 0;   // valid only if hasRingCenter

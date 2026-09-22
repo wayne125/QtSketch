@@ -270,6 +270,7 @@ RenderPrimitives RenderPrimitiveBuilder::build(const EditableMolecule& mol, bool
     }
 
     // ---- Bond primitives ----
+    const QMap<BondId, QString> bondCipLabels = mol.allBondCipLabels();
     for (BondId bid : mol.bondIds()) {
         AtomId ea = -1, eb = -1;
         if (!mol.bondEndpoints(bid, ea, eb)) continue;
@@ -295,7 +296,7 @@ RenderPrimitives RenderPrimitiveBuilder::build(const EditableMolecule& mol, bool
         prim.type = mol.bondOrder(bid);
         prim.stereo = (beginSg || endSg) ? 0 : mol.bondStereoDirectionV2000(bid);
         prim.checkWarning = mol.bondCheckWarningText(bid);
-        prim.cipLabel = QString();          // always empty -- no bond-level CIP path, see file header
+        prim.cipLabel = bondCipLabels.value(bid);
         prim.reactingCenterStatus = 0;       // always 0 -- no reaction objects in this port
 
         prim.inAromaticRing = aromaticBondIds.contains(bid);
