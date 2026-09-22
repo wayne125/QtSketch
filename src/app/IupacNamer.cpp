@@ -5574,7 +5574,42 @@ IupacResult IupacNamer::generateName(int mol) {
                 } else if (acylNeighbors.size() == 1) {
                     if (countS == 1) {
                         if (alkylNeighbors.size() == 2) {
-                            return {false, "", "N,N-disubstituted thioamides are not supported"};
+                            int c0 = acylNeighbors[0];
+                            int c1 = alkylNeighbors[0];
+                            int c2 = alkylNeighbors[1];
+                            int rLen = 0;
+                            int cR = -1;
+                            for (size_t j = 0; j < g.nodes[c0].neighbors.size(); ++j) {
+                                int nei = g.nodes[c0].neighbors[j];
+                                if (nei != nNode && g.nodes[nei].atomicNumber == 6) { cR = nei; break; }
+                            }
+                            if (cR != -1) { rLen = countPlainAlkylChain(cR, c0, g); }
+                            int rPrimeLen1 = countPlainAlkylChain(c1, nNode, g);
+                            int rPrimeLen2 = countPlainAlkylChain(c2, nNode, g);
+                            if (rLen == -1 || rPrimeLen1 == -1 || rPrimeLen2 == -1) {
+                                if (rPrimeLen1 == -1 || rPrimeLen2 == -1) {
+                                    return {false, "", "Branched or ring N-substituents on thioamides are not supported"};
+                                } else {
+                                    return {false, "", "Ring or branched acyl parents on thioamides are not supported"};
+                                }
+                            }
+                            if (rLen + rPrimeLen1 + rPrimeLen2 + 1 != countC) {
+                                return {false, "", "Thioamides with additional substituents or functional groups are not supported in this phase"};
+                            }
+                            QString sub1 = chainRoot(rPrimeLen1) + "yl";
+                            QString sub2 = chainRoot(rPrimeLen2) + "yl";
+                            QString prefix;
+                            if (rPrimeLen1 == rPrimeLen2) {
+                                prefix = "N,N-" + multiPrefix(2) + sub1;
+                            } else {
+                                QString first = sub1;
+                                QString second = sub2;
+                                if (alphabetizationKey(sub2) < alphabetizationKey(sub1)) { first = sub2; second = sub1; }
+                                prefix = "N-" + first + "-N-" + second;
+                            }
+                            QString name = prefix + chainRoot(rLen + 1) + "anethioamide";
+                            if (rLen == 0) name = prefix + "methanethioamide";
+                            return {true, name, ""};
                         } else if (alkylNeighbors.size() == 1) {
                             int c0 = acylNeighbors[0];
                             int c1 = alkylNeighbors[0];

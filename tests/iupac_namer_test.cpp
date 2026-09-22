@@ -192,9 +192,12 @@ int main() {
         {"CC(=S)NCC", "N-ethylethanethioamide"},
         {"S=CNC", "N-methylmethanethioamide"},
         {"CC(=S)N", "ethanethioamide"},
-        {"CC(=S)N(C)C", "", true, "N,N-disubstituted thioamides are not supported"},
+        {"CC(=S)N(C)C", "N,N-dimethylethanethioamide"},
+        {"CCN(C)C(C)=S", "N-ethyl-N-methylethanethioamide"},
         {"CC(=S)NC(C)C", "", true, "Branched or ring N-substituents on thioamides are not supported"},
+        {"CC(=S)N(C)C(C)C", "", true, "Branched or ring N-substituents on thioamides are not supported"},
         {"CC(=S)NC(C)=S", "", true, "Acyclic imides (N-acylamides) are not supported"},
+        {"S=CN(C)C", "N,N-dimethylmethanethioamide"},
 
         // P-66.3.3.1 Substituted hydrazides
         {"CC(=O)N(C)N", "N-methylethanehydrazide"}, // Methyl on NEAR nitrogen
