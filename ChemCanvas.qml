@@ -1330,6 +1330,32 @@ Item {
                                     break
                                 }
                             }
+                        } else {
+                            // Angle snap to 15-degree increments while dragging over empty
+                            // canvas, matching ChemDraw/ACD's default bond-drag behavior and
+                            // this app's own existing 15-degree convention (selection-rotate
+                            // handle, ~line 1217). Hold Shift for free-angle drawing. Never
+                            // applies when magnetically snapped onto an existing atom (the
+                            // branch above always takes priority). Math stays entirely in
+                            // canvas-pixel space: bondPreview.startX/Y are chem-space, so
+                            // convert via chemToCanvas before any angle/distance calculation
+                            // -- see this file's own CHAIN-tool comment a few lines below for
+                            // why mixing the two spaces here would be a real bug, not a style
+                            // choice.
+                            const shiftHeld = (m.modifiers & Qt.ShiftModifier) !== 0
+                            if (!shiftHeld) {
+                                const startCanvas = chemToCanvas(sketch.overlayState.bondPreview.startX, sketch.overlayState.bondPreview.startY)
+                                const dx = targetX - startCanvas.x
+                                const dy = targetY - startCanvas.y
+                                const dist = Math.sqrt(dx * dx + dy * dy)
+                                if (dist > 0) {
+                                    const angle = Math.atan2(dy, dx)
+                                    const step = Math.PI / 12  // 15 degrees
+                                    const snappedAngle = Math.round(angle / step) * step
+                                    targetX = startCanvas.x + Math.cos(snappedAngle) * dist
+                                    targetY = startCanvas.y + Math.sin(snappedAngle) * dist
+                                }
+                            }
                         }
                         setOverlayState({
                             hoverAtomId: hoverAtomId,
