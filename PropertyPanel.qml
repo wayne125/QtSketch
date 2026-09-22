@@ -19,6 +19,27 @@ Rectangle {
         return (atomCount + bondCount) > 1
     }
     readonly property bool hasContextSelection: selAtom !== null || selBond !== null || selArrow !== null || hasMultiSelection
+    readonly property var matchedRing: {
+        if (!canvas || !canvas.sketch || !canvas.sketch.primitives || !canvas.sketch.primitives.rings) return null
+        if (!canvas.sketch.selection || !canvas.sketch.selection.atom_ids) return null
+        let selAtoms = canvas.sketch.selection.atom_ids
+        let selBonds = canvas.sketch.selection.bond_ids || []
+        if (selAtoms.length < 3) return null
+        let selSet = {}
+        for (let i = 0; i < selAtoms.length; i++) selSet[selAtoms[i]] = true
+        let rings = canvas.sketch.primitives.rings
+        for (let r = 0; r < rings.length; r++) {
+            let ring = rings[r]
+            if (!ring.atoms || ring.atoms.length !== selAtoms.length) continue
+            if (selBonds.length !== ring.atoms.length) continue
+            let match = true
+            for (let j = 0; j < ring.atoms.length; j++) {
+                if (!selSet[ring.atoms[j]]) { match = false; break }
+            }
+            if (match) return ring
+        }
+        return null
+    }
     property bool drugPropertiesExpanded: true
 
     property string molName: ""
@@ -76,6 +97,7 @@ Rectangle {
         if (root.selAtom !== null) return "Atom \u00b7 " + (root.selAtom.label || "?") + root.selAtom.id
         if (root.selBond !== null) return "Bond \u00b7 #" + root.selBond.id
         if (root.selArrow !== null) return "Reaction"
+        if (root.matchedRing !== null) return "Ring \u00b7 " + root.matchedRing.atoms.length + "-membered"
         if (root.hasMultiSelection) {
             let atomCount = (root.canvas && root.canvas.sketch && root.canvas.sketch.selection.atom_ids) ? root.canvas.sketch.selection.atom_ids.length : 0
             let bondCount = (root.canvas && root.canvas.sketch && root.canvas.sketch.selection.bond_ids) ? root.canvas.sketch.selection.bond_ids.length : 0
@@ -366,7 +388,7 @@ Rectangle {
         // Multi-select summary
         ColumnLayout {
             Layout.fillWidth: true
-            visible: root.hasMultiSelection
+            visible: root.hasMultiSelection && root.matchedRing === null
             spacing: Theme.spacingMedium
 
             Text {
@@ -388,6 +410,36 @@ Rectangle {
                 }
                 color: Theme.textPrimary
                 font { pixelSize: Theme.fontSizeBody; family: Theme.fontFamily }
+            }
+        }
+
+        // Ring Properties
+        ColumnLayout {
+            Layout.fillWidth: true
+            visible: root.matchedRing !== null
+            spacing: Theme.spacingMedium
+
+            Text {
+                textFormat: Text.PlainText
+                text: "Ring"
+                color: Theme.textSecondary
+                font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontFamily }
+            }
+
+            Grid {
+                columns: 2
+                columnSpacing: 12
+                rowSpacing: 4
+                Layout.fillWidth: true
+
+                Text { textFormat: Text.PlainText; text: "Size";     color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontFamily } }
+                Text { textFormat: Text.PlainText; text: root.matchedRing ? (root.matchedRing.atoms.length + "-membered") : ""; color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
+
+                Text { textFormat: Text.PlainText; text: "Aromatic"; color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontFamily } }
+                Text { textFormat: Text.PlainText; text: (root.matchedRing && root.matchedRing.isAromatic) ? "Yes" : "No"; color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
+
+                Text { textFormat: Text.PlainText; text: "Atoms";    color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontFamily } }
+                Text { textFormat: Text.PlainText; text: root.matchedRing ? root.matchedRing.atoms.length.toString() : ""; color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
             }
         }
 
