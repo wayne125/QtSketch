@@ -1564,7 +1564,27 @@ bool EditableMolecule::setBondStereo(BondId id, Direction dir) {
     lines[bondLineIndex] = patchedLine;
 
     QString patchedText = lines.join(QLatin1Char('\n'));
+    // Setting a single wedge/hash/wavy bond flag on an atom that does not YET have a full
+    // differentiated substituent pattern (e.g. a plain two-atom fragment the user just started
+    // drawing) is completely normal mid-draw -- the flag is what LATER perception uses to
+    // decide the atom is a stereocenter as the user keeps building, not a precondition for it.
+    // Indigo's molfile loader disagrees by default: it runs full stereocenter perception on
+    // load and throws "direction of bond #N makes no sense" the moment a stereo-flagged bond
+    // doesn't yet form a valid stereocenter (confirmed by direct probe -- this is exactly what
+    // silently dropped every wedge/hash/wavy bond drawn via the BOND_UP/DOWN/UPDOWN tools:
+    // this reload failed, indigoLoadMoleculeFromString returned <0, this function returned
+    // false, and the caller (DocumentState::addBond) never checks that return value, so the
+    // bond silently stayed a plain unstyled single bond with no error shown anywhere).
+    // "ignore-stereochemistry-errors" (indigo_options.cpp) is Indigo's own documented escape
+    // hatch for exactly this: molfile_loader_postload.cpp's stereocenter-validation pass skips
+    // the throw and calls addStereocentersIgnoreBad() instead when this option is set, which is
+    // the right semantics for a live editor. Scoped tightly around just this one reload and
+    // restored to strict afterward so it doesn't loosen validation for anything else loaded on
+    // this document's session later (e.g. a pasted fragment or an imported file with a
+    // genuinely malformed stereo bond should still be caught).
+    indigoSetOptionBool("ignore-stereochemistry-errors", 1);
     int newHandle = indigoLoadMoleculeFromString(patchedText.toUtf8().constData());
+    indigoSetOptionBool("ignore-stereochemistry-errors", 0);
     if (newHandle < 0) {
         m_lastError = QString::fromUtf8(indigoGetLastError());
         return false;
