@@ -722,6 +722,16 @@ int main() {
         // be accepted by the new block; falls through to the existing rejection.
         {"C(=NC)N", "", true, "N-substituted imines, oximes, hydrazones, and amidines are not supported in this phase"},
 
+        // Ureas (roadmap Phase 2) narrow case
+        {"NC(=O)N", "urea"},
+        {"CNC(=O)N", "methylurea"},
+        {"CNC(=O)NC", "N,N'-dimethylurea"},
+        {"CCNC(=O)NC", "N-ethyl-N'-methylurea"},
+        {"CC(C)NC(=O)N", "", true, "Branched or ring N-substituents on ureas are not supported"},
+        // Both substituents on ONE nitrogen (same-nitrogen disubstitution)
+        // Out of scope for the new block; falls through to general classification.
+        {"CN(C)C(=O)N", "", true, "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."},
+
         {"CCCC(=O)N=[N+]=[N-]", "", true, "Acyl pseudohalides"},
         {"CCCC(=O)C#N", "", true, "Acyl pseudohalides"},
         {"CCCC(=O)N=C=O", "", true, "Acyl pseudohalides"},

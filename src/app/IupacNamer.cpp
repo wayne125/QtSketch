@@ -5769,6 +5769,95 @@ IupacResult IupacNamer::generateName(int mol) {
         }
     }
 
+    // --- Ureas (new functional-group family, roadmap Phase 2) narrow case ---
+    {
+        int countC = 0, countN = 0, countO = 0, countOtherHeavy = 0;
+        int numEdges = 0;
+        for (const auto &n : g.nodes) {
+            numEdges += n.neighbors.size();
+            if (n.atomicNumber == 6) countC++;
+            else if (n.atomicNumber == 7) countN++;
+            else if (n.atomicNumber == 8) countO++;
+            else if (n.atomicNumber > 1) countOtherHeavy++;
+        }
+        numEdges /= 2;
+        bool isAcyclic = (numEdges == static_cast<int>(g.nodes.size()) - 1);
+
+        if (isAcyclic && countN == 2 && countO == 1 && countOtherHeavy == 0) {
+            int ureaCarbon = -1, n1 = -1, n2 = -1;
+            for (size_t i = 0; i < g.nodes.size(); ++i) {
+                if (g.nodes[i].atomicNumber != 6) continue;
+                int dblO = -1;
+                std::vector<int> sglN;
+                bool otherJunk = false;
+                for (size_t j = 0; j < g.nodes[i].neighbors.size(); ++j) {
+                    int nei = g.nodes[i].neighbors[j];
+                    int order = g.nodes[i].bondOrders[j];
+                    int nz = g.nodes[nei].atomicNumber;
+                    if (nz == 8 && order == 2) dblO = nei;
+                    else if (nz == 7 && order == 1) sglN.push_back(nei);
+                    else otherJunk = true;
+                }
+                if (otherJunk) continue;
+                if (dblO != -1 && sglN.size() == 2) {
+                    ureaCarbon = static_cast<int>(i);
+                    n1 = sglN[0];
+                    n2 = sglN[1];
+                    break;
+                }
+            }
+
+            if (ureaCarbon != -1) {
+                auto classifyN = [&](int nNode, int &subCarbon) -> bool {
+                    subCarbon = -1;
+                    int extraCount = 0;
+                    for (int nei : g.nodes[nNode].neighbors) {
+                        if (nei == ureaCarbon) continue;
+                        if (g.nodes[nei].atomicNumber != 6) return false;
+                        extraCount++;
+                        subCarbon = nei;
+                    }
+                    return extraCount <= 1;
+                };
+
+                int sub1 = -1, sub2 = -1;
+                if (classifyN(n1, sub1) && classifyN(n2, sub2)) {
+                    int len1 = (sub1 != -1) ? countPlainAlkylChain(sub1, n1, g) : 0;
+                    int len2 = (sub2 != -1) ? countPlainAlkylChain(sub2, n2, g) : 0;
+
+                    if (len1 == -1 || len2 == -1) {
+                        return {false, "", "Branched or ring N-substituents on ureas are not supported"};
+                    }
+                    if (len1 + len2 != countC - 1) {
+                        return {false, "", "Ureas with additional substituents or functional groups are not supported in this phase"};
+                    }
+
+                    QString name;
+                    if (sub1 == -1 && sub2 == -1) {
+                        name = "urea";
+                    } else if (sub1 != -1 && sub2 == -1) {
+                        name = chainRoot(len1) + "ylurea";
+                    } else if (sub1 == -1 && sub2 != -1) {
+                        name = chainRoot(len2) + "ylurea";
+                    } else {
+                        QString name1 = chainRoot(len1) + "yl";
+                        QString name2 = chainRoot(len2) + "yl";
+                        if (len1 == len2) {
+                            name = "N,N'-" + multiPrefix(2) + name1 + "urea";
+                        } else {
+                            QString first = name1, second = name2;
+                            if (alphabetizationKey(name2) < alphabetizationKey(name1)) {
+                                first = name2; second = name1;
+                            }
+                            name = "N-" + first + "-N'-" + second + "urea";
+                        }
+                    }
+                    return {true, name, ""};
+                }
+            }
+        }
+    }
+
     // --- N-substituted thioamides (P-66.1.1.3.1) narrow case & imide rejection ---
     {
         int countC = 0, countN = 0, countS = 0, countOtherHeavy = 0;
