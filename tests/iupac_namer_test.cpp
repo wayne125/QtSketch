@@ -243,7 +243,14 @@ int main() {
         // disclosed bug: the acid chain here was previously discarded and
         // fabricated into a nonsense "dihydroxypropyl" fragment while the
         // ring's nitrosamine group wrongly took over the whole name).
-        {"O=NN(C)C1CCCCC1CCC(=O)O", "", true, "competing principal group"},
+        // This one's rejection reason shifted from "competing principal group" to the
+        // (equally honest) "N-substituted amino ring substituents are not supported"
+        // after the chloroquine-class amino-substituent-drop fix: the ring's N(C)(N=O)
+        // substituent now gets caught by the earlier, more general N-substituted-amino
+        // guard before the competing-principal-group check is ever reached. Still a
+        // clean rejection, not the fabricated-nonsense bug this test guards against --
+        // just a different (also correct) diagnostic message.
+        {"O=NN(C)C1CCCCC1CCC(=O)O", "", true, "N-substituted amino ring substituents are not supported"},
         {"CN=NCC1CCCCC1CCC(=O)O", "", true, "competing principal group"},
 
         // Rootless acyl carbon / multiple halogen fixes
@@ -4301,22 +4308,73 @@ int main() {
     }
 
     {
-        // Known residual gap from the same audit, NOT fixed by this round: chlorambucil's
-        // principal group is the carboxylic ACID (whose own -OH/=O oxygens are clean), and
-        // the dropped N,N-bis(2-chloroethyl)amino group sits on a ring substituent elsewhere
-        // in the molecule, not on the acid's own principal heteroatom -- so
-        // checkPrincipalHeteroatomsUnsubstituted does not see it. This is intentionally left
-        // as a documented gap (see "IUPAC Blue Book Coverage.md") rather than papered over;
-        // this test pins the CURRENT (still-wrong) behavior so a future fix updates it
-        // deliberately instead of silently regressing further.
+        // Chlorambucil's principal group is the carboxylic ACID (whose own -OH/=O
+        // oxygens are clean, so checkPrincipalHeteroatomsUnsubstituted doesn't see the
+        // problem); the dropped N,N-bis(2-chloroethyl)amino group sits on a RING
+        // substituent elsewhere in the molecule instead. That shape is exactly what the
+        // chloroquine-class amino-substituent-drop fix (the generic "does this ring's
+        // amino substituent carry extra heavy neighbors" guard) catches, so this is now
+        // a clean rejection rather than the silent "4-(4-aminophenyl)butanoic acid".
         int m = indigoLoadMoleculeFromString("O=C(O)CCCc1ccc(N(CCCl)CCCl)cc1"); // chlorambucil
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
-        if (r.success) {
-            std::cout << "[PASS] chlorambucil known-gap pinned (still silently succeeds) -> " << r.name.toStdString() << "\n";
+        if (!r.success && !r.error.isEmpty()) {
+            std::cout << "[PASS] chlorambucil N-substituent drop now rejected -> " << r.error.toStdString() << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] chlorambucil known-gap -- now rejects (" << r.error.toStdString() << "); this is actually GOOD, update this test to assert rejection and update the coverage doc\n";
+            std::cout << "[FAIL] chlorambucil N-substituent drop -> got success=" << r.success << " name='" << r.name.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Regression guard for the aminoquinoline-class "silent substituent drop" bug
+        // found via the FDA-drug-corpus sweep: nameRingAsSubstituent and its two
+        // near-duplicate inline copies in generateName all hardcoded subName = "amino"
+        // for any ring-attached nitrogen that wasn't azide/nitro/nitroso/amido/
+        // hydrazinyl, with no check for further substitution on that nitrogen. Result:
+        // CHLOROQUINE silently named "4-amino-7-chloroquinoline", dropping the entire
+        // N-(5-diethylaminopentan-2-yl) side chain. Fixed by checking whether the amino
+        // nitrogen has any heavy-atom neighbor besides the ring attachment before
+        // accepting the bare "amino" label; rejects honestly instead.
+        int m = indigoLoadMoleculeFromString("CCN(CC)CCCC(C)Nc1ccnc2cc(Cl)ccc12"); // chloroquine
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success && !r.error.isEmpty()) {
+            std::cout << "[PASS] chloroquine N-substituent drop now rejected -> " << r.error.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] chloroquine N-substituent drop -> got success=" << r.success << " name='" << r.name.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Same bug, primaquine: ring-amino nitrogen carries an entire pentylamine chain.
+        int m = indigoLoadMoleculeFromString("COc1cc(NC(C)CCCN)c2ncccc2c1");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success && !r.error.isEmpty()) {
+            std::cout << "[PASS] primaquine N-substituent drop now rejected -> " << r.error.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] primaquine N-substituent drop -> got success=" << r.success << " name='" << r.name.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Regression guard: a PLAIN, unsubstituted ring -NH2 (aniline) must still name
+        // correctly and NOT be caught by the new amino-substituent guard above -- the
+        // guard must only fire when the amino nitrogen has an extra heavy neighbor.
+        int m = indigoLoadMoleculeFromString("Nc1ccccc1"); // aniline
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "aniline") {
+            std::cout << "[PASS] plain aniline -NH2 still names correctly -> " << r.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] plain aniline -NH2 regressed -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
             failed++;
         }
     }

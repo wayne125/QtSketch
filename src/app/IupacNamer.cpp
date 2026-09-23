@@ -1195,7 +1195,8 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                                      const std::map<int, QChar> &stereoByGraphId = {},
                                      std::set<int> *handledBranchStereoIds = nullptr,
                                      const std::map<int, int> &carbonSulfonamide = {},
-                                     const std::map<int, int> &carbonSulfinamide = {}) {
+                                     const std::map<int, int> &carbonSulfinamide = {},
+                                     bool *outErr = nullptr) {
     if (ringNodes.empty() || !ringNodes.count(attachmentNode)) return "";
     std::set<int> combinedForbidden = forbiddenNodes;
     for (int n : ringNodes) combinedForbidden.insert(n);
@@ -1539,7 +1540,20 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                         if (isHydrazinylNitrogen(nei, rNode, g)) {
                             subName = "hydrazinyl";
                         } else {
-                            subName = "amino";
+                            bool isPlainNH2 = true;
+                            for (int nNei2 : g.nodes[nei].neighbors) {
+                                if (nNei2 != rNode && g.nodes[nNei2].atomicNumber > 1) {
+                                    isPlainNH2 = false;
+                                    break;
+                                }
+                            }
+                            if (isPlainNH2) {
+                                subName = "amino";
+                            } else {
+                                if (outErr) *outErr = true;
+                                candValid = false;
+                                break;
+                            }
                         }
                     }
                 } else if (nZ == 16 && thioetherSulfurs.count(nei)) {
@@ -2071,6 +2085,21 @@ QString nameBranchGraph(const Graph &g, int rootIdx, int parentIdx, const std::v
                     QString aName = cleanName + "amido";
                     return cleanName.isEmpty() ? aName : ("(" + aName + ")");
                 }
+            }
+        }
+        // A plain, unsubstituted "-NH2" root (rootIdx's only heavy neighbor is
+        // parentIdx, everything else implicit hydrogens) is a genuine "amino"
+        // substituent. Anything else -- a secondary/tertiary amine with a real
+        // alkyl/aryl chain hanging off this nitrogen -- is an N-substituted amino
+        // group this function has no way to name; returning the bare "amino" here
+        // silently discarded that entire chain (confirmed live: chloroquine's
+        // N-(5-diethylaminopentan-2-yl) side chain vanished, producing
+        // "4-amino-7-chloroquinoline"). Return "" instead, matching this
+        // function's own established failure contract (empty string already means
+        // "could not name this branch" to every caller of nameBranchGraph).
+        for (int nei : g.nodes[rootIdx].neighbors) {
+            if (nei != parentIdx && g.nodes[nei].atomicNumber > 1) {
+                return "";
             }
         }
         return "amino";
@@ -6341,7 +6370,9 @@ IupacResult IupacNamer::generateName(int mol) {
                     }
                     if (!validSubstituent || nodesWithExo != 1 || attachNodeThis == -1) return {"", -1};
 
-                    QString subName = nameRingAsSubstituent(g, rNodes, attachNodeThis, attachNodeOther, allSSSRRings, {}, {}, nullptr, carbonSulfonamide, carbonSulfinamide);
+                    bool ringSubErr = false;
+                    QString subName = nameRingAsSubstituent(g, rNodes, attachNodeThis, attachNodeOther, allSSSRRings, {}, {}, nullptr, carbonSulfonamide, carbonSulfinamide, &ringSubErr);
+                    if (ringSubErr) return {"!ERROR!", -1};
                     if (subName.isEmpty()) return {"", -1};
 
                     while (subName.startsWith("(") || subName.startsWith("[") || subName.startsWith("{")) subName = subName.mid(1);
@@ -6380,7 +6411,9 @@ IupacResult IupacNamer::generateName(int mol) {
                 };
 
                 auto res1 = checkRingAssemblyOneSide(ring1Nodes, ring2Nodes);
+                if (res1.first == "!ERROR!") return {false, "", "N-substituted amino ring substituents are not supported"};
                 auto res2 = checkRingAssemblyOneSide(ring2Nodes, ring1Nodes);
+                if (res2.first == "!ERROR!") return {false, "", "N-substituted amino ring substituents are not supported"};
                 if (!res1.first.isEmpty() && !res2.first.isEmpty() && res1.first == res2.first) {
                     if (res1.first == "phenyl" || res1.first == "cyclohexyl") {
                         return {true, "bi" + res1.first, ""};
@@ -6548,7 +6581,9 @@ IupacResult IupacNamer::generateName(int mol) {
                 // double-processing risk, and lets a ring substituent's own stereocenter
                 // reach the name instead of being silently dropped.
                 std::set<int> ringInfoHandledStereoIds;
-                QString pName = nameRingAsSubstituent(g, rNodes, attachRingNode, foundAttachChainNode, allSSSRRings, {}, stereoByGraphId, &ringInfoHandledStereoIds, carbonSulfonamide, carbonSulfinamide);
+                bool ringSubErr = false;
+                QString pName = nameRingAsSubstituent(g, rNodes, attachRingNode, foundAttachChainNode, allSSSRRings, {}, stereoByGraphId, &ringInfoHandledStereoIds, carbonSulfonamide, carbonSulfinamide, &ringSubErr);
+                if (ringSubErr) return {false, "", "N-substituted amino ring substituents are not supported"};
                 if (!pName.isEmpty()) {
                     ringSubstituentInfos.push_back({rNodes, pName, foundAttachChainNode});
                 }
@@ -12584,7 +12619,18 @@ IupacResult IupacNamer::generateName(int mol) {
                             } else if (isHydrazinylNitrogen(nei, rNode, g)) {
                                 subName = "hydrazinyl";
                             } else {
-                                subName = "amino";
+                                bool isPlainNH2 = true;
+                                for (int nNei2 : g.nodes[nei].neighbors) {
+                                    if (nNei2 != rNode && g.nodes[nNei2].atomicNumber > 1) {
+                                        isPlainNH2 = false;
+                                        break;
+                                    }
+                                }
+                                if (isPlainNH2) {
+                                    subName = "amino";
+                                } else {
+                                    return {false, "", "N-substituted amino ring substituents are not supported"};
+                                }
                             }
                         } else if (!isAzide && order == 2 && carbonImine.count(rNode) && carbonImine[rNode] == nei && winningType != GroupType::IMINE) {
                             subName = "imino";
@@ -14113,7 +14159,18 @@ IupacResult IupacNamer::generateName(int mol) {
                         } else if (isHydrazinylNitrogen(nei, rNode, g)) {
                             subName = "hydrazinyl";
                         } else {
-                            subName = "amino";
+                            bool isPlainNH2 = true;
+                            for (int nNei2 : g.nodes[nei].neighbors) {
+                                if (nNei2 != rNode && g.nodes[nNei2].atomicNumber > 1) {
+                                    isPlainNH2 = false;
+                                    break;
+                                }
+                            }
+                            if (isPlainNH2) {
+                                subName = "amino";
+                            } else {
+                                return {false, "", "N-substituted amino ring substituents are not supported"};
+                            }
                         }
                     } else if (!isAzide && order == 2 && carbonImine.count(rNode) && carbonImine[rNode] == nei && winningType != GroupType::IMINE) {
                         subName = "imino";
