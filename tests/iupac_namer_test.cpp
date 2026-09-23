@@ -732,6 +732,18 @@ int main() {
         // Out of scope for the new block; falls through to general classification.
         {"CN(C)C(=O)N", "", true, "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."},
 
+        // Carbamate esters (P-65.2.1.1) narrow case
+        {"CCOC(=O)N", "ethyl carbamate"},
+        {"COC(=O)N", "methyl carbamate"},
+        {"CCOC(=O)NC", "ethyl methylcarbamate"},
+        {"CC(C)OC(=O)N", "", true, "Branched or ring substituents on carbamate esters are not supported"},
+        {"CCOC(=O)NC(C)C", "", true, "Branched or ring substituents on carbamate esters are not supported"},
+        // Free carbamic acid (no ester alkyl) must NOT be swallowed by the new
+        // block (it requires esterOOtherCount == 1, which a bare -OH oxygen
+        // never satisfies) -- confirms it still falls through to the
+        // pre-existing, correct "carbamic acid" handling.
+        {"NC(=O)O", "carbamic acid"},
+
         {"CCCC(=O)N=[N+]=[N-]", "", true, "Acyl pseudohalides"},
         {"CCCC(=O)C#N", "", true, "Acyl pseudohalides"},
         {"CCCC(=O)N=C=O", "", true, "Acyl pseudohalides"},

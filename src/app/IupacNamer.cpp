@@ -5472,6 +5472,88 @@ IupacResult IupacNamer::generateName(int mol) {
         }
     }
 
+    // --- Carbamate esters (P-65.2.1.1) narrow case ---
+    {
+        int countC = 0, countN = 0, countO = 0, countOtherHeavy = 0;
+        int numEdges = 0;
+        for (const auto &n : g.nodes) {
+            numEdges += n.neighbors.size();
+            if (n.atomicNumber == 6) countC++;
+            else if (n.atomicNumber == 7) countN++;
+            else if (n.atomicNumber == 8) countO++;
+            else if (n.atomicNumber > 1) countOtherHeavy++;
+        }
+        numEdges /= 2;
+        bool isAcyclic = (numEdges == static_cast<int>(g.nodes.size()) - 1);
+
+        if (isAcyclic && countN == 1 && countO == 2 && countOtherHeavy == 0) {
+            int carbamateCarbon = -1, nNode = -1, esterO = -1;
+            for (size_t i = 0; i < g.nodes.size(); ++i) {
+                if (g.nodes[i].atomicNumber != 6) continue;
+                int dblO = -1, sglO = -1, sglN = -1;
+                bool otherJunk = false;
+                for (size_t j = 0; j < g.nodes[i].neighbors.size(); ++j) {
+                    int nei = g.nodes[i].neighbors[j];
+                    int order = g.nodes[i].bondOrders[j];
+                    int nz = g.nodes[nei].atomicNumber;
+                    if (nz == 8 && order == 2) dblO = nei;
+                    else if (nz == 8 && order == 1) sglO = nei;
+                    else if (nz == 7 && order == 1) sglN = nei;
+                    else otherJunk = true;
+                }
+                if (otherJunk) continue;
+                if (dblO != -1 && sglO != -1 && sglN != -1) {
+                    carbamateCarbon = static_cast<int>(i);
+                    nNode = sglN;
+                    esterO = sglO;
+                    break;
+                }
+            }
+
+            if (carbamateCarbon != -1) {
+                int esterAlkylRoot = -1;
+                int esterOOtherCount = 0;
+                for (int nei : g.nodes[esterO].neighbors) {
+                    if (nei == carbamateCarbon) continue;
+                    if (g.nodes[nei].atomicNumber != 6) { esterOOtherCount = -1; break; }
+                    esterOOtherCount++;
+                    esterAlkylRoot = nei;
+                }
+
+                if (esterOOtherCount == 1) {
+                    int nSubCarbon = -1;
+                    int nExtraCount = 0;
+                    bool nOk = true;
+                    for (int nei : g.nodes[nNode].neighbors) {
+                        if (nei == carbamateCarbon) continue;
+                        if (g.nodes[nei].atomicNumber != 6) { nOk = false; break; }
+                        nExtraCount++;
+                        nSubCarbon = nei;
+                    }
+                    if (nOk && nExtraCount <= 1) {
+                        int esterLen = countPlainAlkylChain(esterAlkylRoot, esterO, g);
+                        int nSubLen = (nSubCarbon != -1) ? countPlainAlkylChain(nSubCarbon, nNode, g) : 0;
+
+                        if (esterLen == -1 || nSubLen == -1) {
+                            return {false, "", "Branched or ring substituents on carbamate esters are not supported"};
+                        }
+                        int expectedC = 1 + esterLen + (nSubCarbon != -1 ? nSubLen : 0);
+                        if (expectedC != countC) {
+                            return {false, "", "Carbamate esters with additional substituents or functional groups are not supported in this phase"};
+                        }
+
+                        QString name = chainRoot(esterLen) + "yl ";
+                        if (nSubCarbon != -1) {
+                            name += chainRoot(nSubLen) + "yl";
+                        }
+                        name += "carbamate";
+                        return {true, name, ""};
+                    }
+                }
+            }
+        }
+    }
+
 
     // --- N-substituted amides (P-66.1.1.3.1) narrow case & imide rejection ---
     {
