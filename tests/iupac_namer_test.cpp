@@ -4432,6 +4432,46 @@ int main() {
         }
     }
 
+    {
+        // Regression guard for the ring-as-parent exocyclic amide bug found via the
+        // FDA-drug-corpus sweep: the "isExocyclic" AMIDE/THIOAMIDE/HYDRAZIDE/AMIDINE
+        // suffix assembly (used when the ring itself is the parent and the amide
+        // carbon is exocyclic, e.g. "benzenecarboxamide") never examined the amide
+        // nitrogen at all -- it always assumed a plain, unsubstituted -C(=O)NH2.
+        // Procainamide's amide N carries a full N-[2-(diethylamino)ethyl] chain,
+        // which was silently dropped, producing "4-aminobenzenecarboxamide" instead
+        // of a proper N-substituted name. Fixed by wiring the existing
+        // checkPrincipalHeteroatomsUnsubstituted() helper (already used for the
+        // chain-as-parent case) into this ring-as-parent dispatch's two
+        // near-duplicate sites too.
+        int m = indigoLoadMoleculeFromString("CCN(CC)CCNC(=O)c1ccc(N)cc1"); // procainamide
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success && !r.error.isEmpty()) {
+            std::cout << "[PASS] procainamide N-substituent drop now rejected -> " << r.error.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] procainamide N-substituent drop -> got success=" << r.success << " name='" << r.name.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Regression guard: a plain, unsubstituted ring-exocyclic carboxamide
+        // (-C(=O)NH2 directly on a ring, no further N-substitution) must still name
+        // correctly and not be caught by the new completeness check above.
+        int m = indigoLoadMoleculeFromString("NC(=O)c1ccccc1"); // benzamide
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "benzenecarboxamide") {
+            std::cout << "[PASS] plain benzamide still names correctly -> " << r.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] plain benzamide regressed -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
     std::cout << "\nSummary: " << passed << " passed, " << failed << " failed.\n";
     indigoReleaseSessionId(sid);
     return (failed == 0) ? 0 : 1;

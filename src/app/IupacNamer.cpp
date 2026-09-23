@@ -13102,6 +13102,11 @@ IupacResult IupacNamer::generateName(int mol) {
             }
         }
 
+        {
+            auto res = checkPrincipalHeteroatomsUnsubstituted(g, principalCarbons, winningType);
+            if (res.hasError) return {false, "", res.msg};
+        }
+
         fullName = stereoRes.prefix + fullName;
         return {true, fullName, ""};
     }
@@ -14859,6 +14864,11 @@ IupacResult IupacNamer::generateName(int mol) {
             }
             fullName = alkylName + " " + fullName;
         }
+    }
+
+    {
+        auto res = checkPrincipalHeteroatomsUnsubstituted(g, principalCarbons, winningType);
+        if (res.hasError) return {false, "", res.msg};
     }
 
     fullName = stereoRes.prefix + fullName;
