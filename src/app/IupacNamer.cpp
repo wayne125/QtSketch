@@ -4716,9 +4716,19 @@ IupacResult IupacNamer::generateName(int mol) {
                                         b.ringNode = rNei;
                                         b.ringAttachCarbon = curr;
                                         break;
-                                    } else {
+                                    } else if (nextC != -1) {
                                         prev = curr;
                                         curr = nextC;
+                                    } else {
+                                        // The single heavy neighbor is neither a ring atom nor
+                                        // carbon (e.g. a halogen, as in mechlorethamine's
+                                        // 2-chloroethyl branches) -- not a supported branch
+                                        // shape. Reject rather than advance curr to -1, which
+                                        // would crash the next iteration's out-of-bounds
+                                        // g.nodes[curr] access (confirmed live: CN(CCCl)CCCl
+                                        // and the chlornaphazine analogue both aborted here).
+                                        b.len = -1;
+                                        break;
                                     }
                                 } else {
                                     b.len = -1;
