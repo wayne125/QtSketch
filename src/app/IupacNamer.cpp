@@ -5617,6 +5617,88 @@ IupacResult IupacNamer::generateName(int mol) {
         }
     }
 
+    // --- N-substituted imines (P-62.3) narrow case ---
+    {
+        int countC = 0, countN = 0, countOtherHeavy = 0;
+        int numEdges = 0;
+        for (const auto &n : g.nodes) {
+            numEdges += n.neighbors.size();
+            if (n.atomicNumber == 6) countC++;
+            else if (n.atomicNumber == 7) countN++;
+            else if (n.atomicNumber > 1) countOtherHeavy++;
+        }
+        numEdges /= 2;
+        bool isAcyclic = (numEdges == static_cast<int>(g.nodes.size()) - 1);
+
+        if (isAcyclic && countN == 1 && countOtherHeavy == 0) {
+            int nNode = -1;
+            for (size_t i = 0; i < g.nodes.size(); ++i) {
+                if (g.nodes[i].atomicNumber == 7) { nNode = static_cast<int>(i); break; }
+            }
+            if (nNode != -1 && g.nodes[nNode].neighbors.size() == 2) {
+                // Only fire when the N has BOTH a double bond (the imine carbon) AND a
+                // single bond (a real N-substituent carbon) -- i.e. genuinely
+                // N-substituted. A bare =NH (no N-substituent) still has only 1
+                // neighbor here and falls through untouched to the existing
+                // doubleN_unsub detection elsewhere, which already handles it
+                // correctly (do not duplicate or interfere with that path).
+                int imineCarbon = -1;
+                int nSubCarbon = -1;
+                bool structureOk = true;
+                for (size_t j = 0; j < g.nodes[nNode].neighbors.size(); ++j) {
+                    int nei = g.nodes[nNode].neighbors[j];
+                    int order = g.nodes[nNode].bondOrders[j];
+                    if (g.nodes[nei].atomicNumber != 6) { structureOk = false; break; }
+                    if (order == 2) {
+                        imineCarbon = nei;
+                    } else if (order == 1) {
+                        nSubCarbon = nei;
+                    } else {
+                        structureOk = false; break;
+                    }
+                }
+                if (structureOk && imineCarbon != -1 && nSubCarbon != -1) {
+                    // Parent chain: walk from imineCarbon's OTHER carbon neighbor (not
+                    // nNode). Reject if imineCarbon has more than one other carbon
+                    // neighbor (an internal/branched imine like propan-2-imine is a
+                    // different, unhandled shape -- do not guess).
+                    int cR = -1;
+                    int otherCarbonCount = 0;
+                    for (size_t j = 0; j < g.nodes[imineCarbon].neighbors.size(); ++j) {
+                        int nei = g.nodes[imineCarbon].neighbors[j];
+                        if (nei != nNode && g.nodes[nei].atomicNumber == 6) {
+                            otherCarbonCount++;
+                            if (cR == -1) cR = nei;
+                        }
+                    }
+                    if (otherCarbonCount <= 1) {
+                        int rLen = 0;
+                        if (cR != -1) rLen = countPlainAlkylChain(cR, imineCarbon, g);
+                        int rPrimeLen = countPlainAlkylChain(nSubCarbon, nNode, g);
+
+                        if (rLen == -1 || rPrimeLen == -1) {
+                            return {false, "", "Branched or ring substituents on imines are not supported"};
+                        }
+
+                        if (rLen + 1 + rPrimeLen != countC) {
+                            return {false, "", "Imines with additional substituents or functional groups are not supported in this phase"};
+                        }
+
+                        QString prefix = "N-" + chainRoot(rPrimeLen) + "yl";
+                        QString parentStem = chainRoot(rLen + 1);
+                        QString name;
+                        if (rLen + 1 <= 2) {
+                            name = prefix + parentStem + "animine";
+                        } else {
+                            name = prefix + parentStem + "an-1-imine";
+                        }
+                        return {true, name, ""};
+                    }
+                }
+            }
+        }
+    }
+
     // --- N-substituted thioamides (P-66.1.1.3.1) narrow case & imide rejection ---
     {
         int countC = 0, countN = 0, countS = 0, countOtherHeavy = 0;

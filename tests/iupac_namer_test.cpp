@@ -304,8 +304,11 @@ int main() {
         {"CCC(C)=N", "butan-2-imine"},
         {"ClC(Cl)=N", "", true, "Carbonimidic/carbamimidic acid halide derivatives (rootless imine carbons) are not supported in this phase."},
         {"NC(Cl)=N", "", true, "Carbonimidic/carbamimidic acid halide derivatives (rootless imine carbons) are not supported in this phase."},
-        // N-substituted imine rejection (out of scope this phase)
-        {"CC=NC", "", true, "N-substituted imines, oximes, hydrazones, and amidines are not supported in this phase"},
+        // PHASE 67: N-substituted imines (P-62.3) narrow case
+        {"CC=NC", "N-methylethanimine"},
+        {"CCC=NC", "N-methylpropan-1-imine"},
+        // N-substituted imine rejection (branched/bis-substituted on imine carbon)
+        {"CC(C)=NC", "", true, "N-substituted imines, oximes, hydrazones, and amidines are not supported in this phase"},
         // PHASE 64: HYDROPEROXIDE (peroxol)
         {"CCOO", "ethaneperoxol"},
         {"CCC(C)(C)OO", "2-methylbutane-2-peroxol"},
