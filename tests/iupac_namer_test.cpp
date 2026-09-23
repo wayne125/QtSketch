@@ -725,8 +725,8 @@ int main() {
         // Ureas (roadmap Phase 2) narrow case
         {"NC(=O)N", "urea"},
         {"CNC(=O)N", "methylurea"},
-        {"CNC(=O)NC", "N,N'-dimethylurea"},
-        {"CCNC(=O)NC", "N-ethyl-N'-methylurea"},
+        {"CNC(=O)NC", "N,N-dimethylurea"},
+        {"CCNC(=O)NC", "N-ethyl-N-methylurea"},
         {"CC(C)NC(=O)N", "", true, "Branched or ring N-substituents on ureas are not supported"},
         // Both substituents on ONE nitrogen (same-nitrogen disubstitution)
         // Out of scope for the new block; falls through to general classification.

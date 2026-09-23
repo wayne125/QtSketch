@@ -5843,13 +5843,24 @@ IupacResult IupacNamer::generateName(int mol) {
                         QString name1 = chainRoot(len1) + "yl";
                         QString name2 = chainRoot(len2) + "yl";
                         if (len1 == len2) {
-                            name = "N,N'-" + multiPrefix(2) + name1 + "urea";
+                            // Real Blue Book text (P-66.1.6.1.1.1): urea's two nitrogens are
+                            // BOTH cited as plain "N", never primed "N'" -- "Numerical locants
+                            // for urea are no longer used... locants N and N" (confirmed real
+                            // PIN examples: "N,N-dimethylurea (PIN)", "N-[1-cyano-3-(methyl-
+                            // sulfanyl)propyl]-N-methylurea (PIN)", both unprimed even in the
+                            // asymmetric case). Unlike hydrazide, whose two nitrogens are
+                            // structurally distinct (one closer to the parent chain via the
+                            // N-N bond, genuinely needing N/N' to disambiguate), urea's two
+                            // nitrogens are constitutionally equivalent -- the name is
+                            // unambiguous without priming since swapping which physical
+                            // nitrogen each substituent sits on doesn't change the molecule.
+                            name = "N,N-" + multiPrefix(2) + name1 + "urea";
                         } else {
                             QString first = name1, second = name2;
                             if (alphabetizationKey(name2) < alphabetizationKey(name1)) {
                                 first = name2; second = name1;
                             }
-                            name = "N-" + first + "-N'-" + second + "urea";
+                            name = "N-" + first + "-N-" + second + "urea";
                         }
                     }
                     return {true, name, ""};
