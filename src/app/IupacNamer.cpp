@@ -2923,6 +2923,89 @@ static bool isChainParentWithRingSubstituentSupported(GroupType gt) {
            gt == GroupType::SULFINIC_ACID || gt == GroupType::SULFINYL_HALIDE || gt == GroupType::PHOSPHONIC_ACID || gt == GroupType::PHOSPHONIC_DIHALIDE || gt == GroupType::ARSONIC_ACID || gt == GroupType::ARSONIC_DIHALIDE || gt == GroupType::ESTER || gt == GroupType::ACYL_HALIDE || gt == GroupType::SULFONYL_HALIDE || gt == GroupType::SULFONAMIDE || gt == GroupType::SULFINAMIDE;
 }
 
+struct HeteroCompletenessError {
+    bool hasError = false;
+    QString msg;
+};
+
+static HeteroCompletenessError checkPrincipalHeteroatomsUnsubstituted(const Graph &g, const std::set<int> &principalCarbons, GroupType wType) {
+    auto rejectNode = [&](int hNode, const std::set<int>& allowedNeighbors, const QString &errMsg) -> HeteroCompletenessError {
+        for (int nei : g.nodes[hNode].neighbors) {
+            if (allowedNeighbors.find(nei) == allowedNeighbors.end() && g.nodes[nei].atomicNumber > 1) {
+                return {true, errMsg};
+            }
+        }
+        return {false, ""};
+    };
+
+    for (int pc : principalCarbons) {
+        if (wType == GroupType::AMIDE || wType == GroupType::THIOAMIDE || wType == GroupType::AMINE) {
+            for (size_t i = 0; i < g.nodes[pc].neighbors.size(); ++i) {
+                int nei = g.nodes[pc].neighbors[i];
+                if (g.nodes[nei].atomicNumber == 7 && g.nodes[pc].bondOrders[i] == 1) {
+                    QString name = (wType == GroupType::AMIDE) ? "amides" : ((wType == GroupType::THIOAMIDE) ? "thioamides" : "amines");
+                    auto res = rejectNode(nei, {pc}, "Branched or ring N-substituents on " + name + " are not supported");
+                    if (res.hasError) return res;
+                }
+            }
+        } else if (wType == GroupType::HYDRAZIDE) {
+            for (size_t i = 0; i < g.nodes[pc].neighbors.size(); ++i) {
+                int nei = g.nodes[pc].neighbors[i];
+                if (g.nodes[nei].atomicNumber == 7 && g.nodes[pc].bondOrders[i] == 1) {
+                    int secondN = -1;
+                    for (int n1Nei : g.nodes[nei].neighbors) {
+                        if (n1Nei != pc && g.nodes[n1Nei].atomicNumber == 7) { secondN = n1Nei; break; }
+                    }
+                    auto res = rejectNode(nei, {pc, secondN}, "Branched or ring N-substituents on hydrazides are not supported");
+                    if (res.hasError) return res;
+                    if (secondN != -1) {
+                        res = rejectNode(secondN, {nei}, "Branched or ring N-substituents on hydrazides are not supported");
+                        if (res.hasError) return res;
+                    }
+                }
+            }
+        } else if (wType == GroupType::ACID || wType == GroupType::ALCOHOL || wType == GroupType::THIOL || wType == GroupType::ALDEHYDE || wType == GroupType::KETONE || wType == GroupType::NITRILE) {
+            for (size_t i = 0; i < g.nodes[pc].neighbors.size(); ++i) {
+                int nei = g.nodes[pc].neighbors[i];
+                int nz = g.nodes[nei].atomicNumber;
+                int bo = g.nodes[pc].bondOrders[i];
+                bool isHetero = false;
+                if ((wType == GroupType::ACID || wType == GroupType::ALCOHOL) && nz == 8 && bo == 1) isHetero = true;
+                if ((wType == GroupType::ACID || wType == GroupType::ALDEHYDE || wType == GroupType::KETONE) && nz == 8 && bo == 2) isHetero = true;
+                if (wType == GroupType::THIOL && nz == 16 && bo == 1) isHetero = true;
+                if (wType == GroupType::NITRILE && nz == 7 && bo == 3) isHetero = true;
+                
+                if (isHetero) {
+                    QString className = "groups";
+                    if (wType == GroupType::ACID) className = "acids";
+                    else if (wType == GroupType::ALCOHOL) className = "alcohols";
+                    else if (wType == GroupType::THIOL) className = "thiols";
+                    else if (wType == GroupType::ALDEHYDE) className = "aldehydes";
+                    else if (wType == GroupType::KETONE) className = "ketones";
+                    else if (wType == GroupType::NITRILE) className = "nitriles";
+                    auto res = rejectNode(nei, {pc}, "Additional substituents on the principal characteristic group of " + className + " are not supported");
+                    if (res.hasError) return res;
+                }
+            }
+        } else if (wType == GroupType::SULFONAMIDE || wType == GroupType::SULFINAMIDE) {
+            for (size_t i = 0; i < g.nodes[pc].neighbors.size(); ++i) {
+                int nei = g.nodes[pc].neighbors[i];
+                if (g.nodes[nei].atomicNumber == 16) {
+                    for (size_t j = 0; j < g.nodes[nei].neighbors.size(); ++j) {
+                        int sNei = g.nodes[nei].neighbors[j];
+                        if (g.nodes[sNei].atomicNumber == 7 && g.nodes[nei].bondOrders[j] == 1) {
+                            QString name = (wType == GroupType::SULFONAMIDE) ? "sulfonamides" : "sulfinamides";
+                            auto res = rejectNode(sNei, {nei}, "Branched or ring N-substituents on " + name + " are not supported");
+                            if (res.hasError) return res;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return {false, ""};
+}
+
 // Phase 52 / Phase 54 (P-44.1.1 chain-wins case): when a chain-attached
 // principal group of the most-senior class outnumbers the ring-attached
 // instances of that class, the chain is the senior parent structure and the
@@ -8206,6 +8289,9 @@ IupacResult IupacNamer::generateName(int mol) {
             }
         }
 
+        auto res = checkPrincipalHeteroatomsUnsubstituted(g, principalCarbons, winningType);
+        if (res.hasError) return {false, "", res.msg};
+
         fullName = stereoRes.prefix + fullName;
         return {true, fullName, ""};
         }
@@ -12361,7 +12447,13 @@ IupacResult IupacNamer::generateName(int mol) {
                 } else if (isChainParentWithRingSubstituentSupported(combinedWinner)) {
                     std::set<int> handledBranchStereoIds;
                     QString chainName = nameChainParentWithRingSubstituent(mol, indigoToGraphIdx, g, ringNodeSet, allSSSRRings, carbonGroup, combinedWinner, stereoByGraphId, &handledBranchStereoIds, carbonSulfonamide, carbonSulfinamide);
-                    if (!chainName.isEmpty()) return {true, chainName, ""};
+                    if (!chainName.isEmpty()) {
+                        std::set<int> pCarbons;
+                        for (const auto &pair : carbonGroup) { if (pair.second == combinedWinner) pCarbons.insert(pair.first); }
+                        auto res = checkPrincipalHeteroatomsUnsubstituted(g, pCarbons, combinedWinner);
+                        if (res.hasError) return {false, "", res.msg};
+                        return {true, chainName, ""};
+                    }
                 }
                 return {false, "", "A chain-based principal group outranks the ring in this structure; chain-as-parent seniority (P-44.1.1) for this ring/class combination is not yet supported."};
             }
@@ -13689,7 +13781,13 @@ IupacResult IupacNamer::generateName(int mol) {
             } else if (isChainParentWithRingSubstituentSupported(combinedWinner)) {
                 std::set<int> handledBranchStereoIds;
                 QString chainName = nameChainParentWithRingSubstituent(mol, indigoToGraphIdx, g, ringNodeSet, allSSSRRings, carbonGroup, combinedWinner, stereoByGraphId, &handledBranchStereoIds, carbonSulfonamide, carbonSulfinamide);
-                if (!chainName.isEmpty()) return {true, chainName, ""};
+                if (!chainName.isEmpty()) {
+                    std::set<int> pCarbons;
+                    for (const auto &pair : carbonGroup) { if (pair.second == combinedWinner) pCarbons.insert(pair.first); }
+                    auto res = checkPrincipalHeteroatomsUnsubstituted(g, pCarbons, combinedWinner);
+                    if (res.hasError) return {false, "", res.msg};
+                    return {true, chainName, ""};
+                }
             }
             return {false, "", "A chain-based principal group outranks the ring in this structure; chain-as-parent seniority (P-44.1.1) for this ring/class combination is not yet supported."};
         }

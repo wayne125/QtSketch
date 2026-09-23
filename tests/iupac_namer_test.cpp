@@ -4250,6 +4250,77 @@ int main() {
         }
     }
 
+    {
+        // Regression guard for the FDA-drug-corpus "silent substituent drop" bug: the
+        // N,N-disubstituted-amide narrow-case guard (P-66.1.1.3.1) only fired when the
+        // WHOLE molecule was acyclic, so any molecule with a ring anywhere skipped it and
+        // fell to the general chain-as-parent namer, which stops its DFS at the first
+        // non-carbon atom with no check that the heteroatom's other substituents were ever
+        // accounted for. Result: FENTANYL silently named "propanamide", dropping both the
+        // N-phenyl and N-(1-phenethylpiperidin-4-yl) substituents entirely. Fixed via
+        // checkPrincipalHeteroatomsUnsubstituted, invoked at all 3 sites that accept a
+        // chain-as-parent name for one of these classes.
+        int m = indigoLoadMoleculeFromString("CCC(=O)N(c1ccccc1)C1CCN(CCc2ccccc2)CC1"); // fentanyl
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success && !r.error.isEmpty()) {
+            std::cout << "[PASS] fentanyl N-substituent drop now rejected -> " << r.error.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] fentanyl N-substituent drop -> got success=" << r.success << " name='" << r.name.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Same bug, sufentanil: amide N bonded to phenyl + a substituted piperidinyl.
+        int m = indigoLoadMoleculeFromString("CCC(=O)N(c1ccccc1)C1(COC)CCN(CCc2cccs2)CC1");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success && !r.error.isEmpty()) {
+            std::cout << "[PASS] sufentanil N-substituent drop now rejected -> " << r.error.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] sufentanil N-substituent drop -> got success=" << r.success << " name='" << r.name.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Same bug, acebutolol: amide N bonded directly to a substituted phenyl ring.
+        int m = indigoLoadMoleculeFromString("CCCC(=O)Nc1ccc(OCC(O)CNC(C)C)c(C(C)=O)c1");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success && !r.error.isEmpty()) {
+            std::cout << "[PASS] acebutolol N-substituent drop now rejected -> " << r.error.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] acebutolol N-substituent drop -> got success=" << r.success << " name='" << r.name.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Known residual gap from the same audit, NOT fixed by this round: chlorambucil's
+        // principal group is the carboxylic ACID (whose own -OH/=O oxygens are clean), and
+        // the dropped N,N-bis(2-chloroethyl)amino group sits on a ring substituent elsewhere
+        // in the molecule, not on the acid's own principal heteroatom -- so
+        // checkPrincipalHeteroatomsUnsubstituted does not see it. This is intentionally left
+        // as a documented gap (see "IUPAC Blue Book Coverage.md") rather than papered over;
+        // this test pins the CURRENT (still-wrong) behavior so a future fix updates it
+        // deliberately instead of silently regressing further.
+        int m = indigoLoadMoleculeFromString("O=C(O)CCCc1ccc(N(CCCl)CCCl)cc1"); // chlorambucil
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success) {
+            std::cout << "[PASS] chlorambucil known-gap pinned (still silently succeeds) -> " << r.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] chlorambucil known-gap -- now rejects (" << r.error.toStdString() << "); this is actually GOOD, update this test to assert rejection and update the coverage doc\n";
+            failed++;
+        }
+    }
+
     std::cout << "\nSummary: " << passed << " passed, " << failed << " failed.\n";
     indigoReleaseSessionId(sid);
     return (failed == 0) ? 0 : 1;
