@@ -4379,6 +4379,59 @@ int main() {
         }
     }
 
+    {
+        // Regression guard for the "ketone/amide flanked by TWO separate rings"
+        // fabricated-chain-length bug found via the FDA-drug-corpus sweep:
+        // nameChainParentWithRingSubstituent's chain-walk DFS only excluded the
+        // atoms of the ONE ring it picked as the substituent (ringNodeSet); when
+        // the principal carbon was also directly bonded to a SECOND, separate ring
+        // (e.g. ketanserin's ketone touches both a fluorophenyl ring and a
+        // piperidine ring), the DFS wandered into that unexcluded second ring's
+        // saturated carbons and fabricated a chain length out of ring traversal --
+        // ketanserin was named "heptan-1-one" (no 7-carbon chain exists in this
+        // molecule at all). Fixed by rejecting whenever the walked chain touches
+        // any ring atom from ANY known SSSR ring, not just the chosen one.
+        int m = indigoLoadMoleculeFromString("O=C(c1ccc(F)cc1)C1CCN(CCn2c(=O)[nH]c3ccccc3c2=O)CC1"); // ketanserin
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success && !r.error.isEmpty()) {
+            std::cout << "[PASS] ketanserin dual-ring fabricated chain now rejected -> " << r.error.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] ketanserin dual-ring fabricated chain -> got success=" << r.success << " name='" << r.name.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Same bug, azelastine (azepane ring + phthalazinone-linked chlorophenyl ring).
+        int m = indigoLoadMoleculeFromString("CN1CCCC(n2nc(Cc3ccc(Cl)cc3)c3ccccc3c2=O)CC1");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success && !r.error.isEmpty()) {
+            std::cout << "[PASS] azelastine dual-ring fabricated chain now rejected -> " << r.error.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] azelastine dual-ring fabricated chain -> got success=" << r.success << " name='" << r.name.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Regression guard: a molecule with exactly ONE ring substituent on the
+        // chain must be completely unaffected by the new dual-ring check above.
+        int m = indigoLoadMoleculeFromString("OC(=O)CCC1CCC(C(=O)O)CC1"); // 3-(4-carboxycyclohexyl)propanoic acid
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "3-(4-carboxycyclohexyl)propanoic acid") {
+            std::cout << "[PASS] single-ring-substituent chain naming unaffected -> " << r.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] single-ring-substituent chain naming regressed -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
     std::cout << "\nSummary: " << passed << " passed, " << failed << " failed.\n";
     indigoReleaseSessionId(sid);
     return (failed == 0) ? 0 : 1;

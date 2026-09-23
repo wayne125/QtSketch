@@ -3117,6 +3117,19 @@ QString nameChainParentWithRingSubstituent(int mol, const std::map<int, int> &in
         }
     }
 
+    // 2b. Check if the acyclic chain contains atoms from ANY other ring.
+    // This codebase's chain-as-parent namer currently only supports injecting EXACTLY ONE
+    // ring substituent (the one in ringNodeSet). If the chain touches other rings,
+    // the DFS would wander into them and fabricate a wrong long chain (e.g. heptan-1-one).
+    // Reject rather than guess.
+    for (int cNode : chainSet) {
+        for (const auto &ring : allSSSRRings) {
+            if (ring.count(cNode)) {
+                return "";
+            }
+        }
+    }
+
     // 3. Find the single ring<->chain attachment: a ring atom with a carbon
     //    neighbour that belongs to chainSet. Ring-borne alkyl substituents that
     //    are NOT reachable from the principal carbons (e.g. a methyl on the ring)
@@ -6586,6 +6599,22 @@ IupacResult IupacNamer::generateName(int mol) {
                 if (ringSubErr) return {false, "", "N-substituted amino ring substituents are not supported"};
                 if (!pName.isEmpty()) {
                     ringSubstituentInfos.push_back({rNodes, pName, foundAttachChainNode});
+                } else {
+                    // This ring was correctly identified as needing to be named as a
+                    // substituent (hasPrincipalGroupOrMultipleRings), but
+                    // nameRingAsSubstituent could not produce a name for it (e.g. an
+                    // unsupported substituent on the ring itself, such as ketanserin's
+                    // piperidine ring carrying a complex N-heterocyclic chain).
+                    // Silently dropping the ring here used to leave its atoms out of
+                    // allRingSubstituentNodes entirely, so the later chain-as-parent
+                    // DFS (which only excludes allRingSubstituentNodes) would wander
+                    // straight into this "abandoned" ring's own saturated carbons and
+                    // fabricate an unrelated chain length -- confirmed live: ketanserin
+                    // was named "heptan-1-one" (no 7-carbon chain exists anywhere in
+                    // that molecule; the DFS had walked partway around this very ring).
+                    // Reject honestly instead of letting an unnamed ring's atoms leak
+                    // into a downstream walk that has no idea they were ever a ring.
+                    return {false, "", "Unrecognized or unsupported substituent on ring."};
                 }
             }
         }
@@ -7327,9 +7356,37 @@ IupacResult IupacNamer::generateName(int mol) {
             }
         }
 
+        // Completeness check: if the principal carbon is directly bonded to a ring
+        // atom that never made it into allRingSubstituentNodes (either because the
+        // ring failed the single-attachment substituent detection above, or because
+        // naming it failed), that ring's entire atom set is about to go completely
+        // unmentioned in the final name -- excluding it from the chain DFS (the fix
+        // just above) stops the fabricated-chain-length symptom, but silently
+        // produces a shorter, still-wrong name instead (e.g. ketanserin would drop
+        // to a bare "methan-1-one", still ignoring both its fluorophenyl and
+        // piperidine rings entirely). Reject honestly instead.
+        for (int pc : principalCarbons) {
+            for (int nei : g.nodes[pc].neighbors) {
+                if (allSSSRNodes.count(nei) && !allRingSubstituentNodes.count(nei)) {
+                    return {false, "", "Unrecognized or unsupported substituent on ring."};
+                }
+            }
+        }
+
         std::vector<int> carbons;
         for (size_t i = 0; i < g.nodes.size(); ++i) {
-            if (g.nodes[i].atomicNumber == 6 && !allRingSubstituentNodes.count(static_cast<int>(i))) carbons.push_back(static_cast<int>(i));
+            // Exclude ALL ring atoms (allSSSRNodes), not just the ones that made it
+            // into allRingSubstituentNodes. A ring only reaches allRingSubstituentNodes
+            // when it was BOTH detected as a single-attachment substituent candidate
+            // AND successfully named -- a ring that fails either test (e.g. two
+            // separate rings both directly bonded to the principal carbon, as in
+            // ketanserin's ketone touching both a fluorophenyl and a piperidine ring)
+            // was previously left completely unexcluded, so this DFS would wander
+            // straight into its saturated carbons and fabricate a chain length out of
+            // ring traversal (confirmed live: ketanserin -> "heptan-1-one", no such
+            // 7-carbon chain exists in that molecule). A ring atom must never be part
+            // of an acyclic chain-as-parent walk, full stop.
+            if (g.nodes[i].atomicNumber == 6 && !allRingSubstituentNodes.count(static_cast<int>(i)) && !allSSSRNodes.count(static_cast<int>(i))) carbons.push_back(static_cast<int>(i));
         }
 
         if (carbons.empty()) {
@@ -7356,7 +7413,7 @@ IupacResult IupacNamer::generateName(int mol) {
                             found.push_back(path);
                         } else {
                             for (int nei : g.nodes[curr].neighbors) {
-                                if (g.nodes[nei].atomicNumber == 6 && !allRingSubstituentNodes.count(nei) && !visited[nei]) {
+                                if (g.nodes[nei].atomicNumber == 6 && !allRingSubstituentNodes.count(nei) && !allSSSRNodes.count(nei) && !visited[nei]) {
                                     self(self, nei, target);
                                 }
                             }
