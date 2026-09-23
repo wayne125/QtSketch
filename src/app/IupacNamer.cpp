@@ -5699,6 +5699,76 @@ IupacResult IupacNamer::generateName(int mol) {
         }
     }
 
+    // --- N'-substituted amidines (P-66.4) narrow case ---
+    {
+        int countC = 0, countN = 0, countOtherHeavy = 0;
+        int numEdges = 0;
+        for (const auto &n : g.nodes) {
+            numEdges += n.neighbors.size();
+            if (n.atomicNumber == 6) countC++;
+            else if (n.atomicNumber == 7) countN++;
+            else if (n.atomicNumber > 1) countOtherHeavy++;
+        }
+        numEdges /= 2;
+        bool isAcyclic = (numEdges == static_cast<int>(g.nodes.size()) - 1);
+
+        if (isAcyclic && countN == 2 && countOtherHeavy == 0) {
+            std::vector<int> nNodes;
+            for (size_t i = 0; i < g.nodes.size(); ++i) {
+                if (g.nodes[i].atomicNumber == 7) nNodes.push_back(static_cast<int>(i));
+            }
+            if (nNodes.size() == 2) {
+                int amidineCarbon = -1, imidoN = -1, aminoN = -1, aminoSubCarbon = -1;
+                bool structureOk = true;
+
+                for (size_t i = 0; i < g.nodes.size() && structureOk; ++i) {
+                    if (g.nodes[i].atomicNumber != 6) continue;
+                    int dblN = -1, sglN = -1, otherC = -1;
+                    for (size_t j = 0; j < g.nodes[i].neighbors.size(); ++j) {
+                        int nei = g.nodes[i].neighbors[j];
+                        int order = g.nodes[i].bondOrders[j];
+                        int nz = g.nodes[nei].atomicNumber;
+                        if (nz == 7 && order == 2) dblN = nei;
+                        else if (nz == 7 && order == 1) sglN = nei;
+                        else if (nz == 6 && order == 1) otherC = nei;
+                        else { structureOk = false; break; }
+                    }
+                    if (!structureOk) break;
+                    if (dblN != -1 && sglN != -1 && otherC == -1) {
+                        amidineCarbon = static_cast<int>(i);
+                        imidoN = dblN;
+                        aminoN = sglN;
+                        break;
+                    }
+                }
+
+                if (structureOk && amidineCarbon != -1 &&
+                    g.nodes[imidoN].neighbors.size() == 1 &&
+                    g.nodes[aminoN].neighbors.size() == 2) {
+                    for (int nei : g.nodes[aminoN].neighbors) {
+                        if (nei != amidineCarbon && g.nodes[nei].atomicNumber == 6) {
+                            aminoSubCarbon = nei;
+                        } else if (nei != amidineCarbon) {
+                            structureOk = false;
+                        }
+                    }
+
+                    if (structureOk && aminoSubCarbon != -1) {
+                        int rPrimeLen = countPlainAlkylChain(aminoSubCarbon, aminoN, g);
+                        if (rPrimeLen == -1) {
+                            return {false, "", "Branched or ring N'-substituents on amidines are not supported"};
+                        }
+                        if (1 + rPrimeLen != countC) {
+                            return {false, "", "Amidines with additional substituents or functional groups are not supported in this phase"};
+                        }
+                        QString name = "N'-" + chainRoot(rPrimeLen) + "yl" + chainRoot(1) + "animidamide";
+                        return {true, name, ""};
+                    }
+                }
+            }
+        }
+    }
+
     // --- N-substituted thioamides (P-66.1.1.3.1) narrow case & imide rejection ---
     {
         int countC = 0, countN = 0, countS = 0, countOtherHeavy = 0;

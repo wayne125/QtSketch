@@ -710,6 +710,17 @@ int main() {
         // N-substituted amidine (methyl on the amino nitrogen) -- out of scope
         // (P-66.4.1.4), must still reject cleanly.
         {"CC(=N)NC", "", true, "N-substituted imines, oximes, hydrazones, and amidines are not supported in this phase"},
+        // N'-substituted amidine (P-66.4) narrow case: formamidine-derived (R=H
+        // on the amidine carbon itself) with a substituent on the AMINO nitrogen.
+        // Note: these SMILES deliberately have NO leading alkyl on the amidine
+        // carbon (unlike CC(=N)NC above, which is a different, still-rejected
+        // shape) -- see IupacNamer.cpp's new "N'-substituted amidines (P-66.4)"
+        // block, which requires otherC == -1 on the amidine carbon.
+        {"C(=N)NC", "N'-methylmethanimidamide"},
+        {"C(=N)NCC", "N'-ethylmethanimidamide"},
+        // Wrong axis: the IMIDO nitrogen (not amino) is substituted -- must NOT
+        // be accepted by the new block; falls through to the existing rejection.
+        {"C(=NC)N", "", true, "N-substituted imines, oximes, hydrazones, and amidines are not supported in this phase"},
 
         {"CCCC(=O)N=[N+]=[N-]", "", true, "Acyl pseudohalides"},
         {"CCCC(=O)C#N", "", true, "Acyl pseudohalides"},
