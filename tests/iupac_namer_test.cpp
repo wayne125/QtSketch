@@ -4472,6 +4472,79 @@ int main() {
         }
     }
 
+    {
+        // Regression guard for the "entire branch vanishes" bug found via the
+        // FDA-drug-corpus sweep: an exocyclic ALCOHOL-class principal-group carbon
+        // that carries extra structure beyond its own heteroatom (e.g. albuterol's
+        // -CH(OH)-CH2-NH-C(CH3)3 branch, where the CH bearing OH also continues into
+        // a tert-butylamino chain) used to be silently skipped with no trace,
+        // leaving only the ring's own phenol -OH and a plain -CH2OH to be
+        // mislabeled as "benzene-1,2,4-diol" -- the whole branch (its own -OH
+        // included) vanished. Fixed by rejecting whenever such a carbon has more
+        // than 2 heavy neighbors (ring bond + its own heteroatom is the baseline
+        // for a bare, unextended group in this class).
+        int m = indigoLoadMoleculeFromString("CC(C)(C)NCC(O)c1ccc(O)c(CO)c1"); // albuterol
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success && !r.error.isEmpty()) {
+            std::cout << "[PASS] albuterol vanished-branch now rejected -> " << r.error.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] albuterol vanished-branch -> got success=" << r.success << " name='" << r.name.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Same bug, pirbuterol (pyridine analogue of albuterol).
+        int m = indigoLoadMoleculeFromString("CC(C)(C)NCC(O)c1ccc(O)c(CO)n1");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success && !r.error.isEmpty()) {
+            std::cout << "[PASS] pirbuterol vanished-branch now rejected -> " << r.error.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] pirbuterol vanished-branch -> got success=" << r.success << " name='" << r.name.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Regression guard: a plain exocyclic -CH2OH (no further structure beyond
+        // its own OH) must still name correctly -- the new albuterol/pirbuterol
+        // guard above must not fire on a bare, unextended alcohol substituent.
+        int m = indigoLoadMoleculeFromString("OCc1ccccc1"); // benzyl alcohol / phenylmethanol
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && !r.name.isEmpty()) {
+            std::cout << "[PASS] plain exocyclic -CH2OH still names correctly -> " << r.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] plain exocyclic -CH2OH regressed -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Regression guard for racecadotril's "amide branch silently dropped" bug:
+        // when an amide's acyl R-group could not be named as a branch (e.g. it
+        // contains another principal-group-class structure, here an S-acetyl
+        // thioester), the loop used to silently produce no substituent for it and
+        // move on -- dropping the entire amide-linked branch with no trace, leaving
+        // only the unrelated O-benzyl ester prefix to produce the incomplete
+        // "(1-phenylmethyl) ethanoate". Fixed by rejecting instead.
+        int m = indigoLoadMoleculeFromString("CC(=O)SCC(Cc1ccccc1)C(=O)NCC(=O)OCc1ccccc1"); // racecadotril
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success && !r.error.isEmpty()) {
+            std::cout << "[PASS] racecadotril dropped-amide-branch now rejected -> " << r.error.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] racecadotril dropped-amide-branch -> got success=" << r.success << " name='" << r.name.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
     std::cout << "\nSummary: " << passed << " passed, " << failed << " failed.\n";
     indigoReleaseSessionId(sid);
     return (failed == 0) ? 0 : 1;

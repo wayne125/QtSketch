@@ -7982,6 +7982,13 @@ IupacResult IupacNamer::generateName(int mol) {
                                         QString aName = cleanName + "amido";
                                         locantSubstituents[locant].append(cleanName.isEmpty() ? aName : ("(" + aName + ")"));
                                     }
+                                } else {
+                                    // racecadotril-shaped bug: the amide R-group could not be named as a
+                                    // branch (e.g. it contains another principal-group-class structure,
+                                    // such as a thioester). Silently producing no substituent here used to
+                                    // drop the entire amide-linked branch from the name with no trace.
+                                    // Reject honestly instead of fabricating an incomplete name.
+                                    return {false, "", "Unsupported acyl group in an amide substituent on the parent chain."};
                                 }
                                 }
                             }
@@ -14155,7 +14162,38 @@ IupacResult IupacNamer::generateName(int mol) {
                         bool isAzide = (carbonAzide.count(rNode) && std::find(carbonAzide[rNode].begin(), carbonAzide[rNode].end(), nei) != carbonAzide[rNode].end());
                         if (!isAzide && (nz == 7 || nz == 8 || nz == 16 || nz == 34 || nz == 52 || nz == 15 || nz == 33)) continue;
                     }
-                    if (principalCarbons.count(nei) > 0) continue;
+                    if (principalCarbons.count(nei) > 0) {
+                        // Silent-drop bug (albuterol/pirbuterol): an exocyclic principal-group
+                        // carbon that also carries extra substituent structure beyond the group
+                        // itself (e.g. a branch continuing past the OH) used to vanish here with
+                        // no trace. Reject honestly instead of fabricating a shorter, wrong name.
+                        //
+                        // Scoped ONLY to the "single heteroatom substituent" classes (ALCOHOL,
+                        // THIOL, SELENOL, TELLUROL, HYDROPEROXIDE) where a bare, unextended
+                        // group has EXACTLY 2 heavy neighbors: the ring attachment and the
+                        // group's own heteroatom (e.g. a plain -CH2OH: ring bond + O). Any other
+                        // winningType (AMIDE, ACID, NITRILE, KETONE, ACYL_HALIDE, ...) inherently
+                        // has MORE heavy neighbors as part of the group's own required structure
+                        // (e.g. an exocyclic -C(=O)OH carbon has ring bond + =O + -OH = 3 heavy
+                        // neighbors with nothing extra) -- applying this same ">2" baseline there
+                        // broke every plain exocyclic acid/amide/nitrile/ester/acyl-halide test
+                        // (confirmed via full rebuild + test suite before landing this fix), so
+                        // those types keep the original silent `continue` until a properly
+                        // per-type baseline is worked out.
+                        bool isSingleHeteroatomClass = (winningType == GroupType::ALCOHOL || winningType == GroupType::THIOL ||
+                                                         winningType == GroupType::SELENOL || winningType == GroupType::TELLUROL ||
+                                                         winningType == GroupType::HYDROPEROXIDE);
+                        if (isSingleHeteroatomClass) {
+                            int heavyNeighborCount = 0;
+                            for (int nn : g.nodes[nei].neighbors) {
+                                if (g.nodes[nn].atomicNumber != 1) heavyNeighborCount++;
+                            }
+                            if (heavyNeighborCount > 2) {
+                                return {false, "", "Ring substituent bearing the principal group also carries additional substituent structure beyond the principal group itself; this is not supported."};
+                            }
+                        }
+                        continue;
+                    }
                 }
 
                 int nz = g.nodes[nei].atomicNumber;
