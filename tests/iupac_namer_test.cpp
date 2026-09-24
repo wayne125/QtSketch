@@ -771,7 +771,19 @@ int main() {
         {"C=CCNCCN", "", true, "Branched, ring, or unsaturated chains on N-substituted diamines are not supported"},
         {"ClN(C)CCN", "", true, "Branched, ring, or unsaturated chains on N-substituted diamines are not supported"},
         {"CN(C)CCNCc1ccc(Cl)cc1", "N2-[(4-chlorophenyl)methyl]-N1,N1-dimethylethane-1,2-diamine"},
-        {"CN(COC)CCN", "", true, "Branched, ring, or unsaturated chains on N-substituted diamines are not supported"}
+        {"CN(COC)CCN", "", true, "Branched, ring, or unsaturated chains on N-substituted diamines are not supported"},
+
+        // P-69.3 Organometallic compounds (Group 1-2 metals)
+        {"[Li]C", "methyllithium"},
+        {"CC[Na]", "ethylsodium"},
+        {"C[K]", "methylpotassium"},
+        {"CC(C)[Li]", "(1-methylethyl)lithium"},
+        {"C1CCCCC1[Na]", "cyclohexylsodium"},
+        {"C[Mg]Cl", "methylmagnesium chloride"},
+        {"CC[Ca]I", "ethylcalcium iodide"},
+        {"CC[Mg]CC", "", true, "Unsupported organometallic structure"},
+        {"[Li]C[Na]", "", true, "Molecules with more than one metal atom are not supported"},
+        {"CC", "ethane"},
     };
 
     int passed = 0;

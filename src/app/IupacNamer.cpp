@@ -3959,7 +3959,7 @@ IupacResult IupacNamer::generateName(int mol) {
                 }
                 indigoFree(neiIter);
             }
-        } else if (z == 6 || z == 7 || z == 8 || z == 16 || z == 15 || z == 33 || z == 5 || z == 9 || z == 17 || z == 35 || z == 53 || z == 34 || z == 52) {
+        } else if (z == 6 || z == 7 || z == 8 || z == 16 || z == 15 || z == 33 || z == 5 || z == 9 || z == 17 || z == 35 || z == 53 || z == 34 || z == 52 || z == 3 || z == 11 || z == 19 || z == 12 || z == 20) {
             heavyAtomIndices.push_back(idx);
         } else {
             indigoFree(atomHandle);
@@ -4026,6 +4026,114 @@ IupacResult IupacNamer::generateName(int mol) {
         indigoFree(bondIter);
     }
 
+    // --- Organometallic compounds, Group 1-2 metals (P-69.3) ---
+    // Must run before anything else touches heavyAtomIndices/the general
+    // classification machinery: once Li/Na/K/Mg/Ca are accepted by the
+    // widened element whitelist above, this block is the ONLY code in this
+    // function that knows what to do with them. Every molecule containing
+    // one of these 5 atomic numbers must end up either correctly named here
+    // or explicitly rejected here -- never silently falling through into
+    // later code that has no defined behavior for a metal atom.
+    {
+        // nameBranchGraph needs the molecule's ring set to correctly recognize a
+        // ring substituent (e.g. cyclohexyl) instead of silently walking it as a
+        // plain acyclic chain -- this block runs before allSSSRRings is built
+        // later in generateName (that build depends on indigoToGraphIdx, already
+        // populated by this point, so it's safe to compute a local copy here
+        // rather than wait), so build one locally, mirroring the exact same
+        // construction the later, function-wide allSSSRRings uses.
+        std::vector<std::set<int>> localSSSRRings;
+        if (ringCount > 0) {
+            int sssrIter = indigoIterateSSSR(mol);
+            if (sssrIter >= 0) {
+                int subMol = 0;
+                while ((subMol = indigoNext(sssrIter)) != 0) {
+                    std::set<int> rNodes;
+                    int ringAtomIter = indigoIterateAtoms(subMol);
+                    if (ringAtomIter >= 0) {
+                        int atomHandle = 0;
+                        while ((atomHandle = indigoNext(ringAtomIter)) != 0) {
+                            int idx = indigoIndex(atomHandle);
+                            if (indigoToGraphIdx.count(idx)) {
+                                rNodes.insert(indigoToGraphIdx[idx]);
+                            }
+                            indigoFree(atomHandle);
+                        }
+                        indigoFree(ringAtomIter);
+                    }
+                    localSSSRRings.push_back(rNodes);
+                    indigoFree(subMol);
+                }
+                indigoFree(sssrIter);
+            }
+        }
+
+        std::vector<int> metalAtoms;
+        for (size_t i = 0; i < g.nodes.size(); ++i) {
+            int z = g.nodes[i].atomicNumber;
+            if (z == 3 || z == 11 || z == 19 || z == 12 || z == 20) {
+                metalAtoms.push_back(static_cast<int>(i));
+            }
+        }
+
+        if (metalAtoms.size() > 1) {
+            return {false, "", "Molecules with more than one metal atom are not supported"};
+        }
+
+        if (metalAtoms.size() == 1) {
+            int metalAtom = metalAtoms[0];
+            int metalZ = g.nodes[metalAtom].atomicNumber;
+            bool isGroup1 = (metalZ == 3 || metalZ == 11 || metalZ == 19);
+
+            QString metalName;
+            if (metalZ == 3) metalName = "lithium";
+            else if (metalZ == 11) metalName = "sodium";
+            else if (metalZ == 19) metalName = "potassium";
+            else if (metalZ == 12) metalName = "magnesium";
+            else if (metalZ == 20) metalName = "calcium";
+
+            const auto &neighbors = g.nodes[metalAtom].neighbors;
+            const auto &bondOrders = g.nodes[metalAtom].bondOrders;
+
+            if (isGroup1) {
+                if (neighbors.size() != 1 || bondOrders[0] != 1 || g.nodes[neighbors[0]].atomicNumber != 6) {
+                    return {false, "", "Unsupported organometallic structure"};
+                }
+                int alkylRoot = neighbors[0];
+                QString groupName = nameBranchGraph(g, alkylRoot, metalAtom, localSSSRRings);
+                if (groupName.isEmpty()) {
+                    return {false, "", "Unsupported organometallic substituent group"};
+                }
+                return {true, groupName + metalName, ""};
+            } else {
+                // Group 2 (Mg/Ca): exactly one carbon + one halogen neighbor.
+                if (neighbors.size() != 2) {
+                    return {false, "", "Unsupported organometallic structure"};
+                }
+                int alkylRoot = -1, haloAtom = -1;
+                for (size_t j = 0; j < neighbors.size(); ++j) {
+                    if (bondOrders[j] != 1) {
+                        return {false, "", "Unsupported organometallic structure"};
+                    }
+                    int nz = g.nodes[neighbors[j]].atomicNumber;
+                    if (nz == 6 && alkylRoot == -1) alkylRoot = neighbors[j];
+                    else if ((nz == 9 || nz == 17 || nz == 35 || nz == 53) && haloAtom == -1) haloAtom = neighbors[j];
+                    else {
+                        return {false, "", "Unsupported organometallic structure"};
+                    }
+                }
+                if (alkylRoot == -1 || haloAtom == -1) {
+                    return {false, "", "Unsupported organometallic structure"};
+                }
+                QString groupName = nameBranchGraph(g, alkylRoot, metalAtom, localSSSRRings);
+                if (groupName.isEmpty()) {
+                    return {false, "", "Unsupported organometallic substituent group"};
+                }
+                QString halideWord = halogenSuffixWord(g.nodes[haloAtom].atomicNumber);
+                return {true, groupName + metalName + " " + halideWord, ""};
+            }
+        }
+    }
 
     for (size_t i = 0; i < g.nodes.size(); ++i) {
         if (g.nodes[i].atomicNumber != 6) continue;
