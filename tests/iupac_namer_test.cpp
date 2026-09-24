@@ -722,6 +722,15 @@ int main() {
         // be accepted by the new block; falls through to the existing rejection.
         {"C(=NC)N", "", true, "N-substituted imines, oximes, hydrazones, and amidines are not supported in this phase"},
 
+        // N'-substituted guanidine (P-66.4.1.2.1) narrow case
+        {"NC(=N)N", "guanidine"},
+        {"NC(=N)NC", "N'-methylguanidine"},
+        {"NC(=N)NCC", "N'-ethylguanidine"},
+        {"NC(=N)NC(C)C", "", true, "Branched or ring N'-substituents on guanidine are not supported"},
+        // Both amino nitrogens substituted -- out of scope for this new block;
+        // falls through to a pre-existing, unrelated rootless-carbon rejection.
+        {"CNC(=N)NC", "", true, "Carbonimidic/carbamimidic acid halide derivatives (rootless imine carbons) are not supported in this phase."},
+
         // Ureas (roadmap Phase 2) narrow case
         {"NC(=O)N", "urea"},
         {"CNC(=O)N", "methylurea"},

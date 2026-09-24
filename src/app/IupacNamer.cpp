@@ -5851,6 +5851,87 @@ IupacResult IupacNamer::generateName(int mol) {
         }
     }
 
+    // --- N'-substituted guanidine (P-66.4.1.2.1) narrow case ---
+    {
+        int countC = 0, countN = 0, countOtherHeavy = 0;
+        int numEdges = 0;
+        for (const auto &n : g.nodes) {
+            numEdges += n.neighbors.size();
+            if (n.atomicNumber == 6) countC++;
+            else if (n.atomicNumber == 7) countN++;
+            else if (n.atomicNumber > 1) countOtherHeavy++;
+        }
+        numEdges /= 2;
+        bool isAcyclic = (numEdges == static_cast<int>(g.nodes.size()) - 1);
+
+        if (isAcyclic && countN == 3 && countOtherHeavy == 0) {
+            int guanidineCarbon = -1, imidoN = -1, aminoN1 = -1, aminoN2 = -1;
+            for (size_t i = 0; i < g.nodes.size(); ++i) {
+                if (g.nodes[i].atomicNumber != 6) continue;
+                int dblN = -1;
+                std::vector<int> sglN;
+                bool otherJunk = false;
+                for (size_t j = 0; j < g.nodes[i].neighbors.size(); ++j) {
+                    int nei = g.nodes[i].neighbors[j];
+                    int order = g.nodes[i].bondOrders[j];
+                    int nz = g.nodes[nei].atomicNumber;
+                    if (nz == 7 && order == 2) dblN = nei;
+                    else if (nz == 7 && order == 1) sglN.push_back(nei);
+                    else otherJunk = true;
+                }
+                if (otherJunk) continue;
+                if (dblN != -1 && sglN.size() == 2) {
+                    guanidineCarbon = static_cast<int>(i);
+                    imidoN = dblN;
+                    aminoN1 = sglN[0];
+                    aminoN2 = sglN[1];
+                    break;
+                }
+            }
+
+            if (guanidineCarbon != -1 && g.nodes[imidoN].neighbors.size() == 1) {
+                auto classifyN = [&](int nNode, int &subCarbon) -> bool {
+                    subCarbon = -1;
+                    int extraCount = 0;
+                    for (int nei : g.nodes[nNode].neighbors) {
+                        if (nei == guanidineCarbon) continue;
+                        if (g.nodes[nei].atomicNumber != 6) return false;
+                        extraCount++;
+                        subCarbon = nei;
+                    }
+                    return extraCount <= 1;
+                };
+
+                int sub1 = -1, sub2 = -1;
+                if (classifyN(aminoN1, sub1) && classifyN(aminoN2, sub2)) {
+                    // Exactly one of the two amino nitrogens may carry a substituent.
+                    if (!(sub1 == -1 || sub2 == -1)) {
+                        // both substituted -- out of scope, do not match
+                    } else {
+                        int subCarbon = (sub1 != -1) ? sub1 : sub2;
+                        int subN = (sub1 != -1) ? aminoN1 : aminoN2;
+
+                        if (subCarbon == -1) {
+                            if (countC == 1) {
+                                return {true, "guanidine", ""};
+                            }
+                        } else {
+                            int subLen = countPlainAlkylChain(subCarbon, subN, g);
+                            if (subLen == -1) {
+                                return {false, "", "Branched or ring N'-substituents on guanidine are not supported"};
+                            }
+                            if (1 + subLen != countC) {
+                                return {false, "", "Guanidines with additional substituents or functional groups are not supported in this phase"};
+                            }
+                            QString name = "N'-" + chainRoot(subLen) + "ylguanidine";
+                            return {true, name, ""};
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // --- Ureas (new functional-group family, roadmap Phase 2) narrow case ---
     {
         int countC = 0, countN = 0, countO = 0, countOtherHeavy = 0;
