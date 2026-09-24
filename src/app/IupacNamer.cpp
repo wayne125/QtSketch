@@ -4142,6 +4142,227 @@ IupacResult IupacNamer::generateName(int mol) {
         }
     }
 
+    // Standalone carboxylate anion naming: single-component molecule with exactly one O(-) charge
+    // on a carboxylate group (R-C(=O)-O(-)), no counterion present
+    if (numComponents == 1) {
+        int chargedAtomCount = 0;
+        int chargedOxygenAtom = -1;
+        int chargedOxygenCharge = 0;
+        bool hasRadical = false;
+        bool hasIsotope = false;
+        
+        // First pass: count charged atoms and check for radicals/isotopes
+        int atomIterCheck = indigoIterateAtoms(mol);
+        if (atomIterCheck >= 0) {
+            int atomHandleCheck = 0;
+            while ((atomHandleCheck = indigoNext(atomIterCheck)) != 0) {
+                // Check for radicals and isotopes on all atoms first
+                int rad = 0;
+                if (indigoGetRadicalElectrons(atomHandleCheck, &rad) == 1 && rad > 0) {
+                    hasRadical = true;
+                }
+                
+                int iso = indigoIsotope(atomHandleCheck);
+                if (iso > 0) {
+                    hasIsotope = true;
+                }
+                
+                int charge = 0;
+                indigoGetCharge(atomHandleCheck, &charge);
+                if (charge != 0) {
+                    chargedAtomCount++;
+                    int z = indigoAtomicNumber(atomHandleCheck);
+                    if (z == 8 && charge == -1) {
+                        // Remember the first charged oxygen for later use
+                        if (chargedOxygenAtom == -1) {
+                            chargedOxygenAtom = atomHandleCheck;
+                            chargedOxygenCharge = charge;
+                            // Don't free this handle - we'll use it later
+                            continue;
+                        }
+                    }
+                }
+                
+                indigoFree(atomHandleCheck);
+            }
+            indigoFree(atomIterCheck);
+        }
+        
+        // Must have exactly one charged atom, it must be oxygen with -1 charge, and no radicals/isotopes
+        if (chargedAtomCount == 1 && chargedOxygenAtom != -1 && chargedOxygenCharge == -1 &&
+            !hasRadical && !hasIsotope) {
+
+            // Verify this is a carboxylate: O(-) singly bonded to C, which is double bonded to another O
+            bool isCarboxylate = false;
+            int carbonAtom = -1;
+
+            int neiIter = indigoIterateNeighbors(chargedOxygenAtom);
+            if (neiIter >= 0) {
+                int nei = 0;
+                int neiCount = 0;
+                while ((nei = indigoNext(neiIter)) != 0) {
+                    neiCount++;
+                    int nZ = indigoAtomicNumber(nei);
+                    int bondHandle = indigoBond(nei);
+                    int order = indigoBondOrder(bondHandle);
+                    indigoFree(bondHandle);
+
+                    if (nZ == 6 && order == 1) {
+                        // This is a carbon with single bond - save it for further check
+                        // Don't free this handle - we'll use it later
+                        carbonAtom = nei;
+                        continue; // Skip freeing this handle
+                    }
+                    indigoFree(nei);
+                }
+                indigoFree(neiIter);
+
+                // Carboxylate oxygen should have exactly 1 neighbor (the carbonyl carbon)
+                bool foundDoubleBondOxygen = false;
+                if (neiCount == 1 && carbonAtom != -1) {
+                    // Now check if this carbon has a double bond to another oxygen
+                    int carbonNeiIter = indigoIterateNeighbors(carbonAtom);
+                    if (carbonNeiIter >= 0) {
+                        int carbonNei = 0;
+                        while ((carbonNei = indigoNext(carbonNeiIter)) != 0) {
+                            int cNeiZ = indigoAtomicNumber(carbonNei);
+                            int cBondHandle = indigoBond(carbonNei);
+                            int cOrder = indigoBondOrder(cBondHandle);
+                            indigoFree(cBondHandle);
+
+                            if (cNeiZ == 8 && cOrder == 2) {
+                                foundDoubleBondOxygen = true;
+                            }
+                            indigoFree(carbonNei);
+                        }
+                        indigoFree(carbonNeiIter);
+
+                        if (foundDoubleBondOxygen) {
+                            isCarboxylate = true;
+                        }
+                    }
+                }
+                indigoFree(chargedOxygenAtom);
+                // carbonAtom (if set) is owned by this scope from here on regardless of
+                // whether it turned out to be part of a real carboxylate - free it exactly
+                // once now, and never again below.
+                if (carbonAtom != -1) {
+                    indigoFree(carbonAtom);
+                }
+            } else {
+                // Couldn't iterate neighbors - still owns chargedOxygenAtom, free it here.
+                indigoFree(chargedOxygenAtom);
+            }
+
+            if (isCarboxylate) {
+                // Clone the molecule to neutralize the charge
+                int cloned = indigoClone(mol);
+                if (cloned < 0) {
+                    return {false, "", "Failed to clone molecule for anion naming."};
+                }
+                
+                // Find the charged oxygen in the cloned molecule
+                int clonedAtomIter = indigoIterateAtoms(cloned);
+                if (clonedAtomIter < 0) {
+                    indigoFree(cloned);
+                    return {false, "", "Failed to iterate atoms in cloned molecule."};
+                }
+                
+                int targetOxygen = -1;
+                int clonedAtomHandle = 0;
+                while ((clonedAtomHandle = indigoNext(clonedAtomIter)) != 0) {
+                    int cCharge = 0;
+                    indigoGetCharge(clonedAtomHandle, &cCharge);
+                    if (cCharge == -1) {
+                        int cZ = indigoAtomicNumber(clonedAtomHandle);
+                        if (cZ == 8) {
+                            targetOxygen = clonedAtomHandle;
+                            break;
+                        }
+                    }
+                    indigoFree(clonedAtomHandle);
+                }
+                indigoFree(clonedAtomIter);
+                
+                if (targetOxygen == -1) {
+                    // This shouldn't happen, but safety check
+                    if (clonedAtomHandle != 0) indigoFree(clonedAtomHandle);
+                    indigoFree(cloned);
+                    return {false, "", "Failed to find charged oxygen in cloned molecule."};
+                }
+                
+                // Neutralize the charge
+                indigoSetCharge(targetOxygen, 0);
+                indigoFree(targetOxygen);
+                
+                // Re-aromatize the cloned molecule to ensure proper structure
+                indigoAromatize(cloned);
+                
+                // Generate name for the neutral acid
+                IupacResult neutralRes = generateName(cloned);
+                indigoFree(cloned);
+                
+                if (!neutralRes.success) {
+                    return {false, "", "Cannot name the neutral acid for anion: " + neutralRes.error};
+                }
+                
+                // Apply the same anion-suffix transform as P-77 salt block
+                QString anionName;
+                QString mainNm = neutralRes.name;
+                if (mainNm.endsWith("dioic acid")) {
+                    mainNm.chop(10);
+                    anionName = mainNm + "dioate";
+                } else if (mainNm.endsWith("oic acid")) {
+                    mainNm.chop(8);
+                    anionName = mainNm + "oate";
+                } else if (mainNm.endsWith("dicarboxylic acid")) {
+                    mainNm.chop(17);
+                    anionName = mainNm + "dicarboxylate";
+                } else if (mainNm.endsWith("carboxylic acid")) {
+                    mainNm.chop(14);
+                    anionName = mainNm + "carboxylate";
+                } else if (mainNm.endsWith("sulfonic acid")) {
+                    mainNm.chop(12);
+                    anionName = mainNm + "sulfonate";
+                } else if (mainNm.endsWith("sulfinic acid")) {
+                    mainNm.chop(12);
+                    anionName = mainNm + "sulfinate";
+                } else if (mainNm == "methanol") {
+                    anionName = "methoxide";
+                } else if (mainNm == "ethanol") {
+                    anionName = "ethoxide";
+                } else if (mainNm == "propan-1-ol") {
+                    anionName = "propoxide";
+                } else if (mainNm == "butan-1-ol") {
+                    anionName = "butoxide";
+                } else if (mainNm == "phenol") {
+                    anionName = "phenoxide";
+                } else if (mainNm.endsWith("ol") && !mainNm.contains("diol") && !mainNm.contains("triol") && !mainNm.contains("tetraol")) {
+                    mainNm.chop(2);
+                    anionName = mainNm + "olate";
+                } else {
+                    anionName = "";
+                }
+                
+                if (anionName.isEmpty()) {
+                    // This shouldn't happen for a valid carboxylate, but safety
+                    return {false, "", "Failed to generate anion name for carboxylate."};
+                }
+                
+                // Return with (1-) suffix for standalone anion
+                return {true, anionName + "(1-)", ""};
+            }
+            
+            // If we found a charged oxygen but it's not a carboxylate, fall through
+            // chargedOxygenAtom was already freed above
+        } else if (chargedOxygenAtom != -1) {
+            // Outer condition failed (e.g. more than one charged atom) but a charged
+            // oxygen handle was still captured during the first pass - free it here so
+            // it isn't leaked.
+            indigoFree(chargedOxygenAtom);
+        }
+    }
+
     if (indigoCountComponents(mol) > 1) {
         return {false, "", "Multi-component structures are not supported in Phase 1."};
     }

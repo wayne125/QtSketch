@@ -810,6 +810,14 @@ int main() {
         {"c1ccccc1N.c1ccccc1", "", true, "Multi-component structures are not supported"},
         {"Cl.Cl", "", true, "Multi-component structures are not supported"},
         {"[Na+].[Cl-]", "", true, "Multi-component structures are not supported"},
+        // Standalone carboxylate anion tests
+        {"CC(=O)[O-]", "ethanoate(1-)"},
+        {"CCC(=O)[O-]", "propanoate(1-)"},
+        {"CCCC(=O)[O-]", "butanoate(1-)"},
+        // Fallthrough cases for out-of-scope anions - should still reject
+        {"[O-]C", "", true, "Charged atoms are not supported"}, // methoxide anion - not carboxylate
+        {"CO[O-]", "", true, "Charged atoms are not supported"}, // methoxide alternative form
+        {"[O-]C(=O)C(=O)[O-]", "", true, "Charged atoms are not supported"}, // oxalate dianion - out of scope, must fall through cleanly
     };
 
     int passed = 0;
