@@ -3811,6 +3811,337 @@ IupacResult IupacNamer::generateName(int mol) {
 
     int ringCount = indigoCountSSSR(mol);
 
+    // P-77 Salt naming: hydrohalide salts + Group 1 metal carboxylate/alkoxide salts
+    int numComponents = indigoCountComponents(mol);
+    if (numComponents == 2) {
+        // Extract the two components
+        int comp0 = indigoComponent(mol, 0);
+        int comp1 = indigoComponent(mol, 1);
+        if (comp0 < 0 || comp1 < 0) {
+            if (comp0 >= 0) indigoFree(comp0);
+            if (comp1 >= 0) indigoFree(comp1);
+            return {false, "", "Failed to extract components for salt detection."};
+        }
+
+        int cloned0 = indigoClone(comp0);
+        int cloned1 = indigoClone(comp1);
+        indigoFree(comp0);
+        indigoFree(comp1);
+
+        if (cloned0 < 0 || cloned1 < 0) {
+            if (cloned0 >= 0) indigoFree(cloned0);
+            if (cloned1 >= 0) indigoFree(cloned1);
+            return {false, "", "Failed to clone components for salt detection."};
+        }
+
+        // Classify each component
+        enum CompType { MAIN, HALIDE, METAL, UNKNOWN };
+        struct CompInfo {
+            CompType type;
+            int halogenZ;
+            int metalZ;
+        };
+
+        CompInfo info0 = {UNKNOWN, 0, 0};
+        CompInfo info1 = {UNKNOWN, 0, 0};
+
+        // Classify component 0
+        int atomIter0 = indigoIterateAtoms(cloned0);
+        if (atomIter0 >= 0) {
+            int atomHandle = 0;
+            int heavyAtomCount = 0;
+            int hCount = 0;
+            while ((atomHandle = indigoNext(atomIter0)) != 0) {
+                int z = indigoAtomicNumber(atomHandle);
+                if (z != 1) heavyAtomCount++;
+                else hCount++;
+                indigoFree(atomHandle);
+            }
+            indigoFree(atomIter0);
+
+            if (heavyAtomCount == 1 && (hCount == 0 || hCount == 1)) {
+                // Could be a metal cation or halide/hydrohalide
+                int theAtomIter = indigoIterateAtoms(cloned0);
+                if (theAtomIter >= 0) {
+                    int theAtom = indigoNext(theAtomIter);
+                    if (theAtom != 0) {
+                        int z = indigoAtomicNumber(theAtom);
+                        int charge = 0;
+                        indigoGetCharge(theAtom, &charge);
+
+                        // Check implicit hydrogens
+                        int implicitH = indigoCountImplicitHydrogens(theAtom);
+                        int totalH = implicitH;
+
+                        // Count explicit H neighbors
+                        int neiIter = indigoIterateNeighbors(theAtom);
+                        if (neiIter >= 0) {
+                            int nei = 0;
+                            while ((nei = indigoNext(neiIter)) != 0) {
+                                int nZ = indigoAtomicNumber(nei);
+                                if (nZ == 1) totalH++;
+                                indigoFree(nei);
+                            }
+                            indigoFree(neiIter);
+                        }
+
+                        // Halide classification: F(9), Cl(17), Br(35), I(53)
+                        if (z == 9 || z == 17 || z == 35 || z == 53) {
+                            // Case (a): charge -1 with no hydrogens
+                            // Case (b): charge 0 with exactly 1 hydrogen (implicit H from HCl etc.)
+                            if ((charge == -1 && totalH == 0) || (charge == 0 && totalH == 1)) {
+                                info0.type = HALIDE;
+                                info0.halogenZ = z;
+                            }
+                        }
+                        // Group 1 metal: Li(3), Na(11), K(19)
+                        else if (z == 3 || z == 11 || z == 19) {
+                            info0.type = METAL;
+                            info0.metalZ = z;
+                        }
+
+                        if (totalH > 0) {
+                            // If it has hydrogens, it's not a bare metal cation
+                            // But could still be the main component
+                            if (info0.type == UNKNOWN) {
+                                info0.type = MAIN;
+                            }
+                        } else if (info0.type == UNKNOWN) {
+                            // No halogens detected, no metals - it's the main component
+                            info0.type = MAIN;
+                        }
+                        indigoFree(theAtom);
+                    }
+                    indigoFree(theAtomIter);
+                }
+            } else {
+                // Multiple heavy atoms or wrong H count - main component
+                info0.type = MAIN;
+            }
+        } else {
+            info0.type = MAIN;
+        }
+
+        // Classify component 1
+        int atomIter1 = indigoIterateAtoms(cloned1);
+        if (atomIter1 >= 0) {
+            int atomHandle = 0;
+            int heavyAtomCount = 0;
+            int hCount = 0;
+            while ((atomHandle = indigoNext(atomIter1)) != 0) {
+                int z = indigoAtomicNumber(atomHandle);
+                if (z != 1) heavyAtomCount++;
+                else hCount++;
+                indigoFree(atomHandle);
+            }
+            indigoFree(atomIter1);
+
+            if (heavyAtomCount == 1 && (hCount == 0 || hCount == 1)) {
+                int theAtomIter = indigoIterateAtoms(cloned1);
+                if (theAtomIter >= 0) {
+                    int theAtom = indigoNext(theAtomIter);
+                    if (theAtom != 0) {
+                        int z = indigoAtomicNumber(theAtom);
+                        int charge = 0;
+                        indigoGetCharge(theAtom, &charge);
+
+                        int implicitH = indigoCountImplicitHydrogens(theAtom);
+                        int totalH = implicitH;
+
+                        int neiIter = indigoIterateNeighbors(theAtom);
+                        if (neiIter >= 0) {
+                            int nei = 0;
+                            while ((nei = indigoNext(neiIter)) != 0) {
+                                int nZ = indigoAtomicNumber(nei);
+                                if (nZ == 1) totalH++;
+                                indigoFree(nei);
+                            }
+                            indigoFree(neiIter);
+                        }
+
+                        if (z == 9 || z == 17 || z == 35 || z == 53) {
+                            if ((charge == -1 && totalH == 0) || (charge == 0 && totalH == 1)) {
+                                info1.type = HALIDE;
+                                info1.halogenZ = z;
+                            }
+                        } else if (z == 3 || z == 11 || z == 19) {
+                            info1.type = METAL;
+                            info1.metalZ = z;
+                        }
+
+                        if (totalH > 0) {
+                            if (info1.type == UNKNOWN) {
+                                info1.type = MAIN;
+                            }
+                        } else if (info1.type == UNKNOWN) {
+                            info1.type = MAIN;
+                        }
+                        indigoFree(theAtom);
+                    }
+                    indigoFree(theAtomIter);
+                }
+            } else {
+                info1.type = MAIN;
+            }
+        } else {
+            info1.type = MAIN;
+        }
+
+        // Try to identify which is main and which is counterion
+        if (info0.type == MAIN && info1.type == HALIDE) {
+            IupacResult mainRes = generateName(cloned0);
+            indigoFree(cloned0);
+            indigoFree(cloned1);
+            if (!mainRes.success) {
+                return {false, "", "Cannot name the base component of this salt: " + mainRes.error};
+            }
+            QString halideWord;
+            if (info1.halogenZ == 9) halideWord = "hydrofluoride";
+            else if (info1.halogenZ == 17) halideWord = "hydrochloride";
+            else if (info1.halogenZ == 35) halideWord = "hydrobromide";
+            else if (info1.halogenZ == 53) halideWord = "hydroiodide";
+            else halideWord = "";
+            if (halideWord.isEmpty()) {
+                return {false, "", "Unrecognized halide in salt."};
+            }
+            return {true, mainRes.name + " " + halideWord, ""};
+        } else if (info0.type == HALIDE && info1.type == MAIN) {
+            IupacResult mainRes = generateName(cloned1);
+            indigoFree(cloned0);
+            indigoFree(cloned1);
+            if (!mainRes.success) {
+                return {false, "", "Cannot name the base component of this salt: " + mainRes.error};
+            }
+            QString halideWord;
+            if (info0.halogenZ == 9) halideWord = "hydrofluoride";
+            else if (info0.halogenZ == 17) halideWord = "hydrochloride";
+            else if (info0.halogenZ == 35) halideWord = "hydrobromide";
+            else if (info0.halogenZ == 53) halideWord = "hydroiodide";
+            else halideWord = "";
+            if (halideWord.isEmpty()) {
+                return {false, "", "Unrecognized halide in salt."};
+            }
+            return {true, mainRes.name + " " + halideWord, ""};
+        } else if (info0.type == MAIN && info1.type == METAL) {
+            IupacResult mainRes = generateName(cloned0);
+            indigoFree(cloned0);
+            indigoFree(cloned1);
+            if (!mainRes.success) {
+                return {false, "", "Cannot name the acid/alcohol component of this salt: " + mainRes.error};
+            }
+            // Determine anion name from main component name
+            QString anionName;
+            QString mainNm = mainRes.name;
+            if (mainNm.endsWith("dioic acid")) {
+                mainNm.chop(10);
+                anionName = mainNm + "dioate";
+            } else if (mainNm.endsWith("oic acid")) {
+                mainNm.chop(8);
+                anionName = mainNm + "oate";
+            } else if (mainNm.endsWith("dicarboxylic acid")) {
+                mainNm.chop(17);
+                anionName = mainNm + "dicarboxylate";
+            } else if (mainNm.endsWith("carboxylic acid")) {
+                mainNm.chop(14);
+                anionName = mainNm + "carboxylate";
+            } else if (mainNm.endsWith("sulfonic acid")) {
+                mainNm.chop(12);
+                anionName = mainNm + "sulfonate";
+            } else if (mainNm.endsWith("sulfinic acid")) {
+                mainNm.chop(12);
+                anionName = mainNm + "sulfinate";
+            } else if (mainNm == "methanol") {
+                anionName = "methoxide";
+            } else if (mainNm == "ethanol") {
+                anionName = "ethoxide";
+            } else if (mainNm == "propan-1-ol") {
+                anionName = "propoxide";
+            } else if (mainNm == "butan-1-ol") {
+                anionName = "butoxide";
+            } else if (mainNm == "phenol") {
+                anionName = "phenoxide";
+            } else if (mainNm.endsWith("ol") && !mainNm.contains("diol") && !mainNm.contains("triol") && !mainNm.contains("tetraol")) {
+                // Only apply -olate to simple single-OH alcohols, not polyols
+                mainNm.chop(2);
+                anionName = mainNm + "olate";
+            } else {
+                anionName = "";
+            }
+            if (anionName.isEmpty()) {
+                return {false, "", "Multi-component structures are not supported in Phase 1."};
+            }
+            QString metalName;
+            if (info1.metalZ == 3) metalName = "lithium";
+            else if (info1.metalZ == 11) metalName = "sodium";
+            else if (info1.metalZ == 19) metalName = "potassium";
+            else metalName = "";
+            if (metalName.isEmpty()) {
+                return {false, "", "Unrecognized metal in salt."};
+            }
+            return {true, metalName + " " + anionName, ""};
+        } else if (info0.type == METAL && info1.type == MAIN) {
+            IupacResult mainRes = generateName(cloned1);
+            indigoFree(cloned0);
+            indigoFree(cloned1);
+            if (!mainRes.success) {
+                return {false, "", "Cannot name the acid/alcohol component of this salt: " + mainRes.error};
+            }
+            QString anionName;
+            QString mainNm = mainRes.name;
+            if (mainNm.endsWith("dioic acid")) {
+                mainNm.chop(10);
+                anionName = mainNm + "dioate";
+            } else if (mainNm.endsWith("oic acid")) {
+                mainNm.chop(8);
+                anionName = mainNm + "oate";
+            } else if (mainNm.endsWith("dicarboxylic acid")) {
+                mainNm.chop(17);
+                anionName = mainNm + "dicarboxylate";
+            } else if (mainNm.endsWith("carboxylic acid")) {
+                mainNm.chop(14);
+                anionName = mainNm + "carboxylate";
+            } else if (mainNm.endsWith("sulfonic acid")) {
+                mainNm.chop(12);
+                anionName = mainNm + "sulfonate";
+            } else if (mainNm.endsWith("sulfinic acid")) {
+                mainNm.chop(12);
+                anionName = mainNm + "sulfinate";
+            } else if (mainNm == "methanol") {
+                anionName = "methoxide";
+            } else if (mainNm == "ethanol") {
+                anionName = "ethoxide";
+            } else if (mainNm == "propan-1-ol") {
+                anionName = "propoxide";
+            } else if (mainNm == "butan-1-ol") {
+                anionName = "butoxide";
+            } else if (mainNm == "phenol") {
+                anionName = "phenoxide";
+            } else if (mainNm.endsWith("ol") && !mainNm.contains("diol") && !mainNm.contains("triol") && !mainNm.contains("tetraol")) {
+                // Only apply -olate to simple single-OH alcohols, not polyols
+                mainNm.chop(2);
+                anionName = mainNm + "olate";
+            } else {
+                anionName = "";
+            }
+            if (anionName.isEmpty()) {
+                return {false, "", "Multi-component structures are not supported in Phase 1."};
+            }
+            QString metalName;
+            if (info0.metalZ == 3) metalName = "lithium";
+            else if (info0.metalZ == 11) metalName = "sodium";
+            else if (info0.metalZ == 19) metalName = "potassium";
+            else metalName = "";
+            if (metalName.isEmpty()) {
+                return {false, "", "Unrecognized metal in salt."};
+            }
+            return {true, metalName + " " + anionName, ""};
+        } else {
+            // Anything else falls through to multi-component rejection
+            indigoFree(cloned0);
+            indigoFree(cloned1);
+        }
+    }
+
     if (indigoCountComponents(mol) > 1) {
         return {false, "", "Multi-component structures are not supported in Phase 1."};
     }

@@ -784,6 +784,32 @@ int main() {
         {"CC[Mg]CC", "", true, "Unsupported organometallic structure"},
         {"[Li]C[Na]", "", true, "Molecules with more than one metal atom are not supported"},
         {"CC", "ethane"},
+        
+        // P-77 Salt naming tests
+        // Hydrohalide salts
+        {"c1ccccc1N.Cl", "aniline hydrochloride"},
+        {"c1ccccc1N.F", "aniline hydrofluoride"},
+        {"c1ccccc1N.Br", "aniline hydrobromide"},
+        {"c1ccccc1N.I", "aniline hydroiodide"},
+        // Metal carboxylate salts
+        {"CC(=O)O.[Li]", "lithium ethanoate"},
+        {"CC(=O)O.[Na]", "sodium ethanoate"},
+        {"CC(=O)O.[K]", "potassium ethanoate"},
+        // Metal alkoxide salts (retained names)
+        {"CO.[Na]", "sodium methoxide"},
+        {"CCO.[K]", "potassium ethoxide"},
+        {"CCCO.[Na]", "sodium propoxide"},
+        {"CCCCO.[Li]", "lithium butoxide"},
+        {"Oc1ccccc1.[Na]", "sodium phenoxide"},
+        // Metal alkoxide salts (systematic -olate) - for alcohols not in the retained list
+        {"CCCO.[K]", "potassium propoxide"}, // propan-1-ol is in retained list
+        {"CCCCCO.[Na]", "sodium pentan-1-olate"}, // pentan-1-ol not in retained list
+        {"CC(O)CO.[Na]", "", true, "Multi-component structures are not supported"}, // diol - should reject
+        // Fallthrough cases - should still reject
+        {"CC(=O)O.CC", "", true, "Multi-component structures are not supported"},
+        {"c1ccccc1N.c1ccccc1", "", true, "Multi-component structures are not supported"},
+        {"Cl.Cl", "", true, "Multi-component structures are not supported"},
+        {"[Na+].[Cl-]", "", true, "Multi-component structures are not supported"},
     };
 
     int passed = 0;
