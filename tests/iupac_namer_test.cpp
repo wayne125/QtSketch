@@ -814,10 +814,18 @@ int main() {
         {"CC(=O)[O-]", "ethanoate(1-)"},
         {"CCC(=O)[O-]", "propanoate(1-)"},
         {"CCCC(=O)[O-]", "butanoate(1-)"},
+        // Standalone alkoxide anion tests
+        {"[O-]C", "methoxide(1-)"},
+        {"C[O-]", "methoxide(1-)"},
+        {"CC[O-]", "ethoxide(1-)"},
+        {"CCC[O-]", "propoxide(1-)"},
+        {"CCCC[O-]", "butoxide(1-)"},
+        {"CCCCC[O-]", "pentan-1-olate(1-)"},
+        {"c1ccccc1[O-]", "phenoxide(1-)"},
         // Fallthrough cases for out-of-scope anions - should still reject
-        {"[O-]C", "", true, "Charged atoms are not supported"}, // methoxide anion - not carboxylate
-        {"CO[O-]", "", true, "Charged atoms are not supported"}, // methoxide alternative form
+        {"CO[O-]", "", true, "Charged atoms are not supported"}, // peroxide anion - O bonded to O, not C
         {"[O-]C(=O)C(=O)[O-]", "", true, "Charged atoms are not supported"}, // oxalate dianion - out of scope, must fall through cleanly
+        {"[O-]CCO", "", true, "Charged atoms are not supported"}, // diol monoanion - neutral name ends in diol, excluded from generic transform
     };
 
     int passed = 0;

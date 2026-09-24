@@ -4363,6 +4363,238 @@ IupacResult IupacNamer::generateName(int mol) {
         }
     }
 
+    // Standalone alkoxide anion naming: single-component molecule with exactly one O(-1) charge
+    // on an alkoxide group (R-O(-)), no C=O adjacent to the carbon, no counterion present
+    // This is the sibling case to carboxylate: O(-) singly bonded to C, but that C does NOT have a double bond to O
+    if (numComponents == 1) {
+        int chargedAtomCount = 0;
+        int chargedOxygenAtom = -1;
+        int chargedOxygenCharge = 0;
+        bool hasRadical = false;
+        bool hasIsotope = false;
+        
+        // First pass: count charged atoms and check for radicals/isotopes
+        int atomIterCheck = indigoIterateAtoms(mol);
+        if (atomIterCheck >= 0) {
+            int atomHandleCheck = 0;
+            while ((atomHandleCheck = indigoNext(atomIterCheck)) != 0) {
+                // Check for radicals and isotopes on all atoms first
+                int rad = 0;
+                if (indigoGetRadicalElectrons(atomHandleCheck, &rad) == 1 && rad > 0) {
+                    hasRadical = true;
+                }
+                
+                int iso = indigoIsotope(atomHandleCheck);
+                if (iso > 0) {
+                    hasIsotope = true;
+                }
+                
+                int charge = 0;
+                indigoGetCharge(atomHandleCheck, &charge);
+                if (charge != 0) {
+                    chargedAtomCount++;
+                    int z = indigoAtomicNumber(atomHandleCheck);
+                    if (z == 8 && charge == -1) {
+                        // Remember the first charged oxygen for later use
+                        if (chargedOxygenAtom == -1) {
+                            chargedOxygenAtom = atomHandleCheck;
+                            chargedOxygenCharge = charge;
+                            // Don't free this handle - we'll use it later
+                            continue;
+                        }
+                    }
+                }
+                
+                indigoFree(atomHandleCheck);
+            }
+            indigoFree(atomIterCheck);
+        }
+        
+        // Must have exactly one charged atom, it must be oxygen with -1 charge, and no radicals/isotopes
+        if (chargedAtomCount == 1 && chargedOxygenAtom != -1 && chargedOxygenCharge == -1 &&
+            !hasRadical && !hasIsotope) {
+
+            // Verify this is an alkoxide: O(-) singly bonded to exactly one carbon neighbor,
+            // and that carbon does NOT have a double bond to another oxygen (not carboxylate)
+            bool isAlkoxide = false;
+            int carbonAtom = -1;
+
+            int neiIter = indigoIterateNeighbors(chargedOxygenAtom);
+            if (neiIter >= 0) {
+                int nei = 0;
+                int neiCount = 0;
+                while ((nei = indigoNext(neiIter)) != 0) {
+                    neiCount++;
+                    int nZ = indigoAtomicNumber(nei);
+                    int bondHandle = indigoBond(nei);
+                    int order = indigoBondOrder(bondHandle);
+                    indigoFree(bondHandle);
+
+                    if (nZ == 6 && order == 1) {
+                        // This is a carbon with single bond - save it for further check
+                        // Don't free this handle - we'll use it later
+                        carbonAtom = nei;
+                        continue; // Skip freeing this handle
+                    }
+                    indigoFree(nei);
+                }
+                indigoFree(neiIter);
+
+                // Alkoxide oxygen should have exactly 1 neighbor (the carbon)
+                // and that carbon should NOT have a double bond to another oxygen (not carboxylate)
+                bool hasDoubleBondOxygen = false;
+                if (neiCount == 1 && carbonAtom != -1) {
+                    // Check if this carbon has a double bond to another oxygen
+                    int carbonNeiIter = indigoIterateNeighbors(carbonAtom);
+                    if (carbonNeiIter >= 0) {
+                        int carbonNei = 0;
+                        while ((carbonNei = indigoNext(carbonNeiIter)) != 0) {
+                            int cNeiZ = indigoAtomicNumber(carbonNei);
+                            int cBondHandle = indigoBond(carbonNei);
+                            int cOrder = indigoBondOrder(cBondHandle);
+                            indigoFree(cBondHandle);
+
+                            if (cNeiZ == 8 && cOrder == 2) {
+                                hasDoubleBondOxygen = true;
+                            }
+                            indigoFree(carbonNei);
+                        }
+                        indigoFree(carbonNeiIter);
+
+                        // Only accept as alkoxide if carbon does NOT have C=O
+                        if (!hasDoubleBondOxygen) {
+                            isAlkoxide = true;
+                        }
+                    }
+                }
+                indigoFree(chargedOxygenAtom);
+                // carbonAtom (if set) is owned by this scope from here on regardless of
+                // whether it turned out to be part of a real alkoxide - free it exactly
+                // once now, and never again below.
+                if (carbonAtom != -1) {
+                    indigoFree(carbonAtom);
+                }
+            } else {
+                // Couldn't iterate neighbors - still owns chargedOxygenAtom, free it here.
+                indigoFree(chargedOxygenAtom);
+            }
+
+            if (isAlkoxide) {
+                // Clone the molecule to neutralize the charge
+                int cloned = indigoClone(mol);
+                if (cloned < 0) {
+                    return {false, "", "Failed to clone molecule for alkoxide anion naming."};
+                }
+                
+                // Find the charged oxygen in the cloned molecule
+                int clonedAtomIter = indigoIterateAtoms(cloned);
+                if (clonedAtomIter < 0) {
+                    indigoFree(cloned);
+                    return {false, "", "Failed to iterate atoms in cloned molecule for alkoxide."};
+                }
+                
+                int targetOxygen = -1;
+                int clonedAtomHandle = 0;
+                while ((clonedAtomHandle = indigoNext(clonedAtomIter)) != 0) {
+                    int cCharge = 0;
+                    indigoGetCharge(clonedAtomHandle, &cCharge);
+                    if (cCharge == -1) {
+                        int cZ = indigoAtomicNumber(clonedAtomHandle);
+                        if (cZ == 8) {
+                            targetOxygen = clonedAtomHandle;
+                            break;
+                        }
+                    }
+                    indigoFree(clonedAtomHandle);
+                }
+                indigoFree(clonedAtomIter);
+                
+                if (targetOxygen == -1) {
+                    // This shouldn't happen, but safety check
+                    if (clonedAtomHandle != 0) indigoFree(clonedAtomHandle);
+                    indigoFree(cloned);
+                    return {false, "", "Failed to find charged oxygen in cloned molecule for alkoxide."};
+                }
+                
+                // Neutralize the charge
+                indigoSetCharge(targetOxygen, 0);
+                indigoFree(targetOxygen);
+                
+                // Re-aromatize the cloned molecule to ensure proper structure
+                indigoAromatize(cloned);
+                
+                // Generate name for the neutral alcohol
+                IupacResult neutralRes = generateName(cloned);
+                indigoFree(cloned);
+                
+                if (!neutralRes.success) {
+                    return {false, "", "Cannot name the neutral alcohol for alkoxide anion: " + neutralRes.error};
+                }
+                
+                // Check if the neutral name contains multi-ol patterns (diol, triol, tetraol)
+                // These are explicitly excluded from the generic transform and should fall through
+                QString mainNm = neutralRes.name;
+                if (mainNm.contains("diol") || mainNm.contains("triol") || mainNm.contains("tetraol")) {
+                    // Fall through to existing charge rejection - don't handle multi-ol cases
+                    return {false, "", "Charged atoms are not supported"};
+                }
+                
+                // Apply the SAME anion-suffix transform as the carboxylate block and P-77 salt block
+                QString anionName;
+                if (mainNm.endsWith("dioic acid")) {
+                    mainNm.chop(10);
+                    anionName = mainNm + "dioate";
+                } else if (mainNm.endsWith("oic acid")) {
+                    mainNm.chop(8);
+                    anionName = mainNm + "oate";
+                } else if (mainNm.endsWith("dicarboxylic acid")) {
+                    mainNm.chop(17);
+                    anionName = mainNm + "dicarboxylate";
+                } else if (mainNm.endsWith("carboxylic acid")) {
+                    mainNm.chop(14);
+                    anionName = mainNm + "carboxylate";
+                } else if (mainNm.endsWith("sulfonic acid")) {
+                    mainNm.chop(12);
+                    anionName = mainNm + "sulfonate";
+                } else if (mainNm.endsWith("sulfinic acid")) {
+                    mainNm.chop(12);
+                    anionName = mainNm + "sulfinate";
+                } else if (mainNm == "methanol") {
+                    anionName = "methoxide";
+                } else if (mainNm == "ethanol") {
+                    anionName = "ethoxide";
+                } else if (mainNm == "propan-1-ol") {
+                    anionName = "propoxide";
+                } else if (mainNm == "butan-1-ol") {
+                    anionName = "butoxide";
+                } else if (mainNm == "phenol") {
+                    anionName = "phenoxide";
+                } else if (mainNm.endsWith("ol") && !mainNm.contains("diol") && !mainNm.contains("triol") && !mainNm.contains("tetraol")) {
+                    mainNm.chop(2);
+                    anionName = mainNm + "olate";
+                } else {
+                    anionName = "";
+                }
+                
+                if (anionName.isEmpty()) {
+                    // This shouldn't happen for a valid alkoxide, but safety
+                    return {false, "", "Failed to generate anion name for alkoxide."};
+                }
+                
+                // Return with (1-) suffix for standalone anion
+                return {true, anionName + "(1-)", ""};
+            }
+            
+            // If we found a charged oxygen but it's not an alkoxide, fall through
+            // chargedOxygenAtom was already freed above
+        } else if (chargedOxygenAtom != -1) {
+            // Outer condition failed (e.g. more than one charged atom) but a charged
+            // oxygen handle was still captured during the first pass - free it here so
+            // it isn't leaked.
+            indigoFree(chargedOxygenAtom);
+        }
+    }
+
     if (indigoCountComponents(mol) > 1) {
         return {false, "", "Multi-component structures are not supported in Phase 1."};
     }
