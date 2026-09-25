@@ -3835,7 +3835,7 @@ IupacResult IupacNamer::generateName(int mol) {
         }
 
         // Classify each component
-        enum CompType { MAIN, HALIDE, METAL, UNKNOWN };
+        enum CompType { MAIN, HALIDE, METAL, AMMONIUM, UNKNOWN };
         struct CompInfo {
             CompType type;
             int halogenZ;
@@ -3898,6 +3898,10 @@ IupacResult IupacNamer::generateName(int mol) {
                         else if (z == 3 || z == 11 || z == 19) {
                             info0.type = METAL;
                             info0.metalZ = z;
+                        }
+                        // Ammonium cation: N(7) with charge +1 and exactly 4 hydrogens (implicit + explicit)
+                        else if (z == 7 && charge == 1 && totalH == 4) {
+                            info0.type = AMMONIUM;
                         }
 
                         if (totalH > 0) {
@@ -3967,6 +3971,10 @@ IupacResult IupacNamer::generateName(int mol) {
                         } else if (z == 3 || z == 11 || z == 19) {
                             info1.type = METAL;
                             info1.metalZ = z;
+                        }
+                        // Ammonium cation: N(7) with charge +1 and exactly 4 hydrogens (implicit + explicit)
+                        else if (z == 7 && charge == 1 && totalH == 4) {
+                            info1.type = AMMONIUM;
                         }
 
                         if (totalH > 0) {
@@ -4135,6 +4143,100 @@ IupacResult IupacNamer::generateName(int mol) {
                 return {false, "", "Unrecognized metal in salt."};
             }
             return {true, metalName + " " + anionName, ""};
+        } else if (info0.type == MAIN && info1.type == AMMONIUM) {
+            IupacResult mainRes = generateName(cloned0);
+            indigoFree(cloned0);
+            indigoFree(cloned1);
+            if (!mainRes.success) {
+                return {false, "", "Cannot name the acid/alcohol component of this salt: " + mainRes.error};
+            }
+            QString anionName;
+            QString mainNm = mainRes.name;
+            if (mainNm.endsWith("dioic acid")) {
+                mainNm.chop(10);
+                anionName = mainNm + "dioate";
+            } else if (mainNm.endsWith("oic acid")) {
+                mainNm.chop(8);
+                anionName = mainNm + "oate";
+            } else if (mainNm.endsWith("dicarboxylic acid")) {
+                mainNm.chop(17);
+                anionName = mainNm + "dicarboxylate";
+            } else if (mainNm.endsWith("carboxylic acid")) {
+                mainNm.chop(14);
+                anionName = mainNm + "carboxylate";
+            } else if (mainNm.endsWith("sulfonic acid")) {
+                mainNm.chop(12);
+                anionName = mainNm + "sulfonate";
+            } else if (mainNm.endsWith("sulfinic acid")) {
+                mainNm.chop(12);
+                anionName = mainNm + "sulfinate";
+            } else if (mainNm == "methanol") {
+                anionName = "methoxide";
+            } else if (mainNm == "ethanol") {
+                anionName = "ethoxide";
+            } else if (mainNm == "propan-1-ol") {
+                anionName = "propoxide";
+            } else if (mainNm == "butan-1-ol") {
+                anionName = "butoxide";
+            } else if (mainNm == "phenol") {
+                anionName = "phenoxide";
+            } else if (mainNm.endsWith("ol") && !mainNm.contains("diol") && !mainNm.contains("triol") && !mainNm.contains("tetraol")) {
+                mainNm.chop(2);
+                anionName = mainNm + "olate";
+            } else {
+                anionName = "";
+            }
+            if (anionName.isEmpty()) {
+                return {false, "", "Multi-component structures are not supported in Phase 1."};
+            }
+            return {true, "ammonium " + anionName, ""};
+        } else if (info0.type == AMMONIUM && info1.type == MAIN) {
+            IupacResult mainRes = generateName(cloned1);
+            indigoFree(cloned0);
+            indigoFree(cloned1);
+            if (!mainRes.success) {
+                return {false, "", "Cannot name the acid/alcohol component of this salt: " + mainRes.error};
+            }
+            QString anionName;
+            QString mainNm = mainRes.name;
+            if (mainNm.endsWith("dioic acid")) {
+                mainNm.chop(10);
+                anionName = mainNm + "dioate";
+            } else if (mainNm.endsWith("oic acid")) {
+                mainNm.chop(8);
+                anionName = mainNm + "oate";
+            } else if (mainNm.endsWith("dicarboxylic acid")) {
+                mainNm.chop(17);
+                anionName = mainNm + "dicarboxylate";
+            } else if (mainNm.endsWith("carboxylic acid")) {
+                mainNm.chop(14);
+                anionName = mainNm + "carboxylate";
+            } else if (mainNm.endsWith("sulfonic acid")) {
+                mainNm.chop(12);
+                anionName = mainNm + "sulfonate";
+            } else if (mainNm.endsWith("sulfinic acid")) {
+                mainNm.chop(12);
+                anionName = mainNm + "sulfinate";
+            } else if (mainNm == "methanol") {
+                anionName = "methoxide";
+            } else if (mainNm == "ethanol") {
+                anionName = "ethoxide";
+            } else if (mainNm == "propan-1-ol") {
+                anionName = "propoxide";
+            } else if (mainNm == "butan-1-ol") {
+                anionName = "butoxide";
+            } else if (mainNm == "phenol") {
+                anionName = "phenoxide";
+            } else if (mainNm.endsWith("ol") && !mainNm.contains("diol") && !mainNm.contains("triol") && !mainNm.contains("tetraol")) {
+                mainNm.chop(2);
+                anionName = mainNm + "olate";
+            } else {
+                anionName = "";
+            }
+            if (anionName.isEmpty()) {
+                return {false, "", "Multi-component structures are not supported in Phase 1."};
+            }
+            return {true, "ammonium " + anionName, ""};
         } else {
             // Anything else falls through to multi-component rejection
             indigoFree(cloned0);

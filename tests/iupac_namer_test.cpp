@@ -805,6 +805,16 @@ int main() {
         {"CCCO.[K]", "potassium propoxide"}, // propan-1-ol is in retained list
         {"CCCCCO.[Na]", "sodium pentan-1-olate"}, // pentan-1-ol not in retained list
         {"CC(O)CO.[Na]", "", true, "Multi-component structures are not supported"}, // diol - should reject
+        // Ammonium carboxylate salts
+        {"[NH4+].CC(=O)O", "ammonium ethanoate"},
+        {"CC(=O)O.[NH4+]", "ammonium ethanoate"},
+        {"[NH4+].CCC(=O)O", "ammonium propanoate"},
+        // Ammonium alkoxide salts
+        {"[NH4+].CCO", "ammonium ethoxide"},
+        {"CCO.[NH4+]", "ammonium ethoxide"},
+        {"[NH4+].CO", "ammonium methoxide"},
+        // Ammonium + halide fallthrough (out of scope)
+        {"[NH4+].[Cl-]", "", true, "Multi-component structures are not supported"},
         // Fallthrough cases - should still reject
         {"CC(=O)O.CC", "", true, "Multi-component structures are not supported"},
         {"c1ccccc1N.c1ccccc1", "", true, "Multi-component structures are not supported"},
