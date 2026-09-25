@@ -23,6 +23,7 @@ EditableMolecule::EditableMolecule(const QString& initialStructure) {
         return;
     }
     assignFreshAtomBondIds();
+    captureEzIntent({});
 }
 
 void EditableMolecule::assignFreshAtomBondIds() {
@@ -73,8 +74,25 @@ void EditableMolecule::assignFreshAtomBondIds() {
     }
 }
 
-bool EditableMolecule::loadFrom(const QString& molfileOrSmiles) {
+bool EditableMolecule::loadFrom(const QString& molfileOrSmiles, bool preserveEzIntent) {
     activateSession();
+
+    // If this call is a same-document write-back (e.g. an auto-layout result flowing back
+    // via DocumentState::deserializeMol with centerOnPage=true) rather than a genuinely new
+    // document being opened, snapshot the CURRENT E/Z intent by Indigo's own internal bond
+    // index before it's discarded below. A write-back round-trip only repositions atoms --
+    // it doesn't add, remove, or reorder bonds -- so the old index still identifies the same
+    // logical bond in the freshly-reloaded molecule. Without this, captureEzIntent() below
+    // would re-derive intent from the INCOMING molfile's coordinates, which is exactly the
+    // corrupted, coordinate-inferred value this whole mechanism exists to avoid trusting.
+    QMap<int, int> preservedIndexToStereo;
+    if (preserveEzIntent && m_mol >= 0) {
+        for (auto it = m_ezWasSpecified.constBegin(); it != m_ezWasSpecified.constEnd(); ++it) {
+            int oldIdx = m_bondIdx.value(it.key(), -1);
+            if (oldIdx != -1) preservedIndexToStereo.insert(oldIdx, it.value());
+        }
+    }
+
     int fresh = indigoLoadMoleculeFromString(molfileOrSmiles.toUtf8().constData());
     if (fresh < 0) {
         m_lastError = QString::fromUtf8(indigoGetLastError());
@@ -90,7 +108,9 @@ bool EditableMolecule::loadFrom(const QString& molfileOrSmiles) {
     m_sgroupExpanded.clear();
     m_sgroupLabels.clear();
     m_ext = ExtensionData{};
+    m_ezWasSpecified.clear();
     assignFreshAtomBondIds();
+    captureEzIntent(preservedIndexToStereo);
     return true;
 }
 
@@ -103,6 +123,36 @@ EditableMolecule::~EditableMolecule() {
 
 void EditableMolecule::activateSession() const {
     indigoSetSessionId(m_session);
+}
+
+void EditableMolecule::captureEzIntent(const QMap<int, int>& preservedIndexToStereo) {
+    if (m_mol < 0) return;
+    activateSession();
+    int iter = indigoIterateBonds(m_mol);
+    if (iter < 0) return;
+    int b;
+    while ((b = indigoNext(iter)) > 0) {
+        int bondOrder = indigoBondOrder(b);
+        // Only care about double bonds (order == 2)
+        if (bondOrder == 2) {
+            int idx = indigoIndex(b);
+            // Find the BondId for this internal index
+            BondId bid = m_idxToBond.value(idx, -1);
+            if (bid != -1) {
+                // A preserved value from before a same-document write-back round-trip (see
+                // loadFrom) is authoritative -- it reflects real intent, not whatever this
+                // reload's own coordinates happen to infer. Only derive fresh from
+                // indigoBondStereo() for a bond index we have no prior record of.
+                auto preservedIt = preservedIndexToStereo.constFind(idx);
+                int stereo = (preservedIt != preservedIndexToStereo.constEnd())
+                                 ? preservedIt.value()
+                                 : indigoBondStereo(b);
+                m_ezWasSpecified[bid] = stereo;
+            }
+        }
+        indigoFree(b);
+    }
+    indigoFree(iter);
 }
 
 void MoleculeSnapshot::freeHandle() {
@@ -142,6 +192,156 @@ QString EditableMolecule::toKetJson() const {
     const char* json = indigoJson(m_mol);
     if (!json) return QString();
     return QString::fromUtf8(json);
+}
+
+QString EditableMolecule::molfileForNaming() const {
+    if (m_mol < 0) return QString();
+    activateSession();
+    
+    // Clone the molecule
+    int clone = indigoClone(m_mol);
+    if (clone < 0) return QString();
+
+    // A molecule that has never been through layout (e.g. just parsed from SMILES, before
+    // the app's own auto-layout step) has no real coordinates at all -- a plain V2000 molfile
+    // has no way to encode double-bond E/Z except via coordinates, so exporting one without
+    // any would silently lose genuinely-specified stereo, not just fail to fabricate it.
+    // Giving the clone real coordinates first keeps that case correct; the straightening
+    // step below still overrides only the bonds recorded as unspecified.
+    if (!indigoHasCoord(clone)) {
+        indigoLayout(clone);
+    }
+
+    // For each double bond with unspecified stereo (m_ezWasSpecified == 0),
+    // make its substituents collinear with the bond axis
+    for (auto it = m_ezWasSpecified.constBegin(); it != m_ezWasSpecified.constEnd(); ++it) {
+        BondId bid = it.key();
+        int stereo = it.value();
+        
+        // Only process double bonds that were originally unspecified
+        if (stereo == 0) {
+            // Get the bond's internal index
+            auto idxIt = m_bondIdx.constFind(bid);
+            if (idxIt == m_bondIdx.constEnd()) continue;
+            int bondIdx = idxIt.value();
+            
+            // Get the bond handle in the clone
+            int b = indigoGetBond(clone, bondIdx);
+            if (b < 0) continue;
+            
+            // Verify it's a double bond
+            if (indigoBondOrder(b) != 2) {
+                indigoFree(b);
+                continue;
+            }
+            
+            // Get the two endpoint atoms
+            int src = indigoSource(b), dst = indigoDestination(b);
+            int a1 = indigoGetAtom(clone, indigoIndex(src));
+            int a2 = indigoGetAtom(clone, indigoIndex(dst));
+            indigoFree(src);
+            indigoFree(dst);
+            
+            if (a1 < 0 || a2 < 0) {
+                if (a1 >= 0) indigoFree(a1);
+                if (a2 >= 0) indigoFree(a2);
+                indigoFree(b);
+                continue;
+            }
+            
+            // Get the 2D coordinates of the bond endpoints. indigoXYZ returns a pointer into
+            // a buffer Indigo reuses on every call - it must be copied out immediately, before
+            // the second call below overwrites it (confirmed empirically: two indigoXYZ calls
+            // in a row returned the SAME address, silently aliasing xyz1 to a2's coordinates).
+            float x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+            bool haveCoords = false;
+            {
+                float* p1 = indigoXYZ(a1);
+                if (p1) { x1 = p1[0]; y1 = p1[1]; }
+                float* p2 = indigoXYZ(a2);
+                if (p2) { x2 = p2[0]; y2 = p2[1]; }
+                haveCoords = (p1 != nullptr && p2 != nullptr);
+            }
+
+            if (haveCoords) {
+                // Get substituents (neighbors of a1 and a2 that are NOT each other)
+                QList<int> subA1, subA2;
+                
+                int iterA1 = indigoIterateNeighbors(a1);
+                int a2_idx = indigoIndex(a2);
+                if (iterA1 >= 0) {
+                    int n;
+                    while ((n = indigoNext(iterA1)) > 0) {
+                        int neighborIdx = indigoIndex(n);
+                        if (neighborIdx != a2_idx) {
+                            subA1.append(neighborIdx);
+                        }
+                        indigoFree(n);
+                    }
+                    indigoFree(iterA1);
+                }
+                
+                int iterA2 = indigoIterateNeighbors(a2);
+                int a1_idx = indigoIndex(a1);
+                if (iterA2 >= 0) {
+                    int n;
+                    while ((n = indigoNext(iterA2)) > 0) {
+                        int neighborIdx = indigoIndex(n);
+                        if (neighborIdx != a1_idx) {
+                            subA2.append(neighborIdx);
+                        }
+                        indigoFree(n);
+                    }
+                    indigoFree(iterA2);
+                }
+                
+                // Make all substituents collinear with the bond axis, each spaced out along
+                // the extension line beyond its own end of the bond so multiple substituents
+                // on the same atom don't collapse onto a single coincident point.
+                // For a1's substituents: place them beyond a1, away from a2.
+                float dx1 = x1 - x2;
+                float dy1 = y1 - y2;
+                int placedA1 = 0;
+                for (int subIdx : subA1) {
+                    int subAtom = indigoGetAtom(clone, subIdx);
+                    if (subAtom >= 0) {
+                        float step = 1.0f + 0.1f * placedA1;
+                        float newX = x1 + dx1 * step;
+                        float newY = y1 + dy1 * step;
+                        indigoSetXYZ(subAtom, newX, newY, 0.0f);
+                        indigoFree(subAtom);
+                        ++placedA1;
+                    }
+                }
+
+                // For a2's substituents: place them beyond a2, away from a1.
+                float dx2 = x2 - x1;
+                float dy2 = y2 - y1;
+                int placedA2 = 0;
+                for (int subIdx : subA2) {
+                    int subAtom = indigoGetAtom(clone, subIdx);
+                    if (subAtom >= 0) {
+                        float step = 1.0f + 0.1f * placedA2;
+                        float newX = x2 + dx2 * step;
+                        float newY = y2 + dy2 * step;
+                        indigoSetXYZ(subAtom, newX, newY, 0.0f);
+                        indigoFree(subAtom);
+                        ++placedA2;
+                    }
+                }
+            }
+            
+            if (a1 >= 0) indigoFree(a1);
+            if (a2 >= 0) indigoFree(a2);
+            indigoFree(b);
+        }
+    }
+    
+    // Export the clone to molfile
+    const char* mf = indigoMolfile(clone);
+    indigoFree(clone);
+    if (!mf) return QString();
+    return QString::fromUtf8(mf);
 }
 
 StringResult EditableMolecule::submoleculeMolfile(const QList<AtomId>& atomIds, const QList<BondId>& bondIds) const {

@@ -65,8 +65,10 @@ public:
     Q_INVOKABLE void requestStructure(const QString& fmt, const QString& reqId);
     Q_INVOKABLE void requestSelectionStructure(const QString& reqId);
     Q_INVOKABLE void requestSerialize(const QString& reqId);
+    Q_INVOKABLE void requestMolfileForNaming(const QString& reqId);
     Q_INVOKABLE QString getStructure(const QString& fmt);
     Q_INVOKABLE QString serializeMol();
+    Q_INVOKABLE QString getMolfileForNaming();
     Q_INVOKABLE void loadStructure(const QString& format, const QString& data, bool centerOnPage = false);
     Q_INVOKABLE bool importReaction(const QString& text);
     Q_INVOKABLE void insertFunctionalGroup(const QString& fgName, double cx, double cy, int targetAtomId = -1, bool fullStructure = true);

@@ -139,6 +139,10 @@ EditableMolecule& DocumentState::molecule() {
     return m_molecule;
 }
 
+const EditableMolecule& DocumentState::molecule() const {
+    return m_molecule;
+}
+
 void DocumentState::executeCommand(EditCommand cmd) {
     if (m_inCommand) return;
     // Remove any future redo states -- matches executeCommand's
@@ -3257,11 +3261,14 @@ void DocumentState::renameSGroup(SGroupId id, const QString& newLabel) {
 void DocumentState::deserializeMol(const QString& data, bool centerOnPage) {
     EditableMolecule& mol = m_molecule;
     auto before = std::make_shared<MoleculeSnapshot>(mol.snapshot());
-    if (!mol.loadFrom(data)) return;
+    // centerOnPage doubles as "is this a same-document write-back" (layout/aromatize/
+    // normalize results, per this function's own established convention) rather than a
+    // genuinely new document being opened -- see loadFrom's preserveEzIntent parameter.
+    if (!mol.loadFrom(data, centerOnPage)) return;
 
     EditCommand cmd;
     cmd.execute = [this, &mol, data, centerOnPage]() {
-        mol.loadFrom(data);
+        mol.loadFrom(data, centerOnPage);
         m_selection.clear();
         if (centerOnPage) centerMoleculeOnOrigin();
     };

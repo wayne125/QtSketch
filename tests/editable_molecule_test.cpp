@@ -1824,6 +1824,189 @@ static void test_setBondStereo() {
     CHECK(attachAfter == attachBefore, "the sgroup's attachment atom is unchanged");
 }
 
+static void test_ezStereoIntent() {
+    std::printf("--- Test: E/Z stereo intent capture and molfileForNaming ---\n");
+
+    // Test 1: Load a SMILES with no stereo specified
+    EditableMolecule molNoStereo(QStringLiteral("CC=C(C)CC"));
+    CHECK(molNoStereo.isValid(), "molecule without stereo loads");
+    CHECK(molNoStereo.bondCount() > 0, "has bonds");
+
+    // Check that the double bond was recorded as unspecified (0)
+    // The bond between atoms 2 and 3 (0-indexed in the SMILES: CC=C(C)CC)
+    // In the loaded molecule, we need to find the double bond
+    bool foundDoubleBond = false;
+    for (BondId bid : molNoStereo.bondIds()) {
+        if (molNoStereo.bondOrder(bid) == 2) {
+            // This should have been recorded as unspecified
+            // We can't directly access m_ezWasSpecified, but we can test molfileForNaming
+            foundDoubleBond = true;
+            break;
+        }
+    }
+    CHECK(foundDoubleBond, "found a double bond in CC=C(C)CC");
+
+    // Test molfileForNaming - it should not crash
+    QString mf = molNoStereo.molfileForNaming();
+    CHECK(!mf.isEmpty(), "molfileForNaming produces non-empty output");
+    CHECK(mf.contains(QStringLiteral("M  END")), "molfileForNaming output is valid molfile");
+
+    // The real correctness criterion: reload the produced molfile fresh (exactly
+    // like IndigoService::generateIupacName does) and confirm the double bond's
+    // indigoBondStereo() is now genuinely 0 (unspecified), not fabricated from
+    // coordinates. This is the actual bug this whole feature exists to fix --
+    // a molfile that merely parses is not sufficient evidence of correctness.
+    {
+        int reloaded = indigoLoadMoleculeFromString(mf.toUtf8().constData());
+        CHECK(reloaded >= 0, "reloaded molfileForNaming output parses");
+        if (reloaded >= 0) {
+            int bi = indigoIterateBonds(reloaded);
+            int foundReloadedDouble = 0;
+            int b2;
+            while ((b2 = indigoNext(bi)) != 0) {
+                if (indigoBondOrder(b2) == 2) {
+                    foundReloadedDouble++;
+                    CHECK(indigoBondStereo(b2) == 0,
+                          "unspecified double bond reads as unspecified after reload (the actual bug this fixes)");
+                }
+                indigoFree(b2);
+            }
+            indigoFree(bi);
+            CHECK(foundReloadedDouble == 1, "reloaded molecule still has exactly one double bond");
+            indigoFree(reloaded);
+        }
+    }
+
+    // Test 2: Load a SMILES with explicit E stereo
+    EditableMolecule molEStereo(QStringLiteral("C/C=C/C"));
+    CHECK(molEStereo.isValid(), "molecule with E stereo loads");
+
+    QString mfE = molEStereo.molfileForNaming();
+    CHECK(!mfE.isEmpty(), "molfileForNaming with E stereo produces output");
+
+    // Real, deliberately-specified stereo must NOT be suppressed by this fix.
+    {
+        int reloadedE = indigoLoadMoleculeFromString(mfE.toUtf8().constData());
+        CHECK(reloadedE >= 0, "reloaded E-stereo molfileForNaming output parses");
+        if (reloadedE >= 0) {
+            int bi = indigoIterateBonds(reloadedE);
+            int b2;
+            while ((b2 = indigoNext(bi)) != 0) {
+                if (indigoBondOrder(b2) == 2) {
+                    CHECK(indigoBondStereo(b2) != 0,
+                          "genuinely specified E stereo survives molfileForNaming, not suppressed");
+                }
+                indigoFree(b2);
+            }
+            indigoFree(bi);
+            indigoFree(reloadedE);
+        }
+    }
+
+    // Test 2b: a trisubstituted alkene where one carbon carries TWO substituents
+    // (both unspecified). Both must end up genuinely collinear with the bond axis
+    // (not coincident with each other), and the reloaded bond must read as
+    // unspecified -- this is exactly the shape the original coordinate-collapse
+    // bug (indigoXYZ buffer aliasing + a sign error) would have corrupted.
+    {
+        EditableMolecule molTri(QStringLiteral("CC=C(C)C"));  // 2-methylbut-2-ene, unspecified
+        CHECK(molTri.isValid(), "trisubstituted alkene loads");
+        QString mfTri = molTri.molfileForNaming();
+        CHECK(!mfTri.isEmpty(), "molfileForNaming produces output for trisubstituted alkene");
+        int reloadedTri = indigoLoadMoleculeFromString(mfTri.toUtf8().constData());
+        CHECK(reloadedTri >= 0, "reloaded trisubstituted-alkene molfile parses");
+        if (reloadedTri >= 0) {
+            int bi = indigoIterateBonds(reloadedTri);
+            int b2;
+            while ((b2 = indigoNext(bi)) != 0) {
+                if (indigoBondOrder(b2) == 2) {
+                    CHECK(indigoBondStereo(b2) == 0,
+                          "trisubstituted alkene's unspecified double bond stays unspecified after reload");
+                }
+                indigoFree(b2);
+            }
+            indigoFree(bi);
+            indigoFree(reloadedTri);
+        }
+    }
+
+    // Test 3: Empty molecule - should still produce a valid (if minimal) molfile
+    EditableMolecule empty;
+    QString mfEmpty = empty.molfileForNaming();
+    // Empty molecule should not crash, but may return empty or a valid empty molfile
+    // Just check it doesn't crash and returns a non-null string (could be empty or valid)
+    CHECK(true, "empty molecule molfileForNaming does not crash");
+
+    // Test 4: Molecule with no double bonds
+    EditableMolecule ethane(QStringLiteral("CC"));
+    CHECK(ethane.isValid(), "ethane loads");
+    QString mfEthane = ethane.molfileForNaming();
+    CHECK(!mfEthane.isEmpty(), "molfileForNaming works for molecule without double bonds");
+
+    // Test 5: the REAL app flow this bug was reported in -- load bare SMILES (no coords),
+    // then simulate DocumentState::deserializeMol receiving an auto-layout result the way
+    // the real app does (IndigoService::layout exports the current molfile, lays it out in
+    // a SEPARATE indigo call, and the result flows back via EditableMolecule::loadFrom --
+    // see DocumentState::deserializeMol, MainWindow.qml's onLayoutFinished). If loadFrom's
+    // own captureEzIntent() call re-derives intent from the now-coordinate-bearing molfile,
+    // it will silently overwrite the correct originally-captured "unspecified" value with a
+    // fabricated one, defeating this entire fix for its own primary reported scenario.
+    {
+        EditableMolecule molReal(QStringLiteral("CC=C(C)CC"));
+        CHECK(molReal.isValid(), "real-flow molecule loads");
+
+        // Build the exact molfile IndigoService::layout would hand back: load the same
+        // structure fresh, run indigoLayout, export.
+        int rawMol = indigoLoadMoleculeFromString("CC=C(C)CC");
+        const char* rawMf = indigoMolfile(rawMol);
+        int layoutMol = indigoLoadMoleculeFromString(rawMf);
+        indigoLayout(layoutMol);
+        const char* laidOutMf = indigoMolfile(layoutMol);
+        QString laidOutMfQ = QString::fromUtf8(laidOutMf);
+        indigoFree(rawMol);
+        indigoFree(layoutMol);
+
+        // This is exactly what DocumentState::deserializeMol does with a layout result
+        // (centerOnPage=true for a same-document write-back, threaded through as preserveEzIntent).
+        CHECK(molReal.loadFrom(laidOutMfQ, /*preserveEzIntent=*/true), "loadFrom accepts the simulated layout result");
+
+        QString nameMf = molReal.molfileForNaming();
+        CHECK(!nameMf.isEmpty(), "molfileForNaming produces output after the real flow");
+
+        int reloaded = indigoLoadMoleculeFromString(nameMf.toUtf8().constData());
+        CHECK(reloaded >= 0, "reloaded output of the real-flow test parses");
+        if (reloaded >= 0) {
+            int bi = indigoIterateBonds(reloaded);
+            int b2;
+            while ((b2 = indigoNext(bi)) != 0) {
+                if (indigoBondOrder(b2) == 2) {
+                    CHECK(indigoBondStereo(b2) == 0,
+                          "REAL FLOW: load SMILES -> auto-layout -> Generate IUPAC Name does not fabricate E/Z");
+                }
+                indigoFree(b2);
+            }
+            indigoFree(bi);
+            indigoFree(reloaded);
+        }
+    }
+}
+
+static void test_loadFromClearsEzIntent() {
+    std::printf("--- Test: loadFrom clears and recaptures E/Z intent ---\n");
+
+    // Create a molecule with one double bond
+    EditableMolecule mol1(QStringLiteral("CC=C(C)CC"));
+    CHECK(mol1.isValid(), "first molecule loads");
+
+    // loadFrom should clear the intent and recapture
+    CHECK(mol1.loadFrom(QStringLiteral("C/C=C/C")), "loadFrom succeeds");
+    CHECK(mol1.isValid(), "still valid after loadFrom");
+
+    // Should still be able to produce molfile for naming
+    QString mf = mol1.molfileForNaming();
+    CHECK(!mf.isEmpty(), "molfileForNaming works after loadFrom");
+}
+
 int main() {
     unsigned long long session = indigoAllocSessionId();
     indigoSetSessionId(session);
@@ -1872,6 +2055,8 @@ int main() {
     test_submoleculeMolfile();
     test_submoleculeMolfileInconsistentSelection();
     test_setBondStereo();
+    test_ezStereoIntent();
+    test_loadFromClearsEzIntent();
 
     indigoReleaseSessionId(session);
     std::printf("Summary: %d passed, %d failed.\n", g_pass, g_fail);

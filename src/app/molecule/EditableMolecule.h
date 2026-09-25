@@ -181,7 +181,18 @@ public:
     // m_nextAtomId/m_nextBondId/m_nextSGroupId -- ids stay globally unique for the object's
     // whole lifetime regardless of how many documents are loaded into it. On a parse failure:
     // sets lastError(), returns false, and leaves the object COMPLETELY untouched.
-    bool loadFrom(const QString& molfileOrSmiles);
+    // preserveEzIntent: true for a same-document write-back round-trip (e.g. an auto-layout
+    // result, matching DocumentState::deserializeMol's centerOnPage=true case) -- this keeps
+    // each double bond's already-recorded "was E/Z ever deliberately specified" value instead
+    // of re-deriving it from the incoming data's own (possibly layout-fabricated) coordinates.
+    // False (the default) for a genuinely new document, where fresh capture is correct.
+    bool loadFrom(const QString& molfileOrSmiles, bool preserveEzIntent = false);
+
+    // Returns a molfile with double bonds whose stereo was never specified
+    // (m_ezWasSpecified == 0) made collinear to prevent coordinate-based inference
+    // from fabricating E/Z labels. Only used for IUPAC naming, never mutates
+    // the actual document.
+    QString molfileForNaming() const;
 
     // Atom/bond CRUD with stable never-reused external IDs
     AtomId addAtom(const QString& symbol, double x, double y);
@@ -519,6 +530,11 @@ private:
 
     ExtensionData m_ext;
 
+    // Track E/Z stereo intent at load time: BondId -> indigoBondStereo() value at initial load
+    // (0 = unspecified, 7 = CIS, 8 = TRANS, etc.). Only set once at load time, never updated
+    // through manual edits. Used to prevent fabricated E/Z labels in IUPAC naming.
+    QMap<BondId, int> m_ezWasSpecified;
+
     QHash<SGroupId, int> m_sgroupIdx;   // external stable ID -> indigo superatom index
     SGroupId m_nextSGroupId = 1;        // monotonic, never reused
     QHash<int, bool> m_sgroupExpanded;  // SGroupId -> expanded flag (Indigo has no such concept)
@@ -526,6 +542,10 @@ private:
 
     void activateSession() const; // indigoSetSessionId(m_session)
     void rebuildIndexTables();
+    // Records each double bond's E/Z intent. For a bond whose Indigo-internal index has an
+    // entry in preservedIndexToStereo (see loadFrom), that value is kept instead of a fresh
+    // indigoBondStereo() read; pass {} for a genuinely new load.
+    void captureEzIntent(const QMap<int, int>& preservedIndexToStereo);
 
     // Same "Indigo's current 0..count-1 order, reverse-mapped to external SGroupId via
     // m_sgroupIdx" contract as atomIdsInIndigoOrder()/bondIdsInIndigoOrder() above, but for

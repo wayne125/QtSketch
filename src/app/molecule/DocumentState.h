@@ -27,6 +27,7 @@ public:
     explicit DocumentState(const QString& initialStructure = {});
 
     EditableMolecule& molecule();
+    const EditableMolecule& molecule() const;
 
     void executeCommand(EditCommand cmd);
     void undo();

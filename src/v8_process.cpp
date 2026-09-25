@@ -471,6 +471,10 @@ void V8Process::requestSelectionStructure(const QString& reqId) {
 void V8Process::requestSerialize(const QString& reqId) {
     requestStructure("mol", reqId);
 }
+void V8Process::requestMolfileForNaming(const QString& reqId) {
+    QString mf = getMolfileForNaming();
+    emit structureReady(reqId, mf);
+}
 QString V8Process::getStructure(const QString& fmt) {
     if (fmt != "mol") return QString(); // only molfile export is in scope for this pilot
     StringResult r = m_docState->molecule().toMolfile();
@@ -478,6 +482,9 @@ QString V8Process::getStructure(const QString& fmt) {
 }
 QString V8Process::serializeMol() {
     return getStructure("mol");
+}
+QString V8Process::getMolfileForNaming() {
+    return m_docState->molecule().molfileForNaming();
 }
 bool V8Process::importReaction(const QString& text) {
     if (!m_docState->importReaction(text)) return false;

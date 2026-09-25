@@ -226,6 +226,11 @@ ApplicationWindow {
             activeSketch.sendCommand("addBracketSelection", [])
             return
         }
+        if (op === "iupac_name") {
+            // Use special molfile that prevents fabricated E/Z labels
+            activeSketch.requestMolfileForNaming("iupac_name")
+            return
+        }
         if (op !== "layout" && op !== "aromatize") window.isProcessing = true
         activeSketch.requestSerialize(op)
     }
