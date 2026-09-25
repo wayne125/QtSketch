@@ -5951,17 +5951,26 @@ IupacResult IupacNamer::generateName(int mol) {
         indigoFree(stereoIter);
     }
 
-    // --- diphosphoric acid (P-67.2) specific narrow case ---
-    if (g.nodes.size() == 9) {
+    // --- P-67.2 dinuclear phosphorus oxoacids: diphosphoric, hypodiphosphoric, diphosphorous, hypodiphosphorous ---
+    if (g.nodes.size() >= 6 && g.nodes.size() <= 9) {
         int countP = 0, countO = 0;
         for (const auto &n : g.nodes) {
             if (n.atomicNumber == 15) countP++;
             else if (n.atomicNumber == 8) countO++;
         }
-        if (countP == 2 && countO == 7) {
+        // All 4 dinuclear phosphorus oxoacids have exactly 2 P atoms
+        if (countP == 2) {
+            // Find P-P bond and bridging oxygen candidates
             int bridgingO = -1;
             int bridgingCount = 0;
+            bool hasDirectPP = false;
+            int pIndices[2] = {-1, -1};
+            int pIdx = 0;
+            
             for (size_t i = 0; i < g.nodes.size(); ++i) {
+                if (g.nodes[i].atomicNumber == 15) {
+                    pIndices[pIdx++] = static_cast<int>(i);
+                }
                 if (g.nodes[i].atomicNumber == 8 && g.nodes[i].neighbors.size() == 2) {
                     int nei1 = g.nodes[i].neighbors[0];
                     int nei2 = g.nodes[i].neighbors[1];
@@ -5971,33 +5980,67 @@ IupacResult IupacNamer::generateName(int mol) {
                     }
                 }
             }
-            if (bridgingCount == 1) {
-                bool valid = true;
-                for (size_t i = 0; i < g.nodes.size(); ++i) {
-                    if (g.nodes[i].atomicNumber == 15) {
-                        if (g.nodes[i].neighbors.size() != 4) { valid = false; break; }
-                        int doubleO = 0, terminalOH = 0, bridgeO = 0;
-                        for (size_t j = 0; j < g.nodes[i].neighbors.size(); ++j) {
-                            int nei = g.nodes[i].neighbors[j];
-                            int order = g.nodes[i].bondOrders[j];
-                            if (g.nodes[nei].atomicNumber == 8) {
-                                if (nei == bridgingO && order == 1) {
-                                    bridgeO++;
-                                } else if (order == 2 && g.nodes[nei].neighbors.size() == 1 && g.nodes[nei].totalH == 0) {
-                                    doubleO++;
-                                } else if (order == 1 && g.nodes[nei].neighbors.size() == 1 && g.nodes[nei].totalH > 0) {
-                                    terminalOH++;
-                                }
-                            }
-                        }
-                        if (doubleO != 1 || terminalOH != 2 || bridgeO != 1) {
-                            valid = false;
-                            break;
-                        }
+            
+            // Check for direct P-P bond
+            if (pIndices[0] != -1 && pIndices[1] != -1) {
+                for (size_t j = 0; j < g.nodes[pIndices[0]].neighbors.size(); ++j) {
+                    int nei = g.nodes[pIndices[0]].neighbors[j];
+                    if (nei == static_cast<size_t>(pIndices[1])) {
+                        hasDirectPP = true;
+                        break;
                     }
                 }
-                if (valid) {
+            }
+            
+            // Validate each P atom's environment
+            bool valid = true;
+            int p1_doubleO = 0, p1_terminalOH = 0, p1_bridgeO = 0, p1_directP = 0;
+            int p2_doubleO = 0, p2_terminalOH = 0, p2_bridgeO = 0, p2_directP = 0;
+            
+            for (int pIdx = 0; pIdx < 2; ++pIdx) {
+                int pi = pIndices[pIdx];
+                if (pi == -1) { valid = false; break; }
+                
+                for (size_t j = 0; j < g.nodes[pi].neighbors.size(); ++j) {
+                    int nei = g.nodes[pi].neighbors[j];
+                    int order = g.nodes[pi].bondOrders[j];
+                    if (g.nodes[nei].atomicNumber == 8) {
+                        if (nei == static_cast<size_t>(bridgingO) && order == 1) {
+                            if (pIdx == 0) p1_bridgeO++;
+                            else p2_bridgeO++;
+                        } else if (order == 2 && g.nodes[nei].neighbors.size() == 1 && g.nodes[nei].totalH == 0) {
+                            if (pIdx == 0) p1_doubleO++;
+                            else p2_doubleO++;
+                        } else if (order == 1 && g.nodes[nei].neighbors.size() == 1 && g.nodes[nei].totalH > 0) {
+                            if (pIdx == 0) p1_terminalOH++;
+                            else p2_terminalOH++;
+                        }
+                    } else if (g.nodes[nei].atomicNumber == 15) {
+                        if (pIdx == 0) p1_directP++;
+                        else p2_directP++;
+                    }
+                }
+            }
+            
+            if (!valid) {
+                // Fall through
+            } else if (hasDirectPP) {
+                // Direct P-P bond cases
+                if (p1_doubleO == 1 && p2_doubleO == 1 && p1_terminalOH == 2 && p2_terminalOH == 2) {
+                    // Both P(V): hypodiphosphoric acid
+                    return {true, "hypodiphosphoric acid", ""};
+                } else if (p1_doubleO == 0 && p2_doubleO == 0 && p1_terminalOH == 2 && p2_terminalOH == 2) {
+                    // Both P(III): hypodiphosphorous acid
+                    return {true, "hypodiphosphorous acid", ""};
+                }
+            } else if (bridgingCount == 1) {
+                // Bridging oxygen cases
+                if (p1_doubleO == 1 && p2_doubleO == 1 && p1_terminalOH == 2 && p2_terminalOH == 2 && p1_bridgeO == 1 && p2_bridgeO == 1) {
+                    // Both P(V): diphosphoric acid
                     return {true, "diphosphoric acid", ""};
+                } else if (p1_doubleO == 0 && p2_doubleO == 0 && p1_terminalOH == 2 && p2_terminalOH == 2 && p1_bridgeO == 1 && p2_bridgeO == 1) {
+                    // Both P(III): diphosphorous acid
+                    return {true, "diphosphorous acid", ""};
                 }
             }
         }
