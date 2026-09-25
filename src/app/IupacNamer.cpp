@@ -4595,6 +4595,197 @@ IupacResult IupacNamer::generateName(int mol) {
         }
     }
 
+    // Standalone ammonium cation naming: single-component molecule with exactly one N(+1) charge
+    // on a protonated amine (R-NH3+, R2NH2+, R3NH+), no counterion present
+    // P-73.1.2.1: cation formed by protonating an amine nitrogen is named by taking
+    // the neutral amine's own name and appending "-ium" (with elision of the final "e")
+    if (numComponents == 1) {
+        int chargedAtomCount = 0;
+        int chargedNitrogenAtom = -1;
+        int chargedNitrogenCharge = 0;
+        bool hasRadical = false;
+        bool hasIsotope = false;
+        
+        // First pass: count charged atoms and check for radicals/isotopes
+        int atomIterCheck = indigoIterateAtoms(mol);
+        if (atomIterCheck >= 0) {
+            int atomHandleCheck = 0;
+            while ((atomHandleCheck = indigoNext(atomIterCheck)) != 0) {
+                // Check for radicals and isotopes on all atoms first
+                int rad = 0;
+                if (indigoGetRadicalElectrons(atomHandleCheck, &rad) == 1 && rad > 0) {
+                    hasRadical = true;
+                }
+                
+                int iso = indigoIsotope(atomHandleCheck);
+                if (iso > 0) {
+                    hasIsotope = true;
+                }
+                
+                int charge = 0;
+                indigoGetCharge(atomHandleCheck, &charge);
+                if (charge != 0) {
+                    chargedAtomCount++;
+                    int z = indigoAtomicNumber(atomHandleCheck);
+                    if (z == 7 && charge == 1) {
+                        // Remember the first charged nitrogen for later use
+                        if (chargedNitrogenAtom == -1) {
+                            chargedNitrogenAtom = atomHandleCheck;
+                            chargedNitrogenCharge = charge;
+                            // Don't free this handle - we'll use it later
+                            continue;
+                        }
+                    }
+                }
+                
+                indigoFree(atomHandleCheck);
+            }
+            indigoFree(atomIterCheck);
+        }
+        
+        // Must have exactly one charged atom, it must be nitrogen with +1 charge, and no radicals/isotopes
+        if (chargedAtomCount == 1 && chargedNitrogenAtom != -1 && chargedNitrogenCharge == 1 &&
+            !hasRadical && !hasIsotope) {
+            
+            // Verify this is a protonated amine: N with total valence 4 and at least 1 H
+            bool isProtonatedAmine = false;
+            
+            int neiIter = indigoIterateNeighbors(chargedNitrogenAtom);
+            if (neiIter >= 0) {
+                int nei = 0;
+                int totalValence = 0;
+                int hCount = 0;
+                
+                // Count explicit H neighbors
+                int neiIterForH = indigoIterateNeighbors(chargedNitrogenAtom);
+                if (neiIterForH >= 0) {
+                    int neiH = 0;
+                    while ((neiH = indigoNext(neiIterForH)) != 0) {
+                        int nZ = indigoAtomicNumber(neiH);
+                        if (nZ == 1) {
+                            hCount++;
+                        }
+                        indigoFree(neiH);
+                    }
+                    indigoFree(neiIterForH);
+                }
+                
+                // Count total valence: sum of bond orders + implicit hydrogens
+                int neiIterForValence = indigoIterateNeighbors(chargedNitrogenAtom);
+                if (neiIterForValence >= 0) {
+                    int neiV = 0;
+                    while ((neiV = indigoNext(neiIterForValence)) != 0) {
+                        int bondHandle = indigoBond(neiV);
+                        int order = indigoBondOrder(bondHandle);
+                        indigoFree(bondHandle);
+                        totalValence += order;
+                        indigoFree(neiV);
+                    }
+                    indigoFree(neiIterForValence);
+                }
+                
+                int implicitH = indigoCountImplicitHydrogens(chargedNitrogenAtom);
+                totalValence += implicitH;
+                hCount += implicitH;
+                
+                if (totalValence == 4 && hCount >= 1) {
+                    isProtonatedAmine = true;
+                }
+                
+                indigoFree(neiIter);
+                // chargedNitrogenAtom is still owned - will be freed below
+            } else {
+                // Couldn't iterate neighbors - still owns chargedNitrogenAtom, free it here.
+                indigoFree(chargedNitrogenAtom);
+            }
+            
+            if (isProtonatedAmine) {
+                // Clone the molecule to neutralize the charge
+                int cloned = indigoClone(mol);
+                if (cloned < 0) {
+                    indigoFree(chargedNitrogenAtom);
+                    return {false, "", "Failed to clone molecule for ammonium cation naming."};
+                }
+                
+                // Find the charged nitrogen in the cloned molecule
+                int clonedAtomIter = indigoIterateAtoms(cloned);
+                if (clonedAtomIter < 0) {
+                    indigoFree(chargedNitrogenAtom);
+                    indigoFree(cloned);
+                    return {false, "", "Failed to iterate atoms in cloned molecule for ammonium cation."};
+                }
+                
+                int targetNitrogen = -1;
+                int clonedAtomHandle = 0;
+                while ((clonedAtomHandle = indigoNext(clonedAtomIter)) != 0) {
+                    int cCharge = 0;
+                    indigoGetCharge(clonedAtomHandle, &cCharge);
+                    if (cCharge == 1) {
+                        int cZ = indigoAtomicNumber(clonedAtomHandle);
+                        if (cZ == 7) {
+                            targetNitrogen = clonedAtomHandle;
+                            break;
+                        }
+                    }
+                    indigoFree(clonedAtomHandle);
+                }
+                indigoFree(clonedAtomIter);
+                
+                if (targetNitrogen == -1) {
+                    // This shouldn't happen, but safety check
+                    if (clonedAtomHandle != 0) indigoFree(clonedAtomHandle);
+                    indigoFree(chargedNitrogenAtom);
+                    indigoFree(cloned);
+                    return {false, "", "Failed to find charged nitrogen in cloned molecule for ammonium cation."};
+                }
+                
+                // Neutralize the charge
+                indigoSetCharge(targetNitrogen, 0);
+                indigoFree(targetNitrogen);
+                
+                // Re-aromatize the cloned molecule to ensure proper structure
+                indigoAromatize(cloned);
+                
+                // Generate name for the neutral amine
+                IupacResult neutralRes = generateName(cloned);
+                indigoFree(chargedNitrogenAtom);
+                indigoFree(cloned);
+                
+                if (!neutralRes.success) {
+                    return {false, "", "Cannot name the neutral amine for ammonium cation: " + neutralRes.error};
+                }
+                
+                // Check if the neutral name ends with "amine" or "aniline" and doesn't contain multi-amine patterns
+                QString mainNm = neutralRes.name;
+                if ((mainNm.endsWith("amine") || mainNm.endsWith("aniline")) &&
+                    !mainNm.contains("diamine") && !mainNm.contains("triamine") && !mainNm.contains("tetramine")) {
+                    // Apply the cation-suffix transform: remove final "e" and append "ium"
+                    // Both "amine" and "aniline" end in a silent "e" that gets elided
+                    QString cationName = mainNm;
+                    cationName.chop(1);  // Remove final "e"
+                    cationName += "ium";
+                    
+                    // Return plain name without charge suffix for P-73 mono-cationic amine
+                    return {true, cationName, ""};
+                } else {
+                    // Neutral name doesn't match expected pattern - fall through to rejection
+                    return {false, "", "Charged atoms are not supported"};
+                }
+            } else {
+                // Not a valid protonated amine - free chargedNitrogenAtom
+                indigoFree(chargedNitrogenAtom);
+            }
+            
+            // If we found a charged nitrogen but it's not a protonated amine, fall through
+            // chargedNitrogenAtom was already freed above
+        } else if (chargedNitrogenAtom != -1) {
+            // Outer condition failed (e.g. more than one charged atom) but a charged
+            // nitrogen handle was still captured during the first pass - free it here so
+            // it isn't leaked.
+            indigoFree(chargedNitrogenAtom);
+        }
+    }
+
     if (indigoCountComponents(mol) > 1) {
         return {false, "", "Multi-component structures are not supported in Phase 1."};
     }

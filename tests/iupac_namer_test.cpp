@@ -826,6 +826,16 @@ int main() {
         {"CO[O-]", "", true, "Charged atoms are not supported"}, // peroxide anion - O bonded to O, not C
         {"[O-]C(=O)C(=O)[O-]", "", true, "Charged atoms are not supported"}, // oxalate dianion - out of scope, must fall through cleanly
         {"[O-]CCO", "", true, "Charged atoms are not supported"}, // diol monoanion - neutral name ends in diol, excluded from generic transform
+        // Standalone ammonium cation tests
+        {"[NH3+]C", "methanaminium"}, // protonated methanamine
+        {"[NH3+]CC", "ethanaminium"}, // protonated ethanamine
+        {"C[NH2+]CC", "N-methylethanaminium"}, // protonated N-methylethanamine
+        {"C[NH+](C)CC", "N,N-dimethylethanaminium"}, // protonated N,N-dimethylethanamine
+        {"[NH3+]c1ccccc1", "anilinium"}, // protonated aniline
+        // Fallthrough cases for out-of-scope cations - should still reject
+        {"C[N+](C)(C)C", "", true, "Charged atoms are not supported"}, // tetramethylammonium - quaternary, no H on N
+        {"[NH3+]CCCCCC[NH3+]", "", true, "Charged atoms are not supported"}, // hexane-1,6-diammonium - multi-charged, out of scope
+        {"[NH3+]CCCCN", "", true, "Charged atoms are not supported"}, // pentane-1,5-diamine with one N protonated - neutral name ends in diamine
     };
 
     int passed = 0;
