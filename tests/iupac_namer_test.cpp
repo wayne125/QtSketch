@@ -96,6 +96,14 @@ int main() {
         {"CC[As](=O)(O)CC", "diethylarsinic acid"},
         {"C[As](=O)(O)c1ccccc1", "methyl(phenyl)arsinic acid"},
 
+        // Stibonic acid
+        {"C[Sb](=O)(O)O", "methanestibonic acid"},
+        {"c1ccccc1[Sb](=O)(O)O", "benzenestibonic acid"},
+
+        // Stibinic acid
+        {"CC[Sb](=O)(O)CC", "diethylstibinic acid"},
+        {"C[Sb](=O)(O)c1ccccc1", "methyl(phenyl)stibinic acid"},
+
         // Borinic acid
         {"CCB(O)CC", "diethylborinic acid"},
 
