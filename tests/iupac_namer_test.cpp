@@ -108,6 +108,12 @@ int main() {
 
         // P-67.2 disulfuric acid
         {"OS(=O)(=O)OS(=O)(=O)O", "disulfuric acid"},
+        
+        // P-67.2 dithionic and dithionous acid (direct S-S bond)
+        {"OS(=O)(=O)S(=O)(=O)O", "dithionic acid"},
+        {"OS(=O)S(=O)O", "dithionous acid"},
+        
+        // P-67.2 bridging-O S(IV) case: disulfurous acid name dilemma -- must NOT match
         {"OS(=O)OS(=O)O", "", true, "Sulfur-containing groups other than thiols, thioethers, and sulfonic/sulfinic acids are not supported in this phase."},
 
         // P-67.2 diarsoric acid

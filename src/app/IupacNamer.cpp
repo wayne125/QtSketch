@@ -8253,17 +8253,26 @@ IupacResult IupacNamer::generateName(int mol) {
         }
     }
 
-    // --- disulfuric acid (P-67.2) specific narrow case ---
-    if (g.nodes.size() == 9) {
+    // --- P-67.2 dinuclear sulfur oxoacids: disulfuric, dithionic, dithionous ---
+    if (g.nodes.size() >= 6 && g.nodes.size() <= 9) {
         int countS = 0, countO = 0;
         for (const auto &n : g.nodes) {
             if (n.atomicNumber == 16) countS++;
             else if (n.atomicNumber == 8) countO++;
         }
-        if (countS == 2 && countO == 7) {
+        // All 3 dinuclear sulfur oxoacids have exactly 2 S atoms
+        if (countS == 2) {
+            // Find S-S bond and bridging oxygen candidates
             int bridgingO = -1;
             int bridgingCount = 0;
+            bool hasDirectSS = false;
+            int sIndices[2] = {-1, -1};
+            int sCounter = 0;
+            
             for (size_t i = 0; i < g.nodes.size(); ++i) {
+                if (g.nodes[i].atomicNumber == 16) {
+                    sIndices[sCounter++] = static_cast<int>(i);
+                }
                 if (g.nodes[i].atomicNumber == 8 && g.nodes[i].neighbors.size() == 2) {
                     int nei1 = g.nodes[i].neighbors[0];
                     int nei2 = g.nodes[i].neighbors[1];
@@ -8273,32 +8282,63 @@ IupacResult IupacNamer::generateName(int mol) {
                     }
                 }
             }
-            if (bridgingCount == 1) {
-                bool valid = true;
-                for (size_t i = 0; i < g.nodes.size(); ++i) {
-                    if (g.nodes[i].atomicNumber == 16) {
-                        if (g.nodes[i].neighbors.size() != 4) { valid = false; break; }
-                        int doubleO = 0, terminalOH = 0, bridgeO = 0;
-                        for (size_t j = 0; j < g.nodes[i].neighbors.size(); ++j) {
-                            int nei = g.nodes[i].neighbors[j];
-                            int order = g.nodes[i].bondOrders[j];
-                            if (g.nodes[nei].atomicNumber == 8) {
-                                if (nei == bridgingO && order == 1) {
-                                    bridgeO++;
-                                } else if (order == 2 && g.nodes[nei].neighbors.size() == 1 && g.nodes[nei].totalH == 0) {
-                                    doubleO++;
-                                } else if (order == 1 && g.nodes[nei].neighbors.size() == 1 && g.nodes[nei].totalH > 0) {
-                                    terminalOH++;
-                                }
-                            }
-                        }
-                        if (doubleO != 2 || terminalOH != 1 || bridgeO != 1) {
-                            valid = false;
-                            break;
-                        }
+            
+            // Check for direct S-S bond
+            if (sIndices[0] != -1 && sIndices[1] != -1) {
+                for (size_t j = 0; j < g.nodes[sIndices[0]].neighbors.size(); ++j) {
+                    int nei = g.nodes[sIndices[0]].neighbors[j];
+                    if (nei == static_cast<size_t>(sIndices[1])) {
+                        hasDirectSS = true;
+                        break;
                     }
                 }
-                if (valid) {
+            }
+            
+            // Validate each S atom's environment
+            bool valid = true;
+            int s1_doubleO = 0, s1_terminalOH = 0, s1_bridgeO = 0, s1_directS = 0;
+            int s2_doubleO = 0, s2_terminalOH = 0, s2_bridgeO = 0, s2_directS = 0;
+            
+            for (int sIdx = 0; sIdx < 2; ++sIdx) {
+                int si = sIndices[sIdx];
+                if (si == -1) { valid = false; break; }
+                
+                for (size_t j = 0; j < g.nodes[si].neighbors.size(); ++j) {
+                    int nei = g.nodes[si].neighbors[j];
+                    int order = g.nodes[si].bondOrders[j];
+                    if (g.nodes[nei].atomicNumber == 8) {
+                        if (nei == static_cast<size_t>(bridgingO) && order == 1) {
+                            if (sIdx == 0) s1_bridgeO++;
+                            else s2_bridgeO++;
+                        } else if (order == 2 && g.nodes[nei].neighbors.size() == 1 && g.nodes[nei].totalH == 0) {
+                            if (sIdx == 0) s1_doubleO++;
+                            else s2_doubleO++;
+                        } else if (order == 1 && g.nodes[nei].neighbors.size() == 1 && g.nodes[nei].totalH > 0) {
+                            if (sIdx == 0) s1_terminalOH++;
+                            else s2_terminalOH++;
+                        }
+                    } else if (g.nodes[nei].atomicNumber == 16) {
+                        if (sIdx == 0) s1_directS++;
+                        else s2_directS++;
+                    }
+                }
+            }
+            
+            if (!valid) {
+                // Fall through
+            } else if (hasDirectSS) {
+                // Direct S-S bond cases
+                if (s1_doubleO == 2 && s2_doubleO == 2 && s1_terminalOH == 1 && s2_terminalOH == 1) {
+                    // Both S(VI): dithionic acid
+                    return {true, "dithionic acid", ""};
+                } else if (s1_doubleO == 1 && s2_doubleO == 1 && s1_terminalOH == 1 && s2_terminalOH == 1) {
+                    // Both S(IV): dithionous acid
+                    return {true, "dithionous acid", ""};
+                }
+            } else if (bridgingCount == 1) {
+                // Bridging oxygen cases - only disulfuric acid (both S(VI)) is valid
+                if (s1_doubleO == 2 && s2_doubleO == 2 && s1_terminalOH == 1 && s2_terminalOH == 1 && s1_bridgeO == 1 && s2_bridgeO == 1) {
+                    // Both S(VI): disulfuric acid
                     return {true, "disulfuric acid", ""};
                 }
             }
