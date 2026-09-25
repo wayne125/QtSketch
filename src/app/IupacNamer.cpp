@@ -4259,6 +4259,278 @@ IupacResult IupacNamer::generateName(int mol) {
             indigoFree(cloned1);
         }
     }
+    // P-77 Salt naming: Group 2 metal carboxylate/alkoxide salts (3-component: 1 metal + 2 identical acid/alcohol)
+    else if (numComponents == 3) {
+        // Extract the three components
+        int comp0 = indigoComponent(mol, 0);
+        int comp1 = indigoComponent(mol, 1);
+        int comp2 = indigoComponent(mol, 2);
+        if (comp0 < 0 || comp1 < 0 || comp2 < 0) {
+            if (comp0 >= 0) indigoFree(comp0);
+            if (comp1 >= 0) indigoFree(comp1);
+            if (comp2 >= 0) indigoFree(comp2);
+            return {false, "", "Failed to extract components for salt detection."};
+        }
+
+        int cloned0 = indigoClone(comp0);
+        int cloned1 = indigoClone(comp1);
+        int cloned2 = indigoClone(comp2);
+        indigoFree(comp0);
+        indigoFree(comp1);
+        indigoFree(comp2);
+
+        if (cloned0 < 0 || cloned1 < 0 || cloned2 < 0) {
+            if (cloned0 >= 0) indigoFree(cloned0);
+            if (cloned1 >= 0) indigoFree(cloned1);
+            if (cloned2 >= 0) indigoFree(cloned2);
+            return {false, "", "Failed to clone components for salt detection."};
+        }
+
+        // Classify each component - same pattern as 2-component case
+        enum CompType3 { MAIN3, METAL3, UNKNOWN3 };
+        struct CompInfo3 {
+            CompType3 type;
+            int metalZ;
+        };
+
+        CompInfo3 info0 = {UNKNOWN3, 0};
+        CompInfo3 info1 = {UNKNOWN3, 0};
+        CompInfo3 info2 = {UNKNOWN3, 0};
+
+        // Classify component 0
+        int atomIter0 = indigoIterateAtoms(cloned0);
+        if (atomIter0 >= 0) {
+            int atomHandle = 0;
+            int heavyAtomCount = 0;
+            int hCount = 0;
+            while ((atomHandle = indigoNext(atomIter0)) != 0) {
+                int z = indigoAtomicNumber(atomHandle);
+                if (z != 1) heavyAtomCount++;
+                else hCount++;
+                indigoFree(atomHandle);
+            }
+            indigoFree(atomIter0);
+
+            if (heavyAtomCount == 1 && (hCount == 0 || hCount == 1)) {
+                int theAtomIter = indigoIterateAtoms(cloned0);
+                if (theAtomIter >= 0) {
+                    int theAtom = indigoNext(theAtomIter);
+                    if (theAtom != 0) {
+                        int z = indigoAtomicNumber(theAtom);
+                        // Group 2 metal: Mg(12), Ca(20)
+                        if (z == 12 || z == 20) {
+                            info0.type = METAL3;
+                            info0.metalZ = z;
+                        }
+                        if (info0.type == UNKNOWN3) {
+                            info0.type = MAIN3;
+                        }
+                        indigoFree(theAtom);
+                    }
+                    indigoFree(theAtomIter);
+                }
+            } else {
+                info0.type = MAIN3;
+            }
+        } else {
+            info0.type = MAIN3;
+        }
+
+        // Classify component 1
+        int atomIter1 = indigoIterateAtoms(cloned1);
+        if (atomIter1 >= 0) {
+            int atomHandle = 0;
+            int heavyAtomCount = 0;
+            int hCount = 0;
+            while ((atomHandle = indigoNext(atomIter1)) != 0) {
+                int z = indigoAtomicNumber(atomHandle);
+                if (z != 1) heavyAtomCount++;
+                else hCount++;
+                indigoFree(atomHandle);
+            }
+            indigoFree(atomIter1);
+
+            if (heavyAtomCount == 1 && (hCount == 0 || hCount == 1)) {
+                int theAtomIter = indigoIterateAtoms(cloned1);
+                if (theAtomIter >= 0) {
+                    int theAtom = indigoNext(theAtomIter);
+                    if (theAtom != 0) {
+                        int z = indigoAtomicNumber(theAtom);
+                        // Group 2 metal: Mg(12), Ca(20)
+                        if (z == 12 || z == 20) {
+                            info1.type = METAL3;
+                            info1.metalZ = z;
+                        }
+                        if (info1.type == UNKNOWN3) {
+                            info1.type = MAIN3;
+                        }
+                        indigoFree(theAtom);
+                    }
+                    indigoFree(theAtomIter);
+                }
+            } else {
+                info1.type = MAIN3;
+            }
+        } else {
+            info1.type = MAIN3;
+        }
+
+        // Classify component 2
+        int atomIter2 = indigoIterateAtoms(cloned2);
+        if (atomIter2 >= 0) {
+            int atomHandle = 0;
+            int heavyAtomCount = 0;
+            int hCount = 0;
+            while ((atomHandle = indigoNext(atomIter2)) != 0) {
+                int z = indigoAtomicNumber(atomHandle);
+                if (z != 1) heavyAtomCount++;
+                else hCount++;
+                indigoFree(atomHandle);
+            }
+            indigoFree(atomIter2);
+
+            if (heavyAtomCount == 1 && (hCount == 0 || hCount == 1)) {
+                int theAtomIter = indigoIterateAtoms(cloned2);
+                if (theAtomIter >= 0) {
+                    int theAtom = indigoNext(theAtomIter);
+                    if (theAtom != 0) {
+                        int z = indigoAtomicNumber(theAtom);
+                        // Group 2 metal: Mg(12), Ca(20)
+                        if (z == 12 || z == 20) {
+                            info2.type = METAL3;
+                            info2.metalZ = z;
+                        }
+                        if (info2.type == UNKNOWN3) {
+                            info2.type = MAIN3;
+                        }
+                        indigoFree(theAtom);
+                    }
+                    indigoFree(theAtomIter);
+                }
+            } else {
+                info2.type = MAIN3;
+            }
+        } else {
+            info2.type = MAIN3;
+        }
+
+        // Check: exactly one metal component and two non-metal components
+        int metalCount = 0;
+        int metalIndex = -1;
+        int nonMetalIndices[2] = {-1, -1};
+        int nonMetalCount = 0;
+
+        if (info0.type == METAL3) { metalCount++; metalIndex = 0; }
+        if (info1.type == METAL3) { metalCount++; metalIndex = 1; }
+        if (info2.type == METAL3) { metalCount++; metalIndex = 2; }
+
+        if (info0.type == MAIN3) { nonMetalIndices[nonMetalCount++] = 0; }
+        if (info1.type == MAIN3) { nonMetalIndices[nonMetalCount++] = 1; }
+        if (info2.type == MAIN3) { nonMetalIndices[nonMetalCount++] = 2; }
+
+        // Must have exactly 1 metal and 2 non-metal components
+        if (metalCount != 1 || nonMetalCount != 2) {
+            indigoFree(cloned0);
+            indigoFree(cloned1);
+            indigoFree(cloned2);
+            // Fall through to multi-component rejection
+        } else {
+            // Get the two non-metal components
+            int nm0_idx = nonMetalIndices[0];
+            int nm1_idx = nonMetalIndices[1];
+            
+            // Create array of cloned handles for non-metal components
+            int clonedNonMetal[2];
+            if (nm0_idx == 0) clonedNonMetal[0] = cloned0;
+            else if (nm0_idx == 1) clonedNonMetal[0] = cloned1;
+            else clonedNonMetal[0] = cloned2;
+            
+            if (nm1_idx == 0) clonedNonMetal[1] = cloned0;
+            else if (nm1_idx == 1) clonedNonMetal[1] = cloned1;
+            else clonedNonMetal[1] = cloned2;
+
+            // Recursively name both non-metal components
+            IupacResult mainRes0 = generateName(clonedNonMetal[0]);
+            IupacResult mainRes1 = generateName(clonedNonMetal[1]);
+
+            // Free all cloned handles
+            indigoFree(cloned0);
+            indigoFree(cloned1);
+            indigoFree(cloned2);
+
+            // Check if both naming operations succeeded
+            if (!mainRes0.success || !mainRes1.success) {
+                return {false, "", "Cannot name the acid/alcohol components of this salt."};
+            }
+
+            // Check that both non-metal components have the exact same name
+            QString name0 = mainRes0.name;
+            QString name1 = mainRes1.name;
+            if (name0 != name1) {
+                // Mismatched acids - fall through to rejection
+                return {false, "", "Multi-component structures are not supported in Phase 1."};
+            }
+
+            // Apply the same anion-suffix-transform chain as Group 1
+            QString anionName;
+            QString mainNm = name0;
+            if (mainNm.endsWith("dioic acid")) {
+                mainNm.chop(10);
+                anionName = mainNm + "dioate";
+            } else if (mainNm.endsWith("oic acid")) {
+                mainNm.chop(8);
+                anionName = mainNm + "oate";
+            } else if (mainNm.endsWith("dicarboxylic acid")) {
+                mainNm.chop(17);
+                anionName = mainNm + "dicarboxylate";
+            } else if (mainNm.endsWith("carboxylic acid")) {
+                mainNm.chop(14);
+                anionName = mainNm + "carboxylate";
+            } else if (mainNm.endsWith("sulfonic acid")) {
+                mainNm.chop(12);
+                anionName = mainNm + "sulfonate";
+            } else if (mainNm.endsWith("sulfinic acid")) {
+                mainNm.chop(12);
+                anionName = mainNm + "sulfinate";
+            } else if (mainNm == "methanol") {
+                anionName = "methoxide";
+            } else if (mainNm == "ethanol") {
+                anionName = "ethoxide";
+            } else if (mainNm == "propan-1-ol") {
+                anionName = "propoxide";
+            } else if (mainNm == "butan-1-ol") {
+                anionName = "butoxide";
+            } else if (mainNm == "phenol") {
+                anionName = "phenoxide";
+            } else if (mainNm.endsWith("ol") && !mainNm.contains("diol") && !mainNm.contains("triol") && !mainNm.contains("tetraol")) {
+                mainNm.chop(2);
+                anionName = mainNm + "olate";
+            } else {
+                anionName = "";
+            }
+
+            if (anionName.isEmpty()) {
+                return {false, "", "Multi-component structures are not supported in Phase 1."};
+            }
+
+            // Resolve the metal name
+            QString metalName;
+            int theMetalZ;
+            if (info0.type == METAL3) theMetalZ = info0.metalZ;
+            else if (info1.type == METAL3) theMetalZ = info1.metalZ;
+            else theMetalZ = info2.metalZ;
+
+            if (theMetalZ == 12) metalName = "magnesium";
+            else if (theMetalZ == 20) metalName = "calcium";
+            else metalName = "";
+
+            if (metalName.isEmpty()) {
+                return {false, "", "Unrecognized metal in salt."};
+            }
+
+            return {true, metalName + " di" + anionName, ""};
+        }
+    }
 
     // Standalone carboxylate anion naming: single-component molecule with exactly one O(-) charge
     // on a carboxylate group (R-C(=O)-O(-)), no counterion present

@@ -850,6 +850,17 @@ int main() {
         {"C[N+](C)(C)C", "", true, "Charged atoms are not supported"}, // tetramethylammonium - quaternary, no H on N
         {"[NH3+]CCCCCC[NH3+]", "", true, "Charged atoms are not supported"}, // hexane-1,6-diammonium - multi-charged, out of scope
         {"[NH3+]CCCCN", "", true, "Charged atoms are not supported"}, // pentane-1,5-diamine with one N protonated - neutral name ends in diamine
+        // Group 2 metal carboxylate salts
+        {"[Ca].CC(=O)O.CC(=O)O", "calcium diethanoate"},
+        {"[Mg].CC(=O)O.CC(=O)O", "magnesium diethanoate"},
+        {"CC(=O)O.[Ca].CC(=O)O", "calcium diethanoate"},
+        {"CC(=O)O.CC(=O)O.[Ca]", "calcium diethanoate"},
+        // Group 2 metal alkoxide salts
+        {"[Ca].CCO.CCO", "calcium diethoxide"},
+        {"[Mg].CCO.CCO", "magnesium diethoxide"},
+        // Mismatched acid rejection
+        {"[Ca].CC(=O)O.CCC(=O)O", "", true, "Multi-component structures are not supported"}, // ethanoic + propanoic acid
+        {"[Ca].CCO.CCCO", "", true, "Multi-component structures are not supported"}, // ethanol + propanol
     };
 
     int passed = 0;
