@@ -382,6 +382,27 @@ int main() {
         // Confirm existing amido tests still pass
         {"CC(NC(=O)C)C(=O)O", "2-ethanamidopropanoic acid"},
 
+        // Single-carbon-branch locant-suppression tests (P-16.3.3-style
+        // enclosing-marks rule): a branch rooted on one carbon has only one
+        // possible substituent position, so citing "1-" is redundant --
+        // "hydroxymethyl", not "1-hydroxymethyl". Found via the real FDA-drug
+        // sweep (SALMETEROL producing a spurious "(1-hydroxymethyl)"), traced
+        // to a minimal repro, and fixed at the source in nameBranchGraph.
+        {"OC(=O)CC(CO)CC", "3-(hydroxymethyl)pentanoic acid"},
+        // Multiple identical substituents on one carbon still take the
+        // multiplying prefix, still with no locant: -CHCl2 -> "dichloromethyl"
+        {"OC(=O)CC(Cl)Cl", "3,3-dichloropropanoic acid"},
+        // A substituent name that starts with a letter, even with an internal
+        // locant from a recursive ring-substituent call, merges directly with
+        // no enclosing marks at all (this was the one real regression the fix
+        // itself introduced and had to be corrected for): thiophen-2-yl +
+        // methyl -> "thiophen-2-ylmethyl", not "(thiophen-2-yl)methyl".
+        {"OC(=O)CC(Cc1cccs1)CC", "3-(thiophen-2-ylmethyl)pentanoic acid"},
+        // A substituent name that starts with a locant DIGIT still needs its
+        // own enclosing marks, with the outer wrap alternated to "[...]" since
+        // the inner name already used "(...)": (4-methoxyphenyl) + methyl.
+        {"OC(=O)CC(Cc1ccc(OC)cc1)CC", "3-[(4-methoxyphenyl)methyl]pentanoic acid"},
+
         // Halogen substituent
         {"CC(Cl)C", "2-chloropropane"},
 

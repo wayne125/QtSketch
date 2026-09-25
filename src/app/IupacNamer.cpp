@@ -2254,19 +2254,53 @@ QString nameBranchGraph(const Graph &g, int rootIdx, int parentIdx, const std::v
             std::vector<int> locs = it->second;
             std::sort(locs.begin(), locs.end());
 
-            QStringList locStrs;
-            for (int l : locs) locStrs.append(QString::number(l));
-
-            QString prefixStr = locStrs.join(",");
-            if (locs.size() > 1) {
-                prefixStr += "-" + multiPrefix(static_cast<int>(locs.size())) + pName;
+            QString prefixStr;
+            if (bLen == 1) {
+                // A single-carbon branch has only one possible substituent
+                // position -- citing "1-" is redundant and non-standard (e.g.
+                // "hydroxymethyl", not "1-hydroxymethyl"). Still apply the
+                // multiplying prefix for repeated identical groups on that one
+                // carbon (e.g. "dichloromethyl" for -CHCl2), just with no locant.
+                // A recursively-named substituent (e.g. a ring name from
+                // nameRingAsSubstituent) may already be self-wrapped in its own
+                // enclosure marks purely because it contains an internal locant
+                // (e.g. "(thiophen-2-yl)"). Per the enclosing-marks rule, that
+                // wrap is only actually needed when the name STARTS with a
+                // locant digit (e.g. "(4-methoxyphenyl)", which would be
+                // ambiguous if concatenated bare) -- a name that starts with a
+                // letter is unambiguous even with an internal locant and merges
+                // directly ("thiophen-2-yl" + "methyl" = "thiophen-2-ylmethyl",
+                // not "(thiophen-2-yl)methyl").
+                if ((pName.startsWith("(") && pName.endsWith(")")) || (pName.startsWith("[") && pName.endsWith("]"))) {
+                    QString inner = pName.mid(1, pName.length() - 2);
+                    if (!inner.isEmpty() && !inner[0].isDigit()) {
+                        pName = inner;
+                    }
+                }
+                prefixStr = (locs.size() > 1) ? (multiPrefix(static_cast<int>(locs.size())) + pName) : pName;
             } else {
-                prefixStr += "-" + pName;
+                QStringList locStrs;
+                for (int l : locs) locStrs.append(QString::number(l));
+                prefixStr = locStrs.join(",");
+                if (locs.size() > 1) {
+                    prefixStr += "-" + multiPrefix(static_cast<int>(locs.size())) + pName;
+                } else {
+                    prefixStr += "-" + pName;
+                }
             }
             formattedPrefixes.append(prefixStr);
         }
 
-        QString pStr = formattedPrefixes.join("-");
+        QString pStr = formattedPrefixes.join(bLen == 1 ? "" : "-");
+        if (bLen == 1 && (pStr.contains('(') || pStr.contains('['))) {
+            // Alternate enclosure marks when the (only) nested substituent name
+            // already carries its own parens (e.g. "(4-methoxyphenyl)methyl"
+            // needs the outer wrap to be "[...]", not "(...)", to avoid
+            // ambiguous nesting) -- only reachable for bLen == 1 since that is
+            // the only case where a locant-less substituent name is joined in
+            // directly rather than following a "N-" locant prefix.
+            return "[" + pStr + root + "yl]";
+        }
         return QString("(%1%2yl)").arg(pStr, root);
     }
 
@@ -6754,7 +6788,8 @@ IupacResult IupacNamer::generateName(int mol) {
                                             QString bName = nameBranchGraph(g, nei, nNode, sssrRings);
                                             if (bName.isEmpty()) { invalidBranch = true; return false; }
                                             
-                                            if (bName == "(1-phenylmethyl)" || bName == "1-phenylmethyl") {
+                                            if (bName == "(1-phenylmethyl)" || bName == "1-phenylmethyl" ||
+                                                bName == "(phenylmethyl)" || bName == "phenylmethyl") {
                                                 bName = "benzyl";
                                             } else if (bName.startsWith("(1-") && bName.endsWith("methyl)")) {
                                                 QString inner = bName.mid(3, bName.length() - 10);
@@ -7524,7 +7559,8 @@ IupacResult IupacNamer::generateName(int mol) {
                                 QString s = nameBranchGraph(g, b.alkylNeighbor, exoN, sssrRings);
                                 if (s.isEmpty()) { invalidBranch = true; break; }
                                 
-                                if (s == "(1-phenylmethyl)" || s == "1-phenylmethyl") {
+                                if (s == "(1-phenylmethyl)" || s == "1-phenylmethyl" ||
+                                    s == "(phenylmethyl)" || s == "phenylmethyl") {
                                     s = "benzyl";
                                 } else if (s.startsWith("(1-") && s.endsWith("methyl)")) {
                                     QString inner = s.mid(3, s.length() - 10);
