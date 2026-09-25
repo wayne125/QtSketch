@@ -116,9 +116,16 @@ int main() {
         // P-67.2 bridging-O S(IV) case: disulfurous acid name dilemma -- must NOT match
         {"OS(=O)OS(=O)O", "", true, "Sulfur-containing groups other than thiols, thioethers, and sulfonic/sulfinic acids are not supported in this phase."},
 
-        // P-67.2 diarsoric acid
+        // P-67.2 diarsoric acid family
         {"O[As](=O)(O)O[As](=O)(O)O", "diarsoric acid"},
-        {"O[As](=O)(O)[As](=O)(O)O", "", true, "Arsenic-containing groups other than arsonic and arsinic acids are not supported in this phase."},
+        {"O[As](=O)(O)[As](=O)(O)O", "hypodiarsoric acid"},
+        {"O[As](O)O[As](O)O", "diarsorous acid"},
+        {"O[As](O)[As](O)O", "hypodiarsorous acid"},
+        
+        // P-67.2 boron oxoacid family
+        {"OB(O)OB(O)O", "diboric acid"},
+        {"OB(O)B(O)O", "hypodiboric acid"},
+        
         {"CCB(O)Cl", "chloro(ethyl)borinic acid"},
         {"CB(O)c1ccccc1", "methyl(phenyl)borinic acid"},
 

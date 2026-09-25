@@ -6046,17 +6046,26 @@ IupacResult IupacNamer::generateName(int mol) {
         }
     }
 
-    // --- diarsoric acid (P-67.2) specific narrow case ---
-    if (g.nodes.size() == 9) {
+    // --- P-67.2 dinuclear arsenic oxoacids: diarsoric, hypodiarsoric, diarsorous, hypodiarsorous ---
+    if (g.nodes.size() >= 6 && g.nodes.size() <= 9) {
         int countAs = 0, countO = 0;
         for (const auto &n : g.nodes) {
             if (n.atomicNumber == 33) countAs++;
             else if (n.atomicNumber == 8) countO++;
         }
-        if (countAs == 2 && countO == 7) {
+        // All 4 dinuclear arsenic oxoacids have exactly 2 As atoms
+        if (countAs == 2) {
+            // Find As-As bond and bridging oxygen candidates
             int bridgingO = -1;
             int bridgingCount = 0;
+            bool hasDirectAsAs = false;
+            int asIndices[2] = {-1, -1};
+            int asCounter = 0;
+            
             for (size_t i = 0; i < g.nodes.size(); ++i) {
+                if (g.nodes[i].atomicNumber == 33) {
+                    asIndices[asCounter++] = static_cast<int>(i);
+                }
                 if (g.nodes[i].atomicNumber == 8 && g.nodes[i].neighbors.size() == 2) {
                     int nei1 = g.nodes[i].neighbors[0];
                     int nei2 = g.nodes[i].neighbors[1];
@@ -6066,33 +6075,151 @@ IupacResult IupacNamer::generateName(int mol) {
                     }
                 }
             }
-            if (bridgingCount == 1) {
-                bool valid = true;
-                for (size_t i = 0; i < g.nodes.size(); ++i) {
-                    if (g.nodes[i].atomicNumber == 33) {
-                        if (g.nodes[i].neighbors.size() != 4) { valid = false; break; }
-                        int doubleO = 0, terminalOH = 0, bridgeO = 0;
-                        for (size_t j = 0; j < g.nodes[i].neighbors.size(); ++j) {
-                            int nei = g.nodes[i].neighbors[j];
-                            int order = g.nodes[i].bondOrders[j];
-                            if (g.nodes[nei].atomicNumber == 8) {
-                                if (nei == bridgingO && order == 1) {
-                                    bridgeO++;
-                                } else if (order == 2 && g.nodes[nei].neighbors.size() == 1 && g.nodes[nei].totalH == 0) {
-                                    doubleO++;
-                                } else if (order == 1 && g.nodes[nei].neighbors.size() == 1 && g.nodes[nei].totalH > 0) {
-                                    terminalOH++;
-                                }
-                            }
-                        }
-                        if (doubleO != 1 || terminalOH != 2 || bridgeO != 1) {
-                            valid = false;
-                            break;
-                        }
+            
+            // Check for direct As-As bond
+            if (asIndices[0] != -1 && asIndices[1] != -1) {
+                for (size_t j = 0; j < g.nodes[asIndices[0]].neighbors.size(); ++j) {
+                    int nei = g.nodes[asIndices[0]].neighbors[j];
+                    if (nei == static_cast<size_t>(asIndices[1])) {
+                        hasDirectAsAs = true;
+                        break;
                     }
                 }
-                if (valid) {
+            }
+            
+            // Validate each As atom's environment
+            bool valid = true;
+            int as1_doubleO = 0, as1_terminalOH = 0, as1_bridgeO = 0, as1_directAs = 0;
+            int as2_doubleO = 0, as2_terminalOH = 0, as2_bridgeO = 0, as2_directAs = 0;
+            
+            for (int asIdx = 0; asIdx < 2; ++asIdx) {
+                int ai = asIndices[asIdx];
+                if (ai == -1) { valid = false; break; }
+                
+                for (size_t j = 0; j < g.nodes[ai].neighbors.size(); ++j) {
+                    int nei = g.nodes[ai].neighbors[j];
+                    int order = g.nodes[ai].bondOrders[j];
+                    if (g.nodes[nei].atomicNumber == 8) {
+                        if (nei == static_cast<size_t>(bridgingO) && order == 1) {
+                            if (asIdx == 0) as1_bridgeO++;
+                            else as2_bridgeO++;
+                        } else if (order == 2 && g.nodes[nei].neighbors.size() == 1 && g.nodes[nei].totalH == 0) {
+                            if (asIdx == 0) as1_doubleO++;
+                            else as2_doubleO++;
+                        } else if (order == 1 && g.nodes[nei].neighbors.size() == 1 && g.nodes[nei].totalH > 0) {
+                            if (asIdx == 0) as1_terminalOH++;
+                            else as2_terminalOH++;
+                        }
+                    } else if (g.nodes[nei].atomicNumber == 33) {
+                        if (asIdx == 0) as1_directAs++;
+                        else as2_directAs++;
+                    }
+                }
+            }
+            
+            if (!valid) {
+                // Fall through
+            } else if (hasDirectAsAs) {
+                // Direct As-As bond cases
+                if (as1_doubleO == 1 && as2_doubleO == 1 && as1_terminalOH == 2 && as2_terminalOH == 2) {
+                    // Both As(V): hypodiarsoric acid
+                    return {true, "hypodiarsoric acid", ""};
+                } else if (as1_doubleO == 0 && as2_doubleO == 0 && as1_terminalOH == 2 && as2_terminalOH == 2) {
+                    // Both As(III): hypodiarsorous acid
+                    return {true, "hypodiarsorous acid", ""};
+                }
+            } else if (bridgingCount == 1) {
+                // Bridging oxygen cases
+                if (as1_doubleO == 1 && as2_doubleO == 1 && as1_terminalOH == 2 && as2_terminalOH == 2 && as1_bridgeO == 1 && as2_bridgeO == 1) {
+                    // Both As(V): diarsoric acid
                     return {true, "diarsoric acid", ""};
+                } else if (as1_doubleO == 0 && as2_doubleO == 0 && as1_terminalOH == 2 && as2_terminalOH == 2 && as1_bridgeO == 1 && as2_bridgeO == 1) {
+                    // Both As(III): diarsorous acid
+                    return {true, "diarsorous acid", ""};
+                }
+            }
+        }
+    }
+
+    // --- P-67.2 dinuclear boron oxoacids: diboric acid, hypodiboric acid ---
+    if (g.nodes.size() >= 5 && g.nodes.size() <= 7) {
+        int countB = 0, countO = 0;
+        for (const auto &n : g.nodes) {
+            if (n.atomicNumber == 5) countB++;
+            else if (n.atomicNumber == 8) countO++;
+        }
+        // Both dinuclear boron oxoacids have exactly 2 B atoms
+        if (countB == 2) {
+            // Find B-B bond and bridging oxygen candidates
+            int bridgingO = -1;
+            int bridgingCount = 0;
+            bool hasDirectBB = false;
+            int bIndices[2] = {-1, -1};
+            int bCounter = 0;
+            
+            for (size_t i = 0; i < g.nodes.size(); ++i) {
+                if (g.nodes[i].atomicNumber == 5) {
+                    bIndices[bCounter++] = static_cast<int>(i);
+                }
+                if (g.nodes[i].atomicNumber == 8 && g.nodes[i].neighbors.size() == 2) {
+                    int nei1 = g.nodes[i].neighbors[0];
+                    int nei2 = g.nodes[i].neighbors[1];
+                    if (g.nodes[nei1].atomicNumber == 5 && g.nodes[nei2].atomicNumber == 5 && g.nodes[i].totalH == 0) {
+                        bridgingO = static_cast<int>(i);
+                        bridgingCount++;
+                    }
+                }
+            }
+            
+            // Check for direct B-B bond
+            if (bIndices[0] != -1 && bIndices[1] != -1) {
+                for (size_t j = 0; j < g.nodes[bIndices[0]].neighbors.size(); ++j) {
+                    int nei = g.nodes[bIndices[0]].neighbors[j];
+                    if (nei == static_cast<size_t>(bIndices[1])) {
+                        hasDirectBB = true;
+                        break;
+                    }
+                }
+            }
+            
+            // Validate each B atom's environment
+            bool valid = true;
+            int b1_terminalOH = 0, b1_bridgeO = 0, b1_directB = 0;
+            int b2_terminalOH = 0, b2_bridgeO = 0, b2_directB = 0;
+            
+            for (int bIdx = 0; bIdx < 2; ++bIdx) {
+                int bi = bIndices[bIdx];
+                if (bi == -1) { valid = false; break; }
+                
+                for (size_t j = 0; j < g.nodes[bi].neighbors.size(); ++j) {
+                    int nei = g.nodes[bi].neighbors[j];
+                    int order = g.nodes[bi].bondOrders[j];
+                    if (g.nodes[nei].atomicNumber == 8) {
+                        if (nei == static_cast<size_t>(bridgingO) && order == 1) {
+                            if (bIdx == 0) b1_bridgeO++;
+                            else b2_bridgeO++;
+                        } else if (order == 1 && g.nodes[nei].neighbors.size() == 1 && g.nodes[nei].totalH > 0) {
+                            if (bIdx == 0) b1_terminalOH++;
+                            else b2_terminalOH++;
+                        }
+                    } else if (g.nodes[nei].atomicNumber == 5) {
+                        if (bIdx == 0) b1_directB++;
+                        else b2_directB++;
+                    }
+                }
+            }
+            
+            if (!valid) {
+                // Fall through
+            } else if (hasDirectBB) {
+                // Direct B-B bond case: hypodiboric acid
+                if (b1_terminalOH == 2 && b2_terminalOH == 2 && b1_directB == 1 && b2_directB == 1) {
+                    return {true, "hypodiboric acid", ""};
+                }
+            } else if (bridgingCount == 1) {
+                // Bridging oxygen case: diboric acid
+                if (b1_terminalOH == 2 && b2_terminalOH == 2 && b1_bridgeO == 1 && b2_bridgeO == 1) {
+                    return {true, "diboric acid", ""};
                 }
             }
         }
