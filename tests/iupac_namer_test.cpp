@@ -789,16 +789,27 @@ int main() {
         // pre-existing, correct "carbamic acid" handling.
         {"NC(=O)O", "carbamic acid"},
 
-        {"CCCC(=O)N=[N+]=[N-]", "", true, "Acyl pseudohalides"},
-        {"CCCC(=O)C#N", "", true, "Acyl pseudohalides"},
-        {"CCCC(=O)N=C=O", "", true, "Acyl pseudohalides"},
+        // Acyl azide (pseudohalide)
+        {"CCCC(=O)N=[N+]=[N-]", "butanoyl azide"},
+        // Acyl cyanide still rejected (out of scope)
+        {"CCCC(=O)C#N", "", true, "Acyl cyanide is not supported in this phase."},
+        // Acyl isocyanate (pseudohalide)
+        {"CCCC(=O)N=C=O", "butanoyl isocyanate"},
+        // Acyl isothiocyanate (pseudohalide)
+        {"CCCC(=O)N=C=S", "butanoyl isothiocyanate"},
 
-        // Acyl isocyanate on ring-substituent classification paths that the
-        // original acyl-pseudohalide fix's carbonIsocyanate map didn't reach
-        // (that map is scoped only to the plain-acyclic-chain region) --
-        // must also reject cleanly, not fall through to a wrong AMIDE name.
-        {"O=C(N=C=O)C1CCCCCCCCCN1", "", true, "Acyl pseudohalides"},
-        {"O=C(N=C=O)c1ccc2ccccc2c1", "", true, "Acyl pseudohalides"},
+        // Acyl isocyanate/isothiocyanate on monocyclic region
+        {"c1ccccc1C(=O)N=C=O", "benzenecarbonyl isocyanate"},
+        {"c1ccccc1C(=O)N=C=S", "benzenecarbonyl isothiocyanate"},
+        // Acyl isocyanate on the large-heterocycle and naphthalene ring
+        // regions too -- previously these shapes were only cleanly
+        // rejected (their heterocumulene N=C=O carbon fell through to a
+        // spurious rootless-thiocarbonyl/aldehyde rejection); now that the
+        // heterocumulene carbon is correctly excluded from principal-group
+        // classification in all three regions, they resolve to real names
+        // via the same already-verified ring-carbonyl-halide machinery.
+        {"O=C(N=C=O)C1CCCCCCCCCN1", "azacycloundecane-2-carbonyl isocyanate"},
+        {"O=C(N=C=O)c1ccc2ccccc2c1", "naphthalene-2-carbonyl isocyanate"},
 
         {"CC(=O)OO", "", true, "Peroxycarboxylic acids"},
         {"OOC(=O)c1ccccc1", "", true, "Peroxycarboxylic acids"},
