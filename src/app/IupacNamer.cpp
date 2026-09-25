@@ -4237,6 +4237,22 @@ IupacResult IupacNamer::generateName(int mol) {
                 return {false, "", "Multi-component structures are not supported in Phase 1."};
             }
             return {true, "ammonium " + anionName, ""};
+        } else if (info0.type == AMMONIUM && info1.type == HALIDE) {
+            indigoFree(cloned0);
+            indigoFree(cloned1);
+            QString halideWord = halogenSuffixWord(info1.halogenZ);
+            if (halideWord.isEmpty()) {
+                return {false, "", "Unrecognized halide in salt."};
+            }
+            return {true, "ammonium " + halideWord, ""};
+        } else if (info0.type == HALIDE && info1.type == AMMONIUM) {
+            indigoFree(cloned0);
+            indigoFree(cloned1);
+            QString halideWord = halogenSuffixWord(info0.halogenZ);
+            if (halideWord.isEmpty()) {
+                return {false, "", "Unrecognized halide in salt."};
+            }
+            return {true, "ammonium " + halideWord, ""};
         } else {
             // Anything else falls through to multi-component rejection
             indigoFree(cloned0);

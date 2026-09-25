@@ -813,8 +813,12 @@ int main() {
         {"[NH4+].CCO", "ammonium ethoxide"},
         {"CCO.[NH4+]", "ammonium ethoxide"},
         {"[NH4+].CO", "ammonium methoxide"},
-        // Ammonium + halide fallthrough (out of scope)
-        {"[NH4+].[Cl-]", "", true, "Multi-component structures are not supported"},
+        // Ammonium halide salts
+        {"[NH4+].[Cl-]", "ammonium chloride"},
+        {"[Cl-].[NH4+]", "ammonium chloride"},
+        {"[NH4+].[F-]", "ammonium fluoride"},
+        {"[NH4+].[Br-]", "ammonium bromide"},
+        {"[NH4+].[I-]", "ammonium iodide"},
         // Fallthrough cases - should still reject
         {"CC(=O)O.CC", "", true, "Multi-component structures are not supported"},
         {"c1ccccc1N.c1ccccc1", "", true, "Multi-component structures are not supported"},
