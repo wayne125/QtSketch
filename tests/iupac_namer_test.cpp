@@ -858,6 +858,18 @@ int main() {
         // Group 2 metal alkoxide salts
         {"[Ca].CCO.CCO", "calcium diethoxide"},
         {"[Mg].CCO.CCO", "magnesium diethoxide"},
+        // Group 2 metal halide salts
+        {"[Ca].[Cl-].[Cl-]", "calcium chloride"},
+        {"[Mg].[Cl-].[Cl-]", "magnesium chloride"},
+        {"[Ca].[F-].[F-]", "calcium fluoride"},
+        {"[Ca].[Br-].[Br-]", "calcium bromide"},
+        {"[Ca].[I-].[I-]", "calcium iodide"},
+        // Group 2 metal halide salts - metal in different positions
+        {"[Cl-].[Ca].[Cl-]", "calcium chloride"},
+        {"[Cl-].[Cl-].[Ca]", "calcium chloride"},
+        {"[Cl-].[Mg].[Cl-]", "magnesium chloride"},
+        // Mixed halide rejection
+        {"[Ca].[Cl-].[Br-]", "", true, "Multi-component structures are not supported"}, // mixed halides
         // Mismatched acid rejection
         {"[Ca].CC(=O)O.CCC(=O)O", "", true, "Multi-component structures are not supported"}, // ethanoic + propanoic acid
         {"[Ca].CCO.CCCO", "", true, "Multi-component structures are not supported"}, // ethanol + propanol

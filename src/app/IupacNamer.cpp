@@ -4287,15 +4287,16 @@ IupacResult IupacNamer::generateName(int mol) {
         }
 
         // Classify each component - same pattern as 2-component case
-        enum CompType3 { MAIN3, METAL3, UNKNOWN3 };
+        enum CompType3 { MAIN3, METAL3, HALIDE3, UNKNOWN3 };
         struct CompInfo3 {
             CompType3 type;
             int metalZ;
+            int halogenZ;
         };
 
-        CompInfo3 info0 = {UNKNOWN3, 0};
-        CompInfo3 info1 = {UNKNOWN3, 0};
-        CompInfo3 info2 = {UNKNOWN3, 0};
+        CompInfo3 info0 = {UNKNOWN3, 0, 0};
+        CompInfo3 info1 = {UNKNOWN3, 0, 0};
+        CompInfo3 info2 = {UNKNOWN3, 0, 0};
 
         // Classify component 0
         int atomIter0 = indigoIterateAtoms(cloned0);
@@ -4317,8 +4318,36 @@ IupacResult IupacNamer::generateName(int mol) {
                     int theAtom = indigoNext(theAtomIter);
                     if (theAtom != 0) {
                         int z = indigoAtomicNumber(theAtom);
+                        int charge = 0;
+                        indigoGetCharge(theAtom, &charge);
+
+                        // Check implicit hydrogens
+                        int implicitH = indigoCountImplicitHydrogens(theAtom);
+                        int totalH = implicitH;
+
+                        // Count explicit H neighbors
+                        int neiIter = indigoIterateNeighbors(theAtom);
+                        if (neiIter >= 0) {
+                            int nei = 0;
+                            while ((nei = indigoNext(neiIter)) != 0) {
+                                int nZ = indigoAtomicNumber(nei);
+                                if (nZ == 1) totalH++;
+                                indigoFree(nei);
+                            }
+                            indigoFree(neiIter);
+                        }
+
+                        // Halide classification: F(9), Cl(17), Br(35), I(53)
+                        if (z == 9 || z == 17 || z == 35 || z == 53) {
+                            // Case (a): charge -1 with no hydrogens
+                            // Case (b): charge 0 with exactly 1 hydrogen (implicit H from HCl etc.)
+                            if ((charge == -1 && totalH == 0) || (charge == 0 && totalH == 1)) {
+                                info0.type = HALIDE3;
+                                info0.halogenZ = z;
+                            }
+                        }
                         // Group 2 metal: Mg(12), Ca(20)
-                        if (z == 12 || z == 20) {
+                        else if (z == 12 || z == 20) {
                             info0.type = METAL3;
                             info0.metalZ = z;
                         }
@@ -4356,8 +4385,36 @@ IupacResult IupacNamer::generateName(int mol) {
                     int theAtom = indigoNext(theAtomIter);
                     if (theAtom != 0) {
                         int z = indigoAtomicNumber(theAtom);
+                        int charge = 0;
+                        indigoGetCharge(theAtom, &charge);
+
+                        // Check implicit hydrogens
+                        int implicitH = indigoCountImplicitHydrogens(theAtom);
+                        int totalH = implicitH;
+
+                        // Count explicit H neighbors
+                        int neiIter = indigoIterateNeighbors(theAtom);
+                        if (neiIter >= 0) {
+                            int nei = 0;
+                            while ((nei = indigoNext(neiIter)) != 0) {
+                                int nZ = indigoAtomicNumber(nei);
+                                if (nZ == 1) totalH++;
+                                indigoFree(nei);
+                            }
+                            indigoFree(neiIter);
+                        }
+
+                        // Halide classification: F(9), Cl(17), Br(35), I(53)
+                        if (z == 9 || z == 17 || z == 35 || z == 53) {
+                            // Case (a): charge -1 with no hydrogens
+                            // Case (b): charge 0 with exactly 1 hydrogen (implicit H from HCl etc.)
+                            if ((charge == -1 && totalH == 0) || (charge == 0 && totalH == 1)) {
+                                info1.type = HALIDE3;
+                                info1.halogenZ = z;
+                            }
+                        }
                         // Group 2 metal: Mg(12), Ca(20)
-                        if (z == 12 || z == 20) {
+                        else if (z == 12 || z == 20) {
                             info1.type = METAL3;
                             info1.metalZ = z;
                         }
@@ -4395,8 +4452,36 @@ IupacResult IupacNamer::generateName(int mol) {
                     int theAtom = indigoNext(theAtomIter);
                     if (theAtom != 0) {
                         int z = indigoAtomicNumber(theAtom);
+                        int charge = 0;
+                        indigoGetCharge(theAtom, &charge);
+
+                        // Check implicit hydrogens
+                        int implicitH = indigoCountImplicitHydrogens(theAtom);
+                        int totalH = implicitH;
+
+                        // Count explicit H neighbors
+                        int neiIter = indigoIterateNeighbors(theAtom);
+                        if (neiIter >= 0) {
+                            int nei = 0;
+                            while ((nei = indigoNext(neiIter)) != 0) {
+                                int nZ = indigoAtomicNumber(nei);
+                                if (nZ == 1) totalH++;
+                                indigoFree(nei);
+                            }
+                            indigoFree(neiIter);
+                        }
+
+                        // Halide classification: F(9), Cl(17), Br(35), I(53)
+                        if (z == 9 || z == 17 || z == 35 || z == 53) {
+                            // Case (a): charge -1 with no hydrogens
+                            // Case (b): charge 0 with exactly 1 hydrogen (implicit H from HCl etc.)
+                            if ((charge == -1 && totalH == 0) || (charge == 0 && totalH == 1)) {
+                                info2.type = HALIDE3;
+                                info2.halogenZ = z;
+                            }
+                        }
                         // Group 2 metal: Mg(12), Ca(20)
-                        if (z == 12 || z == 20) {
+                        else if (z == 12 || z == 20) {
                             info2.type = METAL3;
                             info2.metalZ = z;
                         }
@@ -4412,6 +4497,47 @@ IupacResult IupacNamer::generateName(int mol) {
             }
         } else {
             info2.type = MAIN3;
+        }
+
+        // Check for Group 2 metal + 2 identical halides (e.g., [Ca].[Cl-].[Cl-] -> calcium chloride)
+        int metalCount3 = 0;
+        int metalIndex3 = -1;
+        int halideCount3 = 0;
+        int halideIndices3[2] = {-1, -1};
+
+        if (info0.type == METAL3) { metalCount3++; metalIndex3 = 0; }
+        if (info1.type == METAL3) { metalCount3++; metalIndex3 = 1; }
+        if (info2.type == METAL3) { metalCount3++; metalIndex3 = 2; }
+
+        if (info0.type == HALIDE3) { halideIndices3[halideCount3++] = 0; }
+        if (info1.type == HALIDE3) { halideIndices3[halideCount3++] = 1; }
+        if (info2.type == HALIDE3) { halideIndices3[halideCount3++] = 2; }
+
+        // Check for exactly 1 metal and 2 halides with the same halogenZ
+        if (metalCount3 == 1 && halideCount3 == 2) {
+            int h0_idx = halideIndices3[0];
+            int h1_idx = halideIndices3[1];
+            int hZ0 = (h0_idx == 0) ? info0.halogenZ : (h0_idx == 1) ? info1.halogenZ : info2.halogenZ;
+            int hZ1 = (h1_idx == 0) ? info0.halogenZ : (h1_idx == 1) ? info1.halogenZ : info2.halogenZ;
+
+            if (hZ0 == hZ1 && hZ0 != 0) {
+                // Get the metal Z
+                int mZ = (metalIndex3 == 0) ? info0.metalZ : (metalIndex3 == 1) ? info1.metalZ : info2.metalZ;
+                QString metalName;
+                if (mZ == 12) metalName = "magnesium";
+                else if (mZ == 20) metalName = "calcium";
+                else metalName = "";
+
+                if (!metalName.isEmpty()) {
+                    QString halideWord = halogenSuffixWord(hZ0);
+                    if (!halideWord.isEmpty()) {
+                        indigoFree(cloned0);
+                        indigoFree(cloned1);
+                        indigoFree(cloned2);
+                        return {true, metalName + " " + halideWord, ""};
+                    }
+                }
+            }
         }
 
         // Check: exactly one metal component and two non-metal components
