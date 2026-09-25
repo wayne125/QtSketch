@@ -846,8 +846,15 @@ int main() {
         {"C[NH2+]CC", "N-methylethanaminium"}, // protonated N-methylethanamine
         {"C[NH+](C)CC", "N,N-dimethylethanaminium"}, // protonated N,N-dimethylethanamine
         {"[NH3+]c1ccccc1", "anilinium"}, // protonated aniline
-        // Fallthrough cases for out-of-scope cations - should still reject
-        {"C[N+](C)(C)C", "", true, "Charged atoms are not supported"}, // tetramethylammonium - quaternary, no H on N
+        // Standalone symmetric quaternary ammonium cation tests
+        {"C[N+](C)(C)C", "N,N,N-trimethylmethanaminium"}, // tetramethylammonium - symmetric quaternary
+        {"CC[N+](CC)(CC)CC", "N,N,N-triethylethanaminium"}, // tetraethylammonium
+        {"CCC[N+](CCC)(CCC)CCC", "N,N,N-tripropylpropan-1-aminium"}, // tetrapropylammonium
+        {"CCCC[N+](CCCC)(CCCC)CCCC", "N,N,N-tributylbutan-1-aminium"}, // tetrabutylammonium
+        // Fallthrough cases for out-of-scope quaternary cations - should still reject
+        {"C[N+](C)(C)CC", "", true, "Charged atoms are not supported"}, // trimethylethylammonium - non-identical substituents
+        {"C[N+](C)(C)C(C)C", "", true, "Charged atoms are not supported"}, // one branch is isopropyl
+        {"c1ccccc1[N+](C)(C)C", "", true, "Charged atoms are not supported"}, // aryl substituent
         {"[NH3+]CCCCCC[NH3+]", "", true, "Charged atoms are not supported"}, // hexane-1,6-diammonium - multi-charged, out of scope
         {"[NH3+]CCCCN", "", true, "Charged atoms are not supported"}, // pentane-1,5-diamine with one N protonated - neutral name ends in diamine
         // Group 2 metal carboxylate salts

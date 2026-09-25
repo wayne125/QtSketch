@@ -5302,6 +5302,281 @@ IupacResult IupacNamer::generateName(int mol) {
         }
     }
 
+    // Standalone symmetric quaternary ammonium cation naming: single-component molecule
+    // with exactly one N(+1) charge on a quaternary ammonium (R4N+, all 4 R groups identical
+    // unbranched alkyl chains of length 1-4). Blue Book P-73.1.2.1: tetramethylammonium is
+    // named "N,N,N-trimethylmethanaminium". This block handles ONLY the symmetric case where
+    // all 4 substituents are identical simple unbranched alkyl chains (methyl, ethyl,
+    // propyl, or butyl). Non-identical or branched cases fall through to the existing
+    // charge rejection.
+    if (numComponents == 1) {
+        int chargedAtomCountQ = 0;
+        int chargedNitrogenAtomQ = -1;
+        bool hasRadicalQ = false;
+        bool hasIsotopeQ = false;
+        
+        // First pass: count charged atoms and check for radicals/isotopes
+        int atomIterQ = indigoIterateAtoms(mol);
+        if (atomIterQ >= 0) {
+            int atomHandleQ = 0;
+            while ((atomHandleQ = indigoNext(atomIterQ)) != 0) {
+                int rad = 0;
+                if (indigoGetRadicalElectrons(atomHandleQ, &rad) == 1 && rad > 0) {
+                    hasRadicalQ = true;
+                }
+                
+                int iso = indigoIsotope(atomHandleQ);
+                if (iso > 0) {
+                    hasIsotopeQ = true;
+                }
+                
+                int charge = 0;
+                indigoGetCharge(atomHandleQ, &charge);
+                if (charge != 0) {
+                    chargedAtomCountQ++;
+                    int z = indigoAtomicNumber(atomHandleQ);
+                    if (z == 7 && charge == 1) {
+                        if (chargedNitrogenAtomQ == -1) {
+                            chargedNitrogenAtomQ = atomHandleQ;
+                            continue;
+                        }
+                    }
+                }
+                
+                indigoFree(atomHandleQ);
+            }
+            indigoFree(atomIterQ);
+        }
+        
+        // Must have exactly one charged atom, it must be nitrogen with +1 charge, no radicals/isotopes
+        if (chargedAtomCountQ == 1 && chargedNitrogenAtomQ != -1 && !hasRadicalQ && !hasIsotopeQ) {
+            // Verify this is a quaternary ammonium: N with exactly 4 carbon neighbors, zero H
+            bool isSymmetricQuaternary = false;
+            int commonChainLength = -1;
+            
+            // Iterate neighbors of charged nitrogen to collect carbon neighbors
+            std::vector<int> carbonNeighbors;
+            int totalValence = 0;
+            int hCount = 0;
+            int implicitH = 0;
+            
+            int neiIter = indigoIterateNeighbors(chargedNitrogenAtomQ);
+            if (neiIter >= 0) {
+                int nei = 0;
+                while ((nei = indigoNext(neiIter)) != 0) {
+                    int nZ = indigoAtomicNumber(nei);
+                    int bondHandle = indigoBond(nei);
+                    int order = indigoBondOrder(bondHandle);
+                    indigoFree(bondHandle);
+                    
+                    totalValence += order;
+                    
+                    if (nZ == 1) {
+                        hCount++;
+                        indigoFree(nei);
+                    } else if (nZ == 6) {
+                        carbonNeighbors.push_back(nei);
+                    } else {
+                        // Non-carbon, non-hydrogen neighbor - not valid
+                        for (int cn : carbonNeighbors) {
+                            indigoFree(cn);
+                        }
+                        carbonNeighbors.clear();
+                        indigoFree(nei);
+                    }
+                }
+                indigoFree(neiIter);
+            }
+            
+            implicitH = indigoCountImplicitHydrogens(chargedNitrogenAtomQ);
+            totalValence += implicitH;
+            hCount += implicitH;
+            
+            // Must have exactly 4 carbon neighbors and zero H (quaternary)
+            if (carbonNeighbors.size() == 4 && hCount == 0 && totalValence == 4) {
+                // Now check each carbon branch is a simple unbranched alkyl chain of length 1-4
+                std::vector<int> chainLengths;
+                bool allValid = true;
+                
+                // Also need the charged nitrogen's indigo index for comparison
+                int chargedNitrogenIdx = indigoIndex(chargedNitrogenAtomQ);
+                
+                for (size_t ci = 0; ci < carbonNeighbors.size(); ci++) {
+                    int carbonNbr = carbonNeighbors[ci];
+                    int length = 1; // Count the first carbon
+                    int current = carbonNbr;
+                    int prevIdx = chargedNitrogenIdx;
+                    
+                    // Trace the chain outward
+                    while (true) {
+                        int nextCount = 0;
+                        int nextAtom = 0;
+                        bool validChain = true;
+                        
+                        int neiIterTrace = indigoIterateNeighbors(current);
+                        if (neiIterTrace >= 0) {
+                            int traceNei = 0;
+                            while ((traceNei = indigoNext(neiIterTrace)) != 0) {
+                                int traceIdx = indigoIndex(traceNei);
+                                
+                                // Skip the atom we came from
+                                if (traceIdx == prevIdx) {
+                                    indigoFree(traceNei);
+                                    continue;
+                                }
+                                
+                                int nZ = indigoAtomicNumber(traceNei);
+                                int nCharge = 0;
+                                indigoGetCharge(traceNei, &nCharge);
+                                
+                                // Check for branching, heteroatoms, or rings
+                                if (nZ != 6 || nCharge != 0) {
+                                    validChain = false;
+                                    indigoFree(traceNei);
+                                } else {
+                                    nextCount++;
+                                    // Keep the first valid carbon neighbor
+                                    if (nextAtom == 0) {
+                                        nextAtom = traceNei;
+                                    } else {
+                                        // More than one carbon neighbor (excluding the one we came from)
+                                        // This is branching
+                                        indigoFree(traceNei);
+                                    }
+                                }
+                            }
+                            indigoFree(neiIterTrace);
+                        }
+                        
+                        if (!validChain) {
+                            if (nextAtom != 0) {
+                                indigoFree(nextAtom);
+                            }
+                            allValid = false;
+                            break;
+                        }
+                        
+                        if (nextCount == 0) {
+                            // Terminal carbon - chain ends here
+                            if (nextAtom != 0) {
+                                indigoFree(nextAtom);
+                            }
+                            break;
+                        } else if (nextCount == 1) {
+                            // One more heavy atom - continue tracing.
+                            // carbonNbr (the branch's first carbon) is owned by carbonNeighbors
+                            // and freed once in the bulk cleanup below - never free it here, only
+                            // the intermediate carbons this loop itself obtained via nextAtom.
+                            length++;
+                            prevIdx = indigoIndex(current);
+                            if (current != carbonNbr) {
+                                indigoFree(current);
+                            }
+                            current = nextAtom;
+                            nextAtom = 0; // Reset for next iteration
+                            
+                            // Check chain length limit
+                            if (length > 4) {
+                                allValid = false;
+                                break;
+                            }
+                        } else {
+                            // Branching detected (more than one carbon neighbor)
+                            if (nextAtom != 0) {
+                                indigoFree(nextAtom);
+                            }
+                            allValid = false;
+                            break;
+                        }
+                    }
+                    
+                    if (!allValid) {
+                        // Free the current atom if we still have it
+                        if (current != carbonNbr) {
+                            indigoFree(current);
+                        }
+                        break;
+                    }
+                    
+                    // Free the current atom if we moved past the first carbon
+                    if (current != carbonNbr) {
+                        indigoFree(current);
+                    }
+                    
+                    chainLengths.push_back(length);
+                }
+                
+                // Check all chains are identical and within valid range
+                if (allValid && chainLengths.size() == 4) {
+                    bool allSame = true;
+                    for (size_t i = 1; i < chainLengths.size(); i++) {
+                        if (chainLengths[i] != chainLengths[0]) {
+                            allSame = false;
+                            break;
+                        }
+                    }
+                    
+                    if (allSame) {
+                        commonChainLength = chainLengths[0];
+                        if (commonChainLength >= 1 && commonChainLength <= 4) {
+                            isSymmetricQuaternary = true;
+                        }
+                    }
+                }
+                
+                // Free all carbon neighbor handles
+                for (int cn : carbonNeighbors) {
+                    indigoFree(cn);
+                }
+                
+                if (isSymmetricQuaternary) {
+                    // Build the name: "N,N,N-tri" + substituentPrefix + parentAminium
+                    QString substituentPrefix = "";
+                    QString parentAminium = "";
+                    
+                    switch (commonChainLength) {
+                        case 1:
+                            substituentPrefix = "methyl";
+                            parentAminium = "methanaminium";
+                            break;
+                        case 2:
+                            substituentPrefix = "ethyl";
+                            parentAminium = "ethanaminium";
+                            break;
+                        case 3:
+                            substituentPrefix = "propyl";
+                            parentAminium = "propan-1-aminium";
+                            break;
+                        case 4:
+                            substituentPrefix = "butyl";
+                            parentAminium = "butan-1-aminium";
+                            break;
+                        default:
+                            // Shouldn't happen given our validation, but safety
+                            indigoFree(chargedNitrogenAtomQ);
+                            return {false, "", "Charged atoms are not supported"};
+                    }
+                    
+                    QString cationName = "N,N,N-tri" + substituentPrefix + parentAminium;
+                    indigoFree(chargedNitrogenAtomQ);
+                    return {true, cationName, ""};
+                }
+                // Else: fall through to charge rejection
+            } else {
+                // Not exactly 4 carbon neighbors or has H - free any collected handles
+                for (int cn : carbonNeighbors) {
+                    indigoFree(cn);
+                }
+            }
+            
+            // Clean up: free charged nitrogen
+            indigoFree(chargedNitrogenAtomQ);
+        } else if (chargedNitrogenAtomQ != -1) {
+            // Outer condition failed but we still have a charged nitrogen handle
+            indigoFree(chargedNitrogenAtomQ);
+        }
+    }
+
     if (indigoCountComponents(mol) > 1) {
         return {false, "", "Multi-component structures are not supported in Phase 1."};
     }
