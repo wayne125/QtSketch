@@ -5725,7 +5725,7 @@ IupacResult IupacNamer::generateName(int mol) {
                 }
                 indigoFree(neiIter);
             }
-        } else if (z == 6 || z == 7 || z == 8 || z == 16 || z == 15 || z == 33 || z == 5 || z == 9 || z == 17 || z == 35 || z == 53 || z == 34 || z == 52 || z == 3 || z == 11 || z == 19 || z == 12 || z == 20) {
+        } else if (z == 6 || z == 7 || z == 8 || z == 16 || z == 15 || z == 33 || z == 51 || z == 5 || z == 9 || z == 17 || z == 35 || z == 53 || z == 34 || z == 52 || z == 3 || z == 11 || z == 19 || z == 12 || z == 20) {
             heavyAtomIndices.push_back(idx);
         } else {
             indigoFree(atomHandle);
@@ -6220,6 +6220,101 @@ IupacResult IupacNamer::generateName(int mol) {
                 // Bridging oxygen case: diboric acid
                 if (b1_terminalOH == 2 && b2_terminalOH == 2 && b1_bridgeO == 1 && b2_bridgeO == 1) {
                     return {true, "diboric acid", ""};
+                }
+            }
+        }
+    }
+
+    // --- P-67.2 dinuclear antimony oxoacids: distiboric, hypodistiboric, distiborous, hypodistiborous ---
+    if (g.nodes.size() >= 6 && g.nodes.size() <= 9) {
+        int countSb = 0, countO = 0;
+        for (const auto &n : g.nodes) {
+            if (n.atomicNumber == 51) countSb++;
+            else if (n.atomicNumber == 8) countO++;
+        }
+        // All 4 dinuclear antimony oxoacids have exactly 2 Sb atoms
+        if (countSb == 2) {
+            // Find Sb-Sb bond and bridging oxygen candidates
+            int bridgingO = -1;
+            int bridgingCount = 0;
+            bool hasDirectSbSb = false;
+            int sbIndices[2] = {-1, -1};
+            int sbCounter = 0;
+            
+            for (size_t i = 0; i < g.nodes.size(); ++i) {
+                if (g.nodes[i].atomicNumber == 51) {
+                    sbIndices[sbCounter++] = static_cast<int>(i);
+                }
+                if (g.nodes[i].atomicNumber == 8 && g.nodes[i].neighbors.size() == 2) {
+                    int nei1 = g.nodes[i].neighbors[0];
+                    int nei2 = g.nodes[i].neighbors[1];
+                    if (g.nodes[nei1].atomicNumber == 51 && g.nodes[nei2].atomicNumber == 51 && g.nodes[i].totalH == 0) {
+                        bridgingO = static_cast<int>(i);
+                        bridgingCount++;
+                    }
+                }
+            }
+            
+            // Check for direct Sb-Sb bond
+            if (sbIndices[0] != -1 && sbIndices[1] != -1) {
+                for (size_t j = 0; j < g.nodes[sbIndices[0]].neighbors.size(); ++j) {
+                    int nei = g.nodes[sbIndices[0]].neighbors[j];
+                    if (nei == static_cast<size_t>(sbIndices[1])) {
+                        hasDirectSbSb = true;
+                        break;
+                    }
+                }
+            }
+            
+            // Validate each Sb atom's environment
+            bool valid = true;
+            int sb1_doubleO = 0, sb1_terminalOH = 0, sb1_bridgeO = 0, sb1_directSb = 0;
+            int sb2_doubleO = 0, sb2_terminalOH = 0, sb2_bridgeO = 0, sb2_directSb = 0;
+            
+            for (int sbIdx = 0; sbIdx < 2; ++sbIdx) {
+                int si = sbIndices[sbIdx];
+                if (si == -1) { valid = false; break; }
+                
+                for (size_t j = 0; j < g.nodes[si].neighbors.size(); ++j) {
+                    int nei = g.nodes[si].neighbors[j];
+                    int order = g.nodes[si].bondOrders[j];
+                    if (g.nodes[nei].atomicNumber == 8) {
+                        if (nei == static_cast<size_t>(bridgingO) && order == 1) {
+                            if (sbIdx == 0) sb1_bridgeO++;
+                            else sb2_bridgeO++;
+                        } else if (order == 2 && g.nodes[nei].neighbors.size() == 1 && g.nodes[nei].totalH == 0) {
+                            if (sbIdx == 0) sb1_doubleO++;
+                            else sb2_doubleO++;
+                        } else if (order == 1 && g.nodes[nei].neighbors.size() == 1 && g.nodes[nei].totalH > 0) {
+                            if (sbIdx == 0) sb1_terminalOH++;
+                            else sb2_terminalOH++;
+                        }
+                    } else if (g.nodes[nei].atomicNumber == 51) {
+                        if (sbIdx == 0) sb1_directSb++;
+                        else sb2_directSb++;
+                    }
+                }
+            }
+            
+            if (!valid) {
+                // Fall through
+            } else if (hasDirectSbSb) {
+                // Direct Sb-Sb bond cases
+                if (sb1_doubleO == 1 && sb2_doubleO == 1 && sb1_terminalOH == 2 && sb2_terminalOH == 2) {
+                    // Both Sb(V): hypodistiboric acid
+                    return {true, "hypodistiboric acid", ""};
+                } else if (sb1_doubleO == 0 && sb2_doubleO == 0 && sb1_terminalOH == 2 && sb2_terminalOH == 2) {
+                    // Both Sb(III): hypodistiborous acid
+                    return {true, "hypodistiborous acid", ""};
+                }
+            } else if (bridgingCount == 1) {
+                // Bridging oxygen cases
+                if (sb1_doubleO == 1 && sb2_doubleO == 1 && sb1_terminalOH == 2 && sb2_terminalOH == 2 && sb1_bridgeO == 1 && sb2_bridgeO == 1) {
+                    // Both Sb(V): distiboric acid
+                    return {true, "distiboric acid", ""};
+                } else if (sb1_doubleO == 0 && sb2_doubleO == 0 && sb1_terminalOH == 2 && sb2_terminalOH == 2 && sb1_bridgeO == 1 && sb2_bridgeO == 1) {
+                    // Both Sb(III): distiborous acid
+                    return {true, "distiborous acid", ""};
                 }
             }
         }

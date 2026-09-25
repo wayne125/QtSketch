@@ -126,6 +126,18 @@ int main() {
         {"OB(O)OB(O)O", "diboric acid"},
         {"OB(O)B(O)O", "hypodiboric acid"},
         
+        // P-67.2 distiboric acid family
+        {"O[Sb](=O)(O)O[Sb](=O)(O)O", "distiboric acid"},
+        {"O[Sb](=O)(O)[Sb](=O)(O)O", "hypodistiboric acid"},
+        {"O[Sb](O)O[Sb](O)O", "distiborous acid"},
+        {"O[Sb](O)[Sb](O)O", "hypodistiborous acid"},
+        // P-67.2 distibonous acid: a DIFFERENT antimony family (Sb-H bond, only 1 terminal
+        // -OH per antimony, not 2) -- must NOT be matched by the distiboric acid family's
+        // detection block; confirms widening the top-of-function element whitelist to admit
+        // antimony didn't accidentally cause this out-of-scope shape to hit some other,
+        // unrelated code path deeper in the function instead of a clean rejection.
+        {"O[SbH]O[SbH]O", "", true, "No carbon atoms present in structure."},
+
         {"CCB(O)Cl", "chloro(ethyl)borinic acid"},
         {"CB(O)c1ccccc1", "methyl(phenyl)borinic acid"},
 
