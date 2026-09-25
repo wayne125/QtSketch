@@ -927,6 +927,22 @@ int main() {
         // Mismatched acid rejection
         {"[Ca].CC(=O)O.CCC(=O)O", "", true, "Multi-component structures are not supported"}, // ethanoic + propanoic acid
         {"[Ca].CCO.CCCO", "", true, "Multi-component structures are not supported"}, // ethanol + propanol
+        
+        // Disjoint ring substituent tests
+        // Test 1: phenyl substituent on cyclohexanone (monocyclic parent with ring substituent)
+        {"O=C1CCCCC1c2ccccc2", "2-phenylcyclohexan-1-one", false, ""},
+        // Test 3: biphenyl - retained name
+        {"c1ccccc1c2ccccc2", "biphenyl", false, ""},
+        // Test 4: toluene ring attached to 1-methylcyclohexane (neither ring has exocyclic double bond to O/N/S, should reject)
+        {"Cc1ccc(C2(C)CCCCC2)cc1", "", true, ""},
+        // Test 5: 4-chlorophenyl on cyclohexanone (extra ring has substituent, should reject)
+        {"O=C1CCCCC1c2ccc(Cl)cc2", "", true, ""},
+        // Test 6: existing ring-substituent-on-chain-parent test (should still pass)
+        {"OC(=O)CCC1CCC(C(=O)O)CC1", "3-(4-carboxycyclohexyl)propanoic acid", false, ""},
+        // Test 7: existing plain naphthalene test (should still pass)
+        {"c1cccc2ccccc12", "naphthalene", false, ""},
+        // Test 8: existing plain monocyclic ring test (should still pass)
+        {"C1CCCCC1", "cyclohexane", false, ""},
     };
 
     int passed = 0;
