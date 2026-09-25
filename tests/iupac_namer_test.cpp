@@ -359,6 +359,29 @@ int main() {
         {"CC(O)C(=O)O", "2-hydroxypropanoic acid"},
         {"NCCO", "2-aminoethanol"},
 
+        // SECONDARY amine substituent tests (P-66.6.1)
+        // Simple secondary-amine-substituent case on a chain parent: CH3-NH-CH2-CH2-COOH
+        // (bare "methylamino", no enclosing marks needed -- matches this file's existing
+        // wrap-only-if-the-inner-name-has-its-own-punctuation convention)
+        {"CNCCC(=O)O", "3-methylaminopropanoic acid"},
+        // Branched-alkyl substituent case (isopropylamino): CH3-CH(NH-CH(CH3)2)-COOH
+        // (this file's nameBranchGraph names isopropyl "1-methylethyl", not "propan-2-yl";
+        // bracket-wrapped because the inner name has its own locant)
+        {"CC(NC(C)C)C(=O)O", "2-[(1-methylethyl)amino]propanoic acid"},
+        // Confirm tertiary/N,N-disubstituted still rejects when the amine is a genuine
+        // SUBSTITUENT (not the principal group): (CH3)2N-CH2-CH2-COOH
+        {"CN(C)CCC(=O)O", "", true, "amine/hydrazine"},
+        // Confirm a hydrazine substituent (-NH-NH2, "R" is nitrogen-rooted, not
+        // carbon-rooted) still rejects cleanly rather than being misnamed --
+        // this is the exact regression caught during review: nameBranchGraph on a
+        // bare terminal NH2 root produced "amino", which got wrapped into the
+        // nonsense "aminoamino" before the carbon-rooted guard was added.
+        {"NNCCCC(=O)O", "", true, "amine/hydrazine"},
+        // Confirm plain amino still works: NH2-CH(CH3)-COOH
+        {"CC(N)C(=O)O", "2-aminopropanoic acid"},
+        // Confirm existing amido tests still pass
+        {"CC(NC(=O)C)C(=O)O", "2-ethanamidopropanoic acid"},
+
         // Halogen substituent
         {"CC(Cl)C", "2-chloropropane"},
 
