@@ -2138,12 +2138,46 @@ QString nameBranchGraph(const Graph &g, int rootIdx, int parentIdx, const std::v
         // "4-amino-7-chloroquinoline"). Return "" instead, matching this
         // function's own established failure contract (empty string already means
         // "could not name this branch" to every caller of nameBranchGraph).
+        int otherHeavyNeighbor = -1;
+        int heavyNeighborCount = 0;
         for (int nei : g.nodes[rootIdx].neighbors) {
             if (nei != parentIdx && g.nodes[nei].atomicNumber > 1) {
-                return "";
+                otherHeavyNeighbor = nei;
+                heavyNeighborCount++;
             }
         }
-        return "amino";
+        if (heavyNeighborCount == 0) {
+            return "amino";
+        }
+        // Secondary amine root (-NH-R, exactly one other substituent): name R and
+        // cite "<R>amino", mirroring the equivalent fix already proven correct for
+        // amine SUBSTITUENTS collected directly off a chain/ring atom. R must be
+        // carbon-rooted -- a nitrogen-rooted "R" here is a hydrazine shape
+        // (-NH-NH2), which must keep returning "" rather than being misnamed (the
+        // exact regression caught and fixed in that earlier work).
+        if (heavyNeighborCount == 1 && g.nodes[otherHeavyNeighbor].atomicNumber == 6) {
+            QString rName;
+            bool rIsInRing = false;
+            for (const auto &r : allIndependentRings) {
+                if (r.count(otherHeavyNeighbor)) { rIsInRing = true; break; }
+            }
+            if (rIsInRing) {
+                for (const auto &r : allIndependentRings) {
+                    if (r.count(otherHeavyNeighbor)) {
+                        rName = nameRingAsSubstituent(g, r, otherHeavyNeighbor, rootIdx, allIndependentRings, forbiddenNodes);
+                        break;
+                    }
+                }
+            } else {
+                std::set<int> newForbidden = forbiddenNodes;
+                newForbidden.insert(rootIdx);
+                rName = nameBranchGraph(g, otherHeavyNeighbor, rootIdx, allIndependentRings, newForbidden);
+            }
+            if (!rName.isEmpty()) {
+                return wrapCompoundSuffix(rName, "amino");
+            }
+        }
+        return "";
     }
 
     if (rZ == 15) {

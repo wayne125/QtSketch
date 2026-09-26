@@ -4610,15 +4610,39 @@ int main() {
     }
 
     {
-        // Same bug, primaquine: ring-amino nitrogen carries an entire pentylamine chain.
+        // Same shape, primaquine: ring-amino nitrogen carries an entire pentylamine
+        // chain -- a genuine SECONDARY amine (one substituent), unlike chloroquine's
+        // tertiary diethylamino above. Previously rejected for the same reason as
+        // chloroquine; now that nameBranchGraph itself supports naming a secondary-
+        // amine root (mirroring the fix already proven for amine substituents
+        // collected directly off a chain/ring atom), this real approved drug gets a
+        // correct name instead of an honest rejection -- genuine, real-world win.
         int m = indigoLoadMoleculeFromString("COc1cc(NC(C)CCCN)c2ncccc2c1");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
-        if (!r.success && !r.error.isEmpty()) {
-            std::cout << "[PASS] primaquine N-substituent drop now rejected -> " << r.error.toStdString() << "\n";
+        if (r.success && r.name == "8-[(4-amino-1-methylbutyl)amino]-6-methoxyquinoline") {
+            std::cout << "[PASS] primaquine: secondary amine chain now correctly named -> " << r.name.toStdString() << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] primaquine N-substituent drop -> got success=" << r.success << " name='" << r.name.toStdString() << "'\n";
+            std::cout << "[FAIL] primaquine -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Real-world confirmation: METOPROLOL, found via the FDA-approved-drug
+        // sweep after the nameBranchGraph secondary-amine fix -- this specific
+        // isopropylamino-hydroxypropoxy side chain is shared by an entire family
+        // of real beta-blockers (ATENOLOL, PINDOLOL, BISOPROLOL, ESMOLOL all had
+        // the same rejection before this fix, all now correctly named too).
+        int m = indigoLoadMoleculeFromString("COCCc1ccc(OCC(O)CNC(C)C)cc1");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "1-[(1-methylethyl)amino]-3-([4-(2-methoxyethyl)phenyl])oxypropan-2-ol") {
+            std::cout << "[PASS] METOPROLOL: secondary amine side chain now correctly named -> " << r.name.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] METOPROLOL -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
             failed++;
         }
     }
@@ -4811,20 +4835,18 @@ int main() {
         // correctly wins parent selection now (previously produced the garbled
         // "1-methylaminoethane--sulfonamide", a double-hyphen artifact from a
         // chain incorrectly winning parent selection over the ring's own, far more
-        // senior group). Ring-parent selection is now correct; naming a secondary
-        // amine substituent THROUGH this specific ring-parent code path is a
-        // separate, not-yet-implemented capability (a different code path from the
-        // chain-parent secondary-amine fix shipped earlier this session) -- so this
-        // honestly rejects rather than fabricating a name, which is the required
-        // behavior: never regress from "wrong garbled name" to anything but
-        // "correct name" or "honest rejection".
+        // senior group). Naming the secondary amine chain substituent THROUGH this
+        // ring-parent code path was a separate gap at the time this test was
+        // written (honestly rejecting rather than fabricating a name); now that
+        // nameBranchGraph itself supports naming a secondary-amine root, this
+        // produces a fully correct name.
         int m = indigoLoadMoleculeFromString("CNCCc1ccc(OC)c(S(N)(=O)=O)c1");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
         std::string n = r.name.toStdString();
         std::string err = r.error.toStdString();
-        if (!r.success && err == "Unrecognized or unsupported substituent on ring.") {
-            std::cout << "[PASS] Ring-chain seniority (sulfonamide vs amine): ring now correctly selected as parent, honest rejection -> err='" << err << "'\n";
+        if (r.success && n == "2-methoxy-5-(2-methylaminoethyl)benzene-1-sulfonamide") {
+            std::cout << "[PASS] Ring-chain seniority (sulfonamide vs amine): ring correctly selected as parent, secondary amine chain now correctly named -> " << n << "\n";
             passed++;
         } else {
             std::cout << "[FAIL] Ring-chain seniority (sulfonamide vs amine) -> got success=" << r.success << " name='" << n << "' err='" << err << "'\n";
