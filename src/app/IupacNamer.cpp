@@ -7062,6 +7062,7 @@ IupacResult IupacNamer::generateName(int mol) {
                         int ringNode;
                         int ringAttachCarbon;
                         int totalHeavyAtoms;
+                        int terminalHalogenZ; // 0 if none
                     };
                     std::vector<Branch> branches;
                     bool invalidBranch = false;
@@ -7073,6 +7074,7 @@ IupacResult IupacNamer::generateName(int mol) {
                         b.len = 0;
                         b.ringNode = -1;
                         b.ringAttachCarbon = -1;
+                        b.terminalHalogenZ = 0;
 
                         int curr = cNode;
                         int prev = nNode;
@@ -7094,6 +7096,7 @@ IupacResult IupacNamer::generateName(int mol) {
                                 int heavyCount = 0;
                                 int nextC = -1;
                                 int rNei = -1;
+                                int halogenNei = -1;
                                 
                                 for (int nei : g.nodes[curr].neighbors) {
                                     if (nei == prev) continue;
@@ -7105,6 +7108,10 @@ IupacResult IupacNamer::generateName(int mol) {
                                         }
                                         if (isR) rNei = nei;
                                         else if (g.nodes[nei].atomicNumber == 6) nextC = nei;
+                                        else if (g.nodes[nei].atomicNumber == 9 || g.nodes[nei].atomicNumber == 17 || 
+                                                 g.nodes[nei].atomicNumber == 35 || g.nodes[nei].atomicNumber == 53) {
+                                            halogenNei = nei;
+                                        }
                                     }
                                 }
                                 
@@ -7118,14 +7125,13 @@ IupacResult IupacNamer::generateName(int mol) {
                                     } else if (nextC != -1) {
                                         prev = curr;
                                         curr = nextC;
+                                    } else if (halogenNei != -1) {
+                                        // Terminal halogen on the chain - valid branch terminator
+                                        b.terminalHalogenZ = g.nodes[halogenNei].atomicNumber;
+                                        break;
                                     } else {
                                         // The single heavy neighbor is neither a ring atom nor
-                                        // carbon (e.g. a halogen, as in mechlorethamine's
-                                        // 2-chloroethyl branches) -- not a supported branch
-                                        // shape. Reject rather than advance curr to -1, which
-                                        // would crash the next iteration's out-of-bounds
-                                        // g.nodes[curr] access (confirmed live: CN(CCCl)CCCl
-                                        // and the chlornaphazine analogue both aborted here).
+                                        // carbon nor halogen -- unsupported branch shape.
                                         b.len = -1;
                                         break;
                                     }
@@ -7142,6 +7148,9 @@ IupacResult IupacNamer::generateName(int mol) {
                         }
 
                         b.totalHeavyAtoms = b.len;
+                        if (b.terminalHalogenZ != 0) {
+                            b.totalHeavyAtoms++;
+                        }
                         if (b.ringNode != -1) {
                             std::set<int> reachableHeavy;
                             std::vector<int> q;
@@ -7294,6 +7303,25 @@ IupacResult IupacNamer::generateName(int mol) {
                             parentName += "amine";
                         } else {
                             parentName += "-1-amine";
+                        }
+                        
+                        // If the parent chain branch has a terminal halogen, we need to include it
+                        // in the parent name. Call nameBranchGraph to get the full name and use it
+                        // as the parent (converting from substituent form to parent form).
+                        if (!hasDirectRingOnN && branches[maxIdx].ringNode == -1 && branches[maxIdx].terminalHalogenZ != 0) {
+                            QString parentBranchName = nameBranchGraph(g, branches[maxIdx].alkylNeighbor, nNode, sssrRings);
+                            if (!parentBranchName.isEmpty()) {
+                                // parentBranchName is something like "(2-chloroethyl)" or "2-chloroethyl"
+                                // Remove any enclosing parentheses/brackets
+                                QString clean = parentBranchName;
+                                if (clean.startsWith("(") && clean.endsWith(")")) {
+                                    clean = clean.mid(1, clean.length() - 2);
+                                }
+                                if (clean.endsWith("yl")) {
+                                    // Convert substituent to parent: "2-chloroethyl" -> "2-chloroethan-1-amine"
+                                    parentName = clean.left(clean.length() - 2) + "an-1-amine";
+                                }
+                            }
                         }
                     }
 

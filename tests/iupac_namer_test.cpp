@@ -158,7 +158,12 @@ int main() {
         {"CCN", "ethanamine"},
         {"CCCN(CCC)CCC", "N,N-dipropylpropan-1-amine"},
         {"CN(CC)C(C)C", "", true, "Branched, ring, or unsaturated chains on N-substituted amines are not supported"},
-        {"CN(C)C1CCCCC1", "N,N-dimethylcyclohexanamine"},
+        // Halogen-terminated N-substituent chains
+        {"CN(CCCl)CCCl", "N-(2-chloroethyl)-N-methyl-2-chloroethan-1-amine"}, // MECHLORETHAMINE
+        {"CNCCCl", "N-methyl-2-chloroethan-1-amine"}, // simple halogen-terminated chain
+        {"CNC(C)C", "", true, "Branched, ring, or unsaturated chains on N-substituted amines are not supported"},
+        {"CNC1(C)C2CCC(C2)C1(C)C", "", true, "Branched, ring, or unsaturated chains on N-substituted amines are not supported"}, // MECAMYLAMINE-shaped
+        {"CN(C)C1CCCCC1", "N,N-dimethylcyclohexanamine"}, // existing passing test
         {"CNCCNC", "N1,N2-dimethylethane-1,2-diamine"},
         {"CN(C)CCN(C)C", "N1,N1,N2,N2-tetramethylethane-1,2-diamine"},
         {"CNCCCNC", "N1,N3-dimethylpropane-1,3-diamine"},
