@@ -11103,9 +11103,17 @@ IupacResult IupacNamer::generateName(int mol) {
                                 } else {
                                     subName = QString("[%1%2]").arg(branchStereo, subName);
                                 }
-                            } else if (subName.startsWith("(")) {
-                                subName = subName.mid(1);
-                                if (subName.endsWith(")")) subName.chop(1);
+                            } else if (subName.startsWith("(") && subName.endsWith(")")) {
+                                QString inner = subName.mid(1, subName.length() - 2);
+                                // Only strip the enclosure when the inner name does NOT start
+                                // with a locant digit -- a name like "(2-aminoethyl)" needs its
+                                // own parens kept when later cited after the ring's own locant
+                                // ("5-(2-aminoethyl)-...", not the ambiguous "5-2-aminoethyl-...");
+                                // a name like "(1-methylethyl)" that starts with a letter is fine
+                                // stripped bare.
+                                if (!inner.isEmpty() && !inner[0].isDigit()) {
+                                    subName = inner;
+                                }
                             }
                         }
                     }
@@ -15068,9 +15076,14 @@ IupacResult IupacNamer::generateName(int mol) {
                                                     if (subName.isEmpty()) {
                                                         return {false, "", "Unrecognized or unsupported substituent on ring."};
                                                     }
-                                                    if (subName.startsWith("(")) {
-                                                        subName = subName.mid(1);
-                                                        if (subName.endsWith(")")) subName.chop(1);
+                                                    if (subName.startsWith("(") && subName.endsWith(")")) {
+                                                        QString inner = subName.mid(1, subName.length() - 2);
+                                                        // See the equivalent fix in the other duplicated
+                                                        // regions for why this strip must be conditional on
+                                                        // the inner name not starting with a locant digit.
+                                                        if (!inner.isEmpty() && !inner[0].isDigit()) {
+                                                            subName = inner;
+                                                        }
                                                     }
                                                     namedSubstituents.push_back({subName, locVal});
                                                 }
@@ -18250,9 +18263,14 @@ IupacResult IupacNamer::generateName(int mol) {
                                     } else {
                                         subName = QString("[%1%2]").arg(branchStereo, subName);
                                     }
-                                } else if (subName.startsWith("(")) {
-                                    subName = subName.mid(1);
-                                    if (subName.endsWith(")")) subName.chop(1);
+                                } else if (subName.startsWith("(") && subName.endsWith(")")) {
+                                    QString inner = subName.mid(1, subName.length() - 2);
+                                    // See the equivalent fix in the monocyclic region for why this
+                                    // strip must be conditional on the inner name not starting with
+                                    // a locant digit.
+                                    if (!inner.isEmpty() && !inner[0].isDigit()) {
+                                        subName = inner;
+                                    }
                                 }
                             }
                         }

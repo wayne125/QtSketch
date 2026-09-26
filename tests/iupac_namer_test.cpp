@@ -4912,6 +4912,33 @@ int main() {
         }
     }
 
+    {
+        // Missing enclosing marks on a ring substituent whose own name starts with
+        // a locant digit, found via the FDA-drug sweep (MENTHOL, PROPOFOL, and
+        // others all had this same artifact). The per-ring-atom substituent loop
+        // (3 duplicated sites: acyclic-with-ring-substituent, naphthalene,
+        // monocyclic) unconditionally stripped nameBranchGraph's own correctly-
+        // added parens before storing the substituent name, and the final locant-
+        // assembly code never re-checked whether re-wrapping was needed --
+        // producing ambiguous names like "5-2-hydroxyethylpiperidine..." instead
+        // of "5-(2-hydroxyethyl)piperidine...". Real drugs previously affected:
+        // MENTHOL ("5-methyl-2-1-methylethylcyclohexan-1-ol" ->
+        // "5-methyl-2-(1-methylethyl)cyclohexan-1-ol", matching its real published
+        // name), PROPOFOL, MELATONIN, TRYPTOPHAN, MIGLITOL, IDEBENONE,
+        // CLOMETHIAZOLE, ZILEUTON, DIBUNIC ACID, PROPYPHENAZONE.
+        int m = indigoLoadMoleculeFromString("CC1CCC(C(C)C)C(O)C1");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        std::string n = r.name.toStdString();
+        if (r.success && n == "5-methyl-2-(1-methylethyl)cyclohexan-1-ol") {
+            std::cout << "[PASS] Ring substituent enclosing marks (menthol shape) -> " << n << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Ring substituent enclosing marks (menthol shape) -> got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
     std::cout << "\nSummary: " << passed << " passed, " << failed << " failed.\n";
     indigoReleaseSessionId(sid);
     return (failed == 0) ? 0 : 1;
