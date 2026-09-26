@@ -9289,27 +9289,195 @@ IupacResult IupacNamer::generateName(int mol) {
         }
 
         if (validSubstituent && (mainChainExoCount == 1 || twoRingsAreDisjoint) && foundAttachChainNode != -1 && attachRingNode != -1) {
-            bool hasPrincipalGroupOrMultipleRings = (allSSSRRings.size() > 1);
-            if (!hasPrincipalGroupOrMultipleRings) {
+            // Determine whether this ring should be treated as a substituent.
+            // Old heuristic: treat as substituent if (multiple rings) OR (single ring and chain has any heteroatom).
+            // This was incorrect: "chain has any heteroatom" doesn't account for the ring's own principal
+            // characteristic groups, which may outrank the chain's heteroatom per P-44.1.1/P-44.1.2.
+            // New logic:
+            // - If multiple rings: only treat a ring as a substituent if it has NO principal characteristic group.
+            //   A ring with a principal group may still be the senior parent.
+            // - If single ring: treat as substituent only if the chain has a more senior group OR
+            //   (chain has unclassified heteroatom AND ring has no principal group).
+            
+            auto groupRank = [](GroupType gt) -> int {
+                switch (gt) {
+                    case GroupType::ACID: return 1;
+                    case GroupType::SULFONIC_ACID: return 2;
+                    case GroupType::SULFINIC_ACID: return 3;
+                    case GroupType::PHOSPHONIC_ACID: return 4;
+                    case GroupType::PHOSPHINIC_ACID: return 5;
+                    case GroupType::ARSONIC_ACID: return 6;
+                    case GroupType::ARSINIC_ACID: return 7;
+                    case GroupType::STIBONIC_ACID: return 8;
+                    case GroupType::STIBINIC_ACID: return 9;
+                    case GroupType::BORONIC_ACID: return 10;
+                    case GroupType::BORINIC_ACID: return 11;
+                    case GroupType::ESTER: return 12;
+                    case GroupType::ACYL_HALIDE: return 13;
+                    case GroupType::SULFONYL_HALIDE: return 14;
+                    case GroupType::SULFINYL_HALIDE: return 15;
+                    case GroupType::PHOSPHONIC_DIHALIDE: return 16;
+                    case GroupType::ARSONIC_DIHALIDE: return 17;
+                    case GroupType::AMIDE: return 18;
+                    case GroupType::THIOAMIDE: return 19;
+                    case GroupType::SULFONAMIDE: return 20;
+                    case GroupType::SULFINAMIDE: return 21;
+                    case GroupType::HYDRAZIDE: return 22;
+                    case GroupType::AMIDINE: return 23;
+                    case GroupType::NITRILE: return 24;
+                    case GroupType::ALDEHYDE: return 25;
+                    case GroupType::THIAL: return 26;
+                    case GroupType::KETONE: return 27;
+                    case GroupType::THIONE: return 28;
+                    case GroupType::ALCOHOL: return 29;
+                    case GroupType::THIOL: return 30;
+                    case GroupType::SELENOL: return 31;
+                    case GroupType::TELLUROL: return 32;
+                    case GroupType::HYDROPEROXIDE: return 33;
+                    case GroupType::AMINE: return 34;
+                    case GroupType::IMINE: return 35;
+                    case GroupType::PHOSPHINE: return 36;
+                    default: return 37;
+                }
+            };
+            
+            // Find most senior principal characteristic group on this ring
+            GroupType ringBestGroup = GroupType::NONE;
+            for (int rNode : rNodes) {
+                if (g.nodes[rNode].atomicNumber != 6) continue;
+                GroupType gt = GroupType::NONE;
+                // Check pre-computed classification maps in order of seniority
+                if (carbonSulfonicAcid.count(rNode)) gt = GroupType::SULFONIC_ACID;
+                else if (carbonSulfinicAcid.count(rNode)) gt = GroupType::SULFINIC_ACID;
+                else if (carbonPhosphonicAcid.count(rNode)) gt = GroupType::PHOSPHONIC_ACID;
+                else if (carbonPhosphinicAcid.count(rNode)) gt = GroupType::PHOSPHINIC_ACID;
+                else if (carbonArsonicAcid.count(rNode)) gt = GroupType::ARSONIC_ACID;
+                else if (carbonArsinicAcid.count(rNode)) gt = GroupType::ARSINIC_ACID;
+                else if (carbonStibonicAcid.count(rNode)) gt = GroupType::STIBONIC_ACID;
+                else if (carbonStibinicAcid.count(rNode)) gt = GroupType::STIBINIC_ACID;
+                else if (carbonBoronicAcid.count(rNode)) gt = GroupType::BORONIC_ACID;
+                else if (carbonBorinicAcid.count(rNode)) gt = GroupType::BORINIC_ACID;
+                else if (carbonSulfonamide.count(rNode)) gt = GroupType::SULFONAMIDE;
+                else if (carbonSulfinamide.count(rNode)) gt = GroupType::SULFINAMIDE;
+                else if (carbonSulfonylHalide.count(rNode)) gt = GroupType::SULFONYL_HALIDE;
+                else if (carbonSulfinylHalide.count(rNode)) gt = GroupType::SULFINYL_HALIDE;
+                else if (carbonPhosphonicDihalide.count(rNode)) gt = GroupType::PHOSPHONIC_DIHALIDE;
+                else if (carbonArsonicDihalide.count(rNode)) gt = GroupType::ARSONIC_DIHALIDE;
+                else if (carbonThiol.count(rNode)) gt = GroupType::THIOL;
+                else if (carbonSelenol.count(rNode)) gt = GroupType::SELENOL;
+                else if (carbonTellurol.count(rNode)) gt = GroupType::TELLUROL;
+                else if (carbonPhosphine.count(rNode)) gt = GroupType::PHOSPHINE;
+                
+                if (gt != GroupType::NONE) {
+                    if (ringBestGroup == GroupType::NONE || groupRank(gt) < groupRank(ringBestGroup)) {
+                        ringBestGroup = gt;
+                    }
+                }
+            }
+            
+            bool hasPrincipalGroupOrMultipleRings = false;
+            
+            // Case 1: Multiple rings
+            if (allSSSRRings.size() > 1) {
+                // Only treat as substituent if ring has NO principal characteristic group.
+                // If it has one, it's still eligible to be the senior parent (decided later).
+                if (ringBestGroup == GroupType::NONE) {
+                    hasPrincipalGroupOrMultipleRings = true;
+                }
+            }
+            // Case 2: Single ring
+            else {
+                // Collect chain nodes via BFS
                 std::queue<int> q;
                 std::set<int> visited;
+                std::set<int> chainNodes;
                 q.push(foundAttachChainNode);
                 visited.insert(foundAttachChainNode);
                 visited.insert(attachRingNode);
+                bool chainHasHeteroatom = false;
 
                 while (!q.empty()) {
                     int curr = q.front();
                     q.pop();
-                    const GraphNode &node = g.nodes[curr];
-                    if (node.atomicNumber != 6 && node.atomicNumber != 1) {
-                        hasPrincipalGroupOrMultipleRings = true;
-                        break;
+                    chainNodes.insert(curr);
+                    if (g.nodes[curr].atomicNumber != 6 && g.nodes[curr].atomicNumber != 1) {
+                        chainHasHeteroatom = true;
                     }
-                    for (int nei : node.neighbors) {
+                    for (int nei : g.nodes[curr].neighbors) {
                         if (!visited.count(nei) && !rNodes.count(nei)) {
                             visited.insert(nei);
                             q.push(nei);
                         }
+                    }
+                }
+                
+                // Find most senior group on the chain
+                GroupType chainBestGroup = GroupType::NONE;
+                for (int cNode : chainNodes) {
+                    if (g.nodes[cNode].atomicNumber != 6) continue;
+                    GroupType gt = GroupType::NONE;
+                    if (carbonSulfonicAcid.count(cNode)) gt = GroupType::SULFONIC_ACID;
+                    else if (carbonSulfinicAcid.count(cNode)) gt = GroupType::SULFINIC_ACID;
+                    else if (carbonPhosphonicAcid.count(cNode)) gt = GroupType::PHOSPHONIC_ACID;
+                    else if (carbonPhosphinicAcid.count(cNode)) gt = GroupType::PHOSPHINIC_ACID;
+                    else if (carbonArsonicAcid.count(cNode)) gt = GroupType::ARSONIC_ACID;
+                    else if (carbonArsinicAcid.count(cNode)) gt = GroupType::ARSINIC_ACID;
+                    else if (carbonStibonicAcid.count(cNode)) gt = GroupType::STIBONIC_ACID;
+                    else if (carbonStibinicAcid.count(cNode)) gt = GroupType::STIBINIC_ACID;
+                    else if (carbonBoronicAcid.count(cNode)) gt = GroupType::BORONIC_ACID;
+                    else if (carbonBorinicAcid.count(cNode)) gt = GroupType::BORINIC_ACID;
+                    else if (carbonSulfonamide.count(cNode)) gt = GroupType::SULFONAMIDE;
+                    else if (carbonSulfinamide.count(cNode)) gt = GroupType::SULFINAMIDE;
+                    else if (carbonSulfonylHalide.count(cNode)) gt = GroupType::SULFONYL_HALIDE;
+                    else if (carbonSulfinylHalide.count(cNode)) gt = GroupType::SULFINYL_HALIDE;
+                    else if (carbonPhosphonicDihalide.count(cNode)) gt = GroupType::PHOSPHONIC_DIHALIDE;
+                    else if (carbonArsonicDihalide.count(cNode)) gt = GroupType::ARSONIC_DIHALIDE;
+                    else if (carbonThiol.count(cNode)) gt = GroupType::THIOL;
+                    else if (carbonSelenol.count(cNode)) gt = GroupType::SELENOL;
+                    else if (carbonTellurol.count(cNode)) gt = GroupType::TELLUROL;
+                    else if (carbonPhosphine.count(cNode)) gt = GroupType::PHOSPHINE;
+                    
+                    if (gt != GroupType::NONE) {
+                        if (chainBestGroup == GroupType::NONE || groupRank(gt) < groupRank(chainBestGroup)) {
+                            chainBestGroup = gt;
+                        }
+                    }
+                }
+                
+                // Also check for AMINE on chain (not in pre-computed maps)
+                // An AMINE is a carbon with a non-ring nitrogen neighbor
+                if (chainBestGroup == GroupType::NONE || groupRank(chainBestGroup) > 34) {
+                    for (int cNode : chainNodes) {
+                        if (g.nodes[cNode].atomicNumber != 6) continue;
+                        for (int nei : g.nodes[cNode].neighbors) {
+                            if (g.nodes[nei].atomicNumber == 7 && !rNodes.count(nei)) {
+                                if (chainBestGroup == GroupType::NONE || 34 < groupRank(chainBestGroup)) {
+                                    chainBestGroup = GroupType::AMINE;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                // Decide based on seniority comparison
+                if (ringBestGroup != GroupType::NONE) {
+                    if (chainBestGroup != GroupType::NONE) {
+                        // Both have classified groups: chain wins only if more senior
+                        if (groupRank(chainBestGroup) <= groupRank(ringBestGroup)) {
+                            hasPrincipalGroupOrMultipleRings = true;
+                        }
+                    } else if (chainHasHeteroatom) {
+                        // Ring has a classified group, chain only has unclassified heteroatom
+                        // -> ring is more senior, don't treat as substituent
+                    } else {
+                        // Ring has classified group, chain has nothing
+                        // -> ring should be parent
+                    }
+                } else {
+                    // Ring has no classified group: use original heuristic
+                    if (chainHasHeteroatom) {
+                        hasPrincipalGroupOrMultipleRings = true;
                     }
                 }
             }
