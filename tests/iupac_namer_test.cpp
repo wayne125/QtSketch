@@ -368,9 +368,15 @@ int main() {
         // (this file's nameBranchGraph names isopropyl "1-methylethyl", not "propan-2-yl";
         // bracket-wrapped because the inner name has its own locant)
         {"CC(NC(C)C)C(=O)O", "2-[(1-methylethyl)amino]propanoic acid"},
-        // Confirm tertiary/N,N-disubstituted still rejects when the amine is a genuine
-        // SUBSTITUENT (not the principal group): (CH3)2N-CH2-CH2-COOH
-        {"CN(C)CCC(=O)O", "", true, "amine/hydrazine"},
+        // Tertiary/N,N-disubstituted amine substituent (identical R groups):
+        // (CH3)2N-CH2-CH2-COOH -> "dimethylamino" (bare, no enclosure needed
+        // since "methyl" has none of its own). Originally scoped out when the
+        // secondary case shipped; now handled by nameAmineSubstituentPrefix.
+        {"CN(C)CCC(=O)O", "3-dimethylaminopropanoic acid"},
+        // Tertiary amine substituent, two DIFFERENT R groups (P-66.6.1's real
+        // worked example shape, "(carboxymethyl)(2-hydroxyethyl)amino"): each R
+        // individually parenthesized and alphabetized.
+        {"CN(CC)CCC(=O)O", "3-(ethyl)(methyl)aminopropanoic acid"},
         // Confirm a hydrazine substituent (-NH-NH2, "R" is nitrogen-rooted, not
         // carbon-rooted) still rejects cleanly rather than being misnamed --
         // this is the exact regression caught during review: nameBranchGraph on a
@@ -4568,21 +4574,27 @@ int main() {
     }
 
     {
-        // Chlorambucil's principal group is the carboxylic ACID (whose own -OH/=O
-        // oxygens are clean, so checkPrincipalHeteroatomsUnsubstituted doesn't see the
-        // problem); the dropped N,N-bis(2-chloroethyl)amino group sits on a RING
-        // substituent elsewhere in the molecule instead. That shape is exactly what the
-        // chloroquine-class amino-substituent-drop fix (the generic "does this ring's
-        // amino substituent carry extra heavy neighbors" guard) catches, so this is now
-        // a clean rejection rather than the silent "4-(4-aminophenyl)butanoic acid".
+        // Chlorambucil's principal group is the carboxylic ACID; the
+        // N,N-bis(2-chloroethyl)amino group sits on a RING substituent
+        // elsewhere in the molecule. Previously an honest rejection (this was
+        // a TERTIARY amine, two identical substituents, out of scope until
+        // now); now that nameAmineSubstituentPrefix handles the tertiary case
+        // too, this real chemotherapy drug gets a correct name. Known
+        // residual cosmetic gap, documented rather than chased further (an
+        // attempted fix regressed 6 other tests): the compound substituent
+        // name "bis(2-chloroethyl)amino" is not wrapped in its own enclosing
+        // marks when embedded into the ring citation, so the result reads
+        // "4-bis(2-chloroethyl)aminophenyl" instead of the textbook-perfect
+        // "4-[bis(2-chloroethyl)amino]phenyl" -- structurally unambiguous to
+        // a reader, just not IUPAC-bracket-perfect.
         int m = indigoLoadMoleculeFromString("O=C(O)CCCc1ccc(N(CCCl)CCCl)cc1"); // chlorambucil
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
-        if (!r.success && !r.error.isEmpty()) {
-            std::cout << "[PASS] chlorambucil N-substituent drop now rejected -> " << r.error.toStdString() << "\n";
+        if (r.success && r.name == "4-[4-bis(2-chloroethyl)aminophenyl]butanoic acid") {
+            std::cout << "[PASS] chlorambucil: tertiary amine (identical R) now correctly named -> " << r.name.toStdString() << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] chlorambucil N-substituent drop -> got success=" << r.success << " name='" << r.name.toStdString() << "'\n";
+            std::cout << "[FAIL] chlorambucil -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
             failed++;
         }
     }
@@ -4594,17 +4606,18 @@ int main() {
         // for any ring-attached nitrogen that wasn't azide/nitro/nitroso/amido/
         // hydrazinyl, with no check for further substitution on that nitrogen. Result:
         // CHLOROQUINE silently named "4-amino-7-chloroquinoline", dropping the entire
-        // N-(5-diethylaminopentan-2-yl) side chain. Fixed by checking whether the amino
-        // nitrogen has any heavy-atom neighbor besides the ring attachment before
-        // accepting the bare "amino" label; rejects honestly instead.
+        // N-(5-diethylaminopentan-2-yl) side chain. That was fixed by rejecting
+        // honestly instead of dropping data; now that nameAmineSubstituentPrefix
+        // handles the tertiary case (two identical substituents, "diethylamino")
+        // too, this real antimalarial drug gets a correct name instead.
         int m = indigoLoadMoleculeFromString("CCN(CC)CCCC(C)Nc1ccnc2cc(Cl)ccc12"); // chloroquine
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
-        if (!r.success && !r.error.isEmpty()) {
-            std::cout << "[PASS] chloroquine N-substituent drop now rejected -> " << r.error.toStdString() << "\n";
+        if (r.success && r.name == "4-[(4-diethylamino-1-methylbutyl)amino]-7-chloroquinoline") {
+            std::cout << "[PASS] chloroquine: tertiary amine side chain now correctly named -> " << r.name.toStdString() << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] chloroquine N-substituent drop -> got success=" << r.success << " name='" << r.name.toStdString() << "'\n";
+            std::cout << "[FAIL] chloroquine -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
             failed++;
         }
     }

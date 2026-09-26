@@ -1047,6 +1047,10 @@ QString nameBranchGraph(const Graph &g, int rootIdx, int parentIdx,
                                const std::map<int, QChar> &stereoByGraphId = {},
                                std::set<int> *handledBranchStereoIds = nullptr);
 
+QString nameAmineSubstituentPrefix(int nNode, int fromNode, const Graph &g,
+                                    const std::vector<std::set<int>> &allIndependentRings,
+                                    const std::set<int> &forbiddenNodes = {});
+
 QString nameAcyclicChainParentWithSubstituents(
     const Graph &g,
     const std::set<int> &seedCarbons,
@@ -1539,61 +1543,19 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                         if (isHydrazinylNitrogen(nei, rNode, g)) {
                             subName = "hydrazinyl";
                         } else {
-                            bool isPlainNH2 = true;
-                            int otherHeavyNeighbor = -1;
-                            int heavyNeighborCount = 0;
-                            for (int nNei2 : g.nodes[nei].neighbors) {
-                                if (nNei2 != rNode && g.nodes[nNei2].atomicNumber > 1) {
-                                    isPlainNH2 = false;
-                                    otherHeavyNeighbor = nNei2;
-                                    heavyNeighborCount++;
-                                }
-                            }
-                            if (isPlainNH2) {
-                                subName = "amino";
-                            } else {
-                                // SECONDARY amine case: exactly ONE other heavy neighbor (-NH-R),
-                                // and R must be carbon-rooted (methyl/ethyl/aryl/cycloalkyl etc) --
-                                // a nitrogen-rooted "R" here is a hydrazine shape (-NH-NH2), which
-                                // must keep falling through to the existing rejection below rather
-                                // than being misnamed as a plain substituent (confirmed regression:
-                                // nameBranchGraph on a bare terminal NH2 root produced "amino",
-                                // which this code then wrapped into the nonsense "aminoamino").
-                                if (heavyNeighborCount == 1 && otherHeavyNeighbor != -1 &&
-                                    g.nodes[otherHeavyNeighbor].atomicNumber == 6) {
-                                    // Check if the R group is part of a ring
-                                    bool rIsInRing = false;
-                                    std::set<int> rRing;
-                                    for (const auto &r : allIndependentRings) {
-                                        if (r.count(otherHeavyNeighbor)) { rIsInRing = true; rRing = r; break; }
-                                    }
-                                    // Also check the current ringNodes
-                                    if (!rIsInRing && ringNodes.count(otherHeavyNeighbor)) {
-                                        rIsInRing = true;
-                                        rRing = ringNodes;
-                                    }
-                                    QString rName;
-                                    if (rIsInRing) {
-                                        // Name the ring as a substituent, with otherHeavyNeighbor as its attachment point
-                                        // and nei as the parent link back
-                                        rName = nameRingAsSubstituent(g, rRing, otherHeavyNeighbor, nei, allIndependentRings);
-                                    } else {
-                                        rName = nameBranchGraph(g, otherHeavyNeighbor, nei, allIndependentRings);
-                                    }
-                                    if (!rName.isEmpty()) {
-                                        subName = wrapCompoundSuffix(rName, "amino");
-                                    } else {
-                                        // Could not name the R group - reject
-                                        if (outErr) *outErr = true;
-                                        candValid = false;
-                                        break;
-                                    }
-                                } else {
-                                    // Not a simple secondary amine - reject
-                                    if (outErr) *outErr = true;
-                                    candValid = false;
-                                    break;
-                                }
+                            // Handles plain/secondary/tertiary amine substituent naming
+                            // uniformly; still correctly returns "" for anything beyond
+                            // that (a hydrazine's nitrogen-rooted "R", or more than two
+                            // substituents), which must keep falling through to the
+                            // existing rejection below rather than being misnamed
+                            // (confirmed regression, since fixed: nameBranchGraph on a
+                            // bare terminal NH2 root used to produce "amino", which this
+                            // code then wrapped into the nonsense "aminoamino").
+                            subName = nameAmineSubstituentPrefix(nei, rNode, g, allIndependentRings);
+                            if (subName.isEmpty()) {
+                                if (outErr) *outErr = true;
+                                candValid = false;
+                                break;
                             }
                         }
                     }
@@ -2128,56 +2090,17 @@ QString nameBranchGraph(const Graph &g, int rootIdx, int parentIdx, const std::v
                 }
             }
         }
-        // A plain, unsubstituted "-NH2" root (rootIdx's only heavy neighbor is
-        // parentIdx, everything else implicit hydrogens) is a genuine "amino"
-        // substituent. Anything else -- a secondary/tertiary amine with a real
-        // alkyl/aryl chain hanging off this nitrogen -- is an N-substituted amino
-        // group this function has no way to name; returning the bare "amino" here
-        // silently discarded that entire chain (confirmed live: chloroquine's
-        // N-(5-diethylaminopentan-2-yl) side chain vanished, producing
-        // "4-amino-7-chloroquinoline"). Return "" instead, matching this
-        // function's own established failure contract (empty string already means
-        // "could not name this branch" to every caller of nameBranchGraph).
-        int otherHeavyNeighbor = -1;
-        int heavyNeighborCount = 0;
-        for (int nei : g.nodes[rootIdx].neighbors) {
-            if (nei != parentIdx && g.nodes[nei].atomicNumber > 1) {
-                otherHeavyNeighbor = nei;
-                heavyNeighborCount++;
-            }
-        }
-        if (heavyNeighborCount == 0) {
-            return "amino";
-        }
-        // Secondary amine root (-NH-R, exactly one other substituent): name R and
-        // cite "<R>amino", mirroring the equivalent fix already proven correct for
-        // amine SUBSTITUENTS collected directly off a chain/ring atom. R must be
-        // carbon-rooted -- a nitrogen-rooted "R" here is a hydrazine shape
-        // (-NH-NH2), which must keep returning "" rather than being misnamed (the
-        // exact regression caught and fixed in that earlier work).
-        if (heavyNeighborCount == 1 && g.nodes[otherHeavyNeighbor].atomicNumber == 6) {
-            QString rName;
-            bool rIsInRing = false;
-            for (const auto &r : allIndependentRings) {
-                if (r.count(otherHeavyNeighbor)) { rIsInRing = true; break; }
-            }
-            if (rIsInRing) {
-                for (const auto &r : allIndependentRings) {
-                    if (r.count(otherHeavyNeighbor)) {
-                        rName = nameRingAsSubstituent(g, r, otherHeavyNeighbor, rootIdx, allIndependentRings, forbiddenNodes);
-                        break;
-                    }
-                }
-            } else {
-                std::set<int> newForbidden = forbiddenNodes;
-                newForbidden.insert(rootIdx);
-                rName = nameBranchGraph(g, otherHeavyNeighbor, rootIdx, allIndependentRings, newForbidden);
-            }
-            if (!rName.isEmpty()) {
-                return wrapCompoundSuffix(rName, "amino");
-            }
-        }
-        return "";
+        // A plain, unsubstituted "-NH2" root is a genuine "amino" substituent.
+        // Anything else -- a secondary/tertiary amine with a real alkyl/aryl
+        // chain hanging off this nitrogen -- used to be an N-substituted amino
+        // group this function had no way to name; returning the bare "amino"
+        // here used to silently discard that entire chain (confirmed live:
+        // chloroquine's N-(5-diethylaminopentan-2-yl) side chain vanished,
+        // producing "4-amino-7-chloroquinoline"). Delegate to the shared
+        // amine-substituent-prefix namer (handles plain/secondary/tertiary
+        // uniformly, and still correctly returns "" for anything beyond that,
+        // e.g. a hydrazine's nitrogen-rooted "R" or more than two substituents).
+        return nameAmineSubstituentPrefix(rootIdx, parentIdx, g, allIndependentRings, forbiddenNodes);
     }
 
     if (rZ == 15) {
@@ -3587,6 +3510,72 @@ StereoResult processDoubleBondStereo(
     return {true, "", ""};
 }
 
+// Names an amine nitrogen `nNode` (attached to `fromNode`) as a substituent
+// prefix -- "amino" for plain -NH2, "<R>amino" for secondary -NH-R (P-66.6.1),
+// and the tertiary -NR2/-NRR' case: identical R groups collapse to a
+// multiplying prefix ("dimethylamino", or "bis(2-chloroethyl)amino" when R's
+// own name needs enclosure per the same rule used elsewhere in this file);
+// different R groups are each individually parenthesized and alphabetized,
+// e.g. "(carboxymethyl)(2-hydroxyethyl)amino" (a real Blue Book worked
+// example). Returns "" for anything unsupported: more than two substituents,
+// or a nitrogen-rooted "R" (a hydrazine shape, -NH-NH2) -- R must be
+// carbon-rooted, matching the guard already proven necessary for the
+// secondary case.
+QString nameAmineSubstituentPrefix(int nNode, int fromNode, const Graph &g,
+                                    const std::vector<std::set<int>> &allIndependentRings,
+                                    const std::set<int> &forbiddenNodes) {
+    std::vector<int> heavyNeighbors;
+    for (int nei : g.nodes[nNode].neighbors) {
+        if (nei != fromNode && g.nodes[nei].atomicNumber > 1) heavyNeighbors.push_back(nei);
+    }
+    if (heavyNeighbors.empty()) return "amino";
+    if (heavyNeighbors.size() > 2) return "";
+    for (int r : heavyNeighbors) {
+        if (g.nodes[r].atomicNumber != 6) return "";
+    }
+
+    auto nameOne = [&](int r) -> QString {
+        for (const auto &ring : allIndependentRings) {
+            if (ring.count(r)) {
+                return nameRingAsSubstituent(g, ring, r, nNode, allIndependentRings, forbiddenNodes);
+            }
+        }
+        std::set<int> newForbidden = forbiddenNodes;
+        newForbidden.insert(nNode);
+        return nameBranchGraph(g, r, nNode, allIndependentRings, newForbidden);
+    };
+
+    QString r1Name = nameOne(heavyNeighbors[0]);
+    if (r1Name.isEmpty()) return "";
+    if (heavyNeighbors.size() == 1) {
+        return wrapCompoundSuffix(r1Name, "amino");
+    }
+
+    QString r2Name = nameOne(heavyNeighbors[1]);
+    if (r2Name.isEmpty()) return "";
+
+    auto stripWrap = [](const QString &s) -> QString {
+        if ((s.startsWith("(") && s.endsWith(")")) || (s.startsWith("[") && s.endsWith("]"))) {
+            return s.mid(1, s.length() - 2);
+        }
+        return s;
+    };
+    QString clean1 = stripWrap(r1Name), clean2 = stripWrap(r2Name);
+
+    if (clean1 == clean2) {
+        bool needsWrap = r1Name.startsWith("(") || r1Name.startsWith("[");
+        return (needsWrap ? "bis(" + clean1 + ")" : "di" + clean1) + "amino";
+    }
+
+    QString a = alphabetizationKey(clean1).toLower() < alphabetizationKey(clean2).toLower() ? r1Name : r2Name;
+    QString b = alphabetizationKey(clean1).toLower() < alphabetizationKey(clean2).toLower() ? r2Name : r1Name;
+    auto ensureWrapped = [](const QString &s) -> QString {
+        if ((s.startsWith("(") && s.endsWith(")")) || (s.startsWith("[") && s.endsWith("]"))) return s;
+        return "(" + s + ")";
+    };
+    return ensureWrapped(a) + ensureWrapped(b) + "amino";
+}
+
 } // anonymous namespace
 
 // Azo (diazene) and N-nitrosamine construction (below) early-return the fully
@@ -3935,6 +3924,17 @@ BicyclicEvalResult evaluateBicyclicSystem(const Graph& g, const std::set<int>& r
     return res;
 }
 
+// Names an amine nitrogen `nNode` (attached to `fromNode`) as a substituent
+// prefix -- "amino" for plain -NH2, "<R>amino" for secondary -NH-R (P-66.6.1),
+// and the tertiary -NR2/-NRR' case: identical R groups collapse to a
+// multiplying prefix ("dimethylamino", or "bis(2-chloroethyl)amino" when R's
+// own name needs enclosure per the same rule used elsewhere in this file);
+// different R groups are each individually parenthesized and alphabetized,
+// e.g. "(carboxymethyl)(2-hydroxyethyl)amino" (a real Blue Book worked
+// example). Returns "" for anything unsupported: more than two substituents,
+// or a nitrogen-rooted "R" (a hydrazine shape, -NH-NH2) -- R must be
+// carbon-rooted, matching the guard already proven necessary for the
+// secondary case.
 IupacResult IupacNamer::generateName(int mol) {
     if (mol < 0) {
         return {false, "", "Invalid molecule handle."};
@@ -10892,50 +10892,9 @@ IupacResult IupacNamer::generateName(int mol) {
                         } else if (isHydrazinylNitrogen(nei, rNode, g)) {
                             subName = "hydrazinyl";
                         } else {
-                            bool isPlainNH2 = true;
-                            int otherHeavyNeighbor = -1;
-                            int heavyNeighborCount = 0;
-                            for (int nNei2 : g.nodes[nei].neighbors) {
-                                if (nNei2 != rNode && g.nodes[nNei2].atomicNumber > 1) {
-                                    isPlainNH2 = false;
-                                    otherHeavyNeighbor = nNei2;
-                                    heavyNeighborCount++;
-                                }
-                            }
-                            if (isPlainNH2) {
-                                subName = "amino";
-                            } else {
-                                // SECONDARY amine case: exactly ONE other heavy neighbor (-NH-R),
-                                // and R must be carbon-rooted (methyl/ethyl/aryl/cycloalkyl etc) --
-                                // a nitrogen-rooted "R" here is a hydrazine shape (-NH-NH2), which
-                                // must keep falling through to the existing rejection below rather
-                                // than being misnamed as a plain substituent (confirmed regression:
-                                // nameBranchGraph on a bare terminal NH2 root produced "amino",
-                                // which this code then wrapped into the nonsense "aminoamino").
-                                if (heavyNeighborCount == 1 && otherHeavyNeighbor != -1 &&
-                                    g.nodes[otherHeavyNeighbor].atomicNumber == 6) {
-                                    // Check if the R group is part of a ring
-                                    bool rIsInRing = false;
-                                    std::set<int> rRing;
-                                    for (const auto &r : allSSSRRings) {
-                                        if (r.count(otherHeavyNeighbor)) { rIsInRing = true; rRing = r; break; }
-                                    }
-                                    QString rName;
-                                    if (rIsInRing) {
-                                        rName = nameRingAsSubstituent(g, rRing, otherHeavyNeighbor, nei, allSSSRRings);
-                                    } else {
-                                        rName = nameBranchGraph(g, otherHeavyNeighbor, nei, allSSSRRings);
-                                    }
-                                    if (!rName.isEmpty()) {
-                                        subName = wrapCompoundSuffix(rName, "amino");
-                                    } else {
-                                        // Could not name the R group - reject
-                                        return {false, "", "N-substituted amino ring substituents are not supported"};
-                                    }
-                                } else {
-                                    // Not a simple secondary amine - reject
-                                    return {false, "", "N-substituted amino ring substituents are not supported"};
-                                }
+                            subName = nameAmineSubstituentPrefix(nei, rNode, g, allSSSRRings);
+                            if (subName.isEmpty()) {
+                                return {false, "", "N-substituted amino ring substituents are not supported"};
                             }
                         }
                     } else if (!isAzide && order == 2 && carbonImine.count(rNode) && carbonImine[rNode] == nei && winningType != GroupType::IMINE) {
@@ -12923,60 +12882,15 @@ IupacResult IupacNamer::generateName(int mol) {
                                 }
                             }
                         } else {
-                            // "amino" only correctly represents a plain, unsubstituted -NH2.
-                            // If nei has any other heavy-atom neighbor (e.g. a chained N as in
-                            // a non-principal hydrazide's -NH-NH2, or any other N-substituent),
-                            // silently calling it "amino" would drop that neighbor from the name
-                            // entirely -- reject cleanly instead of producing an incomplete name.
-                            bool isPlainNH2 = true;
-                            int otherHeavyNeighbor = -1;
-                            int heavyNeighborCount = 0;
-                            for (int nNei2 : g.nodes[nei].neighbors) {
-                                if (nNei2 != cNode && g.nodes[nNei2].atomicNumber > 1) {
-                                    isPlainNH2 = false;
-                                    otherHeavyNeighbor = nNei2;
-                                    heavyNeighborCount++;
-                                }
-                            }
-                            if (!isPlainNH2) {
-                                // SECONDARY amine case: exactly ONE other heavy neighbor (-NH-R),
-                                // and R must be carbon-rooted (methyl/ethyl/aryl/cycloalkyl etc) --
-                                // a nitrogen-rooted "R" here is a hydrazine shape (-NH-NH2), which
-                                // must keep falling through to the existing rejection below rather
-                                // than being misnamed as a plain substituent (confirmed regression:
-                                // nameBranchGraph on a bare terminal NH2 root produced "amino",
-                                // which this code then wrapped into the nonsense "aminoamino").
-                                if (heavyNeighborCount == 1 && otherHeavyNeighbor != -1 &&
-                                    g.nodes[otherHeavyNeighbor].atomicNumber == 6) {
-                                    // Check if the R group is part of a ring
-                                    bool rIsInRing = false;
-                                    for (const auto &r : allSSSRRings) {
-                                        if (r.count(otherHeavyNeighbor)) { rIsInRing = true; break; }
-                                    }
-                                    QString rName;
-                                    if (rIsInRing) {
-                                        // Name the ring as a substituent, with nei as its attachment point
-                                        // and the parent Link back through cNode
-                                        std::set<int> rRing;
-                                        for (const auto &r : allSSSRRings) {
-                                            if (r.count(otherHeavyNeighbor)) { rRing = r; break; }
-                                        }
-                                        rName = nameRingAsSubstituent(g, rRing, otherHeavyNeighbor, nei, allSSSRRings);
-                                    } else {
-                                        rName = nameBranchGraph(g, otherHeavyNeighbor, nei, allSSSRRings);
-                                    }
-                                    if (!rName.isEmpty()) {
-                                        locantSubstituents[locant].append(wrapCompoundSuffix(rName, "amino"));
-                                    } else {
-                                        // Could not name the R group - reject
-                                        return {false, "", "Substituted amine/hydrazine substituents are not supported in this phase."};
-                                    }
-                                } else {
-                                    // Not a simple secondary amine - reject
-                                    return {false, "", "Substituted amine/hydrazine substituents are not supported in this phase."};
-                                }
+                            QString aminoSub = nameAmineSubstituentPrefix(nei, cNode, g, allSSSRRings);
+                            if (!aminoSub.isEmpty()) {
+                                locantSubstituents[locant].append(aminoSub);
                             } else {
-                                locantSubstituents[locant].append("amino");
+                                // Could not name this amine shape (more than two
+                                // substituents, or a nitrogen-rooted "R" -- a hydrazine's
+                                // -NH-NH2) -- reject cleanly instead of producing an
+                                // incomplete name.
+                                return {false, "", "Substituted amine/hydrazine substituents are not supported in this phase."};
                             }
                         }
                     }
@@ -18061,43 +17975,9 @@ IupacResult IupacNamer::generateName(int mol) {
                             } else if (isHydrazinylNitrogen(nei, rNode, g)) {
                                 subName = "hydrazinyl";
                             } else {
-                                bool isPlainNH2 = true;
-                                int otherHeavyNeighbor = -1;
-                                int heavyNeighborCount = 0;
-                                for (int nNei2 : g.nodes[nei].neighbors) {
-                                    if (nNei2 != rNode && g.nodes[nNei2].atomicNumber > 1) {
-                                        isPlainNH2 = false;
-                                        otherHeavyNeighbor = nNei2;
-                                        heavyNeighborCount++;
-                                    }
-                                }
-                                if (isPlainNH2) {
-                                    subName = "amino";
-                                } else {
-                                    // SECONDARY amine case: exactly ONE other heavy neighbor (-NH-R)
-                                    if (heavyNeighborCount == 1 && otherHeavyNeighbor != -1) {
-                                        // Check if the R group is part of a ring
-                                        bool rIsInRing = false;
-                                        std::set<int> rRing;
-                                        for (const auto &r : allSSSRRings) {
-                                            if (r.count(otherHeavyNeighbor)) { rIsInRing = true; rRing = r; break; }
-                                        }
-                                        QString rName;
-                                        if (rIsInRing) {
-                                            rName = nameRingAsSubstituent(g, rRing, otherHeavyNeighbor, nei, allSSSRRings);
-                                        } else {
-                                            rName = nameBranchGraph(g, otherHeavyNeighbor, nei, allSSSRRings);
-                                        }
-                                        if (!rName.isEmpty()) {
-                                            subName = wrapCompoundSuffix(rName, "amino");
-                                        } else {
-                                            // Could not name the R group - reject
-                                            return {false, "", "N-substituted amino ring substituents are not supported"};
-                                        }
-                                    } else {
-                                        // Not a simple secondary amine - reject
-                                        return {false, "", "N-substituted amino ring substituents are not supported"};
-                                    }
+                                subName = nameAmineSubstituentPrefix(nei, rNode, g, allSSSRRings);
+                                if (subName.isEmpty()) {
+                                    return {false, "", "N-substituted amino ring substituents are not supported"};
                                 }
                             }
                         } else if (!isAzide && order == 2 && carbonImine.count(rNode) && carbonImine[rNode] == nei && winningType != GroupType::IMINE) {
