@@ -491,8 +491,10 @@ int main() {
         {"OC(=O)c1cccc2ccccc12", "naphthalene-1-carboxylic acid"},
         {"OC(=O)c1cccc2c(C(=O)O)cccc12", "naphthalene-1,5-dicarboxylic acid"},
 
-        // Phase 3 rejections
-        {"c1ccc2cc3ccccc3cc2c1", "", true, "Fused, bridged, spiro"},
+        // Phase 3 rejections - all-carbon 3-ring chain is anthracene/phenanthrene-shaped;
+        // both have Blue Book mandatory retained PINs, so this must stay rejected, not get a
+        // systematic fusion name.
+        {"c1ccc2cc3ccccc3cc2c1", "", true, "All-carbon fused ring systems"},
         {"C1CCC2CCCCC2C1", "bicyclo[4.4.0]decane"},
         {"C1CC2(CC1)CCCCC2", "spiro[4.5]decane"},
 
@@ -4975,6 +4977,174 @@ int main() {
             passed++;
         } else {
             std::cout << "[FAIL] Ring substituent enclosing marks (menthol shape) -> got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    // === Benzo Fusion Chain Task 3 Tests ===
+    // Part A: BENZENE support in Phase 44/48 chain builder
+    // Part B: Safety guard for exocyclic substituents
+
+    {
+        // Test 1: ACRIDINE (bare, unsubstituted) - Blue Book mandatory retained name
+        int m = indigoLoadMoleculeFromString("c1ccc2nc3ccccc3cc2c1");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            std::string n = r.name.toStdString();
+            if (r.success && n == "acridine") {
+                std::cout << "[PASS] ACRIDINE bare -> " << n << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] ACRIDINE bare -> got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] ACRIDINE bare SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    {
+        // Test 2: CARBAZOLE (bare, unsubstituted) - Blue Book mandatory retained name
+        // Per brief: reject cleanly rather than guess the indicated-hydrogen prefix
+        int m = indigoLoadMoleculeFromString("c1ccc2c(c1)[nH]c1ccccc21");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            if (!r.success && r.name.isEmpty()) {
+                std::cout << "[PASS] CARBAZOLE bare -> rejected cleanly\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] CARBAZOLE bare -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] CARBAZOLE bare SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    {
+        // Test 3: QUINACRINE (real drug with substituents on acridine core)
+        // Should reject due to exocyclic substituents (Part B guard)
+        int m = indigoLoadMoleculeFromString("CCN(CC)CCCC(C)Nc1c2ccc(Cl)cc2nc2ccc(OC)cc12");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            if (!r.success && r.error.contains("Substituents on fused ring systems")) {
+                std::cout << "[PASS] QUINACRINE -> rejected with substituent error\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] QUINACRINE -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] QUINACRINE SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    {
+        // Test 4: IMIQUIMOD (real drug with substituents)
+        // Should reject due to exocyclic substituents (Part B guard)
+        int m = indigoLoadMoleculeFromString("CC(C)Cn1cnc2c(N)nc3ccccc3c21");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            if (!r.success && r.error.contains("Substituents on fused ring systems")) {
+                std::cout << "[PASS] IMIQUIMOD -> rejected with substituent error\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] IMIQUIMOD -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] IMIQUIMOD SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    {
+        // Test 5: Substituted furo[3,2-b]thieno[2,3-e]pyridine with methyl
+        // This tests that Part B guard applies retroactively to pre-existing heterocyclic-only path
+        int m = indigoLoadMoleculeFromString("o1ccc2nc3ccsc3c(C)c12");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            if (!r.success && r.error.contains("Substituents on fused ring systems")) {
+                std::cout << "[PASS] Substituted furo-thieno-pyridine -> rejected with substituent error\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] Substituted furo-thieno-pyridine -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] Substituted furo-thieno-pyridine SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    {
+        // Test 6: Benzothiopheno-pyridine (bare, unsubstituted) - positive case
+        // Pyridine (N-containing) is the base component per Blue Book P-25.3.2.4 (a) [N is
+        // senior to any carbocycle or S-containing ring], benzo and thieno are prefixes.
+        int m = indigoLoadMoleculeFromString("c1ccc2nc3ccsc3cc2c1");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            std::string n = r.name.toStdString();
+            if (r.success && n == "benzo[4,3-b]thieno[2,3-e]pyridine") {
+                std::cout << "[PASS] Benzothiopheno-pyridine bare -> " << n << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] Benzothiopheno-pyridine bare -> got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] Benzothiopheno-pyridine bare SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    {
+        // Test 7: Existing bare heterocyclic-only chain (furo[3,2-b]thieno[2,3-e]pyridine)
+        // Should still pass unchanged
+        int m = indigoLoadMoleculeFromString("o1ccc2nc3ccsc3cc12");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            std::string n = r.name.toStdString();
+            if (r.success && n == "furo[3,2-b]thieno[2,3-e]pyridine") {
+                std::cout << "[PASS] Existing furo-thieno-pyridine bare -> " << n << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] Existing furo-thieno-pyridine bare -> got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] Existing furo-thieno-pyridine bare SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    {
+        // Test 8: Existing naphthalene test (2-ring, separate code path)
+        // Should still pass unchanged
+        int m = indigoLoadMoleculeFromString("c1cccc2ccccc12");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            std::string n = r.name.toStdString();
+            if (r.success && n == "naphthalene") {
+                std::cout << "[PASS] Existing naphthalene -> " << n << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] Existing naphthalene -> got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] Existing naphthalene SMILES did not load\n";
             failed++;
         }
     }

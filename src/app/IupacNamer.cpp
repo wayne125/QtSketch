@@ -689,6 +689,7 @@ bool tryGeneralHeterocycle(const Graph &g, const std::vector<int> &ringHeteroNod
 enum class RingType { BENZENE, FURAN, THIOPHENE, SELENOPHENE, TELLUROPHENE, PYRROLE, PYRIDINE, PHOSPHININE, CYCLOALKANE, CYCLOALKENE, IMIDAZOLE, PYRIMIDINE, PYRAZOLE, OXAZOLE, ISOXAZOLE, THIAZOLE, ISOTHIAZOLE, SELENAZOLE, ISOSELENAZOLE, PYRIDAZINE, PYRAZINE, PIPERIDINE, PYRROLIDINE, TETRAHYDROFURAN, TETRAHYDROTHIOPHENE, GENERAL_HETEROCYCLE, LARGE_HETEROCYCLE };
 
 QString getFusionPrefixShared(RingType t) {
+    if (t == RingType::BENZENE) return "benzo";
     if (t == RingType::FURAN) return "furo";
     if (t == RingType::THIOPHENE) return "thieno";
     if (t == RingType::SELENOPHENE) return "selenolo";
@@ -711,6 +712,7 @@ QString getFusionPrefixShared(RingType t) {
 }
 
 QString getBaseNameShared(RingType t) {
+    if (t == RingType::BENZENE) return "benzene";
     if (t == RingType::FURAN) return "furan";
     if (t == RingType::THIOPHENE) return "thiophene";
     if (t == RingType::SELENOPHENE) return "selenophene";
@@ -885,6 +887,15 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
                 return true;
             }
         }
+    }
+
+    // Handle all-carbon rings (no heteroatoms)
+    if (ringHeteroNodes.empty()) {
+        if (ringSize == 6 && heteroAromatic) {
+            outType = RingType::BENZENE; outNameRoot = "benzene"; return true;
+        }
+        // Non-aromatic all-carbon rings are not classified here as BENZENE
+        return false;
     }
 
     if (!ringHeteroNodes.empty() && !heteroAromatic) {
@@ -16193,7 +16204,7 @@ IupacResult IupacNamer::generateName(int mol) {
                 }
 
                 auto isAllowedType = [](RingType t) {
-                    return t == RingType::FURAN || t == RingType::THIOPHENE ||
+                    return t == RingType::BENZENE || t == RingType::FURAN || t == RingType::THIOPHENE ||
                            t == RingType::PYRIDINE || t == RingType::PYRIMIDINE ||
                            t == RingType::PYRIDAZINE || t == RingType::PYRAZINE ||
                            t == RingType::OXAZOLE || t == RingType::ISOXAZOLE ||
@@ -16210,7 +16221,15 @@ IupacResult IupacNamer::generateName(int mol) {
                 if (allAllowed) {
                     auto getCandidates = [&](RingType t, const std::vector<int> &hNodes, int rSize, const std::vector<int> &rCycle) {
                         std::vector<std::vector<int>> cands;
-                        if (t == RingType::FURAN || t == RingType::THIOPHENE || t == RingType::SELENOPHENE || t == RingType::TELLUROPHENE || t == RingType::PHOSPHININE || t == RingType::PYRIDINE || t == RingType::PYRROLE) {
+                        if (t == RingType::BENZENE) {
+                            // Benzene has no heteroatoms, generate every rotation in both directions
+                            if (hNodes.empty()) {
+                                std::vector<int> fwd(rSize), bwd(rSize);
+                                for (int i = 0; i < rSize; ++i) { fwd[i] = rCycle[(0 + i) % rSize]; bwd[i] = rCycle[(0 - i + rSize) % rSize]; }
+                                cands.push_back(fwd);
+                                cands.push_back(bwd);
+                            }
+                        } else if (t == RingType::FURAN || t == RingType::THIOPHENE || t == RingType::SELENOPHENE || t == RingType::TELLUROPHENE || t == RingType::PHOSPHININE || t == RingType::PYRIDINE || t == RingType::PYRROLE) {
                             if (hNodes.size() == 1) {
                                 int hNode = hNodes[0];
                                 int hIdx = -1;
@@ -16275,6 +16294,9 @@ IupacResult IupacNamer::generateName(int mol) {
                     };
 
                     auto getRankHetero = [](RingType t) {
+                        // BENZENE has no heteroatom, so per Blue Book P-25.3.2.4 (a) it must rank
+                        // below every heteroatom-bearing type (e.g. "pyridine is senior to azulene").
+                        if (t == RingType::BENZENE) return 100;
                         if (t == RingType::PYRIDINE || t == RingType::PYRIMIDINE || t == RingType::PYRIDAZINE || t == RingType::PYRAZINE || t == RingType::OXAZOLE || t == RingType::ISOXAZOLE || t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE || t == RingType::PYRROLE || t == RingType::IMIDAZOLE || t == RingType::PYRAZOLE) return 1;
                         if (t == RingType::FURAN) return 2;
                         if (t == RingType::THIOPHENE) return 3;
@@ -16284,6 +16306,7 @@ IupacResult IupacNamer::generateName(int mol) {
                         return 99;
                     };
                     auto getNumHetero = [](RingType t) {
+                        if (t == RingType::BENZENE) return 0;
                         if (t == RingType::PYRIMIDINE || t == RingType::PYRIDAZINE || t == RingType::PYRAZINE || t == RingType::OXAZOLE || t == RingType::ISOXAZOLE || t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE || t == RingType::IMIDAZOLE || t == RingType::PYRAZOLE) return 2;
                         return 1;
                     };
@@ -16302,7 +16325,7 @@ IupacResult IupacNamer::generateName(int mol) {
                     };
                     auto getOwnLocants = [](RingType t) -> std::vector<int> {
                         switch (t) {
-                            case RingType::PYRIDINE: case RingType::PYRROLE: case RingType::FURAN: case RingType::THIOPHENE: case RingType::SELENOPHENE: case RingType::TELLUROPHENE: case RingType::PHOSPHININE: return {1};
+                            case RingType::BENZENE: case RingType::PYRIDINE: case RingType::PYRROLE: case RingType::FURAN: case RingType::THIOPHENE: case RingType::SELENOPHENE: case RingType::TELLUROPHENE: case RingType::PHOSPHININE: return {1};
                             case RingType::PYRIDAZINE: case RingType::ISOXAZOLE: case RingType::ISOTHIAZOLE: case RingType::PYRAZOLE: case RingType::ISOSELENAZOLE: return {1, 2};
                             case RingType::PYRIMIDINE: case RingType::OXAZOLE: case RingType::THIAZOLE: case RingType::IMIDAZOLE: case RingType::SELENAZOLE: return {1, 3};
                             case RingType::PYRAZINE: return {1, 4};
@@ -16399,6 +16422,67 @@ IupacResult IupacNamer::generateName(int mol) {
                     }
 
                     if (hasValidCands) {
+                        // Part B: Safety guard - check for exocyclic substituents on any ring atom
+                        // For each ring in the assembled system, check each atom's neighbors
+                        std::set<int> allSystemNodesUnion;
+                        for (const auto &ringNodes : nodesN) {
+                            allSystemNodesUnion.insert(ringNodes.begin(), ringNodes.end());
+                        }
+                        for (int i = 0; i < N; ++i) {
+                            for (int node : nodesN[i]) {
+                                const GraphNode &n = g.nodes[node];
+                                for (size_t j = 0; j < n.neighbors.size(); ++j) {
+                                    int nei = n.neighbors[j];
+                                    // If neighbor is not in any ring in the system and is not hydrogen, it's an exocyclic substituent
+                                    if (!allSystemNodesUnion.count(nei) && g.nodes[nei].atomicNumber != 1) {
+                                        return {false, "", "Substituents on fused ring systems named via this mechanism are not yet supported."};
+                                    }
+                                }
+                            }
+                        }
+
+                        // Part A.6: Exclude acridine and carbazole (Blue Book mandatory retained names)
+                        // Check for 3-ring linear chain with both ends BENZENE and center PYRIDINE (acridine) or PYRROLE (carbazole)
+                        if (N == 3 && ends == 2 && centers == 1) {
+                            // Find which indices are ends (degree 1) and which is center (degree 2)
+                            int centerIdx = -1;
+                            std::vector<int> endIndices;
+                            for (int i = 0; i < N; ++i) {
+                                if (degree[i] == 2) {
+                                    centerIdx = i;
+                                } else if (degree[i] == 1) {
+                                    endIndices.push_back(i);
+                                }
+                            }
+                            if (centerIdx != -1 && endIndices.size() == 2) {
+                                int end1 = endIndices[0];
+                                int end2 = endIndices[1];
+                                if (typesN[end1] == RingType::BENZENE && typesN[end2] == RingType::BENZENE) {
+                                    if (typesN[centerIdx] == RingType::PYRIDINE) {
+                                        // ACRIDINE - mandatory retained name (PIN)
+                                        return {true, "acridine", ""};
+                                    } else if (typesN[centerIdx] == RingType::PYRROLE) {
+                                        // CARBAZOLE - mandatory retained name, but reject cleanly
+                                        // per brief: "reject cleanly rather than guess the indicated-hydrogen prefix"
+                                        return {false, "", ""};
+                                    }
+                                }
+                            }
+                        }
+
+                        // All-carbon systems (e.g. anthracene, phenanthrene) have their own Blue Book
+                        // mandatory retained PINs with special numbering; reject rather than construct
+                        // a systematic fusion name for them.
+                        {
+                            bool allBenzene = true;
+                            for (int i = 0; i < N; ++i) {
+                                if (typesN[i] != RingType::BENZENE) { allBenzene = false; break; }
+                            }
+                            if (allBenzene) {
+                                return {false, "", "All-carbon fused ring systems (e.g. anthracene, phenanthrene) have mandatory Blue Book retained names; systematic fusion nomenclature via this mechanism is not applicable."};
+                            }
+                        }
+
                         struct Block {
                             QString text;
                             std::vector<char> letters;
