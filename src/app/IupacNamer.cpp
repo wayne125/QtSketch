@@ -15002,6 +15002,10 @@ IupacResult IupacNamer::generateName(int mol) {
                                                 }
                                             } else if (hType == RingType::IMIDAZOLE) {
                                                 resultName = "benzimidazole";
+                                            } else if (hType == RingType::THIAZOLE) {
+                                                resultName = "[1,3]benzothiazole";
+                                            } else if (hType == RingType::OXAZOLE) {
+                                                resultName = "[1,3]benzoxazole";
                                             } else if (hType == RingType::PYRIMIDINE) {
                                                 resultName = "quinazoline";
                                             } else if (hType == RingType::PYRAZINE) {

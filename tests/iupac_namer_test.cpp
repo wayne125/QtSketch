@@ -2897,8 +2897,10 @@ int main() {
             {"c1ccc2nnccc2c1", "cinnoline", false, ""},
             {"c1ccc2cnncc2c1", "phthalazine", false, ""},
             {"c1ccc2nccnc2c1", "quinoxaline", false, ""},
+            {"c1ccc2scnc2c1", "[1,3]benzothiazole", false, ""},
+            {"c1ccc2ocnc2c1", "[1,3]benzoxazole", false, ""},
+            {"c1ccc2ncoc2c1", "[1,3]benzoxazole", false, ""},  // Previously misclassified as rejection - this is a valid benzoxazole
             // Rejection regressions (substituted indole tested in Phase 37)
-            {"c1ccc2ncoc2c1", "", true, "Fused ring systems other than naphthalene are not supported in this phase."},
             {"c1ccc2nn[nH]c2c1", "", true, "Fused ring systems other than naphthalene are not supported in this phase."}
         };
 
@@ -2922,6 +2924,40 @@ int main() {
                     std::cout << "[FAIL] Phase 31 rejection (" << t.smiles << ") -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
                     failed++;
                 }
+            }
+        }
+    }
+
+    {
+        // Phase 31 Thiazole/Oxazole extension tests
+        // Note: ETHOXZOLAMIDE (CCOc1ccc2sc(S(N)(=O)=O)nc2c1) deliberately not pinned here --
+        // the real generated name mangles its sulfonamide substituent into a nonsensical
+        // "aminodihydroxymethyl" fragment, a pre-existing bug in shared ring-substituent-naming
+        // machinery unrelated to this task's 2-line dispatch addition (confirmed: the mangling
+        // is unaffected by removing the new [1,3] prefix). Not fixed here (out of scope); not
+        // pinned as an "expected" value either, since that value is wrong.
+        std::vector<TestCase> p31ThiazoleOxazoleTests = {
+            {"c1ccc2scnc2c1", "[1,3]benzothiazole", false, ""},
+            {"c1ccc2ocnc2c1", "[1,3]benzoxazole", false, ""},
+            {"c1ccc2[nH]cnc2c1", "benzimidazole", false, ""},  // Existing Phase 31 case - regression
+            {"c1cccc2ccccc12", "naphthalene", false, ""}  // Phase 3 naphthalene - regression
+        };
+
+        for (const auto &t : p31ThiazoleOxazoleTests) {
+            int m = indigoLoadMoleculeFromString(t.smiles.c_str());
+            if (m < 0) {
+                std::cout << "[FAIL] Phase 31 Thiazole/Oxazole: SMILES did not load: " << t.smiles << "\n";
+                failed++;
+                continue;
+            }
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            if (r.success && r.name == QString::fromStdString(t.expectedName)) {
+                std::cout << "[PASS] Phase 31 Thiazole/Oxazole " << t.expectedName << " (" << t.smiles << ") -> " << r.name.toStdString() << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] Phase 31 Thiazole/Oxazole " << t.expectedName << " (" << t.smiles << ") -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+                failed++;
             }
         }
     }
