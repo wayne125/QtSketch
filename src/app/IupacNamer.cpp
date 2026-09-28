@@ -261,6 +261,46 @@ bool isAcylCyanide(int i, const Graph &g) {
     return false;
 }
 
+// Safety guard for the carbamate-ester branch namer: nameBranchGraph has a
+// real, pre-existing bug (confirmed live, unrelated to any carbamate-specific
+// code -- reproduces on a plain, unrelated acid-substituted cyclohexyl branch
+// with no carbamate involved at all) where a branch that itself contains
+// another ester or carboxylic-acid-like C(=O)-O group gets silently
+// misrendered as something chemically different (an ester rendered as a
+// plain ether-alcohol; an acid rendered as a gem-diol) instead of being
+// named correctly or failing cleanly. Reject rather than trust the branch
+// name whenever this shape is present, so a real molecule (GABAPENTIN
+// ENACARBIL, confirmed via the FDA-drug sweep) gets an honest rejection
+// instead of a confidently wrong name.
+bool branchContainsEmbeddedAcylOxy(const Graph &g, int startNode, int fromNode) {
+    std::vector<int> stack = {startNode};
+    std::vector<bool> visited(g.nodes.size(), false);
+    visited[startNode] = true;
+    if (fromNode >= 0 && fromNode < static_cast<int>(visited.size())) visited[fromNode] = true;
+    while (!stack.empty()) {
+        int cur = stack.back(); stack.pop_back();
+        const GraphNode &node = g.nodes[cur];
+        if (node.atomicNumber == 6) {
+            bool hasDoubleO = false, hasSingleO = false;
+            for (size_t j = 0; j < node.neighbors.size(); ++j) {
+                int nei = node.neighbors[j];
+                if (g.nodes[nei].atomicNumber == 8) {
+                    if (node.bondOrders[j] == 2) hasDoubleO = true;
+                    else if (node.bondOrders[j] == 1) hasSingleO = true;
+                }
+            }
+            if (hasDoubleO && hasSingleO) return true;
+        }
+        for (int nei : node.neighbors) {
+            if (nei >= 0 && nei < static_cast<int>(visited.size()) && !visited[nei] && g.nodes[nei].atomicNumber > 1) {
+                visited[nei] = true;
+                stack.push_back(nei);
+            }
+        }
+    }
+    return false;
+}
+
 bool isPeroxyCarboxylicAcid(int i, const Graph &g) {
     const GraphNode &node = g.nodes[i];
     for (size_t j = 0; j < node.neighbors.size(); ++j) {
@@ -10200,12 +10240,42 @@ IupacResult IupacNamer::generateName(int mol) {
                                 if (esterOCount == 1 && singleO.size() == 1 && singleN.size() == 1) {
                                     int nZ = singleN[0];
                                     if (g.nodes[nZ].totalH == 2 && g.nodes[nZ].neighbors.size() == 1) {
+                                        if (branchContainsEmbeddedAcylOxy(g, esterO_alk[0].second, esterO_alk[0].first)) {
+                                            return {false, "", "Carbamate esters with an additional ester or acid group elsewhere in the molecule are not yet supported in this phase."};
+                                        }
                                         QString alkName = nameBranchGraph(g, esterO_alk[0].second, esterO_alk[0].first, allSSSRRings);
                                         if (!alkName.isEmpty()) {
                                             if (alkName.startsWith("(") && alkName.endsWith(")")) alkName = alkName.mid(1, alkName.length() - 2);
                                             else if (alkName.startsWith("[") && alkName.endsWith("]")) alkName = alkName.mid(1, alkName.length() - 2);
                                             return {true, alkName + " carbamate", ""};
                                         }
+                                    }
+                                    else if (g.nodes[nZ].neighbors.size() == 2) {
+                                        int nSubCarbon = -1;
+                                        for (int nNei : g.nodes[nZ].neighbors) {
+                                            if (nNei != static_cast<int>(i) && g.nodes[nNei].atomicNumber == 6) {
+                                                nSubCarbon = nNei;
+                                                break;
+                                            }
+                                        }
+                                        if (nSubCarbon != -1) {
+                                            if (branchContainsEmbeddedAcylOxy(g, esterO_alk[0].second, esterO_alk[0].first) ||
+                                                branchContainsEmbeddedAcylOxy(g, nSubCarbon, nZ)) {
+                                                return {false, "", "Carbamate esters with an additional ester or acid group elsewhere in the molecule are not yet supported in this phase."};
+                                            }
+                                            QString oSideName = nameBranchGraph(g, esterO_alk[0].second, esterO_alk[0].first, allSSSRRings);
+                                            QString nSideName = nameBranchGraph(g, nSubCarbon, nZ, allSSSRRings);
+                                            if (!oSideName.isEmpty() && !nSideName.isEmpty()) {
+                                                if (oSideName.startsWith("(") && oSideName.endsWith(")")) oSideName = oSideName.mid(1, oSideName.length() - 2);
+                                                else if (oSideName.startsWith("[") && oSideName.endsWith("]")) oSideName = oSideName.mid(1, oSideName.length() - 2);
+                                                if (nSideName.startsWith("(") && nSideName.endsWith(")")) nSideName = nSideName.mid(1, nSideName.length() - 2);
+                                                else if (nSideName.startsWith("[") && nSideName.endsWith("]")) nSideName = nSideName.mid(1, nSideName.length() - 2);
+                                                return {true, oSideName + " (" + nSideName + ")carbamate", ""};
+                                            }
+                                        }
+                                    }
+                                    else if (g.nodes[nZ].neighbors.size() > 2) {
+                                        return {false, "", "Di-N-substituted carbamate esters are not yet supported in this phase."};
                                     }
                                 }
                                 
@@ -12133,6 +12203,9 @@ IupacResult IupacNamer::generateName(int mol) {
                                     if (esterOCount == 1 && singleO.size() == 1 && singleN.size() == 1) {
                                         int nZ = singleN[0];
                                         if (g.nodes[nZ].totalH == 2 && g.nodes[nZ].neighbors.size() == 1) {
+                                            if (branchContainsEmbeddedAcylOxy(g, esterO_alk[0].second, esterO_alk[0].first)) {
+                                                return {false, "", "Carbamate esters with an additional ester or acid group elsewhere in the molecule are not yet supported in this phase."};
+                                            }
                                             QString alkName = nameBranchGraph(g, esterO_alk[0].second, esterO_alk[0].first, allSSSRRings);
                                             if (!alkName.isEmpty()) {
                                                 if (alkName.startsWith("(") && alkName.endsWith(")")) alkName = alkName.mid(1, alkName.length() - 2);
@@ -12140,8 +12213,35 @@ IupacResult IupacNamer::generateName(int mol) {
                                                 return {true, alkName + " carbamate", ""};
                                             }
                                         }
+                                        else if (g.nodes[nZ].neighbors.size() == 2) {
+                                            int nSubCarbon = -1;
+                                            for (int nNei : g.nodes[nZ].neighbors) {
+                                                if (nNei != static_cast<int>(i) && g.nodes[nNei].atomicNumber == 6) {
+                                                    nSubCarbon = nNei;
+                                                    break;
+                                                }
+                                            }
+                                            if (nSubCarbon != -1) {
+                                                if (branchContainsEmbeddedAcylOxy(g, esterO_alk[0].second, esterO_alk[0].first) ||
+                                                    branchContainsEmbeddedAcylOxy(g, nSubCarbon, nZ)) {
+                                                    return {false, "", "Carbamate esters with an additional ester or acid group elsewhere in the molecule are not yet supported in this phase."};
+                                                }
+                                                QString oSideName = nameBranchGraph(g, esterO_alk[0].second, esterO_alk[0].first, allSSSRRings);
+                                                QString nSideName = nameBranchGraph(g, nSubCarbon, nZ, allSSSRRings);
+                                                if (!oSideName.isEmpty() && !nSideName.isEmpty()) {
+                                                    if (oSideName.startsWith("(") && oSideName.endsWith(")")) oSideName = oSideName.mid(1, oSideName.length() - 2);
+                                                    else if (oSideName.startsWith("[") && oSideName.endsWith("]")) oSideName = oSideName.mid(1, oSideName.length() - 2);
+                                                    if (nSideName.startsWith("(") && nSideName.endsWith(")")) nSideName = nSideName.mid(1, nSideName.length() - 2);
+                                                    else if (nSideName.startsWith("[") && nSideName.endsWith("]")) nSideName = nSideName.mid(1, nSideName.length() - 2);
+                                                    return {true, oSideName + " (" + nSideName + ")carbamate", ""};
+                                                }
+                                            }
+                                        }
+                                        else if (g.nodes[nZ].neighbors.size() > 2) {
+                                            return {false, "", "Di-N-substituted carbamate esters are not yet supported in this phase."};
+                                        }
                                     }
-                                    
+
                                     if (esterOCount == 2 && singleO.size() == 2 && singleN.empty()) {
                                         QString alkName1 = nameBranchGraph(g, esterO_alk[0].second, esterO_alk[0].first, allSSSRRings);
                                         QString alkName2 = nameBranchGraph(g, esterO_alk[1].second, esterO_alk[1].first, allSSSRRings);
@@ -17618,6 +17718,9 @@ IupacResult IupacNamer::generateName(int mol) {
                                     if (esterOCount == 1 && singleO.size() == 1 && singleN.size() == 1) {
                                         int nZ = singleN[0];
                                         if (g.nodes[nZ].totalH == 2 && g.nodes[nZ].neighbors.size() == 1) {
+                                            if (branchContainsEmbeddedAcylOxy(g, esterO_alk[0].second, esterO_alk[0].first)) {
+                                                return {false, "", "Carbamate esters with an additional ester or acid group elsewhere in the molecule are not yet supported in this phase."};
+                                            }
                                             QString alkName = nameBranchGraph(g, esterO_alk[0].second, esterO_alk[0].first, allSSSRRings);
                                             if (!alkName.isEmpty()) {
                                                 if (alkName.startsWith("(") && alkName.endsWith(")")) alkName = alkName.mid(1, alkName.length() - 2);
@@ -17625,8 +17728,35 @@ IupacResult IupacNamer::generateName(int mol) {
                                                 return {true, alkName + " carbamate", ""};
                                             }
                                         }
+                                        else if (g.nodes[nZ].neighbors.size() == 2) {
+                                            int nSubCarbon = -1;
+                                            for (int nNei : g.nodes[nZ].neighbors) {
+                                                if (nNei != static_cast<int>(i) && g.nodes[nNei].atomicNumber == 6) {
+                                                    nSubCarbon = nNei;
+                                                    break;
+                                                }
+                                            }
+                                            if (nSubCarbon != -1) {
+                                                if (branchContainsEmbeddedAcylOxy(g, esterO_alk[0].second, esterO_alk[0].first) ||
+                                                    branchContainsEmbeddedAcylOxy(g, nSubCarbon, nZ)) {
+                                                    return {false, "", "Carbamate esters with an additional ester or acid group elsewhere in the molecule are not yet supported in this phase."};
+                                                }
+                                                QString oSideName = nameBranchGraph(g, esterO_alk[0].second, esterO_alk[0].first, allSSSRRings);
+                                                QString nSideName = nameBranchGraph(g, nSubCarbon, nZ, allSSSRRings);
+                                                if (!oSideName.isEmpty() && !nSideName.isEmpty()) {
+                                                    if (oSideName.startsWith("(") && oSideName.endsWith(")")) oSideName = oSideName.mid(1, oSideName.length() - 2);
+                                                    else if (oSideName.startsWith("[") && oSideName.endsWith("]")) oSideName = oSideName.mid(1, oSideName.length() - 2);
+                                                    if (nSideName.startsWith("(") && nSideName.endsWith(")")) nSideName = nSideName.mid(1, nSideName.length() - 2);
+                                                    else if (nSideName.startsWith("[") && nSideName.endsWith("]")) nSideName = nSideName.mid(1, nSideName.length() - 2);
+                                                    return {true, oSideName + " (" + nSideName + ")carbamate", ""};
+                                                }
+                                            }
+                                        }
+                                        else if (g.nodes[nZ].neighbors.size() > 2) {
+                                            return {false, "", "Di-N-substituted carbamate esters are not yet supported in this phase."};
+                                        }
                                     }
-                                    
+
                                     if (esterOCount == 2 && singleO.size() == 2 && singleN.empty()) {
                                         QString alkName1 = nameBranchGraph(g, esterO_alk[0].second, esterO_alk[0].first, allSSSRRings);
                                         QString alkName2 = nameBranchGraph(g, esterO_alk[1].second, esterO_alk[1].first, allSSSRRings);

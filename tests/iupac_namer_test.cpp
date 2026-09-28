@@ -846,6 +846,21 @@ int main() {
         // pre-existing, correct "carbamic acid" handling.
         {"NC(=O)O", "carbamic acid"},
 
+        // NEW: carbamate ester with N-substituent (P-65.2.1.1)
+        {"CNC(=O)Oc1cccc2ccccc12", "naphthalen-1-yl (methyl)carbamate"},  // CARBARIL (P-65.2.1.1)
+        {"NC(=O)Oc1ccccc1", "phenyl carbamate"},  // phenyl carbamate (unsubstituted N)
+        {"CNC(=O)Oc1ccccc1", "phenyl (methyl)carbamate"},  // phenyl N-methylcarbamate (P-65.2.1.1)
+        // Di-N-substituted carbamate ester (out of scope)
+        {"CN(C)C(=O)Oc1ccccc1", "", true, "Di-N-substituted carbamate esters are not yet supported in this phase."},  // RIVASTIGMINE analog
+        // Carbamate ester whose O-side and N-side branches each embed a further
+        // ester/acid group -- nameBranchGraph has a real, pre-existing bug for
+        // this shape (confirmed independently reproducible with no carbamate
+        // involved at all: an ester group gets misrendered as a plain
+        // ether-alcohol, an acid group as a gem-diol), so this must reject
+        // cleanly rather than emit a confidently wrong name. Found live via
+        // the FDA-drug sweep on GABAPENTIN ENACARBIL.
+        {"CC(OC(=O)NCC1(CC(=O)O)CCCCC1)OC(=O)C(C)C", "", true, "Carbamate esters with an additional ester or acid group elsewhere in the molecule are not yet supported in this phase."},  // GABAPENTIN ENACARBIL
+
         // Acyl azide (pseudohalide)
         {"CCCC(=O)N=[N+]=[N-]", "butanoyl azide"},
         // Acyl cyanide still rejected (out of scope)
