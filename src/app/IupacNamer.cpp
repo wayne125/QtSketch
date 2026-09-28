@@ -475,6 +475,186 @@ static QString hwAPrefix(int z) {
     }
 }
 
+// P-44.2.1 criterion (c) and (g) heteroatom seniority ranks.
+// Lower rank = occurs earlier in the Blue Book sequence = more senior.
+// Criterion (c): F > Cl > Br > I > O > S > Se > Te > P > As > Sb > Bi > Si > Ge > Sn > Pb > B > Al > Ga > In > Tl
+//   (used when comparing heteroatoms "in the absence of nitrogen")
+// Criterion (g): F > Cl > Br > I > O > S > Se > Te > N > P > As > Sb > Bi > Si > Ge > Sn > Pb > B > Al > Ga > In > Tl
+//   (used when comparing heteroatoms of any kind, N now appears after Te)
+static int p44_2_1_c_rank(int z) {
+    switch (z) {
+        case  9: return 0;  // F
+        case 17: return 1;  // Cl
+        case 35: return 2;  // Br
+        case 53: return 3;  // I
+        case  8: return 4;  // O
+        case 16: return 5;  // S
+        case 34: return 6;  // Se
+        case 52: return 7;  // Te
+        case 15: return 8;  // P
+        case 33: return 9;  // As
+        case 51: return 10; // Sb
+        case 83: return 11; // Bi
+        case 14: return 12; // Si
+        case 32: return 13; // Ge
+        case 50: return 14; // Sn
+        case 82: return 15; // Pb
+        case  5: return 16; // B
+        case 13: return 17; // Al
+        case 31: return 18; // Ga
+        case 49: return 19; // In
+        case 81: return 20; // Tl
+        default: return 99; // unsupported / not in sequence
+    }
+}
+
+static int p44_2_1_g_rank(int z) {
+    switch (z) {
+        case  9: return 0;  // F
+        case 17: return 1;  // Cl
+        case 35: return 2;  // Br
+        case 53: return 3;  // I
+        case  8: return 4;  // O
+        case 16: return 5;  // S
+        case 34: return 6;  // Se
+        case 52: return 7;  // Te
+        case  7: return 8;  // N
+        case 15: return 9;  // P
+        case 33: return 10; // As
+        case 51: return 11; // Sb
+        case 83: return 12; // Bi
+        case 14: return 13; // Si
+        case 32: return 14; // Ge
+        case 50: return 15; // Sn
+        case 82: return 16; // Pb
+        case  5: return 17; // B
+        case 13: return 18; // Al
+        case 31: return 19; // Ga
+        case 49: return 20; // In
+        case 81: return 21; // Tl
+        default: return 99; // unsupported / not in sequence
+    }
+}
+
+// P-44.2.1 tie-break comparison for two candidate rings.
+// Returns: 1 if ring1 wins (is senior), -1 if ring2 wins, 0 if tied through all criteria.
+// Both rings are assumed to be parent-eligible (pass isParentEligible) for this use case.
+// Implements criteria (a) through (g) from Blue Book P-44.2.1 in order, stopping at first distinction.
+static int compareRingSeniority(const Graph &g, const std::set<int> &ring1, const std::set<int> &ring2) {
+    // Criterion (a): is a heterocycle
+    bool r1_hasHetero = false, r2_hasHetero = false;
+    for (int n : ring1) {
+        if (g.nodes[n].atomicNumber != 6) { r1_hasHetero = true; break; }
+    }
+    for (int n : ring2) {
+        if (g.nodes[n].atomicNumber != 6) { r2_hasHetero = true; break; }
+    }
+    // Since both rings passed isParentEligible, both must have at least one heteroatom
+    // OR an exocyclic double/triple to O/N/S. But isParentEligible returns true for
+    // exocyclic double/triple to O/N/S even on a carbocycle. However, for true rings
+    // (SSSR rings), the exocyclic double bond check in isParentEligible is meant
+    // for cases like cyclohexene (C=C exocyclic to the ring carbon). But in the
+    // disjoint-ring context, we're dealing with the rings themselves.
+    // For criterion (a), we need to check if the ring IS a heterocycle (has a
+    // heteroatom in the ring itself).
+    if (r1_hasHetero != r2_hasHetero) {
+        return r1_hasHetero ? 1 : -1; // heterocycle > carbocycle
+    }
+    if (!r1_hasHetero && !r2_hasHetero) {
+        // Both carbocycles - (a) doesn't distinguish
+    }
+
+    // Criterion (b): has at least one nitrogen atom
+    bool r1_hasN = false, r2_hasN = false;
+    for (int n : ring1) {
+        if (g.nodes[n].atomicNumber == 7) { r1_hasN = true; break; }
+    }
+    for (int n : ring2) {
+        if (g.nodes[n].atomicNumber == 7) { r2_hasN = true; break; }
+    }
+    if (r1_hasN != r2_hasN) {
+        return r1_hasN ? 1 : -1; // has N > no N
+    }
+
+    // Criterion (c): has at least one heteroatom (in the absence of nitrogen)
+    // that occurs earlier in the sequence F > Cl > Br > I > O > S > Se > Te > P > As > Sb > Bi > Si > Ge > Sn > Pb > B > Al > Ga > In > Tl
+    // Only applies if both have the same nitrogen status (both have N or both don't)
+    if (!r1_hasN && !r2_hasN) {
+        // Find the earliest-ranked heteroatom in each ring
+        int r1_earliest = 99, r2_earliest = 99;
+        for (int n : ring1) {
+            int z = g.nodes[n].atomicNumber;
+            if (z != 6) {
+                int rank = p44_2_1_c_rank(z);
+                if (rank < r1_earliest) r1_earliest = rank;
+            }
+        }
+        for (int n : ring2) {
+            int z = g.nodes[n].atomicNumber;
+            if (z != 6) {
+                int rank = p44_2_1_c_rank(z);
+                if (rank < r2_earliest) r2_earliest = rank;
+            }
+        }
+        if (r1_earliest != r2_earliest) {
+            return (r1_earliest < r2_earliest) ? 1 : -1;
+        }
+    }
+
+    // Criterion (d): has the greater number of rings
+    // In this code path, both rings are monocyclic SSSR rings, so both have exactly 1 ring
+    // This will always be a tie for disjoint monocyclic rings
+    // int r1_rings = 1, r2_rings = 1; // always equal for this use case
+
+    // Criterion (e): has the greater number of skeletal atoms
+    size_t r1_size = ring1.size();
+    size_t r2_size = ring2.size();
+    if (r1_size != r2_size) {
+        return (r1_size > r2_size) ? 1 : -1;
+    }
+
+    // Criterion (f): has the greater number of heteroatoms of any kind
+    int r1_numHetero = 0, r2_numHetero = 0;
+    for (int n : ring1) {
+        if (g.nodes[n].atomicNumber != 6) r1_numHetero++;
+    }
+    for (int n : ring2) {
+        if (g.nodes[n].atomicNumber != 6) r2_numHetero++;
+    }
+    if (r1_numHetero != r2_numHetero) {
+        return (r1_numHetero > r2_numHetero) ? 1 : -1;
+    }
+
+    // Criterion (g): has the greater number of heteroatoms occurring earlier in the sequence
+    // F > Cl > Br > I > O > S > Se > Te > N > P > As > Sb > Bi > Si > Ge > Sn > Pb > B > Al > Ga > In > Tl
+    // Count heteroatoms at each rank level for each ring, compare from most senior
+    int r1_heteroAtRank[99] = {0}; // initialize to 0
+    int r2_heteroAtRank[99] = {0};
+    for (int n : ring1) {
+        int z = g.nodes[n].atomicNumber;
+        if (z != 6) {
+            int rank = p44_2_1_g_rank(z);
+            if (rank < 99) r1_heteroAtRank[rank]++;
+        }
+    }
+    for (int n : ring2) {
+        int z = g.nodes[n].atomicNumber;
+        if (z != 6) {
+            int rank = p44_2_1_g_rank(z);
+            if (rank < 99) r2_heteroAtRank[rank]++;
+        }
+    }
+    // Compare from rank 0 (most senior) upwards
+    for (int rank = 0; rank < 99; rank++) {
+        if (r1_heteroAtRank[rank] != r2_heteroAtRank[rank]) {
+            return (r1_heteroAtRank[rank] > r2_heteroAtRank[rank]) ? 1 : -1;
+        }
+    }
+
+    // All criteria exhausted, still tied
+    return 0;
+}
+
 // P-22.2.2.1.6: For 6-membered rings, find least-senior heteroatom present.
 // Group A (O,S,Se,Te,Bi) and Group B (N,Si,Ge,Sn,Pb) -> mancude stem '-ine'.
 // Group C (P,As,Sb,B) -> mancude stem '-inine'.
@@ -17062,6 +17242,34 @@ IupacResult IupacNamer::generateName(int mol) {
                             phase2ForcedRingSubstituentNames[attach2] = nameRingAsSubstituent(g, ring1Nodes, attach1, attach2, allSSSRRings, ring2Nodes);
                             return namePhase2Monocyclic();
                         }
+                    }
+                } else if (ring1Eligible && ring2Eligible) {
+                    // Both rings are parent-eligible (both are heterocycles or have exocyclic double/triple to O/N/S)
+                    // Use P-44.2.1 tie-break criteria to decide which is senior
+                    int cmp = compareRingSeniority(g, ring1Nodes, ring2Nodes);
+                    if (cmp == 1) {
+                        // ring1 wins as parent, ring2 becomes substituent
+                        // Relaxed plainness check: use nameRingAsSubstituent's internal validity
+                        QString subName = nameRingAsSubstituent(g, ring2Nodes, attach2, attach1, allSSSRRings, ring1Nodes);
+                        if (!subName.isEmpty()) {
+                            phase2ForcedRingNodeSet = ring1Nodes;
+                            phase2ForcedRingSubstituentNames[attach1] = subName;
+                            return namePhase2Monocyclic();
+                        }
+                        // nameRingAsSubstituent failed - reject cleanly
+                        return {false, "", "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."};
+                    } else if (cmp == -1) {
+                        // ring2 wins as parent, ring1 becomes substituent
+                        QString subName = nameRingAsSubstituent(g, ring1Nodes, attach1, attach2, allSSSRRings, ring2Nodes);
+                        if (!subName.isEmpty()) {
+                            phase2ForcedRingNodeSet = ring2Nodes;
+                            phase2ForcedRingSubstituentNames[attach2] = subName;
+                            return namePhase2Monocyclic();
+                        }
+                        return {false, "", "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."};
+                    } else {
+                        // cmp == 0: complete tie through all criteria (a)-(g)
+                        return {false, "", "Two ring systems of equal seniority (P-44.2.1) are not yet supported as parent vs. substituent."};
                     }
                 } else if (!ring1Eligible && !ring2Eligible) {
                     // Both rings are plain - check for biphenyl case
