@@ -226,7 +226,7 @@ int main() {
         {"CC(=O)N(C)C(C)C", "", true, "Branched or ring N-substituents on amides are not supported"},
         {"O=CN(C)C", "N,N-dimethylmethanamide"},
         {"CC(=O)NC(C)=O", "", true, "Acyclic imides (N-acylamides) are not supported"},
-        {"CC(=O)Nc1ccccc1", "", true, "A chain-based principal group outranks the ring in this structure"},
+        {"CC(=O)Nc1ccccc1", "N-phenylacetamide", false, ""},
 
         // P-66.1.1.3.1 N-Substitution (thioamides)
         {"CC(=S)NC", "N-methylethanethioamide"},
@@ -5203,6 +5203,116 @@ int main() {
             }
         } else {
             std::cout << "[FAIL] Existing naphthalene SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    // Anilide N-ring tests (chain-parent AMIDE with ring on nitrogen)
+    {
+        // ACETANILIDE: Blue Book worked example CH3-CO-NH-C6H5 -> N-phenylacetamide (PIN)
+        int m = indigoLoadMoleculeFromString("CC(=O)Nc1ccccc1");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            std::string n = r.name.toStdString();
+            if (r.success && n == "N-phenylacetamide") {
+                std::cout << "[PASS] ACETANILIDE -> " << n << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] ACETANILIDE -> got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] ACETANILIDE SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    {
+        // ACETAMINOPHEN (paracetamol): CC(=O)Nc1ccc(O)cc1 -> N-(4-hydroxyphenyl)acetamide
+        int m = indigoLoadMoleculeFromString("CC(=O)Nc1ccc(O)cc1");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            std::string n = r.name.toStdString();
+            if (r.success && n == "N-(4-hydroxyphenyl)acetamide") {
+                std::cout << "[PASS] ACETAMINOPHEN -> " << n << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] ACETAMINOPHEN -> got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] ACETAMINOPHEN SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    {
+        // LIDOCAINE: CCN(CC)CC(=O)Nc1c(C)cccc1C -- has a substituted (diethylamino)
+        // branch on the acyl chain, which nameAcyclicChainParentWithSubstituents
+        // cannot yet name correctly (it only knows how to reduce a plain -NH2 to
+        // "amino"; a real secondary/tertiary amine branch needs a rings/exclusion
+        // parameter this function doesn't have threaded through it). Confirmed
+        // live: before the safety guard, this silently produced the wrong name
+        // "N-(2,6-dimethylphenyl)2-aminoethanamide" (both ethyl groups dropped,
+        // and missing the separator hyphen). Must reject cleanly instead.
+        int m = indigoLoadMoleculeFromString("CCN(CC)CC(=O)Nc1c(C)cccc1C");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            if (!r.success && r.name.isEmpty()) {
+                std::cout << "[PASS] LIDOCAINE -> rejected cleanly (substituted amine branch not yet supported)\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] LIDOCAINE -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] LIDOCAINE SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    {
+        // THIOAMIDE with ring on N should still reject (out of scope)
+        // CC(=S)Nc1ccccc1 should reject with existing message
+        int m = indigoLoadMoleculeFromString("CC(=S)Nc1ccccc1");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            std::string n = r.name.toStdString();
+            std::string err = r.error.toStdString();
+            if (!r.success && err.find("chain-based principal group outranks the ring") != std::string::npos) {
+                std::cout << "[PASS] THIOAMIDE ring-on-N rejection -> " << err << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] THIOAMIDE ring-on-N rejection -> got success=" << r.success << " name='" << n << "' err='" << err << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] THIOAMIDE SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    {
+        // Regression: confirm existing carbon-attachment case still works
+        // 2-phenylacetic acid: OC(=O)Cc1ccccc1
+        int m = indigoLoadMoleculeFromString("OC(=O)Cc1ccccc1");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            std::string n = r.name.toStdString();
+            if (r.success && n == "2-phenylethanoic acid") {
+                std::cout << "[PASS] 2-phenylethanoic acid regression -> " << n << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] 2-phenylethanoic acid regression -> got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] 2-phenylethanoic acid SMILES did not load\n";
             failed++;
         }
     }

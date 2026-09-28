@@ -3011,13 +3011,24 @@ QString nameAcyclicChainParentWithSubstituents(
                         else if (order == 2) subName = "oxo";
                     } else if (nz == 7) {
                         bool isAzide = false;
+                        bool hasFurtherSubstituent = false;
                         for (size_t k = 0; k < g.nodes[nei].neighbors.size(); ++k) {
                             int nNei = g.nodes[nei].neighbors[k];
                             if (g.nodes[nNei].atomicNumber == 7 && g.nodes[nei].bondOrders[k] >= 2) {
                                 isAzide = true; break;
                             }
+                            if (nNei != c && g.nodes[nNei].atomicNumber > 1) hasFurtherSubstituent = true;
                         }
-                        if (!isAzide && order == 1) subName = "amino";
+                        if (!isAzide && order == 1) {
+                            // A plain -NH2 reduces to "amino"; a secondary/tertiary amine
+                            // (e.g. -N(CC)(CC)) needs real substituent naming this bare
+                            // reduction can't provide (no rings/exclusion-set parameter is
+                            // threaded through this function) -- reject rather than silently
+                            // drop the real substituents (confirmed live: LIDOCAINE's
+                            // diethylamino branch was being reduced to bare "amino").
+                            if (hasFurtherSubstituent) return "";
+                            subName = "amino";
+                        }
                     } else if (nz == 6) {
                         subName = nameBranchGraph(g, nei, c);
                         if (subName.isEmpty()) return "";
@@ -3205,7 +3216,7 @@ struct HeteroCompletenessError {
     QString msg;
 };
 
-static HeteroCompletenessError checkPrincipalHeteroatomsUnsubstituted(const Graph &g, const std::set<int> &principalCarbons, GroupType wType) {
+static HeteroCompletenessError checkPrincipalHeteroatomsUnsubstituted(const Graph &g, const std::set<int> &principalCarbons, GroupType wType, const std::set<int> &ringNodeSet = {}) {
     auto rejectNode = [&](int hNode, const std::set<int>& allowedNeighbors, const QString &errMsg) -> HeteroCompletenessError {
         for (int nei : g.nodes[hNode].neighbors) {
             if (allowedNeighbors.find(nei) == allowedNeighbors.end() && g.nodes[nei].atomicNumber > 1) {
@@ -3221,7 +3232,12 @@ static HeteroCompletenessError checkPrincipalHeteroatomsUnsubstituted(const Grap
                 int nei = g.nodes[pc].neighbors[i];
                 if (g.nodes[nei].atomicNumber == 7 && g.nodes[pc].bondOrders[i] == 1) {
                     QString name = (wType == GroupType::AMIDE) ? "amides" : ((wType == GroupType::THIOAMIDE) ? "thioamides" : "amines");
-                    auto res = rejectNode(nei, {pc}, "Branched or ring N-substituents on " + name + " are not supported");
+                    // For AMIDE, allow ring atoms as N-substituents (anilide case, P-66.1.1.4.2)
+                    std::set<int> allowed = {pc};
+                    if (wType == GroupType::AMIDE && !ringNodeSet.empty()) {
+                        allowed.insert(ringNodeSet.begin(), ringNodeSet.end());
+                    }
+                    auto res = rejectNode(nei, allowed, "Branched or ring N-substituents on " + name + " are not supported");
                     if (res.hasError) return res;
                 }
             }
@@ -3399,7 +3415,51 @@ QString nameChainParentWithRingSubstituent(int mol, const std::map<int, int> &in
             }
         }
     }
-    if (ipsoRingNode < 0 || chainAttachCarbon < 0) return "";
+    if (ipsoRingNode < 0 || chainAttachCarbon < 0) {
+        // Fallback for AMIDE: ring attached directly to amide nitrogen (anilide case)
+        if (winningType == GroupType::AMIDE) {
+            int amideNitrogen = -1;
+            int ringAttachToN = -1;
+            for (int pc : principalCarbons) {
+                for (size_t i = 0; i < g.nodes[pc].neighbors.size(); ++i) {
+                    int nei = g.nodes[pc].neighbors[i];
+                    if (g.nodes[nei].atomicNumber == 7 && g.nodes[pc].bondOrders[i] == 1) {
+                        // Found a nitrogen bonded to principal carbon with single bond (amide N)
+                        for (int nNei : g.nodes[nei].neighbors) {
+                            if (ringNodeSet.count(nNei)) {
+                                amideNitrogen = nei;
+                                ringAttachToN = nNei;
+                                break;
+                            }
+                        }
+                        if (amideNitrogen != -1) break;
+                    }
+                }
+                if (amideNitrogen != -1) break;
+            }
+            if (amideNitrogen != -1 && ringAttachToN != -1) {
+                // Name the ring as a substituent with the amide nitrogen as attachment point
+                QString ringPrefix = nameRingAsSubstituent(g, ringNodeSet, ringAttachToN, amideNitrogen, allSSSRRings, ringNodeSet, stereoByGraphId, handledBranchStereoIds, carbonSulfonamide, carbonSulfinamide);
+                if (ringPrefix.isEmpty()) return "";
+                // Build base name without ring substituent (empty extraSubstituents)
+                QString baseName = nameAcyclicChainParentWithSubstituents(g, principalCarbons, principalCarbons,
+                                                                       ringNodeSet, {}, winningType, -1);
+                if (baseName.isEmpty()) return "";
+                // For 2-carbon AMIDE (acetamide), use "acetamide" instead of "ethanamide"
+                // to match Blue Book P-66.1.1.4.2 convention for anilides
+                if (baseName == "ethanamide") {
+                    baseName = "acetamide";
+                }
+                // A locant-led base name (e.g. "2-chloroacetamide") needs a hyphen
+                // after the N-substituent prefix; a bare word (e.g. "acetamide")
+                // joins directly, matching this file's existing "N-phenylacetamide"
+                // style joins elsewhere.
+                QString sep = (!baseName.isEmpty() && baseName[0].isDigit()) ? "-" : "";
+                return "N-" + ringPrefix + sep + baseName;
+            }
+        }
+        return "";
+    }
 
     // 4. Name the ring as a substituent prefix (handles ring-borne substituents
     //    such as a methyl via its own locant). This is class-agnostic.
@@ -10751,7 +10811,7 @@ IupacResult IupacNamer::generateName(int mol) {
                 if (!chainName.isEmpty()) {
                     std::set<int> pCarbons;
                     for (const auto &pair : carbonGroup) { if (pair.second == combinedWinner) pCarbons.insert(pair.first); }
-                    auto res = checkPrincipalHeteroatomsUnsubstituted(g, pCarbons, combinedWinner);
+                    auto res = checkPrincipalHeteroatomsUnsubstituted(g, pCarbons, combinedWinner, ringNodeSet);
                     if (res.hasError) return {false, "", res.msg};
                     return {true, chainName, ""};
                 }
@@ -18165,7 +18225,7 @@ IupacResult IupacNamer::generateName(int mol) {
                     if (!chainName.isEmpty()) {
                         std::set<int> pCarbons;
                         for (const auto &pair : carbonGroup) { if (pair.second == combinedWinner) pCarbons.insert(pair.first); }
-                        auto res = checkPrincipalHeteroatomsUnsubstituted(g, pCarbons, combinedWinner);
+                        auto res = checkPrincipalHeteroatomsUnsubstituted(g, pCarbons, combinedWinner, ringNodeSet);
                         if (res.hasError) return {false, "", res.msg};
                         return {true, chainName, ""};
                     }
