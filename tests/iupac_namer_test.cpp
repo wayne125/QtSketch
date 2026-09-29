@@ -554,8 +554,10 @@ int main() {
         {"CCS(=O)(=O)NC", "N-methylethanesulfonamide"},
         {"CS(=O)NC", "N-methylmethanesulfinamide"},
         {"CS(=O)(=O)N", "methanesulfonamide"},  // Regression: unsubstituted still works
-        {"CS(=O)(=O)N(C)C", "", true, "N,N-disubstituted sulfonamides/sulfinamides are not yet supported"},  // N,N-dimethyl
-        {"CS(=O)(=O)N1CCCCC1", "", true, "Sulfur-containing groups other than thiols, thioethers, and sulfonic/sulfinic acids are not supported in this phase."},  // N-cyclopentyl
+        {"CS(=O)(=O)N(C)C", "N,N-dimethylmethanesulfonamide"},  // N,N-dimethyl
+        {"CS(=O)(=O)N(C)CC", "N-ethyl-N-methylmethanesulfonamide"},  // N,N-di different substituents, alphabetized
+        {"CS(=O)N(C)C", "N,N-dimethylmethanesulfinamide"},  // sulfinamide analogue
+        {"CS(=O)(=O)N1CCCCC1", "", true, "Sulfur-containing groups other than thiols, thioethers, and sulfonic/sulfinic acids are not supported in this phase."},  // N-cyclopentyl (ring - still rejected)
         {"CS(=O)(=O)Cl", "methanesulfonyl chloride"},
         {"c1ccccc1S(=O)(=O)Cl", "benzenesulfonyl chloride"},
         {"CCS(=O)(=O)Br", "ethanesulfonyl bromide"},

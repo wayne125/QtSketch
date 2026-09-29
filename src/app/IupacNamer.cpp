@@ -8406,11 +8406,101 @@ IupacResult IupacNamer::generateName(int mol) {
                     // N and S are not bonded, not a sulfonamide/sulfinamide - fall through
                     // Don't return, just let this block end
                 } else {
-                    // Quick gate: nitrogen must have totalH == 1 (NHR) to be N-monosubstituted
+                    // Quick gate: nitrogen must have totalH == 1 (NHR) to be N-monosubstituted, or totalH == 0 (NR2) to be N,N-disubstituted
                     const GraphNode &n = g.nodes[nNode];
                     if (n.totalH == 0) {
-                        // N,N-disubstituted - out of scope for this task
-                        return {false, "", "N,N-disubstituted sulfonamides/sulfinamides are not yet supported"};
+                        // N,N-disubstituted sulfonamide/sulfinamide
+                        // Nitrogen has 3 neighbors: 1 S + 2 C
+                        if (n.neighbors.size() != 3) {
+                            return {false, "", "N,N-disubstituted sulfonamide/sulfinamide requires exactly two N-alkyl substituents"};
+                        }
+                        
+                        // Classify nitrogen's neighbors: one should be sulfur, two should be alkyl carbon
+                        int sulfonylNeighbor = -1;
+                        std::vector<int> alkylNeighbors;
+                        for (size_t j = 0; j < n.neighbors.size(); ++j) {
+                            int nei = n.neighbors[j];
+                            if (g.nodes[nei].atomicNumber == 16) {
+                                sulfonylNeighbor = nei;
+                            } else if (g.nodes[nei].atomicNumber == 6 && n.bondOrders[j] == 1) {
+                                alkylNeighbors.push_back(nei);
+                            }
+                        }
+                        
+                        // Must have exactly one sulfur neighbor and two alkyl neighbors on nitrogen
+                        if (sulfonylNeighbor != sNode || alkylNeighbors.size() != 2) {
+                            return {false, "", "N,N-disubstituted sulfonamide/sulfinamide requires N bonded to S and two alkyl groups"};
+                        }
+                        
+                        // Verify the sulfur is sulfonyl (dblO == 2) or sulfinyl (dblO == 1)
+                        const GraphNode &s = g.nodes[sNode];
+                        int sDblO = 0;
+                        for (size_t j = 0; j < s.neighbors.size(); ++j) {
+                            int nei = s.neighbors[j];
+                            if (g.nodes[nei].atomicNumber == 8 && s.bondOrders[j] == 2) {
+                                sDblO++;
+                            }
+                        }
+                        
+                        if (sDblO != 2 && sDblO != 1) {
+                            return {false, "", "Sulfur must have exactly 1 or 2 double-bonded oxygens for sulfonamide/sulfinamide"};
+                        }
+                        
+                        // Find the carbon attached to sulfur (the R group that becomes the parent)
+                        int cR = -1;
+                        for (size_t j = 0; j < s.neighbors.size(); ++j) {
+                            int nei = s.neighbors[j];
+                            if (g.nodes[nei].atomicNumber == 6) {
+                                cR = nei;
+                                break;
+                            }
+                        }
+                        
+                        if (cR == -1) {
+                            return {false, "", "Sulfonyl/sulfinyl sulfur must have a carbon neighbor"};
+                        }
+                        
+                        // Walk the alkyl chain from the sulfur's carbon neighbor (parent side)
+                        int rLen = countPlainAlkylChain(cR, sNode, g);
+                        
+                        // Walk the two N-alkyl substituents
+                        int rPrimeLen1 = countPlainAlkylChain(alkylNeighbors[0], nNode, g);
+                        int rPrimeLen2 = countPlainAlkylChain(alkylNeighbors[1], nNode, g);
+                        
+                        // Check that all chains are valid (not branched, not ring)
+                        if (rLen == -1 || rPrimeLen1 == -1 || rPrimeLen2 == -1) {
+                            if (rPrimeLen1 == -1 || rPrimeLen2 == -1) {
+                                return {false, "", "Branched or ring N-substituents on sulfonamides/sulfinamides are not supported"};
+                            } else {
+                                return {false, "", "Ring or branched alkyl parents on sulfonamides/sulfinamides are not supported"};
+                            }
+                        }
+                        
+                        // Atom accounting: rLen (parent C chain) + rPrimeLen1 + rPrimeLen2 (N-alkyl C chains) should equal countC
+                        if (rLen + rPrimeLen1 + rPrimeLen2 != countC) {
+                            return {false, "", "N,N-disubstituted sulfonamides/sulfinamides with additional substituents or functional groups are not supported in this phase"};
+                        }
+                        
+                        // Construct the name
+                        QString suffix = (sDblO == 2) ? "sulfonamide" : "sulfinamide";
+                        QString sub1 = chainRoot(rPrimeLen1) + "yl";
+                        QString sub2 = chainRoot(rPrimeLen2) + "yl";
+                        
+                        QString prefix;
+                        if (rPrimeLen1 == rPrimeLen2) {
+                            prefix = "N,N-" + multiPrefix(2) + sub1;
+                        } else {
+                            QString first = sub1;
+                            QString second = sub2;
+                            if (alphabetizationKey(sub2) < alphabetizationKey(sub1)) {
+                                first = sub2;
+                                second = sub1;
+                            }
+                            prefix = "N-" + first + "-N-" + second;
+                        }
+                        
+                        QString name = prefix + chainRoot(rLen) + "ane" + suffix;
+                        return {true, name, ""};
                     }
                     if (n.totalH == 1) {
                         // N in N-alkyl sulfonamide has: 1 S neighbor, 1 C neighbor, 1 H (totalH == 1)
