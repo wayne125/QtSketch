@@ -8368,6 +8368,132 @@ IupacResult IupacNamer::generateName(int mol) {
         }
     }
 
+    // --- N-substituted sulfonamides/sulfinamides (P-66.1.1.2 / P-66.1.1.3.1) narrow case ---
+    {
+        int countC = 0, countN = 0, countO = 0, countS = 0, countOtherHeavy = 0;
+        int numEdges = 0;
+        for (const auto &n : g.nodes) {
+            numEdges += n.neighbors.size();
+            if (n.atomicNumber == 6) countC++;
+            else if (n.atomicNumber == 7) countN++;
+            else if (n.atomicNumber == 8) countO++;
+            else if (n.atomicNumber == 16) countS++;
+            else if (n.atomicNumber > 1) countOtherHeavy++;
+        }
+        numEdges /= 2;
+        bool isAcyclic = (numEdges == static_cast<int>(g.nodes.size()) - 1);
+        
+        if (isAcyclic && countN == 1 && countS == 1 && (countO == 2 || countO == 1) && countOtherHeavy == 0) {
+            int nNode = -1;
+            int sNode = -1;
+            for (size_t i = 0; i < g.nodes.size(); ++i) {
+                if (g.nodes[i].atomicNumber == 7) {
+                    nNode = static_cast<int>(i);
+                } else if (g.nodes[i].atomicNumber == 16) {
+                    sNode = static_cast<int>(i);
+                }
+            }
+            if (nNode != -1 && sNode != -1) {
+                // Verify nitrogen and sulfur are actually bonded
+                bool nBondedToS = false;
+                for (int nei : g.nodes[nNode].neighbors) {
+                    if (nei == sNode) {
+                        nBondedToS = true;
+                        break;
+                    }
+                }
+                if (!nBondedToS) {
+                    // N and S are not bonded, not a sulfonamide/sulfinamide - fall through
+                    // Don't return, just let this block end
+                } else {
+                    // Quick gate: nitrogen must have totalH == 1 (NHR) to be N-monosubstituted
+                    const GraphNode &n = g.nodes[nNode];
+                    if (n.totalH == 0) {
+                        // N,N-disubstituted - out of scope for this task
+                        return {false, "", "N,N-disubstituted sulfonamides/sulfinamides are not yet supported"};
+                    }
+                    if (n.totalH == 1) {
+                        // N in N-alkyl sulfonamide has: 1 S neighbor, 1 C neighbor, 1 H (totalH == 1)
+                        if (n.neighbors.size() != 2) {
+                            return {false, "", "N-substituted sulfonamide/sulfinamide requires exactly one N-alkyl substituent"};
+                        }
+                        
+                        // Classify nitrogen's neighbors: one should be sulfur, one should be alkyl carbon
+                        int sulfonylNeighbor = -1;
+                        std::vector<int> alkylNeighbors;
+                        for (size_t j = 0; j < n.neighbors.size(); ++j) {
+                            int nei = n.neighbors[j];
+                            if (g.nodes[nei].atomicNumber == 16) {
+                                sulfonylNeighbor = nei;
+                            } else if (g.nodes[nei].atomicNumber == 6 && n.bondOrders[j] == 1) {
+                                alkylNeighbors.push_back(nei);
+                            }
+                        }
+                        
+                        // Must have exactly one sulfur neighbor and one alkyl neighbor on nitrogen
+                        if (sulfonylNeighbor != sNode || alkylNeighbors.size() != 1) {
+                            return {false, "", "N-substituted sulfonamide/sulfinamide requires N bonded to S and one alkyl group"};
+                        }
+                        
+                        // Verify the sulfur is sulfonyl (dblO == 2) or sulfinyl (dblO == 1)
+                        const GraphNode &s = g.nodes[sNode];
+                        int sDblO = 0;
+                        for (size_t j = 0; j < s.neighbors.size(); ++j) {
+                            int nei = s.neighbors[j];
+                            if (g.nodes[nei].atomicNumber == 8 && s.bondOrders[j] == 2) {
+                                sDblO++;
+                            }
+                        }
+                        
+                        if (sDblO != 2 && sDblO != 1) {
+                            return {false, "", "Sulfur must have exactly 1 or 2 double-bonded oxygens for sulfonamide/sulfinamide"};
+                        }
+                        
+                        // Find the carbon attached to sulfur (the R group that becomes the parent)
+                        int cR = -1;
+                        for (size_t j = 0; j < s.neighbors.size(); ++j) {
+                            int nei = s.neighbors[j];
+                            if (g.nodes[nei].atomicNumber == 6) {
+                                cR = nei;
+                                break;
+                            }
+                        }
+                        
+                        if (cR == -1) {
+                            return {false, "", "Sulfonyl/sulfinyl sulfur must have a carbon neighbor"};
+                        }
+                        
+                        // Walk the alkyl chain from the sulfur's carbon neighbor (parent side)
+                        int rLen = countPlainAlkylChain(cR, sNode, g);
+                        
+                        // Walk the N-alkyl substituent
+                        int rPrimeLen = countPlainAlkylChain(alkylNeighbors[0], nNode, g);
+                        
+                        // Check that both chains are valid (not branched, not ring)
+                        if (rLen == -1 || rPrimeLen == -1) {
+                            if (rPrimeLen == -1) {
+                                return {false, "", "Branched or ring N-substituents on sulfonamides/sulfinamides are not supported"};
+                            } else {
+                                return {false, "", "Ring or branched alkyl parents on sulfonamides/sulfinamides are not supported"};
+                            }
+                        }
+                        
+                        // Atom accounting: rLen (parent C chain) + rPrimeLen (N-alkyl C chain) should equal countC
+                        if (rLen + rPrimeLen != countC) {
+                            return {false, "", "N-substituted sulfonamides/sulfinamides with additional substituents or functional groups are not supported in this phase"};
+                        }
+                        
+                        // Construct the name
+                        QString suffix = (sDblO == 2) ? "sulfonamide" : "sulfinamide";
+                        QString name = "N-" + chainRoot(rPrimeLen) + "yl" + chainRoot(rLen) + "ane" + suffix;
+                        return {true, name, ""};
+                    }
+                    // else: totalH != 1, so it's unsubstituted NH2 - fall through to existing detection
+                }
+            }
+        }
+    }
+
     // --- N-substituted imines (P-62.3) narrow case ---
     {
         int countC = 0, countN = 0, countOtherHeavy = 0;
