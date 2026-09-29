@@ -9119,7 +9119,59 @@ IupacResult IupacNamer::generateName(int mol) {
                     }
                     
                     if (alkylNeighborsNear.size() > 0 && alkylNeighborsFar.size() > 0) {
-                        return {false, "", "Hydrazides with substituents on both nitrogens are not supported"};
+                        if (alkylNeighborsNear.size() == 1 && alkylNeighborsFar.size() == 1) {
+                            int c0 = -1;
+                            for (size_t j = 0; j < g.nodes[nNodeNear].neighbors.size(); ++j) {
+                                int nei = g.nodes[nNodeNear].neighbors[j];
+                                if (nei != nNodeFar && g.nodes[nei].atomicNumber == 6) { c0 = nei; break; }
+                            }
+                            int rLen = 0;
+                            int cR = -1;
+                            if (c0 != -1) {
+                                for (size_t j = 0; j < g.nodes[c0].neighbors.size(); ++j) {
+                                    int nei = g.nodes[c0].neighbors[j];
+                                    if (nei != nNodeNear && g.nodes[nei].atomicNumber == 6) { cR = nei; break; }
+                                }
+                                if (cR != -1) { rLen = countPlainAlkylChain(cR, c0, g); }
+                            }
+                            int subNear = alkylNeighborsNear[0];
+                            int subFar = alkylNeighborsFar[0];
+                            int rPrimeLenNear = countPlainAlkylChain(subNear, nNodeNear, g);
+                            int rPrimeLenFar = countPlainAlkylChain(subFar, nNodeFar, g);
+                            if (rLen == -1 || rPrimeLenNear == -1 || rPrimeLenFar == -1) {
+                                if (rPrimeLenNear == -1 || rPrimeLenFar == -1) {
+                                    return {false, "", "Branched or ring substituents on hydrazides are not supported"};
+                                } else {
+                                    return {false, "", "Ring or branched acyl parents on hydrazides are not supported"};
+                                }
+                            }
+                            if (rLen + rPrimeLenNear + rPrimeLenFar + 1 != countC) {
+                                return {false, "", "Hydrazides with additional substituents or functional groups are not supported in this phase"};
+                            }
+                            QString subNearName = chainRoot(rPrimeLenNear) + "yl";
+                            QString subFarName = chainRoot(rPrimeLenFar) + "yl";
+                            QString prefix;
+                            if (rPrimeLenNear == rPrimeLenFar) {
+                                prefix = "N,N'-" + multiPrefix(2) + subNearName;
+                            } else {
+                                QString firstName = subNearName;
+                                QString secondName = subFarName;
+                                QString locantFirst = "N-";
+                                QString locantSecond = "N'-";
+                                if (alphabetizationKey(subFarName) < alphabetizationKey(subNearName)) {
+                                    firstName = subFarName;
+                                    secondName = subNearName;
+                                    locantFirst = "N'-";
+                                    locantSecond = "N-";
+                                }
+                                prefix = locantFirst + firstName + "-" + locantSecond + secondName;
+                            }
+                            QString name = prefix + chainRoot(rLen + 1) + "anehydrazide";
+                            if (rLen == 0) name = prefix + "methanehydrazide";
+                            return {true, name, ""};
+                        } else {
+                            return {false, "", "Hydrazides with substituents on both nitrogens are not supported"};
+                        }
                     } else if (alkylNeighborsNear.size() > 1) {
                         return {false, "", "N,N-disubstituted hydrazides are not supported"};
                     } else if (alkylNeighborsFar.size() > 1) {
@@ -17063,6 +17115,11 @@ IupacResult IupacNamer::generateName(int mol) {
                         for (const auto &ringNodes : nodesN) {
                             allSystemNodesUnion.insert(ringNodes.begin(), ringNodes.end());
                         }
+                        // For N==3, we will classify and accept plain alkyl/halogen substituents;
+                        // for N==2 or N==4, any substituent causes rejection (no peripheral numbering exists)
+                        std::vector<std::pair<int, QString>> collectedSubstituents; // (ringNode, substituentName) for N==3
+                        bool hasUnsupportedSubstituent = false;
+                        
                         for (int i = 0; i < N; ++i) {
                             for (int node : nodesN[i]) {
                                 const GraphNode &n = g.nodes[node];
@@ -17070,10 +17127,23 @@ IupacResult IupacNamer::generateName(int mol) {
                                     int nei = n.neighbors[j];
                                     // If neighbor is not in any ring in the system and is not hydrogen, it's an exocyclic substituent
                                     if (!allSystemNodesUnion.count(nei) && g.nodes[nei].atomicNumber != 1) {
-                                        return {false, "", "Substituents on fused ring systems named via this mechanism are not yet supported."};
+                                        if (N == 3) {
+                                            QString subName = simpleRingSubstituentName(g, node, nei, allSystemNodesUnion);
+                                            if (subName.isEmpty()) {
+                                                hasUnsupportedSubstituent = true;
+                                            } else {
+                                                collectedSubstituents.push_back({node, subName});
+                                            }
+                                        } else {
+                                            // N == 2 or N == 4: no peripheral numbering available, reject
+                                            return {false, "", "Substituents on fused ring systems named via this mechanism are not yet supported."};
+                                        }
                                     }
                                 }
                             }
+                        }
+                        if (hasUnsupportedSubstituent) {
+                            return {false, "", "Substituents on fused ring systems named via this mechanism are not yet supported."};
                         }
 
                         // Part A.6: Exclude acridine and carbazole (Blue Book mandatory retained names)
@@ -17385,6 +17455,92 @@ IupacResult IupacNamer::generateName(int mol) {
 
                         if (scoreInit) {
                             QString resultName = bestScore.finalName;
+                            
+                            // Handle substituents for N==3: build prefix string
+                            if (N == 3 && !collectedSubstituents.empty()) {
+                                // Compute bridgeheads the same way as the indicated-hydrogen code
+                                std::set<int> bheads;
+                                for (int i = 0; i < 3; ++i) {
+                                    for (int j = i + 1; j < 3; ++j) {
+                                        if (shared[i][j] == 2) {
+                                            bheads.insert(sharedNodesPairs[i][j][0]);
+                                            bheads.insert(sharedNodesPairs[i][j][1]);
+                                        }
+                                    }
+                                }
+                                // Collect substituent-bearing nodes
+                                std::set<int> substituentBearingNodes;
+                                for (const auto &sub : collectedSubstituents) {
+                                    substituentBearingNodes.insert(sub.first);
+                                }
+                                // Compute peripheral numbering
+                                std::map<int, QString> periphMap = computePeripheralNumbering3Ring(g, nodesN[0], nodesN[1], nodesN[2], bheads, substituentBearingNodes, false);
+                                
+                                // Build named substituents with locants
+                                std::vector<std::pair<QString, QString>> namedSubstituents; // (substituentName, locantStr)
+                                for (const auto &sub : collectedSubstituents) {
+                                    int ringNode = sub.first;
+                                    QString subName = sub.second;
+                                    if (!periphMap.count(ringNode)) {
+                                        return {false, "", "Failed to compute peripheral locant for substituent."};
+                                    }
+                                    QString locStr = periphMap[ringNode];
+                                    // Reject letter-suffixed locants (bridgehead atoms)
+                                    bool okInt = false;
+                                    locStr.toInt(&okInt);
+                                    if (!okInt) {
+                                        return {false, "", "Substituents on bridgehead atoms of fused ring systems are not yet supported."};
+                                    }
+                                    namedSubstituents.push_back({subName, locStr});
+                                }
+                                
+                                // Build prefix string: group by substituent name, alphabetize
+                                std::map<QString, std::vector<QString>> prefixLocantsMap;
+                                for (const auto &ns : namedSubstituents) {
+                                    prefixLocantsMap[ns.first].push_back(ns.second);
+                                }
+                                
+                                struct PrefixGroup {
+                                    QString baseName;
+                                    QString formattedStr;
+                                };
+                                std::vector<PrefixGroup> pGroups;
+                                for (auto it = prefixLocantsMap.begin(); it != prefixLocantsMap.end(); ++it) {
+                                    QString pName = it->first;
+                                    std::vector<QString> locs = it->second;
+                                    std::sort(locs.begin(), locs.end());
+                                    
+                                    QStringList locStrs;
+                                    for (const QString &l : locs) locStrs.append(l);
+                                    
+                                    QString pStr = locStrs.join(",");
+                                    if (locs.size() > 1) {
+                                        pStr += "-" + multiPrefix(static_cast<int>(locs.size())) + pName;
+                                    } else {
+                                        pStr += "-" + pName;
+                                    }
+                                    
+                                    PrefixGroup pg;
+                                    pg.baseName = alphabetizationKey(pName);
+                                    pg.formattedStr = pStr;
+                                    pGroups.push_back(pg);
+                                }
+                                
+                                std::sort(pGroups.begin(), pGroups.end(), [](const PrefixGroup &a, const PrefixGroup &b) {
+                                    return a.baseName.toLower() < b.baseName.toLower();
+                                });
+                                
+                                QString prefixPart;
+                                if (!pGroups.empty()) {
+                                    QStringList pStrs;
+                                    for (const auto &pg : pGroups) pStrs.append(pg.formattedStr);
+                                    prefixPart = pStrs.join("-");
+                                }
+                                
+                                if (!prefixPart.isEmpty()) {
+                                    resultName = prefixPart + resultName;
+                                }
+                            }
                             
                             // Indicated hydrogen for exactly 3 rings, per original Phase 44 logic
                             if (N == 3) {
