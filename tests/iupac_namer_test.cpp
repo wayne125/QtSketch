@@ -818,8 +818,8 @@ int main() {
         // carbon (unlike CC(=N)NC above, which is a different, still-rejected
         // shape) -- see IupacNamer.cpp's new "N'-substituted amidines (P-66.4)"
         // block, which requires otherC == -1 on the amidine carbon.
-        {"C(=N)NC", "N'-methylmethanimidamide"},
-        {"C(=N)NCC", "N'-ethylmethanimidamide"},
+        {"C(=N)NC", "N-methylmethanimidamide"},
+        {"C(=N)NCC", "N-ethylmethanimidamide"},
         // Wrong axis: the IMIDO nitrogen (not amino) is substituted -- must NOT
         // be accepted by the new block; falls through to the existing rejection.
         {"C(=NC)N", "", true, "N-substituted imines, oximes, hydrazones, and amidines are not supported in this phase"},

@@ -8728,7 +8728,7 @@ IupacResult IupacNamer::generateName(int mol) {
                         if (1 + rPrimeLen != countC) {
                             return {false, "", "Amidines with additional substituents or functional groups are not supported in this phase"};
                         }
-                        QString name = "N'-" + chainRoot(rPrimeLen) + "yl" + chainRoot(1) + "animidamide";
+                        QString name = "N-" + chainRoot(rPrimeLen) + "yl" + chainRoot(1) + "animidamide";
                         return {true, name, ""};
                     }
                 }
