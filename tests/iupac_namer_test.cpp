@@ -5332,6 +5332,123 @@ int main() {
         }
     }
 
+    // ===== Isotope labeling tests =====
+    
+    // Test 1: UREA C 14 - real drug, one-word name
+    {
+        int m = indigoLoadMoleculeFromString("N[14C](N)=O");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            if (r.success && r.name == "[14C]urea") {
+                std::cout << "[PASS] UREA C 14 -> [14C]urea\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] UREA C 14 -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] UREA C 14 SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    // Test 2: UREA C 13 - real drug, one-word name
+    {
+        int m = indigoLoadMoleculeFromString("N[13C](N)=O");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            if (r.success && r.name == "[13C]urea") {
+                std::cout << "[PASS] UREA C 13 -> [13C]urea\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] UREA C 13 -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] UREA C 13 SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    // Test 3: SELENOMETHIONINE SE 75 - real drug, multi-word name
+    // We only implement one-word case, so this should reject with clean message
+    {
+        int m = indigoLoadMoleculeFromString("C[75Se]CC(N)C(=O)O");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            if (!r.success && r.error == "Isotopic labeling with multi-word names is not yet supported.") {
+                std::cout << "[PASS] SELENOMETHIONINE SE 75 -> clean rejection (multi-word not yet supported)\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] SELENOMETHIONINE SE 75 -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] SELENOMETHIONINE SE 75 SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    // Test 4: Plain ammonia regression - should still reject with "No carbon atoms present"
+    {
+        int m = indigoLoadMoleculeFromString("N");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            if (!r.success && r.error == "No carbon atoms present in structure.") {
+                std::cout << "[PASS] Plain ammonia regression -> still rejected with 'No carbon atoms present'\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] Plain ammonia regression -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] Plain ammonia SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    // Test 5: Bare monatomic isotope regression - should still reject
+    {
+        int m = indigoLoadMoleculeFromString("[127Xe]");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            if (!r.success) {
+                std::cout << "[PASS] [127Xe] regression -> still rejected\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] [127Xe] regression -> got success=" << r.success << " name='" << r.name.toStdString() << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] [127Xe] SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    // Test 6: Plain urea regression - must still produce "urea"
+    {
+        int m = indigoLoadMoleculeFromString("NC(=O)N");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            if (r.success && r.name == "urea") {
+                std::cout << "[PASS] Plain urea regression -> urea\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] Plain urea regression -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] Plain urea SMILES did not load\n";
+            failed++;
+        }
+    }
+
     std::cout << "\nSummary: " << passed << " passed, " << failed << " failed.\n";
     indigoReleaseSessionId(sid);
     return (failed == 0) ? 0 : 1;
