@@ -17,6 +17,12 @@ scratch/
 src/test_*.json
 run_sketch.bat
 
+# IUPAC namer development scratch (standalone drivers, FDA-sweep results,
+# diagnostic tools) - kept on disk locally only, never meant to be committed.
+# 3 files from this dir were accidentally committed in 89a8c2e; untracked
+# there and covered here going forward.
+.claude_scratch_fdafull/
+
 # Vendored Indigo SDK (637 MB third-party tree; kept on disk, not in history.
 # See THIRD-PARTY-NOTICES.md — source: https://github.com/epam/indigo)
 indigo/
