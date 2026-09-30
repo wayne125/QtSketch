@@ -5862,6 +5862,56 @@ int main() {
             failed++;
         }
     }
+    
+    // Test: Branching molecule with methyl substituent on non-bridgehead atom
+    {
+        int m = indigoLoadMoleculeFromString("c12c(cc(C)cc2)c3c(cccc3)c4c1(nccc4)");
+        if (m >= 0) {
+            auto result = IupacNamer::generateName(m);
+            // This is the base branching molecule with a methyl group added to one of the
+            // benzo leaf rings (leaf A, the first benzene). The methyl is placed on a non-bridgehead
+            // carbon atom. The peripheral numbering (P-25.3.3.1.2 tie-break accounting for the
+            // substituent) places the methyl at position 10.
+            QString expectedName = "10-methyldibenzo[4b,8a:8b,12a]benzo[b]pyridine";
+            if (result.success && result.name == expectedName) {
+                std::cout << "[PASS] Branching molecule with methyl substituent: " << result.name.toStdString() << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] Branching molecule with methyl substituent: expected '" << expectedName.toStdString() 
+                          << "', got '" << result.name.toStdString() << "' (success=" << result.success << ")\n";
+                failed++;
+            }
+            indigoFree(m);
+        } else {
+            std::cout << "[FAIL] Branching molecule with methyl substituent SMILES did not load\n";
+            failed++;
+        }
+    }
+    
+    // Test: Branching molecule with substituent on bridgehead atom - regression test
+    {
+        // Create a molecule with a substituent on a bridgehead atom (fusion carbon)
+        // In the base molecule c12c(cccc2)c3c(cccc3)c4c1(nccc4), atoms c1, c2, c3, c4 are fusion atoms
+        // (bridgeheads). By adding a methyl to one of these using branch notation c(C), we create
+        // a substituent on a bridgehead. This should be rejected with the specific message.
+        int m = indigoLoadMoleculeFromString("c12c(cccc2)c3c(cccc3)c(C)4c1(nccc4)");
+        if (m >= 0) {
+            auto result = IupacNamer::generateName(m);
+            QString expectedError = "Substituents on bridgehead atoms of fused ring systems are not yet supported.";
+            if (!result.success && result.error == expectedError) {
+                std::cout << "[PASS] Branching molecule with bridgehead substituent: correctly rejected with: " << result.error.toStdString() << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] Branching molecule with bridgehead substituent: expected error '" << expectedError.toStdString() 
+                          << "', got success=" << result.success << ", error='" << result.error.toStdString() << "'\n";
+                failed++;
+            }
+            indigoFree(m);
+        } else {
+            std::cout << "[FAIL] Branching molecule with bridgehead substituent SMILES did not load\n";
+            failed++;
+        }
+    }
 
     std::cout << "\nSummary: " << passed << " passed, " << failed << " failed.\n";
     indigoReleaseSessionId(sid);

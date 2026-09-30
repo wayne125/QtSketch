@@ -17730,21 +17730,32 @@ IupacResult IupacNamer::generateName(int mol) {
                     fusionAdj[f.ring2].push_back(f.ring1);
                 }
                 
-                // Check for substituents on any ring atom - not yet supported for branching
+                // Check for substituents on any ring atom - classify and collect
                 std::set<int> allSystemNodesUnion;
                 for (const auto &ringNodes : nodesN_d) {
                     allSystemNodesUnion.insert(ringNodes.begin(), ringNodes.end());
                 }
+                std::vector<std::pair<int, QString>> collectedSubstituents;
+                bool hasUnsupportedSubstituent = false;
+                
                 for (int i = 0; i < N_d; ++i) {
                     for (int node : nodesN_d[i]) {
                         const GraphNode &n = g.nodes[node];
                         for (size_t j = 0; j < n.neighbors.size(); ++j) {
                             int nei = n.neighbors[j];
                             if (!allSystemNodesUnion.count(nei) && g.nodes[nei].atomicNumber != 1) {
-                                return {false, "", "Substituents on branching fused ring systems are not yet supported."};
+                                QString subName = simpleRingSubstituentName(g, node, nei, allSystemNodesUnion);
+                                if (subName.isEmpty()) {
+                                    hasUnsupportedSubstituent = true;
+                                } else {
+                                    collectedSubstituents.push_back({node, subName});
+                                }
                             }
                         }
                     }
+                }
+                if (hasUnsupportedSubstituent) {
+                    return {false, "", "Substituents on branching fused ring systems are not yet supported."};
                 }
                 
                 // Helper functions
@@ -18175,6 +18186,93 @@ IupacResult IupacNamer::generateName(int mol) {
                 
                 // Join all parts
                 QString resultName = nameParts.join("");
+                
+                // Handle substituents for branching case: build prefix string
+                if (!collectedSubstituents.empty()) {
+                    // Build bridgehead set: any atom that is a member of 2+ rings
+                    std::set<int> bheads;
+                    for (int node : allSystemNodesUnion) {
+                        int ringCount = 0;
+                        for (const auto &ringNodes : nodesN_d) {
+                            if (ringNodes.count(node)) ringCount++;
+                        }
+                        if (ringCount >= 2) {
+                            bheads.insert(node);
+                        }
+                    }
+                    // Collect substituent-bearing nodes
+                    std::set<int> substituentBearingNodes;
+                    for (const auto &sub : collectedSubstituents) {
+                        substituentBearingNodes.insert(sub.first);
+                    }
+                    // Compute peripheral numbering with substituent set
+                    std::map<int, QString> periphMapWithSubs = computePeripheralNumberingGeneral(g, detectedInputGraph, orientation, substituentBearingNodes);
+                    
+                    // Build named substituents with locants
+                    std::vector<std::pair<QString, QString>> namedSubstituents;
+                    for (const auto &sub : collectedSubstituents) {
+                        int ringNode = sub.first;
+                        QString subName = sub.second;
+                        if (!periphMapWithSubs.count(ringNode)) {
+                            return {false, "", "Failed to compute peripheral locant for substituent."};
+                        }
+                        QString locStr = periphMapWithSubs[ringNode];
+                        // Reject letter-suffixed locants (bridgehead atoms)
+                        bool okInt = false;
+                        locStr.toInt(&okInt);
+                        if (!okInt) {
+                            return {false, "", "Substituents on bridgehead atoms of fused ring systems are not yet supported."};
+                        }
+                        namedSubstituents.push_back({subName, locStr});
+                    }
+                    
+                    // Build prefix string: group by substituent name, alphabetize
+                    std::map<QString, std::vector<QString>> prefixLocantsMap;
+                    for (const auto &ns : namedSubstituents) {
+                        prefixLocantsMap[ns.first].push_back(ns.second);
+                    }
+                    
+                    struct PrefixGroup {
+                        QString baseName;
+                        QString formattedStr;
+                    };
+                    std::vector<PrefixGroup> pGroups;
+                    for (auto it = prefixLocantsMap.begin(); it != prefixLocantsMap.end(); ++it) {
+                        QString pName = it->first;
+                        std::vector<QString> locs = it->second;
+                        std::sort(locs.begin(), locs.end());
+                        
+                        QStringList locStrs;
+                        for (const QString &l : locs) locStrs.append(l);
+                        
+                        QString pStr = locStrs.join(",");
+                        if (locs.size() > 1) {
+                            pStr += "-" + multiPrefix(static_cast<int>(locs.size())) + pName;
+                        } else {
+                            pStr += "-" + pName;
+                        }
+                        
+                        PrefixGroup pg;
+                        pg.baseName = alphabetizationKey(pName);
+                        pg.formattedStr = pStr;
+                        pGroups.push_back(pg);
+                    }
+                    
+                    std::sort(pGroups.begin(), pGroups.end(), [](const PrefixGroup &a, const PrefixGroup &b) {
+                        return a.baseName.toLower() < b.baseName.toLower();
+                    });
+                    
+                    QString prefixPart;
+                    if (!pGroups.empty()) {
+                        QStringList pStrs;
+                        for (const auto &pg : pGroups) pStrs.append(pg.formattedStr);
+                        prefixPart = pStrs.join("-");
+                    }
+                    
+                    if (!prefixPart.isEmpty()) {
+                        resultName = prefixPart + resultName;
+                    }
+                }
                 
                 // Handle special case: if parent is pyridine and we have benzo[b]pyridine pattern
                 // This is the quinoline case, and the name should just be the combination
