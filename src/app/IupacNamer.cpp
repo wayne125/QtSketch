@@ -914,7 +914,7 @@ bool tryGeneralHeterocycle(const Graph &g, const std::vector<int> &ringHeteroNod
     return true;
 }
 
-enum class RingType { BENZENE, FURAN, THIOPHENE, SELENOPHENE, TELLUROPHENE, PYRROLE, PYRIDINE, PHOSPHININE, CYCLOALKANE, CYCLOALKENE, IMIDAZOLE, PYRIMIDINE, PYRAZOLE, OXAZOLE, ISOXAZOLE, THIAZOLE, ISOTHIAZOLE, SELENAZOLE, ISOSELENAZOLE, PYRIDAZINE, PYRAZINE, PIPERIDINE, PYRROLIDINE, TETRAHYDROFURAN, TETRAHYDROTHIOPHENE, GENERAL_HETEROCYCLE, LARGE_HETEROCYCLE };
+enum class RingType { BENZENE, FURAN, THIOPHENE, SELENOPHENE, TELLUROPHENE, PYRROLE, PYRIDINE, PHOSPHININE, CYCLOALKANE, CYCLOALKENE, IMIDAZOLE, PYRIMIDINE, PYRAZOLE, OXAZOLE, ISOXAZOLE, THIAZOLE, ISOTHIAZOLE, SELENAZOLE, ISOSELENAZOLE, PYRIDAZINE, PYRAZINE, PIPERIDINE, PYRROLIDINE, TETRAHYDROFURAN, TETRAHYDROTHIOPHENE, CYCLOPENTADIENE, CYCLOHEPTATRIENE, GENERAL_HETEROCYCLE, LARGE_HETEROCYCLE };
 
 QString getFusionPrefixShared(RingType t) {
     if (t == RingType::BENZENE) return "benzo";
@@ -936,6 +936,8 @@ QString getFusionPrefixShared(RingType t) {
     if (t == RingType::PYRROLE) return "pyrrolo";
     if (t == RingType::IMIDAZOLE) return "imidazo";
     if (t == RingType::PYRAZOLE) return "pyrazolo";
+    if (t == RingType::CYCLOPENTADIENE) return "cyclopenta";
+    if (t == RingType::CYCLOHEPTATRIENE) return "cyclohepta";
     return "";
 }
 
@@ -959,6 +961,8 @@ QString getBaseNameShared(RingType t) {
     if (t == RingType::PYRROLE) return "pyrrole";
     if (t == RingType::IMIDAZOLE) return "imidazole";
     if (t == RingType::PYRAZOLE) return "pyrazole";
+    if (t == RingType::CYCLOPENTADIENE) return "cyclopentadiene";
+    if (t == RingType::CYCLOHEPTATRIENE) return "cycloheptatriene";
     return "";
 }
 
@@ -1121,8 +1125,32 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
     if (ringHeteroNodes.empty()) {
         if (ringSize == 6 && heteroAromatic) {
             outType = RingType::BENZENE; outNameRoot = "benzene"; return true;
+        } else if (ringSize == 5) {
+            // All-carbon 5-membered ring: must have exactly one sp3 position for mancude form
+            // Note: After indigoAromatize(), bonds in cyclopentadiene may not all be order 4,
+            // so we check the bond orders directly via findIndicatedHydrogenLocant
+            int indicatedH = findIndicatedHydrogenLocant(g, ringCycle);
+            if (indicatedH == -1) {
+                // No sp3 position — ring is MORE saturated than mancude allows
+                return false;
+            } else if (indicatedH == -2) {
+                // Multiple sp3 positions — under-conjugated, not the maximally-unsaturated mancude form
+                return false;
+            }
+            // Exactly one sp3 position: valid CYCLOPENTADIENE
+            outType = RingType::CYCLOPENTADIENE; outNameRoot = "cyclopentadiene"; return true;
+        } else if (ringSize == 7) {
+            // All-carbon 7-membered ring: same check
+            int indicatedH = findIndicatedHydrogenLocant(g, ringCycle);
+            if (indicatedH == -1) {
+                return false;
+            } else if (indicatedH == -2) {
+                return false;
+            }
+            outType = RingType::CYCLOHEPTATRIENE; outNameRoot = "cycloheptatriene"; return true;
         }
-        // Non-aromatic all-carbon rings are not classified here as BENZENE
+        // Falls through to the existing "return false;" (Non-aromatic all-carbon rings
+        // are not classified here as BENZENE / any other size) for anything else.
         return false;
     }
 
@@ -16908,7 +16936,8 @@ IupacResult IupacNamer::generateName(int mol) {
                            t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE ||
                            t == RingType::PYRROLE || t == RingType::IMIDAZOLE ||
                            t == RingType::PYRAZOLE || t == RingType::SELENOPHENE ||
-                           t == RingType::TELLUROPHENE || t == RingType::PHOSPHININE;
+                           t == RingType::TELLUROPHENE || t == RingType::PHOSPHININE ||
+                           t == RingType::CYCLOPENTADIENE || t == RingType::CYCLOHEPTATRIENE;
                 };
 
                 bool allAllowed = allClassified;
@@ -16917,7 +16946,7 @@ IupacResult IupacNamer::generateName(int mol) {
                 if (allAllowed) {
                     auto getCandidates = [&](RingType t, const std::vector<int> &hNodes, int rSize, const std::vector<int> &rCycle) {
                         std::vector<std::vector<int>> cands;
-                        if (t == RingType::BENZENE) {
+                        if (t == RingType::BENZENE || t == RingType::CYCLOPENTADIENE || t == RingType::CYCLOHEPTATRIENE) {
                             // Benzene has no heteroatoms, generate every rotation in both directions
                             if (hNodes.empty()) {
                                 std::vector<int> fwd(rSize), bwd(rSize);
@@ -16992,7 +17021,7 @@ IupacResult IupacNamer::generateName(int mol) {
                     auto getRankHetero = [](RingType t) {
                         // BENZENE has no heteroatom, so per Blue Book P-25.3.2.4 (a) it must rank
                         // below every heteroatom-bearing type (e.g. "pyridine is senior to azulene").
-                        if (t == RingType::BENZENE) return 100;
+                        if (t == RingType::BENZENE || t == RingType::CYCLOPENTADIENE || t == RingType::CYCLOHEPTATRIENE) return 100;
                         if (t == RingType::PYRIDINE || t == RingType::PYRIMIDINE || t == RingType::PYRIDAZINE || t == RingType::PYRAZINE || t == RingType::OXAZOLE || t == RingType::ISOXAZOLE || t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE || t == RingType::PYRROLE || t == RingType::IMIDAZOLE || t == RingType::PYRAZOLE) return 1;
                         if (t == RingType::FURAN) return 2;
                         if (t == RingType::THIOPHENE) return 3;
@@ -17002,7 +17031,7 @@ IupacResult IupacNamer::generateName(int mol) {
                         return 99;
                     };
                     auto getNumHetero = [](RingType t) {
-                        if (t == RingType::BENZENE) return 0;
+                        if (t == RingType::BENZENE || t == RingType::CYCLOPENTADIENE || t == RingType::CYCLOHEPTATRIENE) return 0;
                         if (t == RingType::PYRIMIDINE || t == RingType::PYRIDAZINE || t == RingType::PYRAZINE || t == RingType::OXAZOLE || t == RingType::ISOXAZOLE || t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE || t == RingType::IMIDAZOLE || t == RingType::PYRAZOLE) return 2;
                         return 1;
                     };
@@ -17021,7 +17050,7 @@ IupacResult IupacNamer::generateName(int mol) {
                     };
                     auto getOwnLocants = [](RingType t) -> std::vector<int> {
                         switch (t) {
-                            case RingType::BENZENE: case RingType::PYRIDINE: case RingType::PYRROLE: case RingType::FURAN: case RingType::THIOPHENE: case RingType::SELENOPHENE: case RingType::TELLUROPHENE: case RingType::PHOSPHININE: return {1};
+                            case RingType::BENZENE: case RingType::CYCLOPENTADIENE: case RingType::CYCLOHEPTATRIENE: case RingType::PYRIDINE: case RingType::PYRROLE: case RingType::FURAN: case RingType::THIOPHENE: case RingType::SELENOPHENE: case RingType::TELLUROPHENE: case RingType::PHOSPHININE: return {1};
                             case RingType::PYRIDAZINE: case RingType::ISOXAZOLE: case RingType::ISOTHIAZOLE: case RingType::PYRAZOLE: case RingType::ISOSELENAZOLE: return {1, 2};
                             case RingType::PYRIMIDINE: case RingType::OXAZOLE: case RingType::THIAZOLE: case RingType::IMIDAZOLE: case RingType::SELENAZOLE: return {1, 3};
                             case RingType::PYRAZINE: return {1, 4};
@@ -17180,6 +17209,37 @@ IupacResult IupacNamer::generateName(int mol) {
                                         // per brief: "reject cleanly rather than guess the indicated-hydrogen prefix"
                                         return {false, "", ""};
                                     }
+                                }
+                            }
+                        }
+
+                        // Fluorene: one central cyclopentadiene ring fused to exactly 2 benzo rings
+                        // Check: N == 3, one CYCLOPENTADIENE, two BENZENE
+                        int cpCount = 0, benzoCount = 0;
+                        for (int i = 0; i < N; ++i) {
+                            if (typesN[i] == RingType::CYCLOPENTADIENE) cpCount++;
+                            else if (typesN[i] == RingType::BENZENE) benzoCount++;
+                        }
+                        if (N == 3 && cpCount == 1 && benzoCount == 2) {
+                            // Verify fusion topology: central CYCLOPENTADIENE fused to both BENZENE rings
+                            // Find the CYCLOPENTADIENE index
+                            int cpIdx = -1;
+                            for (int i = 0; i < N; ++i) if (typesN[i] == RingType::CYCLOPENTADIENE) { cpIdx = i; break; }
+                            if (cpIdx != -1) {
+                                // Check both BENZENE rings are fused to the CYCLOPENTADIENE (not to each other)
+                                bool fusedToCp[3] = {false, false, false};
+                                for (int i = 0; i < N; ++i) {
+                                    for (int j = i + 1; j < N; ++j) {
+                                        if (shared[i][j] == 2) {
+                                            if (i == cpIdx) fusedToCp[j] = true;
+                                            if (j == cpIdx) fusedToCp[i] = true;
+                                        }
+                                    }
+                                }
+                                int benzoFusedToCp = 0;
+                                for (int i = 0; i < N; ++i) if (i != cpIdx && typesN[i] == RingType::BENZENE && fusedToCp[i]) benzoFusedToCp++;
+                                if (benzoFusedToCp == 2) {
+                                    return {true, "9H-fluorene", ""};
                                 }
                             }
                         }
@@ -17553,41 +17613,93 @@ IupacResult IupacNamer::generateName(int mol) {
                             
                             // Indicated hydrogen for exactly 3 rings, per original Phase 44 logic
                             if (N == 3) {
+                                // Collect ALL indicated-hydrogen positions across all rings
+                                std::vector<int> ihNodes;
+                                std::vector<QString> ihLocants;
+
+                                // Check nitrogen-based NH types (existing logic)
                                 auto isNHType = [](RingType t) {
                                     return t == RingType::PYRROLE || t == RingType::IMIDAZOLE || t == RingType::PYRAZOLE;
                                 };
-                                if (isNHType(typesN[0]) || isNHType(typesN[1]) || isNHType(typesN[2])) {
-                                    int nhNode = -1;
-                                    for (int i = 0; i < 3; ++i) {
+                                for (int i = 0; i < 3; ++i) {
+                                    if (isNHType(typesN[i])) {
                                         for (int n : nodesN[i]) {
                                             if (g.nodes[n].atomicNumber == 7 && g.nodes[n].totalH >= 1) {
-                                                nhNode = n; break;
+                                                ihNodes.push_back(n);
+                                                break; // One per NH ring
                                             }
                                         }
-                                        if (nhNode != -1) break;
                                     }
-                                    if (nhNode != -1) {
-                                        std::set<int> bheads;
-                                        for (int i = 0; i < 3; ++i) {
-                                            for (int j = i + 1; j < 3; ++j) {
-                                                if (shared[i][j] == 2) {
-                                                    bheads.insert(sharedNodesPairs[i][j][0]);
-                                                    bheads.insert(sharedNodesPairs[i][j][1]);
+                                }
+
+                                // Check carbocycle types with indicated hydrogen (CYCLOPENTADIENE, CYCLOHEPTATRIENE)
+                                for (int i = 0; i < 3; ++i) {
+                                    if (typesN[i] == RingType::CYCLOPENTADIENE || typesN[i] == RingType::CYCLOHEPTATRIENE) {
+                                        // Find the sp3 carbon atom in this ring
+                                        for (int n : nodesN[i]) {
+                                            // Check if this is the indicated-hydrogen position
+                                            // by verifying both ring bonds are single and atom has H
+                                            int prevIdx = -1, nextIdx = -1;
+                                            for (size_t j = 0; j < cyclesN[i].size(); ++j) {
+                                                if (cyclesN[i][j] == n) {
+                                                    prevIdx = cyclesN[i][(j - 1 + cyclesN[i].size()) % cyclesN[i].size()];
+                                                    nextIdx = cyclesN[i][(j + 1) % cyclesN[i].size()];
+                                                    break;
+                                                }
+                                            }
+                                            if (prevIdx != -1 && nextIdx != -1) {
+                                                int orderToPrev = -1, orderToNext = -1;
+                                                for (size_t k = 0; k < g.nodes[n].neighbors.size(); ++k) {
+                                                    if (g.nodes[n].neighbors[k] == prevIdx) orderToPrev = g.nodes[n].bondOrders[k];
+                                                    if (g.nodes[n].neighbors[k] == nextIdx) orderToNext = g.nodes[n].bondOrders[k];
+                                                }
+                                                if (orderToPrev == 1 && orderToNext == 1 && g.nodes[n].totalH >= 1) {
+                                                    ihNodes.push_back(n);
+                                                    break; // One per carbocycle ring
                                                 }
                                             }
                                         }
-                                        std::map<int, QString> periphMap = computePeripheralNumbering3Ring(g, nodesN[0], nodesN[1], nodesN[2], bheads, {}, true);
-                                        if (!periphMap.count(nhNode)) {
+                                    }
+                                }
+
+                                if (!ihNodes.empty()) {
+                                    // Build bridgehead set for peripheral numbering
+                                    std::set<int> bheads;
+                                    for (int i = 0; i < 3; ++i) {
+                                        for (int j = i + 1; j < 3; ++j) {
+                                            if (shared[i][j] == 2) {
+                                                bheads.insert(sharedNodesPairs[i][j][0]);
+                                                bheads.insert(sharedNodesPairs[i][j][1]);
+                                            }
+                                        }
+                                    }
+                                    std::map<int, QString> periphMap = computePeripheralNumbering3Ring(g, nodesN[0], nodesN[1], nodesN[2], bheads, {}, true);
+
+                                    for (int node : ihNodes) {
+                                        if (!periphMap.count(node)) {
                                             return {false, "", "Failed to compute peripheral locant for indicated hydrogen."};
                                         }
-                                        QString locStr = periphMap[nhNode];
+                                        QString locStr = periphMap[node];
                                         bool ok = false;
                                         locStr.toInt(&ok);
                                         if (!ok) {
                                             return {false, "", "Indicated hydrogen locant is letter-suffixed."};
                                         }
-                                        resultName = locStr + "H-" + resultName;
+                                        ihLocants.push_back(locStr);
                                     }
+
+                                    // Sort locants numerically (as integers)
+                                    std::sort(ihLocants.begin(), ihLocants.end(), [](const QString &a, const QString &b) {
+                                        return a.toInt() < b.toInt();
+                                    });
+
+                                    // Format: EACH locant gets its own "H", joined by commas.
+                                    // Verified real PIN at BlueBookV2.md:9580: "1H,3H-thieno[3,4-c]thiophene"
+                                    // -- the format is "1H,3H-", NOT "1,3H-" (a single trailing H would be wrong).
+                                    QStringList ihParts;
+                                    for (const QString &loc : ihLocants) ihParts.append(loc + "H");
+                                    QString ihPrefix = ihParts.join(",") + "-";
+                                    resultName = ihPrefix + resultName;
                                 }
                             }
                             if (resultName.isEmpty()) {
