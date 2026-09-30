@@ -5650,11 +5650,11 @@ int main() {
             IupacResult r = IupacNamer::generateName(m);
             indigoFree(m);
             std::string n = r.name.toStdString();
-            if (r.success && (n.find("selenepine") != std::string::npos || n.find("selenepane") != std::string::npos)) {
+            if (r.success && n.find("selenepine") != std::string::npos) {
                 std::cout << "[PASS] Single selenepine test: " << n << "\n";
                 passed++;
             } else {
-                std::cout << "[FAIL] Single selenepine test: expected name containing 'selenepine' or 'selenepane', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+                std::cout << "[FAIL] Single selenepine test: expected name containing 'selenepine', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
                 failed++;
             }
         } else {
@@ -5670,11 +5670,11 @@ int main() {
             IupacResult r = IupacNamer::generateName(m);
             indigoFree(m);
             std::string n = r.name.toStdString();
-            if (r.success && (n.find("tellurepine") != std::string::npos || n.find("tellurepane") != std::string::npos)) {
+            if (r.success && n.find("tellurepine") != std::string::npos) {
                 std::cout << "[PASS] Single tellurepine test: " << n << "\n";
                 passed++;
             } else {
-                std::cout << "[FAIL] Single tellurepine test: expected name containing 'tellurepine' or 'tellurepane', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+                std::cout << "[FAIL] Single tellurepine test: expected name containing 'tellurepine', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
                 failed++;
             }
         } else {
