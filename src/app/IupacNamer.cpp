@@ -19599,7 +19599,8 @@ static void placeRingAtoms(
     std::vector<int> cycle = buildRingCycleFrom(g, ringNodes, refAtomA, refAtomB);
     for (size_t i = 0; i < cycle.size() && i < 6; ++i) {
         int cornerIdx = (refDir + static_cast<int>(i)) % 6;
-        positions[cycle[i]] = {center.x + kHexCorners[cornerIdx].x, center.y + kHexCorners[cornerIdx].y};
+        Pt2D newPos = {center.x + kHexCorners[cornerIdx].x, center.y + kHexCorners[cornerIdx].y};
+        positions[cycle[i]] = newPos;
     }
 }
 
@@ -19617,52 +19618,70 @@ static std::vector<int> walkPeripheryClockwise(
     // 1. Place every atom of every ring in real 2D space.
     std::map<int, Pt2D> pos;
     std::vector<bool> placed(numRings, false);
-    std::vector<int> order = {0};
-    placed[0] = true;
+    std::vector<int> order;
     
-    if (!input.fusions.empty()) {
-        // Find first fusion involving ring 0
-        const FusedRingEdge *firstFusion = nullptr;
+    // Find central ring: the one with the most fusion connections
+    // This ensures fusion atoms get consistent positions
+    int centralRing = 0;
+    int maxFusions = -1;
+    for (int r = 0; r < numRings; ++r) {
+        int fusionCount = 0;
         for (const auto &f : input.fusions) {
-            if (f.ring1 == 0 || f.ring2 == 0) {
-                firstFusion = &f;
+            if (f.ring1 == r || f.ring2 == r) fusionCount++;
+        }
+        if (fusionCount > maxFusions) {
+            maxFusions = fusionCount;
+            centralRing = r;
+        }
+    }
+    
+    // Start BFS from central ring
+    order.push_back(centralRing);
+    placed[centralRing] = true;
+    
+    // Place central ring first
+    if (!input.fusions.empty()) {
+        // Find a fusion involving central ring
+        const FusedRingEdge *centralFusion = nullptr;
+        for (const auto &f : input.fusions) {
+            if (f.ring1 == centralRing || f.ring2 == centralRing) {
+                centralFusion = &f;
                 break;
             }
         }
-        if (firstFusion) {
-            int ring0 = (firstFusion->ring1 == 0) ? firstFusion->ring1 : firstFusion->ring2;
-            int otherRing = (firstFusion->ring1 == 0) ? firstFusion->ring2 : firstFusion->ring1;
-            std::set<int> shared0;
-            for (int a : input.ringAtoms[ring0]) {
-                if (input.ringAtoms[otherRing].count(a)) shared0.insert(a);
+        if (centralFusion) {
+            int otherRing = (centralFusion->ring1 == centralRing) ? centralFusion->ring2 : centralFusion->ring1;
+            std::set<int> shared;
+            for (int a : input.ringAtoms[centralRing]) {
+                if (input.ringAtoms[otherRing].count(a)) shared.insert(a);
             }
-            auto it = shared0.begin();
+            auto it = shared.begin();
             int a0 = *it; int a1 = *std::next(it);
-            int dirForRing0 = firstFusion->dir;
-            if (firstFusion->ring2 == 0) {
-                dirForRing0 = (firstFusion->dir + 3) % 6;
+            int dirForCentral = centralFusion->dir;
+            if (centralFusion->ring2 == centralRing) {
+                dirForCentral = (centralFusion->dir + 3) % 6;
             }
-            placeRingAtoms(g, input.ringAtoms[ring0], a0, a1, dirForRing0,
-                           hexToCartesian(orientation.ringHexPos[ring0].first, orientation.ringHexPos[ring0].second), pos);
+            placeRingAtoms(g, input.ringAtoms[centralRing], a0, a1, dirForCentral,
+                           hexToCartesian(orientation.ringHexPos[centralRing].first, orientation.ringHexPos[centralRing].second), pos);
         } else {
-            // Ring 0 has no fusions (single ring)
-            int anyAtom = *input.ringAtoms[0].begin();
+            // Central ring has no fusions (single ring)
+            int anyAtom = *input.ringAtoms[centralRing].begin();
             int anyNeighbor = -1;
             for (int n : g.nodes[anyAtom].neighbors) {
-                if (input.ringAtoms[0].count(n)) { anyNeighbor = n; break; }
+                if (input.ringAtoms[centralRing].count(n)) { anyNeighbor = n; break; }
             }
-            placeRingAtoms(g, input.ringAtoms[0], anyAtom, anyNeighbor, 0,
-                           hexToCartesian(orientation.ringHexPos[0].first, orientation.ringHexPos[0].second), pos);
+            placeRingAtoms(g, input.ringAtoms[centralRing], anyAtom, anyNeighbor, 0,
+                           hexToCartesian(orientation.ringHexPos[centralRing].first, orientation.ringHexPos[centralRing].second), pos);
         }
     } else {
         // Single ring with no fusions
-        int anyAtom = *input.ringAtoms[0].begin();
+        int anyAtom = *input.ringAtoms[centralRing].begin();
         int anyNeighbor = -1;
         for (int n : g.nodes[anyAtom].neighbors) {
-            if (input.ringAtoms[0].count(n)) { anyNeighbor = n; break; }
+            if (input.ringAtoms[centralRing].count(n)) { anyNeighbor = n; break; }
         }
-        placeRingAtoms(g, input.ringAtoms[0], anyAtom, anyNeighbor, 0,
-                       hexToCartesian(orientation.ringHexPos[0].first, orientation.ringHexPos[0].second), pos);
+        placeRingAtoms(g, input.ringAtoms[centralRing], anyAtom, anyNeighbor, 0,
+                       hexToCartesian(orientation.ringHexPos[centralRing].first, orientation.ringHexPos[centralRing].second), pos);
     }
     
     // Propagate to all rings

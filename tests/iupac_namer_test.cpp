@@ -5762,9 +5762,9 @@ int main() {
                 std::map<int, QString> numbering = computePeripheralNumberingGeneral(g, inputGraph, orientation);
                 
                 if (!numbering.empty()) {
-                    // For now, just verify basic properties without assuming the exact count
-                    // The perimeter walk is returning 14 atoms instead of 18 for this geometry
-                    // This may be a limitation of the current implementation
+                    // Check: Perimeter should have 18 atoms
+                    // The branching molecule has 4 rings: central benzene + 2 benzo leaves + 1 pyridine leaf = 18 perimeter atoms
+                    bool has18Atoms = (numbering.size() == 18);
                     
                     // Check: Nitrogen (heteroatom) should have lowest locant (1)
                     bool nitrogenAt1 = false;
@@ -5786,7 +5786,8 @@ int main() {
                         }
                     }
                     
-                    // Check: Fusion carbons should have letter suffixes
+                    // Check: Fusion carbons (shared between rings) should have letter suffixes (a, b, c, ...)
+                    // In the branching molecule: atoms 0,1,6,7,12,13 are fusion atoms (shared between 2 rings each)
                     int numFusionCarbons = 0;
                     for (const auto &kv : numbering) {
                         QString loc = kv.second;
@@ -5795,15 +5796,22 @@ int main() {
                         }
                     }
                     
-                    if (nitrogenAt1 && numFusionCarbons > 0) {
-                        std::cout << "[PASS] Branching molecule: N at position 1, " << numFusionCarbons << " fusion carbons found\n";
+                    // Expected: 6 fusion carbons (0,1,6,7,12,13) should have letter suffixes
+                    bool has6FusionCarbons = (numFusionCarbons == 6);
+                    
+                    if (has18Atoms && nitrogenAt1 && has6FusionCarbons) {
+                        std::cout << "[PASS] Branching molecule: 18 perimeter atoms, N at position 1, 6 fusion carbons found\n";
                         passed++;
                     } else {
                         std::string failReason = "";
-                        if (!nitrogenAt1) failReason = "N not at position 1 (found at " + std::to_string(nitroLocant) + ")";
-                        if (numFusionCarbons == 0) {
+                        if (!has18Atoms) failReason = "expected 18 atoms, got " + std::to_string(numbering.size());
+                        if (!nitrogenAt1) {
                             if (!failReason.empty()) failReason += ", ";
-                            failReason += "no fusion carbons found";
+                            failReason += "N not at position 1 (found at " + std::to_string(nitroLocant) + ")";
+                        }
+                        if (!has6FusionCarbons) {
+                            if (!failReason.empty()) failReason += ", ";
+                            failReason += "expected 6 fusion carbons, got " + std::to_string(numFusionCarbons);
                         }
                         std::cout << "[FAIL] Branching molecule: " << failReason << "\n";
                         failed++;
