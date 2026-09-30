@@ -269,5 +269,9 @@ FusedRingOrientationResult computePreferredOrientation(const FusedRingSystemInpu
     });
     
     res.ringOrder = sorted_rings;
+    res.ringHexPos.resize(num_rings);
+    for (int i = 0; i < num_rings; i++) {
+        res.ringHexPos[i] = {best_pos[i].q, best_pos[i].r};
+    }
     return res;
 }

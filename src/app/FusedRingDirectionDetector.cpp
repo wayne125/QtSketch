@@ -103,86 +103,97 @@ FusedRingSystemInput detectFusedRingDirections(int mol) {
         }
     }
     
-    for (int i = 0; i < numRings; ++i) {
-        if (ringAdj[i].size() > 2) return input; // Branching, out of scope
-    }
-    
-    // 4. Find endpoints of the linear chain
-    int startRing = -1;
-    for (int i = 0; i < numRings; ++i) {
-        if (ringAdj[i].size() <= 1) {
-            startRing = i;
-            break;
-        }
-    }
-    if (startRing == -1) return input; // Cycle of rings? Out of scope
-    
-    // 5. Traverse the chain
-    std::vector<int> chain;
-    int curr = startRing;
-    int prev = -1;
-    while (curr != -1) {
-        chain.push_back(curr);
-        int next = -1;
-        for (int nxt : ringAdj[curr]) {
-            if (nxt != prev) {
-                next = nxt;
-                break;
-            }
-        }
-        prev = curr;
-        curr = next;
-    }
-    if (chain.size() != static_cast<size_t>(numRings)) return input; // Disconnected
-    
+    input.ringAtoms = rings;
     input.ringSizes.assign(numRings, 6);
     if (numRings == 1) return input; // Trivial 1-ring system
+
+    std::vector<bool> visited(numRings, false);
     
-    // 6. Assign directions
-    // Pick arbitrary direction for first fusion
-    std::pair<int, int> b0 = sharedAtoms[{chain[0], chain[1]}];
-    int u = b0.first;
-    int v = b0.second;
-    int currentDir = 0;
+    // Pick any ring with degree <= 1 as a traversal root if one exists (a leaf of the
+    // tree), otherwise (a system with no leaf can only be a single ring, already handled
+    // by the numRings == 1 early return above, or is not actually a tree -- but the
+    // peri-fusion check above already rejects any cycle among rings, so every remaining
+    // multi-ring system here is guaranteed to be a tree and therefore guaranteed to have
+    // at least one leaf) fall back to ring 0.
+    int rootRing = 0;
+    for (int i = 0; i < numRings; ++i) {
+        if (ringAdj[i].size() <= 1) { rootRing = i; break; }
+    }
     
-    // FusedRingEdge uses node IDs which correspond to the sequence in `chain`
-    // Wait, the Phase 42 expected indices 0,1,2... So we map chain[i] -> i in the output,
-    // because `input.ringSizes` has size N and we assume indices 0..N-1.
-    input.fusions.push_back({0, 1, currentDir});
+    visited[rootRing] = true;
     
-    for (int i = 1; i < numRings - 1; ++i) {
-        int r = chain[i];
-        int next_r = chain[i+1];
-        
-        // Build cycle for r starting with u -> v
+    // BFS queue entries: (ringIndex, incoming shared-atom u, incoming shared-atom v)
+    // For the root, there is no real incoming bond -- seed with an arbitrary bond of the
+    // root's FIRST fusion (to its first neighbor), exactly mirroring how the original
+    // linear-chain code picked its own starting u/v from chain[0]/chain[1].
+    if (ringAdj[rootRing].empty()) return input; // single ring already returned above; a
+                                                    // adjacency-less ring here is an error
+    int firstNeighbor = ringAdj[rootRing][0];
+    std::pair<int,int> rootBond = sharedAtoms[{rootRing, firstNeighbor}];
+
+    struct QueueEntry { int ring; int u; int v; };
+    std::vector<QueueEntry> queue;
+    queue.push_back({rootRing, rootBond.first, rootBond.second});
+    size_t qi = 0;
+
+    // dirFromParent[ringIndex] = the direction FROM its parent TO this ring, filled in
+    // as each ring is first visited; used to emit input.fusions in (parent, child, dir)
+    // form exactly like the original code's input.fusions.push_back({i, i+1, currentDir}).
+    // The root itself has no incoming direction and needs none.
+    std::map<int,int> dirFromParent;
+    
+    while (qi < queue.size()) {
+        QueueEntry entry = queue[qi++];
+        int r = entry.ring;
+        int u = entry.u;
+        int v = entry.v;
+
         std::vector<int> cycle = buildDirectedCycle(rings[r], u, v, adj);
-        
-        std::pair<int, int> b_out = sharedAtoms[{r, next_r}];
-        int out_u = -1, out_v = -1;
-        int k = -1;
-        
-        for (size_t c = 0; c < cycle.size(); ++c) {
-            int c1 = cycle[c];
-            int c2 = cycle[(c + 1) % cycle.size()];
-            if ((c1 == b_out.first && c2 == b_out.second) || (c1 == b_out.second && c2 == b_out.first)) {
-                k = static_cast<int>(c);
-                out_u = c1;
-                out_v = c2;
-                break;
+
+        for (int nextR : ringAdj[r]) {
+            if (visited[nextR]) continue;
+            visited[nextR] = true;
+
+            std::pair<int,int> b_out = sharedAtoms[{r, nextR}];
+            int out_u = -1, out_v = -1;
+            int k = -1;
+            for (size_t c = 0; c < cycle.size(); ++c) {
+                int c1 = cycle[c];
+                int c2 = cycle[(c + 1) % cycle.size()];
+                if ((c1 == b_out.first && c2 == b_out.second) || (c1 == b_out.second && c2 == b_out.first)) {
+                    k = static_cast<int>(c);
+                    out_u = c1;
+                    out_v = c2;
+                    break;
+                }
             }
+            if (k == -1) {
+                input.ringSizes.clear();
+                return input;
+            }
+
+            // For the ROOT ring's FIRST outgoing edge (the one used to seed the BFS),
+            // the direction is 0 by fiat, mirroring the original code's `int currentDir = 0;`
+            // for chain[0]->chain[1]. For the root's OTHER outgoing edges (branching case),
+            // and for ALL outgoing edges from non-root rings, compute the direction using
+            // the same formula the original code used: `currentDir = (currentDir + 3 + k) % 6`,
+            // where the incoming direction from the parent is substituted for `currentDir`.
+            int outgoingDir;
+            if (r == rootRing && entry.u == rootBond.first && entry.v == rootBond.second) {
+                // First edge from root: direction 0
+                outgoingDir = 0;
+            } else {
+                int incomingDir = dirFromParent.at(r);
+                outgoingDir = (incomingDir + 3 + k) % 6;
+            }
+
+            input.fusions.push_back({r, nextR, outgoingDir});
+            dirFromParent[nextR] = outgoingDir;
+
+            // Next ring's incoming bond is traversed in reverse, exactly as the original
+            // code's `u = out_v; v = out_u;` step.
+            queue.push_back({nextR, out_v, out_u});
         }
-        
-        if (k == -1) {
-            input.ringSizes.clear(); // Error state
-            return input;
-        }
-        
-        currentDir = (currentDir + 3 + k) % 6;
-        input.fusions.push_back({i, i+1, currentDir});
-        
-        // Next ring's incoming bond should be traversed in reverse (out_v -> out_u)
-        u = out_v;
-        v = out_u;
     }
     
     return input;

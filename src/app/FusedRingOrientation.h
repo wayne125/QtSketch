@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <string>
+#include <set>
 
 struct FusedRingOrientationResult {
     bool success = false;
@@ -11,6 +12,7 @@ struct FusedRingOrientationResult {
     double ringsInUpperRightQuadrant = 0.0;
     double ringsInLowerLeftQuadrant = 0.0;
     double ringsAboveHorizontalRow = 0.0;
+    std::vector<std::pair<int,int>> ringHexPos;
 };
 
 // Represents a fusion bond between two rings.
@@ -25,6 +27,7 @@ struct FusedRingEdge {
 struct FusedRingSystemInput {
     std::vector<int> ringSizes; // indexed by ring ID (0 to N-1)
     std::vector<FusedRingEdge> fusions;
+    std::vector<std::set<int>> ringAtoms;
 };
 
 FusedRingOrientationResult computePreferredOrientation(const FusedRingSystemInput &input);

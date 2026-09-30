@@ -74,6 +74,42 @@ int main() {
         failed++;
     }
     
+    // Case 6: Branching molecule (degree-3 central ring) - verify new ringHexPos field
+    // Manually constructed input simulating a branching molecule with 4 rings
+    // Ring 0 is central, fused to rings 1, 2, 3 at positions 0, 2, 4
+    cout << "Test: Branching molecule (ringHexPos)" << endl;
+    FusedRingSystemInput branch_input;
+    branch_input.ringSizes = {6, 6, 6, 6};
+    branch_input.fusions = {{0, 1, 0}, {0, 2, 2}, {0, 3, 4}};
+    
+    auto res_branch = computePreferredOrientation(branch_input);
+    if (!res_branch.success) {
+        cout << "  FAIL: computePreferredOrientation failed: " << res_branch.error << endl;
+        failed++;
+    } else if (res_branch.ringHexPos.size() != 4) {
+        cout << "  FAIL: Expected ringHexPos.size() == 4, got " << res_branch.ringHexPos.size() << endl;
+        failed++;
+    } else {
+        // Verify all positions are distinct
+        bool allDistinct = true;
+        for (size_t i = 0; i < res_branch.ringHexPos.size(); ++i) {
+            for (size_t j = i + 1; j < res_branch.ringHexPos.size(); ++j) {
+                if (res_branch.ringHexPos[i] == res_branch.ringHexPos[j]) {
+                    allDistinct = false;
+                    break;
+                }
+            }
+            if (!allDistinct) break;
+        }
+        if (!allDistinct) {
+            cout << "  FAIL: Not all ringHexPos positions are distinct" << endl;
+            failed++;
+        } else {
+            cout << "  PASS: Branching molecule accepted, ringHexPos has 4 distinct positions" << endl;
+            passed++;
+        }
+    }
+    
     cout << endl;
     cout << "TOTAL PASSED: " << passed << endl;
     cout << "TOTAL FAILED: " << failed << endl;
