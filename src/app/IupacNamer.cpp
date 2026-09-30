@@ -1,5 +1,6 @@
 #include "IupacNamer.h"
 #include "BondStereoPerception.h"
+#include "FusedRingOrientation.h"
 #include "indigo.h"
 #include <QStringList>
 #include <vector>
@@ -56,6 +57,12 @@ std::map<int, QString> computePeripheralNumbering3Ring(
 
 
 std::map<int, QString> computePeripheralNumberingForMol(int mol);
+
+std::map<int, QString> computePeripheralNumberingGeneral(
+    const Graph &g,
+    const FusedRingSystemInput &input,
+    const FusedRingOrientationResult &orientation,
+    const std::set<int> &substituentBearingNodes = {});
 
 namespace {
 
@@ -19542,6 +19549,456 @@ std::map<int, QString> computePeripheralNumbering3Ring(
 
     return bestIt->locantMap;
 }
+
+// ============================================================================
+// General peripheral numbering for branching fused ring systems
+// Blue Book P-25.3.3.1.1 / P-25.3.3.1.2
+// ============================================================================
+
+struct Pt2D { double x, y; };
+
+static Pt2D hexToCartesian(int q, int r) {
+    return {static_cast<double>(q) + 0.5 * r, static_cast<double>(-r)};
+}
+
+static const Pt2D kHexCorners[6] = {
+    { 0.5,  0.28867513}, { 0.5, -0.28867513}, { 0.0, -0.57735027},
+    {-0.5, -0.28867513}, {-0.5,  0.28867513}, { 0.0,  0.57735027}
+};
+
+// Build a directed cycle of a ring starting from u and going through v.
+// Returns the 6 atoms in ring order (u, v, ...), mirroring extractOuterPath pattern.
+static std::vector<int> buildRingCycleFrom(const Graph &g, const std::set<int> &ringNodes, int u, int v) {
+    std::vector<int> cycle;
+    cycle.push_back(u);
+    cycle.push_back(v);
+    int prev = u;
+    int curr = v;
+    while (cycle.size() < ringNodes.size()) {
+        int next = -1;
+        for (int nei : g.nodes[curr].neighbors) {
+            if (ringNodes.count(nei) && nei != prev) {
+                next = nei;
+                break;
+            }
+        }
+        if (next == -1) break;
+        cycle.push_back(next);
+        prev = curr;
+        curr = next;
+    }
+    return cycle;
+}
+
+// Places every atom of ring `ringIdx` at a real 2D point.
+// refAtomA/refAtomB are a known fusion-bond atom pair on this ring.
+// refDir is that bond's direction (0-5), used to fix this ring's 6-fold rotation.
+static void placeRingAtoms(
+    const Graph &g, const std::set<int> &ringNodes, int refAtomA, int refAtomB,
+    int refDir, Pt2D center, std::map<int, Pt2D> &positions) {
+    std::vector<int> cycle = buildRingCycleFrom(g, ringNodes, refAtomA, refAtomB);
+    for (size_t i = 0; i < cycle.size() && i < 6; ++i) {
+        int cornerIdx = (refDir + static_cast<int>(i)) % 6;
+        positions[cycle[i]] = {center.x + kHexCorners[cornerIdx].x, center.y + kHexCorners[cornerIdx].y};
+    }
+}
+
+// Walk the true outer perimeter of an assembled hex-grid ring system clockwise.
+// Returns ordered sequence of real atom indices around the WHOLE perimeter.
+static std::vector<int> walkPeripheryClockwise(
+    const Graph &g,
+    const FusedRingSystemInput &input,
+    const FusedRingOrientationResult &orientation) {
+    int numRings = static_cast<int>(input.ringSizes.size());
+    if (numRings == 0 || orientation.ringHexPos.size() != static_cast<size_t>(numRings)) {
+        return {};
+    }
+
+    // 1. Place every atom of every ring in real 2D space.
+    std::map<int, Pt2D> pos;
+    std::vector<bool> placed(numRings, false);
+    std::vector<int> order = {0};
+    placed[0] = true;
+    
+    if (!input.fusions.empty()) {
+        // Find first fusion involving ring 0
+        const FusedRingEdge *firstFusion = nullptr;
+        for (const auto &f : input.fusions) {
+            if (f.ring1 == 0 || f.ring2 == 0) {
+                firstFusion = &f;
+                break;
+            }
+        }
+        if (firstFusion) {
+            int ring0 = (firstFusion->ring1 == 0) ? firstFusion->ring1 : firstFusion->ring2;
+            int otherRing = (firstFusion->ring1 == 0) ? firstFusion->ring2 : firstFusion->ring1;
+            std::set<int> shared0;
+            for (int a : input.ringAtoms[ring0]) {
+                if (input.ringAtoms[otherRing].count(a)) shared0.insert(a);
+            }
+            auto it = shared0.begin();
+            int a0 = *it; int a1 = *std::next(it);
+            int dirForRing0 = firstFusion->dir;
+            if (firstFusion->ring2 == 0) {
+                dirForRing0 = (firstFusion->dir + 3) % 6;
+            }
+            placeRingAtoms(g, input.ringAtoms[ring0], a0, a1, dirForRing0,
+                           hexToCartesian(orientation.ringHexPos[ring0].first, orientation.ringHexPos[ring0].second), pos);
+        } else {
+            // Ring 0 has no fusions (single ring)
+            int anyAtom = *input.ringAtoms[0].begin();
+            int anyNeighbor = -1;
+            for (int n : g.nodes[anyAtom].neighbors) {
+                if (input.ringAtoms[0].count(n)) { anyNeighbor = n; break; }
+            }
+            placeRingAtoms(g, input.ringAtoms[0], anyAtom, anyNeighbor, 0,
+                           hexToCartesian(orientation.ringHexPos[0].first, orientation.ringHexPos[0].second), pos);
+        }
+    } else {
+        // Single ring with no fusions
+        int anyAtom = *input.ringAtoms[0].begin();
+        int anyNeighbor = -1;
+        for (int n : g.nodes[anyAtom].neighbors) {
+            if (input.ringAtoms[0].count(n)) { anyNeighbor = n; break; }
+        }
+        placeRingAtoms(g, input.ringAtoms[0], anyAtom, anyNeighbor, 0,
+                       hexToCartesian(orientation.ringHexPos[0].first, orientation.ringHexPos[0].second), pos);
+    }
+    
+    // Propagate to all rings
+    size_t qi = 0;
+    while (qi < order.size()) {
+        int r = order[qi++];
+        for (const auto &f : input.fusions) {
+            int other = -1, dir = -1;
+            if (f.ring1 == r && !placed[f.ring2]) { other = f.ring2; dir = f.dir; }
+            else if (f.ring2 == r && !placed[f.ring1]) { other = f.ring1; dir = (f.dir + 3) % 6; }
+            if (other == -1) continue;
+            placed[other] = true;
+            std::set<int> shared;
+            for (int a : input.ringAtoms[r]) {
+                if (input.ringAtoms[other].count(a)) shared.insert(a);
+            }
+            if (shared.size() < 2) continue; // Need at least 2 shared atoms
+            auto it = shared.begin();
+            int a0 = *it; int a1 = *std::next(it);
+            placeRingAtoms(g, input.ringAtoms[other], a1, a0, (dir + 3) % 6,
+                           hexToCartesian(orientation.ringHexPos[other].first, orientation.ringHexPos[other].second), pos);
+            order.push_back(other);
+        }
+    }
+    
+    // 2. Boundary trace: start at bottommost atom
+    std::map<int,int> atomRingCount;
+    for (const auto &rs : input.ringAtoms) {
+        for (int a : rs) atomRingCount[a]++;
+    }
+
+    int startAtom = -1;
+    double minY = 1e18;
+    for (const auto &kv : pos) {
+        if (kv.second.y < minY) { minY = kv.second.y; startAtom = kv.first; }
+    }
+    if (startAtom == -1) return {};
+
+    auto neighborsInSystem = [&](int atom) {
+        std::vector<int> result;
+        for (int n : g.nodes[atom].neighbors) {
+            if (pos.count(n)) result.push_back(n);
+        }
+        return result;
+    };
+
+    std::vector<int> perimeter;
+    int current = startAtom;
+    int arrivedFrom = -1;
+    
+    // First step: from startAtom, pick the neighbor with the smallest polar angle (rightmost)
+    {
+        std::vector<int> neis = neighborsInSystem(current);
+        double bestAngle = 1e18; int bestN = -1;
+        for (int n : neis) {
+            double ang = std::atan2(pos[n].y - pos[current].y, pos[n].x - pos[current].x);
+            if (ang < bestAngle) { bestAngle = ang; bestN = n; }
+        }
+        if (bestN == -1) return {};
+        arrivedFrom = current;
+        current = bestN;
+    }
+    perimeter.push_back(startAtom);
+    
+    int guard = 0;
+    int stepCount = 0;
+    while (current != startAtom && guard++ < 10000) {
+        perimeter.push_back(current);
+        stepCount++;
+        // Vector from current to arrivedFrom (incoming direction)
+        double arrivalAngle = std::atan2(pos[arrivedFrom].y - pos[current].y, pos[arrivedFrom].x - pos[current].x);
+        std::vector<int> neis = neighborsInSystem(current);
+        int bestN = -1; double bestTurn = -1e18;
+        for (int n : neis) {
+            if (n == arrivedFrom) continue;
+            // Vector from current to neighbor n (outgoing direction)
+            double ang = std::atan2(pos[n].y - pos[current].y, pos[n].x - pos[current].x);
+            // Turn = how much we rotate from incoming to outgoing
+            // For clockwise walk: we want the MOST clockwise turn = most negative rotation
+            // But we're checking turn > bestTurn, so we need turn to be positive for clockwise?
+            // Let's use the original formula that worked for quinoline
+            double turn = arrivalAngle - ang;
+            while (turn < 0) turn += 2 * M_PI;
+            while (turn > 2 * M_PI) turn -= 2 * M_PI;
+            if (turn > bestTurn) { bestTurn = turn; bestN = n; }
+        }
+        if (bestN == -1) return {};
+        arrivedFrom = current;
+        current = bestN;
+    }
+    if (guard >= 10000) return {};
+    if (current != startAtom) return {};
+
+    return perimeter;
+}
+
+std::map<int, QString> computePeripheralNumberingGeneral(
+    const Graph &g,
+    const FusedRingSystemInput &input,
+    const FusedRingOrientationResult &orientation,
+    const std::set<int> &substituentBearingNodes) {
+    std::map<int, QString> emptyMap;
+    
+    if (!orientation.success || input.ringAtoms.empty()) return emptyMap;
+    
+    int numRings = static_cast<int>(input.ringAtoms.size());
+    
+    // Build atom ring count
+    std::map<int,int> atomRingCount;
+    for (const auto &rs : input.ringAtoms) {
+        for (int a : rs) atomRingCount[a]++;
+    }
+
+    // Step 2: Walk the perimeter
+    std::vector<int> perimeter = walkPeripheryClockwise(g, input, orientation);
+    if (perimeter.empty()) return emptyMap;
+    
+    // Step 3: Find uppermost ring (min r, then max q)
+    int upperRing = 0;
+    for (int i = 1; i < numRings; ++i) {
+        auto &best = orientation.ringHexPos[upperRing];
+        auto &cur = orientation.ringHexPos[i];
+        if (cur.second < best.second || (cur.second == best.second && cur.first > best.first)) {
+            upperRing = i;
+        }
+    }
+
+    // Find all nonfused perimeter atoms belonging to upperRing
+    std::vector<int> upperRingNonFusedIndices;
+    for (size_t i = 0; i < perimeter.size(); ++i) {
+        int atom = perimeter[i];
+        if (input.ringAtoms[upperRing].count(atom) && atomRingCount[atom] == 1) {
+            upperRingNonFusedIndices.push_back(static_cast<int>(i));
+        }
+    }
+    
+    if (upperRingNonFusedIndices.empty()) return emptyMap;
+    
+    // Find the LAST nonfused atom of upperRing in the perimeter cycle
+    // (most counterclockwise = last one before walk leaves upperRing)
+    int startIdx = -1;
+    for (int idx : upperRingNonFusedIndices) {
+        startIdx = idx; // keep overwriting; last one wins
+    }
+    
+    // Rotate perimeter to start at startIdx
+    std::vector<int> rotated;
+    for (size_t i = 0; i < perimeter.size(); ++i) {
+        rotated.push_back(perimeter[(startIdx + i) % perimeter.size()]);
+    }
+
+    // Step 3 continued: Assign locants by walking rotated
+    // We need to handle tie-breaking: there might be multiple valid starts on the upperRing
+    // Collect all candidate start positions that are nonfused atoms of upperRing
+    std::vector<int> candidateStarts;
+    for (int idx : upperRingNonFusedIndices) {
+        candidateStarts.push_back(idx);
+    }
+    
+    // If only one candidate, use it
+    if (candidateStarts.size() == 1) {
+        startIdx = candidateStarts[0];
+        rotated.clear();
+        for (size_t i = 0; i < perimeter.size(); ++i) {
+            rotated.push_back(perimeter[(startIdx + i) % perimeter.size()]);
+        }
+    } else {
+        // Multiple candidates - need to generate all and pick best
+        // This handles symmetric cases
+        std::vector<std::map<int, QString>> allCandidates;
+        for (int candStartIdx : candidateStarts) {
+            std::vector<int> candRotated;
+            for (size_t i = 0; i < perimeter.size(); ++i) {
+                candRotated.push_back(perimeter[(candStartIdx + i) % perimeter.size()]);
+            }
+            
+            // Build locant map for this candidate
+            std::map<int, QString> locantMap;
+            int loc = 1;
+            int lastNonBhLoc = 0;
+            int numBhSince = 0;
+            
+            for (int atom : candRotated) {
+                if (atomRingCount[atom] == 1) {
+                    numBhSince = 0;
+                    locantMap[atom] = QString::number(loc);
+                    lastNonBhLoc = loc;
+                    loc++;
+                } else {
+                    numBhSince++;
+                    char suffix = 'a' + numBhSince - 1;
+                    locantMap[atom] = QString::number(lastNonBhLoc) + suffix;
+                }
+            }
+            allCandidates.push_back(locantMap);
+        }
+        
+        // Score and pick best candidate
+        struct Candidate {
+            std::map<int, QString> locantMap;
+            std::vector<int> heteroatomLocants;
+            std::vector<std::pair<int, int>> heteroatomSeniorityAtLocants;
+            std::vector<int> fusionCarbonLocants;
+            std::vector<int> substituentLocants;
+            int candidateIndex;
+        };
+        
+        std::vector<Candidate> scoredCandidates;
+        for (size_t ci = 0; ci < allCandidates.size(); ++ci) {
+            Candidate cand;
+            cand.candidateIndex = static_cast<int>(ci);
+            cand.locantMap = allCandidates[ci];
+            
+            // Collect heteroatom locants
+            std::set<int> allAtomsInSystem;
+            for (const auto &rs : input.ringAtoms) {
+                for (int a : rs) allAtomsInSystem.insert(a);
+            }
+            
+            for (int atom : allAtomsInSystem) {
+                int z = g.nodes[atom].atomicNumber;
+                if (z != 6) {
+                    auto it = cand.locantMap.find(atom);
+                    if (it != cand.locantMap.end()) {
+                        QString locStr = it->second;
+                        int numLoc = 0;
+                        std::string s = locStr.toStdString();
+                        for (char c : s) {
+                            if (std::isdigit(static_cast<unsigned char>(c))) {
+                                numLoc = numLoc * 10 + (c - '0');
+                            } else {
+                                break;
+                            }
+                        }
+                        int rank = 99;
+                        if (z == 8) rank = 0;      // O
+                        else if (z == 16) rank = 1; // S
+                        else if (z == 7) rank = 2;  // N
+                        else rank = z + 10;
+                        
+                        cand.heteroatomLocants.push_back(numLoc);
+                        cand.heteroatomSeniorityAtLocants.push_back({numLoc, rank});
+                    }
+                }
+            }
+            
+            // Collect fusion carbon locants (atoms with ringCount >= 2)
+            for (int atom : allAtomsInSystem) {
+                if (atomRingCount[atom] >= 2) {
+                    auto it = cand.locantMap.find(atom);
+                    if (it != cand.locantMap.end()) {
+                        QString locStr = it->second;
+                        int numLoc = 0;
+                        std::string s = locStr.toStdString();
+                        bool hasLetter = false;
+                        for (char c : s) {
+                            if (std::isdigit(static_cast<unsigned char>(c))) {
+                                numLoc = numLoc * 10 + (c - '0');
+                            } else {
+                                hasLetter = true;
+                                break;
+                            }
+                        }
+                        // Only add if it has a letter (fusion carbon)
+                        if (hasLetter) {
+                            cand.fusionCarbonLocants.push_back(numLoc);
+                        }
+                    }
+                }
+            }
+            
+            // Collect substituent locants
+            for (int node : substituentBearingNodes) {
+                auto it = cand.locantMap.find(node);
+                if (it != cand.locantMap.end()) {
+                    QString locStr = it->second;
+                    int numLoc = 0;
+                    std::string s = locStr.toStdString();
+                    for (char c : s) {
+                        if (std::isdigit(static_cast<unsigned char>(c))) {
+                            numLoc = numLoc * 10 + (c - '0');
+                        } else {
+                            break;
+                        }
+                    }
+                    cand.substituentLocants.push_back(numLoc);
+                }
+            }
+            
+            std::sort(cand.heteroatomLocants.begin(), cand.heteroatomLocants.end());
+            std::sort(cand.heteroatomSeniorityAtLocants.begin(), cand.heteroatomSeniorityAtLocants.end());
+            std::sort(cand.fusionCarbonLocants.begin(), cand.fusionCarbonLocants.end());
+            std::sort(cand.substituentLocants.begin(), cand.substituentLocants.end());
+            
+            scoredCandidates.push_back(cand);
+        }
+        
+        // Pick best candidate using same tie-break order as existing functions
+        auto bestIt = std::min_element(scoredCandidates.begin(), scoredCandidates.end(),
+            [](const Candidate &a, const Candidate &b) {
+                if (a.heteroatomLocants != b.heteroatomLocants)
+                    return a.heteroatomLocants < b.heteroatomLocants;
+                if (a.heteroatomSeniorityAtLocants != b.heteroatomSeniorityAtLocants)
+                    return a.heteroatomSeniorityAtLocants < b.heteroatomSeniorityAtLocants;
+                if (a.fusionCarbonLocants != b.fusionCarbonLocants)
+                    return a.fusionCarbonLocants < b.fusionCarbonLocants;
+                if (a.substituentLocants != b.substituentLocants)
+                    return a.substituentLocants < b.substituentLocants;
+                return a.candidateIndex < b.candidateIndex;
+            });
+        
+        return bestIt->locantMap;
+    }
+    
+    // Single candidate path: build locant map from rotated
+    std::map<int, QString> locantMap;
+    int loc = 1;
+    int lastNonBhLoc = 0;
+    int numBhSince = 0;
+    
+    for (int atom : rotated) {
+        if (atomRingCount[atom] == 1) {
+            numBhSince = 0;
+            locantMap[atom] = QString::number(loc);
+            lastNonBhLoc = loc;
+            loc++;
+        } else {
+            numBhSince++;
+            char suffix = 'a' + numBhSince - 1;
+            locantMap[atom] = QString::number(lastNonBhLoc) + suffix;
+        }
+    }
+    
+    return locantMap;
+}
+
 
 std::map<int, QString> computePeripheralNumbering(
     const Graph &g,
