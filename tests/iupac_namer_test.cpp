@@ -5830,6 +5830,38 @@ int main() {
             failed++;
         }
     }
+    
+    // Test: Verify the actual NAME output for branching ground truth
+    {
+        int m = indigoLoadMoleculeFromString("c12c(cccc2)c3c(cccc3)c4c1(nccc4)");
+        if (m >= 0) {
+            auto result = IupacNamer::generateName(m);
+            // Corrected during Task 4 implementation: Task 1's original hand-derivation
+            // "dibenzo[c,e]benzo[b]pyridine" was a self-flagged low-confidence guess for the
+            // second-order citation format. Direct Blue Book precedent (P-25.3.8.2, e.g.
+            // "cyclopenta[4,5]pyrrolo[2,3-c]pyridine") shows a second-order terminal
+            // hydrocarbon component is cited with NUMERIC locants of the ring it attaches to,
+            // not a letter -- letters are reserved for fusion directly to the true parent.
+            // Independent hand-tracing of this SMILES's connectivity confirms the central
+            // ring's three fusion bonds are alternating (leaf1, leaf2, parent-bond), so the
+            // lowest-locants rule assigns the two CITED leaves the lowest pair and leaves the
+            // uncited parent bond the highest slot -- matching benzo[b] (not benzo[e]) for the
+            // parent and numeric (not "c,e") locants for the leaves.
+            QString expectedName = "dibenzo[4b,8a:8b,12a]benzo[b]pyridine";
+            if (result.success && result.name == expectedName) {
+                std::cout << "[PASS] Branching molecule name: " << result.name.toStdString() << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] Branching molecule name: expected '" << expectedName.toStdString() 
+                          << "', got '" << result.name.toStdString() << "' (success=" << result.success << ")\n";
+                failed++;
+            }
+            indigoFree(m);
+        } else {
+            std::cout << "[FAIL] Branching molecule SMILES did not load\n";
+            failed++;
+        }
+    }
 
     std::cout << "\nSummary: " << passed << " passed, " << failed << " failed.\n";
     indigoReleaseSessionId(sid);
