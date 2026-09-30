@@ -17713,7 +17713,37 @@ IupacResult IupacNamer::generateName(int mol) {
                         return {false, "", "Ring type not supported in branching system."};
                     }
                 }
-                
+
+                // Retained-name-collision guard (P-25.1 mandatory retained PINs): an
+                // all-carbocyclic branching topology can collide with a Blue Book name that
+                // has its own special numbering, rather than being named systematically.
+                // Heterocyclic branching systems can never collide with an all-carbocyclic
+                // retained name and proceed through the normal path below unaffected.
+                {
+                    bool allBenzeneBranching = true;
+                    for (int i = 0; i < N_d; ++i) {
+                        if (typesN_d[i] != RingType::BENZENE) { allBenzeneBranching = false; break; }
+                    }
+                    if (allBenzeneBranching) {
+                        std::vector<int> ringDegree(N_d, 0);
+                        for (const auto &f : detectedInputGraph.fusions) {
+                            ringDegree[f.ring1]++;
+                            ringDegree[f.ring2]++;
+                        }
+                        int degree3Count = 0, degree1Count = 0;
+                        for (int i = 0; i < N_d; ++i) {
+                            if (ringDegree[i] == 3) degree3Count++;
+                            else if (ringDegree[i] == 1) degree1Count++;
+                        }
+                        // Triphenylene: one central benzo ring fused to exactly 3 other benzo
+                        // rings (each a degree-1 leaf) on alternating sides.
+                        if (N_d == 4 && degree3Count == 1 && degree1Count == 3) {
+                            return {true, "triphenylene", ""};
+                        }
+                        return {false, "", "This all-carbocyclic branching ring system may require a retained name not yet recognized by this mechanism."};
+                    }
+                }
+
                 // STEP 2: Select parent component using compareRingSeniority
                 int parentRing = 0;
                 for (int i = 1; i < N_d; ++i) {

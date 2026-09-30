@@ -5913,6 +5913,51 @@ int main() {
         }
     }
 
+    // Test: Triphenylene (all-carbocyclic branching topology) must produce the Blue Book
+    // mandatory retained name, not a fabricated systematic fusion name.
+    {
+        int m = indigoLoadMoleculeFromString("c12c(cccc2)c3c(cccc3)c4c1cccc4");
+        if (m >= 0) {
+            auto result = IupacNamer::generateName(m);
+            QString expectedName = "triphenylene";
+            if (result.success && result.name == expectedName) {
+                std::cout << "[PASS] Triphenylene retained-name guard: " << result.name.toStdString() << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] Triphenylene retained-name guard: expected '" << expectedName.toStdString()
+                          << "', got '" << result.name.toStdString() << "' (success=" << result.success << ")\n";
+                failed++;
+            }
+            indigoFree(m);
+        } else {
+            std::cout << "[FAIL] Triphenylene SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    // Test: the heterocyclic ground-truth branching molecule does NOT collide with the
+    // triphenylene guard (it has a heteroatom, so it can never be all-carbocyclic) and
+    // still produces its normal systematic name unaffected.
+    {
+        int m = indigoLoadMoleculeFromString("c12c(cccc2)c3c(cccc3)c4c1(nccc4)");
+        if (m >= 0) {
+            auto result = IupacNamer::generateName(m);
+            QString expectedName = "dibenzo[4b,8a:8b,12a]benzo[b]pyridine";
+            if (result.success && result.name == expectedName) {
+                std::cout << "[PASS] Heterocyclic branching molecule unaffected by retained-name guard: " << result.name.toStdString() << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] Heterocyclic branching molecule unaffected by retained-name guard: expected '" << expectedName.toStdString()
+                          << "', got '" << result.name.toStdString() << "' (success=" << result.success << ")\n";
+                failed++;
+            }
+            indigoFree(m);
+        } else {
+            std::cout << "[FAIL] Branching molecule SMILES did not load\n";
+            failed++;
+        }
+    }
+
     std::cout << "\nSummary: " << passed << " passed, " << failed << " failed.\n";
     indigoReleaseSessionId(sid);
     return (failed == 0) ? 0 : 1;
