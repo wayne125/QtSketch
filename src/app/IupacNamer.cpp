@@ -914,7 +914,7 @@ bool tryGeneralHeterocycle(const Graph &g, const std::vector<int> &ringHeteroNod
     return true;
 }
 
-enum class RingType { BENZENE, FURAN, THIOPHENE, SELENOPHENE, TELLUROPHENE, PYRROLE, PYRIDINE, PHOSPHININE, CYCLOALKANE, CYCLOALKENE, IMIDAZOLE, PYRIMIDINE, PYRAZOLE, OXAZOLE, ISOXAZOLE, THIAZOLE, ISOTHIAZOLE, SELENAZOLE, ISOSELENAZOLE, PYRIDAZINE, PYRAZINE, PIPERIDINE, PYRROLIDINE, TETRAHYDROFURAN, TETRAHYDROTHIOPHENE, CYCLOPENTADIENE, CYCLOHEPTATRIENE, GENERAL_HETEROCYCLE, LARGE_HETEROCYCLE };
+enum class RingType { BENZENE, FURAN, THIOPHENE, SELENOPHENE, TELLUROPHENE, PYRROLE, PYRIDINE, PHOSPHININE, CYCLOALKANE, CYCLOALKENE, IMIDAZOLE, PYRIMIDINE, PYRAZOLE, OXAZOLE, ISOXAZOLE, THIAZOLE, ISOTHIAZOLE, SELENAZOLE, ISOSELENAZOLE, PYRIDAZINE, PYRAZINE, PIPERIDINE, PYRROLIDINE, TETRAHYDROFURAN, TETRAHYDROTHIOPHENE, CYCLOPENTADIENE, CYCLOHEPTATRIENE, AZEPINE, OXEPINE, THIEPINE, SELENEPINE, TELLUREPINE, GENERAL_HETEROCYCLE, LARGE_HETEROCYCLE };
 
 QString getFusionPrefixShared(RingType t) {
     if (t == RingType::BENZENE) return "benzo";
@@ -938,6 +938,11 @@ QString getFusionPrefixShared(RingType t) {
     if (t == RingType::PYRAZOLE) return "pyrazolo";
     if (t == RingType::CYCLOPENTADIENE) return "cyclopenta";
     if (t == RingType::CYCLOHEPTATRIENE) return "cyclohepta";
+    if (t == RingType::AZEPINE) return "azepino";
+    if (t == RingType::OXEPINE) return "oxepino";
+    if (t == RingType::THIEPINE) return "thiepino";
+    if (t == RingType::SELENEPINE) return "selenepino";
+    if (t == RingType::TELLUREPINE) return "tellurepino";
     return "";
 }
 
@@ -963,6 +968,11 @@ QString getBaseNameShared(RingType t) {
     if (t == RingType::PYRAZOLE) return "pyrazole";
     if (t == RingType::CYCLOPENTADIENE) return "cyclopentadiene";
     if (t == RingType::CYCLOHEPTATRIENE) return "cycloheptatriene";
+    if (t == RingType::AZEPINE) return "azepine";
+    if (t == RingType::OXEPINE) return "oxepine";
+    if (t == RingType::THIEPINE) return "thiepine";
+    if (t == RingType::SELENEPINE) return "selenepine";
+    if (t == RingType::TELLUREPINE) return "tellurepine";
     return "";
 }
 
@@ -1195,6 +1205,16 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
             outType = RingType::PYRIDINE; outNameRoot = "pyridine"; return true;
         } else if (ringSize == 6 && hZ == 15) {
             outType = RingType::PHOSPHININE; outNameRoot = "phosphinine"; return true;
+        } else if (ringSize == 7 && hZ == 7) {
+            outType = RingType::AZEPINE; outNameRoot = "azepine"; return true;
+        } else if (ringSize == 7 && hZ == 8) {
+            outType = RingType::OXEPINE; outNameRoot = "oxepine"; return true;
+        } else if (ringSize == 7 && hZ == 16) {
+            outType = RingType::THIEPINE; outNameRoot = "thiepine"; return true;
+        } else if (ringSize == 7 && hZ == 34) {
+            outType = RingType::SELENEPINE; outNameRoot = "selenepine"; return true;
+        } else if (ringSize == 7 && hZ == 52) {
+            outType = RingType::TELLUREPINE; outNameRoot = "tellurepine"; return true;
         } else {
             if (tryGeneralHeterocycle(g, ringHeteroNodes, ringSize, outNameRoot)) {
                 outType = RingType::GENERAL_HETEROCYCLE; return true;
@@ -16937,7 +16957,10 @@ IupacResult IupacNamer::generateName(int mol) {
                            t == RingType::PYRROLE || t == RingType::IMIDAZOLE ||
                            t == RingType::PYRAZOLE || t == RingType::SELENOPHENE ||
                            t == RingType::TELLUROPHENE || t == RingType::PHOSPHININE ||
-                           t == RingType::CYCLOPENTADIENE || t == RingType::CYCLOHEPTATRIENE;
+                           t == RingType::CYCLOPENTADIENE || t == RingType::CYCLOHEPTATRIENE ||
+                           t == RingType::AZEPINE || t == RingType::OXEPINE ||
+                           t == RingType::THIEPINE || t == RingType::SELENEPINE ||
+                           t == RingType::TELLUREPINE;
                 };
 
                 bool allAllowed = allClassified;
@@ -16954,7 +16977,8 @@ IupacResult IupacNamer::generateName(int mol) {
                                 cands.push_back(fwd);
                                 cands.push_back(bwd);
                             }
-                        } else if (t == RingType::FURAN || t == RingType::THIOPHENE || t == RingType::SELENOPHENE || t == RingType::TELLUROPHENE || t == RingType::PHOSPHININE || t == RingType::PYRIDINE || t == RingType::PYRROLE) {
+                        } else if (t == RingType::FURAN || t == RingType::THIOPHENE || t == RingType::SELENOPHENE || t == RingType::TELLUROPHENE || t == RingType::PHOSPHININE || t == RingType::PYRIDINE || t == RingType::PYRROLE ||
+                           t == RingType::AZEPINE || t == RingType::OXEPINE || t == RingType::THIEPINE || t == RingType::SELENEPINE || t == RingType::TELLUREPINE) {
                             if (hNodes.size() == 1) {
                                 int hNode = hNodes[0];
                                 int hIdx = -1;
@@ -17022,11 +17046,11 @@ IupacResult IupacNamer::generateName(int mol) {
                         // BENZENE has no heteroatom, so per Blue Book P-25.3.2.4 (a) it must rank
                         // below every heteroatom-bearing type (e.g. "pyridine is senior to azulene").
                         if (t == RingType::BENZENE || t == RingType::CYCLOPENTADIENE || t == RingType::CYCLOHEPTATRIENE) return 100;
-                        if (t == RingType::PYRIDINE || t == RingType::PYRIMIDINE || t == RingType::PYRIDAZINE || t == RingType::PYRAZINE || t == RingType::OXAZOLE || t == RingType::ISOXAZOLE || t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE || t == RingType::PYRROLE || t == RingType::IMIDAZOLE || t == RingType::PYRAZOLE) return 1;
-                        if (t == RingType::FURAN) return 2;
-                        if (t == RingType::THIOPHENE) return 3;
-                        if (t == RingType::SELENOPHENE) return 4;
-                        if (t == RingType::TELLUROPHENE) return 5;
+                        if (t == RingType::PYRIDINE || t == RingType::PYRIMIDINE || t == RingType::PYRIDAZINE || t == RingType::PYRAZINE || t == RingType::OXAZOLE || t == RingType::ISOXAZOLE || t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE || t == RingType::PYRROLE || t == RingType::IMIDAZOLE || t == RingType::PYRAZOLE || t == RingType::AZEPINE) return 1;
+                        if (t == RingType::FURAN || t == RingType::OXEPINE) return 2;
+                        if (t == RingType::THIOPHENE || t == RingType::THIEPINE) return 3;
+                        if (t == RingType::SELENOPHENE || t == RingType::SELENEPINE) return 4;
+                        if (t == RingType::TELLUROPHENE || t == RingType::TELLUREPINE) return 5;
                         if (t == RingType::PHOSPHININE) return 6;
                         return 99;
                     };
@@ -17050,7 +17074,7 @@ IupacResult IupacNamer::generateName(int mol) {
                     };
                     auto getOwnLocants = [](RingType t) -> std::vector<int> {
                         switch (t) {
-                            case RingType::BENZENE: case RingType::CYCLOPENTADIENE: case RingType::CYCLOHEPTATRIENE: case RingType::PYRIDINE: case RingType::PYRROLE: case RingType::FURAN: case RingType::THIOPHENE: case RingType::SELENOPHENE: case RingType::TELLUROPHENE: case RingType::PHOSPHININE: return {1};
+                            case RingType::BENZENE: case RingType::CYCLOPENTADIENE: case RingType::CYCLOHEPTATRIENE: case RingType::PYRIDINE: case RingType::PYRROLE: case RingType::FURAN: case RingType::THIOPHENE: case RingType::SELENOPHENE: case RingType::TELLUROPHENE: case RingType::PHOSPHININE: case RingType::AZEPINE: case RingType::OXEPINE: case RingType::THIEPINE: case RingType::SELENEPINE: case RingType::TELLUREPINE: return {1};
                             case RingType::PYRIDAZINE: case RingType::ISOXAZOLE: case RingType::ISOTHIAZOLE: case RingType::PYRAZOLE: case RingType::ISOSELENAZOLE: return {1, 2};
                             case RingType::PYRIMIDINE: case RingType::OXAZOLE: case RingType::THIAZOLE: case RingType::IMIDAZOLE: case RingType::SELENAZOLE: return {1, 3};
                             case RingType::PYRAZINE: return {1, 4};

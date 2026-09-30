@@ -5580,6 +5580,109 @@ int main() {
         }
     }
 
+    // ===== Task 2: Single-heteroatom mancude 7-membered rings =====
+
+    // Test 1: Single oxepine ring - verify basic classification works
+    // Aromatic oxepine SMILES should produce a name containing "oxepine"
+    {
+        int m = indigoLoadMoleculeFromString("o1cccccc1");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            std::string n = r.name.toStdString();
+            if (r.success && n.find("oxepine") != std::string::npos) {
+                std::cout << "[PASS] Single oxepine test: " << n << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] Single oxepine test: expected name containing 'oxepine', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] Single oxepine test: SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    // Test 2: Single thiepine ring - verify basic classification works
+    {
+        int m = indigoLoadMoleculeFromString("s1cccccc1");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            std::string n = r.name.toStdString();
+            if (r.success && n.find("thiepine") != std::string::npos) {
+                std::cout << "[PASS] Single thiepine test: " << n << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] Single thiepine test: expected name containing 'thiepine', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] Single thiepine test: SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    // Test 3: Single azepine ring
+    {
+        int m = indigoLoadMoleculeFromString("n1cccccc1");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            std::string n = r.name.toStdString();
+            if (r.success && n.find("azepine") != std::string::npos) {
+                std::cout << "[PASS] Single azepine test: " << n << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] Single azepine test: expected name containing 'azepine', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] Single azepine test: SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    // Test 4: Single selenepine ring (using [Se] for selenium)
+    {
+        int m = indigoLoadMoleculeFromString("[Se]1cccccc1");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            std::string n = r.name.toStdString();
+            if (r.success && (n.find("selenepine") != std::string::npos || n.find("selenepane") != std::string::npos)) {
+                std::cout << "[PASS] Single selenepine test: " << n << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] Single selenepine test: expected name containing 'selenepine' or 'selenepane', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] Single selenepine test: SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    // Test 5: Single tellurepine ring (using [Te] for tellurium)
+    {
+        int m = indigoLoadMoleculeFromString("[Te]1cccccc1");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            std::string n = r.name.toStdString();
+            if (r.success && (n.find("tellurepine") != std::string::npos || n.find("tellurepane") != std::string::npos)) {
+                std::cout << "[PASS] Single tellurepine test: " << n << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] Single tellurepine test: expected name containing 'tellurepine' or 'tellurepane', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] Single tellurepine test: SMILES did not load\n";
+            failed++;
+        }
+    }
+
     // ===== Isotope labeling tests =====
     
     // Test 1: UREA C 14 - real drug, one-word name
