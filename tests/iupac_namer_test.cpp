@@ -5580,6 +5580,16 @@ int main() {
         }
     }
 
+    {
+        int m = indigoLoadMoleculeFromString("O1C=Cc2ccccc2-c3ccccc31");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            std::string n = r.name.toStdString();
+            std::cout << "[PROBE] O1C=Cc2ccccc2-c3ccccc31 result: success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+        }
+    }
+
     // ===== Task 2: Single-heteroatom mancude 7-membered rings =====
 
     // Test 1: Single oxepine ring - verify basic classification works
@@ -5679,6 +5689,40 @@ int main() {
             }
         } else {
             std::cout << "[FAIL] Single tellurepine test: SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    // Test: OXEPINE as a chain-fusion member (the actual chain mechanism, not just bare-ring
+    // classification). SMILES built by mirroring Task 1's own proven 3-ring template (its
+    // Test1/Test3: a cyclopentadiene central ring, sp3 C1, flanked by two outer rings sharing
+    // its two non-adjacent edges) -- here the "cycloheptatriene" outer ring from Task 1's Test3
+    // ("c2cccccc2") has one carbon replaced by aromatic oxygen ("c2ccoccc2") to make it a
+    // genuine 7-membered, single-heteroatom OXEPINE ring instead. Topology independently
+    // verified via ring_classify.exe before trusting any name: nRings=3, sizes=[5,7,6],
+    // maxAtomRingCount=2 (properly ortho-fused, not peri-fused or disjoint).
+    // Real computed name mirrors Task 1's own already-verified citation pattern exactly
+    // (same bracket structure as "5H-benzo[2',1':4,5]cyclopenta[3,2-b]pyridine" and
+    // "5H-cyclohepta[2',1':4,5]cyclopenta[3,2-b]pyridine"), with "oxepino" as the fusion
+    // prefix -- matching the real dibenzo[c,e]oxepine citation already verified against
+    // BlueBookV2.md:8688 in this plan's own spec -- and different bracket locants (4',5'
+    // instead of 2',1') reflecting oxepine's own internal numbering (where its heteroatom
+    // sits), which is expected to differ per ring type.
+    {
+        int m = indigoLoadMoleculeFromString("C1c2ccoccc2-c2ncccc21");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            std::string n = r.name.toStdString();
+            if (r.success && n == "5H-oxepino[4',5':4,5]cyclopenta[3,2-b]pyridine") {
+                std::cout << "[PASS] Oxepine chain-fusion test: " << n << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] Oxepine chain-fusion test: expected '5H-oxepino[4',5':4,5]cyclopenta[3,2-b]pyridine', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] Oxepine chain-fusion test: SMILES did not load\n";
             failed++;
         }
     }
