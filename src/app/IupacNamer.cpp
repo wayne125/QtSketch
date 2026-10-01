@@ -897,6 +897,30 @@ static int findIndicatedHydrogenLocant(const Graph &g, const std::vector<int> &r
     return indicatedHLocant; // -1 if none, positive if exactly one
 }
 
+// A single-heteroatom mancude ring (furan, pyridine, oxepine, ...) needs no
+// indicated-hydrogen citation when the heteroatom itself -- not a carbon --
+// occupies the ring's one position with two single bonds (it has no H to
+// cite there regardless). findIndicatedHydrogenLocant requires totalH >= 1
+// at that position, so it correctly returns -1 for this case, but -1 also
+// covers a genuinely over-conjugated ring with no such position at all;
+// this check distinguishes the two by looking at the heteroatom's own ring
+// bonds directly, independent of its H count.
+static bool heteroatomAtSaturatedPosition(const Graph &g, const std::vector<int> &ringChain, int heteroNode) {
+    int ringSize = static_cast<int>(ringChain.size());
+    int pos = -1;
+    for (int i = 0; i < ringSize; ++i) if (ringChain[i] == heteroNode) { pos = i; break; }
+    if (pos == -1) return false;
+    int prevIdx = ringChain[(pos - 1 + ringSize) % ringSize];
+    int nextIdx = ringChain[(pos + 1) % ringSize];
+    const GraphNode &node = g.nodes[heteroNode];
+    int orderToPrev = -1, orderToNext = -1;
+    for (size_t j = 0; j < node.neighbors.size(); ++j) {
+        if (node.neighbors[j] == prevIdx) orderToPrev = node.bondOrders[j];
+        else if (node.neighbors[j] == nextIdx) orderToNext = node.bondOrders[j];
+    }
+    return orderToPrev == 1 && orderToNext == 1;
+}
+
 // P-22.2.2.1: tryGeneralHeterocycle -- gates entry into GENERAL_HETEROCYCLE path.
 // Validates all ring heteroatoms are in the P-22.2.2.1.3 supported set.
 // Actual name is assembled downstream in the GENERAL_HETEROCYCLE branch at ~line 7251.
@@ -990,20 +1014,16 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
         }
     }
 
-    // P-22.2.2.1.3: 7-membered single-heteratom rings (AZEPINE, OXEPINE, THIEPINE, SELENEPINE, TELLUREPINE)
-    // Special handling to ensure Se/Te 7-membered rings are classified correctly even when
-    // indigoAromatize() doesn't perceive them as aromatic. Use direct bond-order checking.
+    // P-22.2.2: 7-membered single-heteroatom rings (AZEPINE, OXEPINE, THIEPINE, SELENEPINE, TELLUREPINE)
+    // All 7-membered single-heteroatom rings require exactly one sp3 position (mancude form).
     if (ringHeteroNodes.size() == 1 && ringSize == 7) {
-        int hZ = g.nodes[ringHeteroNodes[0]].atomicNumber;
-        // For Se/Te, indigoAromatize() may produce all single bonds even for input SMILES
-        // like [Se]1cccccc1 that use aromatic 'c' notation, because odd-membered rings
-        // with Se/Te cannot be fully aromatic. We use the same direct bond-order check
-        // as Task 1: exactly one indicated H position means mancude form.
         int indicatedH = findIndicatedHydrogenLocant(g, ringCycle);
-        // For Se/Te specifically, also accept indicatedH == -2 (multiple sp3) because
-        // indigo may give all-single bonds even for the intended unsaturated input.
-        // For N/O/S we require exactly one sp3 (indicatedH > 0) matching the true mancude topology.
-        if (indicatedH > 0 || (indicatedH == -2 && (hZ == 34 || hZ == 52))) {
+        // Valid mancude form: either a carbon carries the one sp3 position
+        // (indicatedH > 0, cited as "nH-"), or the heteroatom itself occupies
+        // it (indicatedH == -1 but heteroatom has two single ring bonds --
+        // no citation needed, same as furan/pyridine).
+        if (indicatedH > 0 || (indicatedH == -1 && heteroatomAtSaturatedPosition(g, ringCycle, ringHeteroNodes[0]))) {
+            int hZ = g.nodes[ringHeteroNodes[0]].atomicNumber;
             if (hZ == 7) {
                 outType = RingType::AZEPINE; outNameRoot = "azepine"; return true;
             } else if (hZ == 8) {
@@ -1210,20 +1230,19 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
                 }
             }
         }
-        // P-22.2.2.1.3: 7-membered single-heteratom rings (AZEPINE, OXEPINE, THIEPINE, SELENEPINE, TELLUREPINE)
-        // For Se/Te (and potentially S), indigoAromatize() may not perceive the ring as aromatic,
-        // so heteroAromatic is false even though the ring has the correct mancude bonding pattern.
-        // Use the same direct bond-order checking approach as Task 1's CYCLOPENTADIENE/CYCLOHEPTATRIENE fix.
+        // P-22.2.2: 7-membered single-heteroatom rings (AZEPINE, OXEPINE, THIEPINE, SELENEPINE, TELLUREPINE)
+        // All require exactly one sp3 position (mancude form) - no heteroatom exceptions.
         if (ringHeteroNodes.size() == 1 && ringSize == 7) {
             int indicatedH = findIndicatedHydrogenLocant(g, ringCycle);
-            if (indicatedH == -1) {
-                // No sp3 position -- ring is MORE saturated than mancude allows
+            if (indicatedH == -1 && !heteroatomAtSaturatedPosition(g, ringCycle, ringHeteroNodes[0])) {
+                // No sp3 position anywhere -- ring is MORE saturated than mancude allows
                 // Fall through to error
             } else if (indicatedH == -2) {
                 // Multiple sp3 positions -- under-conjugated, not the maximally-unsaturated mancude form
                 // Fall through to error
             } else {
-                // Exactly one sp3 position: valid mancude form for 7-membered heterocycle
+                // Valid mancude form: a carbon's sp3 position (indicatedH > 0), or
+                // the heteroatom itself at the ring's one single-bonded position (indicatedH == -1).
                 int hZ = g.nodes[ringHeteroNodes[0]].atomicNumber;
                 if (hZ == 7) {
                     outType = RingType::AZEPINE; outNameRoot = "azepine"; return true;
@@ -1261,16 +1280,22 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
             outType = RingType::PYRIDINE; outNameRoot = "pyridine"; return true;
         } else if (ringSize == 6 && hZ == 15) {
             outType = RingType::PHOSPHININE; outNameRoot = "phosphinine"; return true;
-        } else if (ringSize == 7 && hZ == 7) {
-            outType = RingType::AZEPINE; outNameRoot = "azepine"; return true;
-        } else if (ringSize == 7 && hZ == 8) {
-            outType = RingType::OXEPINE; outNameRoot = "oxepine"; return true;
-        } else if (ringSize == 7 && hZ == 16) {
-            outType = RingType::THIEPINE; outNameRoot = "thiepine"; return true;
-        } else if (ringSize == 7 && hZ == 34) {
-            outType = RingType::SELENEPINE; outNameRoot = "selenepine"; return true;
-        } else if (ringSize == 7 && hZ == 52) {
-            outType = RingType::TELLUREPINE; outNameRoot = "tellurepine"; return true;
+        } else if (ringSize == 7) {
+            // For 7-membered rings, require exactly one sp3 position (mancude form)
+            int indicatedH = findIndicatedHydrogenLocant(g, ringCycle);
+            if (indicatedH > 0) {
+                if (hZ == 7) {
+                    outType = RingType::AZEPINE; outNameRoot = "azepine"; return true;
+                } else if (hZ == 8) {
+                    outType = RingType::OXEPINE; outNameRoot = "oxepine"; return true;
+                } else if (hZ == 16) {
+                    outType = RingType::THIEPINE; outNameRoot = "thiepine"; return true;
+                } else if (hZ == 34) {
+                    outType = RingType::SELENEPINE; outNameRoot = "selenepine"; return true;
+                } else if (hZ == 52) {
+                    outType = RingType::TELLUREPINE; outNameRoot = "tellurepine"; return true;
+                }
+            }
         } else {
             if (tryGeneralHeterocycle(g, ringHeteroNodes, ringSize, outNameRoot)) {
                 outType = RingType::GENERAL_HETEROCYCLE; return true;
@@ -15785,10 +15810,16 @@ IupacResult IupacNamer::generateName(int mol) {
                                             if (hType == RingType::FURAN || hType == RingType::THIOPHENE ||
                                                 hType == RingType::SELENOPHENE || hType == RingType::TELLUROPHENE ||
                                                 hType == RingType::PHOSPHININE ||
-                                                hType == RingType::PYRROLE || hType == RingType::PYRIDINE ||
-                                                hType == RingType::AZEPINE || hType == RingType::OXEPINE ||
-                                                hType == RingType::THIEPINE || hType == RingType::SELENEPINE ||
-                                                hType == RingType::TELLUREPINE) {
+                                                hType == RingType::PYRROLE || hType == RingType::PYRIDINE) {
+                                                // Note: AZEPINE/OXEPINE/THIEPINE/SELENEPINE/TELLUREPINE are
+                                                // deliberately excluded here -- this whole branch is gated
+                                                // to hSize == 5 || 6 above and these are 7-membered, so it
+                                                // is unreachable for them today. The hardcoded 2-ring names
+                                                // below ("dibenzo[c,e]oxepine" etc.) are real Blue Book PINs
+                                                // for a DIFFERENT, 3-ring topology, not this 2-ring one --
+                                                // leaving the 5 types out here keeps that gate from silently
+                                                // activating with a wrong name if this code is ever widened
+                                                // to hSize == 7.
                                                 if (ringHeteroNodes.size() == 1) {
                                                     int hNode = ringHeteroNodes[0];
                                                     int idxH = -1;
@@ -15808,10 +15839,6 @@ IupacResult IupacNamer::generateName(int mol) {
                                                             else if (hType == RingType::PHOSPHININE) resultName = "benzophosphinine";
                                                             else if (hType == RingType::PYRROLE) resultName = "indole";
                                                             else if (hType == RingType::PYRIDINE) resultName = "quinoline";
-                                                            else if (hType == RingType::OXEPINE) resultName = "dibenzo[c,e]oxepine";
-                                                            else if (hType == RingType::THIEPINE) resultName = "dibenzo[c,e]thiepine";
-                                                            else if (hType == RingType::SELENEPINE) resultName = "dibenzo[c,e]selenepine";
-                                                            else if (hType == RingType::TELLUREPINE) resultName = "dibenzo[c,e]tellurepine";
                                                         } else if (minDist == 2) {
                                                             if (hType == RingType::FURAN) resultName = "isobenzofuran";
                                                             else if (hType == RingType::THIOPHENE) resultName = "isobenzothiophene";
@@ -15820,7 +15847,6 @@ IupacResult IupacNamer::generateName(int mol) {
                                                             else if (hType == RingType::PHOSPHININE) resultName = "isobenzophosphinine";
                                                             else if (hType == RingType::PYRROLE) resultName = "isoindole";
                                                             else if (hType == RingType::PYRIDINE) resultName = "isoquinoline";
-                                                            else if (hType == RingType::AZEPINE) resultName = "dibenzo[b,e]azepine";
                                                         }
                                                     }
                                                 }
@@ -17363,22 +17389,51 @@ IupacResult IupacNamer::generateName(int mol) {
                                 }
                                 int benzoFusedToCp = 0;
                                 for (int i = 0; i < N; ++i) if (i != cpIdx && typesN[i] == RingType::BENZENE && fusedToCp[i]) benzoFusedToCp++;
-                                if (benzoFusedToCp == 2) {
-                                    return {true, "9H-fluorene", ""};
+                                        if (benzoFusedToCp == 2) {
+                                    // Check that ALL ring atoms have no non-H substituents
+                                    bool hasNonHSubstituent = false;
+                                    for (int i = 0; i < N; ++i) {
+                                        for (int node : nodesN[i]) {
+                                            for (int neighbor : g.nodes[node].neighbors) {
+                                                // If neighbor is not in any of the three rings, and not hydrogen (Z=1), it's a substituent
+                                                bool inAnyRing = false;
+                                                for (int r = 0; r < N; ++r) {
+                                                    if (nodesN[r].count(neighbor)) { inAnyRing = true; break; }
+                                                }
+                                                if (!inAnyRing && g.nodes[neighbor].atomicNumber != 1) {
+                                                    hasNonHSubstituent = true;
+                                                    break;
+                                                }
+                                            }
+                                            if (hasNonHSubstituent) break;
+                                        }
+                                        if (hasNonHSubstituent) break;
+                                    }
+                                    if (!hasNonHSubstituent) {
+                                        return {true, "9H-fluorene", ""};
+                                    }
+                                    // Fall through to normal rejection if substituents exist
                                 }
                             }
                         }
 
                         // All-carbon systems (e.g. anthracene, phenanthrene) have their own Blue Book
                         // mandatory retained PINs with special numbering; reject rather than construct
-                        // a systematic fusion name for them.
+                        // a systematic fusion name for them. This covers BENZENE, CYCLOPENTADIENE, and CYCLOHEPTATRIENE.
                         {
-                            bool allBenzene = true;
+                            bool allCarbocyclic = true;
                             for (int i = 0; i < N; ++i) {
-                                if (typesN[i] != RingType::BENZENE) { allBenzene = false; break; }
+                                // Check if all atoms in this ring are carbon
+                                for (int node : nodesN[i]) {
+                                    if (g.nodes[node].atomicNumber != 6) {
+                                        allCarbocyclic = false;
+                                        break;
+                                    }
+                                }
+                                if (!allCarbocyclic) break;
                             }
-                            if (allBenzene) {
-                                return {false, "", "All-carbon fused ring systems (e.g. anthracene, phenanthrene) have mandatory Blue Book retained names; systematic fusion nomenclature via this mechanism is not applicable."};
+                            if (allCarbocyclic) {
+                                return {false, "", "All-carbon fused ring systems (e.g. anthracene, phenanthrene, benzo[c]cycloheptatriene) have mandatory Blue Book retained names; systematic fusion nomenclature via this mechanism is not applicable."};
                             }
                         }
 
@@ -17736,6 +17791,15 @@ IupacResult IupacNamer::generateName(int mol) {
                                 }
                             }
                             
+                            // Reject N==4 chains containing CYCLOPENTADIENE/CYCLOHEPTATRIENE (indicated hydrogen not yet supported)
+                            if (N == 4) {
+                                for (int i = 0; i < N; ++i) {
+                                    if (typesN[i] == RingType::CYCLOPENTADIENE || typesN[i] == RingType::CYCLOHEPTATRIENE) {
+                                        return {false, "", "Indicated hydrogen for odd-membered carbocycles in 4-ring chains is not yet supported."};
+                                    }
+                                }
+                            }
+
                             // Indicated hydrogen for exactly 3 rings, per original Phase 44 logic
                             if (N == 3) {
                                 // Collect ALL indicated-hydrogen positions across all rings
@@ -17788,6 +17852,10 @@ IupacResult IupacNamer::generateName(int mol) {
                                 }
 
                                 if (!ihNodes.empty()) {
+                                    // Reject if more than one indicated hydrogen - conceptually wrong for some real fused systems
+                                    if (ihNodes.size() > 1) {
+                                        return {false, "", "Multiple indicated hydrogen positions detected; this mechanism currently only supports single indicated-H cases."};
+                                    }
                                     // Build bridgehead set for peripheral numbering
                                     std::set<int> bheads;
                                     for (int i = 0; i < 3; ++i) {
@@ -17932,7 +18000,12 @@ IupacResult IupacNamer::generateName(int mol) {
                     }
                 }
                 
-                // Check all ring types are allowed
+                // Check all ring types are allowed. Non-6-membered rings
+                // (CYCLOPENTADIENE/CYCLOHEPTATRIENE and the 5 single-heteroatom
+                // 7-membered types) are deliberately excluded from the branching
+                // mechanism -- out of scope per this plan's own spec (not worth
+                // the engineering cost there), unlike the linear chain mechanism
+                // above, which does support them.
                 auto isAllowedType = [](RingType t) {
                     return t == RingType::BENZENE || t == RingType::FURAN || t == RingType::THIOPHENE ||
                            t == RingType::PYRIDINE || t == RingType::PYRIMIDINE ||
@@ -17942,13 +18015,9 @@ IupacResult IupacNamer::generateName(int mol) {
                            t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE ||
                            t == RingType::PYRROLE || t == RingType::IMIDAZOLE ||
                            t == RingType::PYRAZOLE || t == RingType::SELENOPHENE ||
-                           t == RingType::TELLUROPHENE || t == RingType::PHOSPHININE ||
-                           t == RingType::CYCLOPENTADIENE || t == RingType::CYCLOHEPTATRIENE ||
-                           t == RingType::AZEPINE || t == RingType::OXEPINE ||
-                           t == RingType::THIEPINE || t == RingType::SELENEPINE ||
-                           t == RingType::TELLUREPINE;
+                           t == RingType::TELLUROPHENE || t == RingType::PHOSPHININE;
                 };
-                
+
                 for (int i = 0; i < N_d; ++i) {
                     if (!isAllowedType(typesN_d[i])) {
                         return {false, "", "Ring type not supported in branching system."};

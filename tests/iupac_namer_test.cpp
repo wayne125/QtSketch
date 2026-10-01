@@ -5580,16 +5580,6 @@ int main() {
         }
     }
 
-    {
-        int m = indigoLoadMoleculeFromString("O1C=Cc2ccccc2-c3ccccc31");
-        if (m >= 0) {
-            IupacResult r = IupacNamer::generateName(m);
-            indigoFree(m);
-            std::string n = r.name.toStdString();
-            std::cout << "[PROBE] O1C=Cc2ccccc2-c3ccccc31 result: success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
-        }
-    }
-
     // ===== Task 2: Single-heteroatom mancude 7-membered rings =====
 
     // Test 1: Single oxepine ring - verify basic classification works
@@ -5653,9 +5643,9 @@ int main() {
         }
     }
 
-    // Test 4: Single selenepine ring (using [Se] for selenium)
+    // Test 4: Single selenepine ring (using real mancude SMILES with explicit alternating bonds)
     {
-        int m = indigoLoadMoleculeFromString("[Se]1cccccc1");
+        int m = indigoLoadMoleculeFromString("[Se]1C=CC=CC=C1");
         if (m >= 0) {
             IupacResult r = IupacNamer::generateName(m);
             indigoFree(m);
@@ -5673,9 +5663,29 @@ int main() {
         }
     }
 
-    // Test 5: Single tellurepine ring (using [Te] for tellurium)
+    // Test 4b: Regression test - saturated selenepane form should produce selenepane, not selenepine
     {
-        int m = indigoLoadMoleculeFromString("[Te]1cccccc1");
+        int m = indigoLoadMoleculeFromString("[Se]1cccccc1");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            std::string n = r.name.toStdString();
+            if (r.success && n.find("selenepane") != std::string::npos) {
+                std::cout << "[PASS] Selenepane regression test: " << n << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] Selenepane regression test: expected name containing 'selenepane', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] Selenepane regression test: SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    // Test 5: Single tellurepine ring (using real mancude SMILES with explicit alternating bonds)
+    {
+        int m = indigoLoadMoleculeFromString("[Te]1C=CC=CC=C1");
         if (m >= 0) {
             IupacResult r = IupacNamer::generateName(m);
             indigoFree(m);
@@ -5693,6 +5703,26 @@ int main() {
         }
     }
 
+    // Test 5b: Regression test - saturated tellurepane form should produce tellurepane, not tellurepine
+    {
+        int m = indigoLoadMoleculeFromString("[Te]1cccccc1");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            std::string n = r.name.toStdString();
+            if (r.success && n.find("tellurepane") != std::string::npos) {
+                std::cout << "[PASS] Tellurepane regression test: " << n << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] Tellurepane regression test: expected name containing 'tellurepane', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] Tellurepane regression test: SMILES did not load\n";
+            failed++;
+        }
+    }
+
     // Test: OXEPINE as a chain-fusion member (the actual chain mechanism, not just bare-ring
     // classification). SMILES built by mirroring Task 1's own proven 3-ring template (its
     // Test1/Test3: a cyclopentadiene central ring, sp3 C1, flanked by two outer rings sharing
@@ -5701,13 +5731,18 @@ int main() {
     // genuine 7-membered, single-heteroatom OXEPINE ring instead. Topology independently
     // verified via ring_classify.exe before trusting any name: nRings=3, sizes=[5,7,6],
     // maxAtomRingCount=2 (properly ortho-fused, not peri-fused or disjoint).
-    // Real computed name mirrors Task 1's own already-verified citation pattern exactly
-    // (same bracket structure as "5H-benzo[2',1':4,5]cyclopenta[3,2-b]pyridine" and
-    // "5H-cyclohepta[2',1':4,5]cyclopenta[3,2-b]pyridine"), with "oxepino" as the fusion
-    // prefix -- matching the real dibenzo[c,e]oxepine citation already verified against
-    // BlueBookV2.md:8688 in this plan's own spec -- and different bracket locants (4',5'
-    // instead of 2',1') reflecting oxepine's own internal numbering (where its heteroatom
-    // sits), which is expected to differ per ring type.
+    // This is a different topology from dibenzo[c,e]oxepine (BlueBookV2.md:8688,
+    // two benzo rings flanking oxepine, not one benzo and one pyridine) -- this
+    // test does not verify that citation, only that THIS topology's own real,
+    // independently-confirmed structure names consistently. Real computed name
+    // mirrors Task 1's own already-verified citation FORMAT (same bracket
+    // structure as "5H-benzo[2',1':4,5]cyclopenta[3,2-b]pyridine" and
+    // "5H-cyclohepta[2',1':4,5]cyclopenta[3,2-b]pyridine"), with "oxepino" as
+    // the fusion prefix and different bracket locants (4',5' instead of 2',1')
+    // reflecting oxepine's own internal numbering (where its heteroatom sits),
+    // which is expected to differ per ring type -- a characterization test
+    // pinning the code's own verified-topology output, not an independent
+    // Blue Book PIN match.
     {
         int m = indigoLoadMoleculeFromString("C1c2ccoccc2-c2ncccc21");
         if (m >= 0) {
@@ -5723,6 +5758,46 @@ int main() {
             }
         } else {
             std::cout << "[FAIL] Oxepine chain-fusion test: SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    // Test: Fluorene with methyl substituent should be rejected, not return "9H-fluorene"
+    {
+        int m = indigoLoadMoleculeFromString("CC1c2ccccc2-c2ccccc21");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            std::string n = r.name.toStdString();
+            if (!r.success && n != "9H-fluorene") {
+                std::cout << "[PASS] Fluorene with methyl substituent correctly rejected: " << r.error.toStdString() << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] Fluorene with methyl substituent should be rejected, got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] Fluorene with methyl substituent test: SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    // Test: Unsubstituted fluorene should still work
+    {
+        int m = indigoLoadMoleculeFromString("C1c2ccccc2-c2ccccc21");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            std::string n = r.name.toStdString();
+            if (r.success && n == "9H-fluorene") {
+                std::cout << "[PASS] Unsubstituted fluorene test: " << n << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] Unsubstituted fluorene test: expected '9H-fluorene', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] Unsubstituted fluorene test: SMILES did not load\n";
             failed++;
         }
     }
