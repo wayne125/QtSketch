@@ -1015,7 +1015,8 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
     }
 
     // P-22.2.2: 7-membered single-heteroatom rings (AZEPINE, OXEPINE, THIEPINE, SELENEPINE, TELLUREPINE)
-    // All 7-membered single-heteroatom rings require exactly one sp3 position (mancude form).
+    // Valid mancude form needs the one sp3 position occupied by either a carbon
+    // (cited as indicated-H) or the heteroatom itself (no citation needed).
     if (ringHeteroNodes.size() == 1 && ringSize == 7) {
         int indicatedH = findIndicatedHydrogenLocant(g, ringCycle);
         // Valid mancude form: either a carbon carries the one sp3 position
@@ -1281,9 +1282,12 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
         } else if (ringSize == 6 && hZ == 15) {
             outType = RingType::PHOSPHININE; outNameRoot = "phosphinine"; return true;
         } else if (ringSize == 7) {
-            // For 7-membered rings, require exactly one sp3 position (mancude form)
+            // Valid mancude form: a carbon's sp3 position (indicatedH > 0), or
+            // the heteroatom itself at the ring's one single-bonded position
+            // (indicatedH == -1) -- same two cases as the two near-duplicate
+            // 7-ring blocks above.
             int indicatedH = findIndicatedHydrogenLocant(g, ringCycle);
-            if (indicatedH > 0) {
+            if (indicatedH > 0 || (indicatedH == -1 && heteroatomAtSaturatedPosition(g, ringCycle, ringHeteroNodes[0]))) {
                 if (hZ == 7) {
                     outType = RingType::AZEPINE; outNameRoot = "azepine"; return true;
                 } else if (hZ == 8) {
