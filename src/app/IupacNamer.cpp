@@ -15885,6 +15885,12 @@ IupacResult IupacNamer::generateName(int mol) {
                                                     }
                                                 }
                                             } else if (hType == RingType::GENERAL_HETEROCYCLE) {
+                                                if (hSize == 6 && ringHeteroNodes.size() == 1) {
+                                                    int heteroZ = g.nodes[ringHeteroNodes[0]].atomicNumber;
+                                                    if (heteroZ == 8 || heteroZ == 16 || heteroZ == 34 || heteroZ == 52 || heteroZ == 83) {
+                                                        return {false, "", "Fused ring systems other than naphthalene are not supported in this phase."};
+                                                    }
+                                                }
                                                 // P-25.3.5: locant 1 is the heterocycle atom next to a
                                                 // fusion atom. There are exactly 2 such atoms (one next to
                                                 // bhA, one next to bhB) -- build both candidate numberings

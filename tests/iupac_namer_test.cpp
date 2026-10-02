@@ -6253,10 +6253,33 @@ int main() {
     }
 
     // Verification: Existing chain mechanism tests still pass
+    // Test: coumarin regression (pyran/oxine exclusion).
+    // A 6-membered ring with exactly one heteroatom from the oxine/azine-excluded group
+    // (O, S, Se, Te, Bi) must NOT be named via the Phase 31 GENERAL_HETEROCYCLE branch
+    // to avoid "benzoxine" style names, falling through to honest rejection.
+    {
+        int m = indigoLoadMoleculeFromString("O=c1oc2c(cccc2)cc1");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            if (!r.success && r.error.toStdString() == "Fused ring systems other than naphthalene are not supported in this phase.") {
+                std::cout << "[PASS] Coumarin test (rejected): " << r.error.toStdString() << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] Coumarin test: expected rejection, got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] Coumarin test: SMILES did not load\n";
+            failed++;
+        }
+    }
+
     // Test: benzotriazole (GENERAL_HETEROCYCLE, 3 N's, fused to benzo).
-    // Real, well-known compound. Verify real topology first via
-    // .claude_scratch_fdafull/ring_classify.exe before trusting this
-    // assertion -- confirm 2 rings, sizes [6,5], properly ortho-fused.
+    // Note: this is a characterization test pinning the code's current output
+    // ("1,2,3-benzotriazole"), which is missing a real indicated-hydrogen citation
+    // ("1H-") due to a known, pre-existing gap in findIndicatedHydrogenLocant where
+    // size 5 is missing from the all-bonds-aromatic fallback check.
     {
         int m = indigoLoadMoleculeFromString("c1ccc2c(c1)[n][n][n]2");
         if (m >= 0) {
