@@ -15884,6 +15884,105 @@ IupacResult IupacNamer::generateName(int mol) {
                                                         else if (minDist == 2) resultName = "phthalazine";
                                                     }
                                                 }
+                                            } else if (hType == RingType::GENERAL_HETEROCYCLE) {
+                                                // P-25.3.5: locant 1 is the heterocycle atom next to a
+                                                // fusion atom. There are exactly 2 such atoms (one next to
+                                                // bhA, one next to bhB) -- build both candidate numberings
+                                                // and pick the one giving the heteroatoms the lowest locant
+                                                // set (P-22.2.2.1.3), same tie-break the bare-ring builder
+                                                // already uses.
+                                                auto buildFromFusionAtom = [&](int fusionIdx, int otherFusionIdx) {
+                                                    int dir = ((fusionIdx + 1) % hSize == otherFusionIdx) ? -1 : 1;
+                                                    int startIdx = (fusionIdx + dir + hSize) % hSize;
+                                                    std::vector<int> cand(hSize);
+                                                    for (int i = 0; i < hSize; ++i) {
+                                                        cand[i] = heteroCycle[((startIdx + dir * i) % hSize + hSize) % hSize];
+                                                    }
+                                                    return cand;
+                                                };
+                                                std::vector<int> candFromA = buildFromFusionAtom(idxA, idxB);
+                                                std::vector<int> candFromB = buildFromFusionAtom(idxB, idxA);
+
+                                                auto heteroLocants = [&](const std::vector<int> &cand) {
+                                                    std::vector<int> locs;
+                                                    for (int i = 0; i < hSize; ++i) {
+                                                        if (g.nodes[cand[i]].atomicNumber != 6) locs.push_back(i + 1);
+                                                    }
+                                                    return locs;
+                                                };
+                                                std::vector<int> locsA = heteroLocants(candFromA);
+                                                std::vector<int> locsB = heteroLocants(candFromB);
+                                                const std::vector<int> &chosenCand = (locsA <= locsB) ? candFromA : candFromB;
+
+                                                // Build the heteroatom citation prefix and element-prefix
+                                                // string from the CHOSEN candidate, mirroring
+                                                // IupacNamer.cpp:1811-1844 exactly (same citOrd array, same
+                                                // multiplying-prefix elision rules) but using the FUSED
+                                                // system's own real peripheral locants (computed below) for
+                                                // each heteroatom instead of the candidate's own 0-based
+                                                // position.
+                                                std::map<int, QString> localLocantMap = computePeripheralNumbering(g, ring1Nodes, ring2Nodes, bhA, bhB);
+
+                                                static const int citOrd[] = {8, 16, 34, 52, 7, 15, 33, 51, 83, 14, 32, 50, 82, 5};
+                                                static const int citOrdLen = 14;
+                                                std::map<int, std::vector<QString>> locStrsByZ;
+                                                std::vector<int> allZ;
+                                                bool allLocantsNumeric = true;
+                                                for (int i = 0; i < hSize; ++i) {
+                                                    int node = chosenCand[i];
+                                                    int zz = g.nodes[node].atomicNumber;
+                                                    if (zz != 6) {
+                                                        QString locStr = localLocantMap.count(node) ? localLocantMap[node] : QString();
+                                                        if (locStr.isEmpty() || locStr.endsWith("a") || locStr.endsWith("b")) {
+                                                            allLocantsNumeric = false;
+                                                        }
+                                                        locStrsByZ[zz].push_back(locStr);
+                                                        allZ.push_back(zz);
+                                                    }
+                                                }
+
+                                                if (allLocantsNumeric) {
+                                                    QStringList allLStrs;
+                                                    for (int k = 0; k < citOrdLen; ++k) {
+                                                        auto it2 = locStrsByZ.find(citOrd[k]);
+                                                        if (it2 != locStrsByZ.end()) for (const QString &l : it2->second) allLStrs.append(l);
+                                                    }
+                                                    QString locPfx = allLStrs.join(",") + "-";
+                                                    QString ePfxs;
+                                                    for (int k = 0; k < citOrdLen; ++k) {
+                                                        int zz = citOrd[k];
+                                                        auto it2 = locStrsByZ.find(zz);
+                                                        if (it2 == locStrsByZ.end()) continue;
+                                                        int cnt = static_cast<int>(it2->second.size());
+                                                        QString ap = hwAPrefix(zz);
+                                                        QString mp = multiPrefix(cnt);
+                                                        if (mp.endsWith('a') && isVowel(ap[0])) mp.chop(1);
+                                                        QString chunk = mp + ap;
+                                                        if (!ePfxs.isEmpty() && ePfxs.endsWith('a') && chunk.startsWith('a')) ePfxs.chop(1);
+                                                        ePfxs += chunk;
+                                                    }
+                                                    QString st = hwGeneralRingStem(hSize, allZ);
+                                                    if (!st.isEmpty()) {
+                                                        if (ePfxs.endsWith('a') && isVowel(st[0])) ePfxs.chop(1);
+                                                        QString bareStem = ePfxs + st; // e.g. "triazole"
+                                                        QString benzoPrefix = "benzo";
+                                                        if (!bareStem.isEmpty() && isVowel(bareStem[0])) benzoPrefix.chop(1);
+
+                                                        // P-14.7: indicated hydrogen, if this ring needs one,
+                                                        // cited using the chosen candidate's own node mapped
+                                                        // through the SAME real fused-locant map.
+                                                        int indicatedH = findIndicatedHydrogenLocant(g, chosenCand);
+                                                        QString ihPfx;
+                                                        if (indicatedH > 0) {
+                                                            int ihNode = chosenCand[indicatedH - 1];
+                                                            QString ihLocStr = localLocantMap.count(ihNode) ? localLocantMap[ihNode] : QString();
+                                                            if (!ihLocStr.isEmpty() && !ihLocStr.endsWith("a") && !ihLocStr.endsWith("b")) {
+                                                                ihPfx = ihLocStr + "H-";
+                                                            }
+                                                        }
+                                                        resultName = ihPfx + locPfx + benzoPrefix + bareStem;
+                                                    }
+                                                }
                                             }
 
                                             if (!resultName.isEmpty()) {
