@@ -861,6 +861,28 @@ static QString toFusionPrefix(const QString &name) {
     return name + "o";
 }
 
+// When a GENERAL_HETEROCYCLE ring is cited as an ATTACHED component (a
+// fusion prefix before another ring's name), its own embedded heteroatom
+// locants must be in square brackets -- real Blue Book PINs confirm this
+// repeatedly for both prefix and base components with internal locants,
+// e.g. "pyrido[2,3-d][1,2]oxazine", "imidazo[2,1-b][1,3]thiazole"
+// (BlueBookV2.md:8213/8257). toFusionPrefix() alone (used when this ring
+// is the unmodified BASE/root component, e.g. Task 1's own "2,1,3-
+// benzoxadiazole" -- correct unbracketed per BlueBookV2.md:7847) doesn't
+// add these brackets; this wraps the leading locant run from
+// buildGeneralHeterocycleName/buildCanonicalGeneralHeterocycleName's own
+// output before applying the same "e"->"o" transform to the stem.
+static QString toFusionPrefixBracketed(const QString &name) {
+    int i = 0;
+    while (i < name.length() && (name[i].isDigit() || name[i] == ',')) i++;
+    if (i > 0 && i < name.length() && name[i] == '-') {
+        QString locants = name.left(i);
+        QString rest = name.mid(i + 1);
+        return "[" + locants + "]" + toFusionPrefix(rest);
+    }
+    return toFusionPrefix(name);
+}
+
 // Builds a GENERAL_HETEROCYCLE ring's own canonical HW name directly from
 // its real ring cycle (any fixed order -- e.g. straight from
 // classifyMonocyclicHeteroRing's own buildCycle, not a pre-chosen
@@ -16146,7 +16168,14 @@ IupacResult IupacNamer::generateName(int mol) {
                                                     prefixPart = pStrs.join("-");
                                                 }
 
-                                                return {true, prefixPart + resultName, ""};
+                                                // A locant-prefixed resultName (e.g. GENERAL_HETEROCYCLE's
+                                                // own "2,1,3-benzoxadiazole") needs a hyphen before it when
+                                                // a substituent prefix precedes it -- without this, the two
+                                                // locant runs concatenate into one illegible string (e.g.
+                                                // "5-chloro2,1,3-benzothiadiazole"). Named-type base names
+                                                // never start with a digit, so this was never needed before.
+                                                QString sep = (!prefixPart.isEmpty() && !resultName.isEmpty() && resultName[0].isDigit()) ? "-" : "";
+                                                return {true, prefixPart + sep + resultName, ""};
                                             }
                                         }
                                     }
@@ -17849,13 +17878,26 @@ IupacResult IupacNamer::generateName(int mol) {
                                         // (currentNum[u]) and apply P-25.3.1.3's mechanical "e"->"o"
                                         // transform when this ring is an attached (non-root) component.
                                         QString bareName = buildGeneralHeterocycleName(g, currentNum[u], static_cast<int>(nodesN[u].size()));
-                                        myPrefix = (u == root) ? bareName : toFusionPrefix(bareName);
+                                        if (u == root) {
+                                            myPrefix = bareName;
+                                            b.sortKey = alphabetizationKey(myPrefix);
+                                        } else {
+                                            // Citation order (sortKey) is by the bare prefix WORD per
+                                            // P-25.3.4.2.3, computed before bracket-wrapping -- the
+                                            // bracketed display form starts with "[", which
+                                            // alphabetizationKey() does not parse the same way as a
+                                            // plain locant-dash prefix (it would strip only the "["
+                                            // and leave a stray "]"), so it must not see that form.
+                                            b.sortKey = alphabetizationKey(toFusionPrefix(bareName));
+                                            myPrefix = toFusionPrefixBracketed(bareName);
+                                        }
                                     } else if (u == root) {
                                         myPrefix = getBaseNameShared(typesN[u]);
+                                        b.sortKey = alphabetizationKey(myPrefix);
                                     } else {
                                         myPrefix = getFusionPrefixShared(typesN[u]);
+                                        b.sortKey = alphabetizationKey(myPrefix);
                                     }
-                                    b.sortKey = alphabetizationKey(myPrefix);
 
                                     if (u == root) {
                                         if (cBlocks.size() == 2 &&
@@ -18089,7 +18131,12 @@ IupacResult IupacNamer::generateName(int mol) {
                                 }
                                 
                                 if (!prefixPart.isEmpty()) {
-                                    resultName = prefixPart + resultName;
+                                    // See the equivalent fix in Phase 31 for why this hyphen is
+                                    // needed: a locant-led resultName (GENERAL_HETEROCYCLE's own
+                                    // citation prefix) must not concatenate directly onto a
+                                    // substituent prefix's own trailing locant.
+                                    QString sep = (!resultName.isEmpty() && resultName[0].isDigit()) ? "-" : "";
+                                    resultName = prefixPart + sep + resultName;
                                 }
                             }
                             
@@ -18592,7 +18639,14 @@ IupacResult IupacNamer::generateName(int mol) {
                 // Per P-25.3.1.2.3: components at same level are grouped together
                 
                 struct AttachedComponent {
-                    QString prefix;  // e.g., "benzo", "pyrido"
+                    QString prefix;  // display text, e.g., "benzo", "pyrido", "[1,2,3]triazolo"
+                    QString sortKey; // citation-order key per P-25.3.4.2.3: alphabetical by the
+                                     // prefix WORD itself, ignoring any bracketed/locant-prefixed
+                                     // run in front of it -- grouping+ordering below uses this, not
+                                     // `prefix` directly, since a GENERAL_HETEROCYCLE prefix can
+                                     // start with "[" (sorts before any letter in plain QString
+                                     // comparison, same class of bug the chain mechanism's own
+                                     // Block::sortKey fixes).
                     QString locant;  // e.g., "[b]", "[c,e]" for multiple
                     bool locantOmittable; // true for plain symmetric monocyclic hydrocarbons
                     RingType ringType;
@@ -18712,9 +18766,15 @@ IupacResult IupacNamer::generateName(int mol) {
                         // reasoning as the parent base name above, but this ring is an
                         // ATTACHED component, so P-25.3.1.3's "e"->"o" transform applies.
                         RingType rt = typesN_d[ringIdx];
-                        QString prefix = (rt == RingType::GENERAL_HETEROCYCLE)
-                            ? toFusionPrefix(buildCanonicalGeneralHeterocycleName(g, cyclesN_d[ringIdx], rHeteroN_d[ringIdx]))
-                            : getFusionPrefix(rt);
+                        QString prefix, prefixSortKey;
+                        if (rt == RingType::GENERAL_HETEROCYCLE) {
+                            QString bareName = buildCanonicalGeneralHeterocycleName(g, cyclesN_d[ringIdx], rHeteroN_d[ringIdx]);
+                            prefix = toFusionPrefixBracketed(bareName);
+                            prefixSortKey = alphabetizationKey(toFusionPrefix(bareName));
+                        } else {
+                            prefix = getFusionPrefix(rt);
+                            prefixSortKey = alphabetizationKey(prefix);
+                        }
 
                         if (prefix.isEmpty()) {
                             return {false, "", QString("Ring type not supported for attached component at level %1.").arg(level).toStdString().c_str()};
@@ -18745,7 +18805,7 @@ IupacResult IupacNamer::generateName(int mol) {
                             locantStr = QString("[%1,%2]").arg(a, b);
                         }
 
-                        levelComponents[level].push_back({prefix, locantStr, locantOmittable, rt});
+                        levelComponents[level].push_back({prefix, prefixSortKey, locantStr, locantOmittable, rt});
                     }
                 }
                 
@@ -18771,17 +18831,21 @@ IupacResult IupacNamer::generateName(int mol) {
                         continue;
                     }
                     
-                    // Group components at this level by their prefix
+                    // Group components at this level by their real prefix word, keyed and
+                    // thus citation-ordered by sortKey (not the raw display `prefix` text --
+                    // a GENERAL_HETEROCYCLE prefix can start with "[", which would sort
+                    // before every letter-led prefix in plain QString comparison, same class
+                    // of bug the chain mechanism's own Block::sortKey fixes).
                     std::map<QString, std::vector<AttachedComponent>> groupedComponents;
                     for (const auto &comp : levelComponents[level]) {
-                        groupedComponents[comp.prefix].push_back(comp);
+                        groupedComponents[comp.sortKey].push_back(comp);
                     }
-                    
+
                     // Build component string for this level
                     QStringList levelParts;
-                    
+
                     for (const auto &group : groupedComponents) {
-                        const QString &prefix = group.first;
+                        const QString &prefix = group.second.front().prefix;
                         const auto &comps = group.second;
                         
                         if (comps.size() == 1) {
@@ -18925,7 +18989,9 @@ IupacResult IupacNamer::generateName(int mol) {
                     }
                     
                     if (!prefixPart.isEmpty()) {
-                        resultName = prefixPart + resultName;
+                        // See the equivalent fix in Phase 31 / the chain mechanism.
+                        QString sep = (!resultName.isEmpty() && resultName[0].isDigit()) ? "-" : "";
+                        resultName = prefixPart + sep + resultName;
                     }
                 }
                 

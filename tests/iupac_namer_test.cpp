@@ -6384,11 +6384,11 @@ int main() {
             IupacResult r = IupacNamer::generateName(m);
             indigoFree(m);
             std::string n = r.name.toStdString();
-            if (r.success && n == "benzo[3,4-b]1,2,3-triazolo[4,5-d]pyridine") {
+            if (r.success && n == "benzo[3,4-b][1,2,3]triazolo[4,5-d]pyridine") {
                 std::cout << "[PASS] Chain triazole-pyridine-benzo test: " << n << "\n";
                 passed++;
             } else {
-                std::cout << "[FAIL] Chain triazole-pyridine-benzo test: expected 'benzo[3,4-b]1,2,3-triazolo[4,5-d]pyridine', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+                std::cout << "[FAIL] Chain triazole-pyridine-benzo test: expected 'benzo[3,4-b][1,2,3]triazolo[4,5-d]pyridine', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
                 failed++;
             }
         } else {
