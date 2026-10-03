@@ -799,6 +799,68 @@ static QString hwGeneralRingStem(int ringSize, const std::vector<int> &heteroAto
     }
 }
 
+// Builds the bare Hantzsch-Widman name (e.g. "1,2,4-triazole") for a
+// GENERAL_HETEROCYCLE ring given one specific atom ordering (cand, a
+// ring-size-length array of graph node indices -- the chosen candidate's
+// own rotation/direction). Mirrors the bare-ring builder's own logic
+// exactly (same citOrd citation order, same multiplying-prefix elision
+// rules, same hwGeneralRingStem call) so both call sites produce
+// identical names for the same ring, just reusable at any call site
+// that already has its own candidate ordering (e.g. the N-ring chain
+// fusion mechanism, which generates its own candidates independently of
+// the bare-ring path). Does not add an indicated-hydrogen prefix --
+// callers that need one handle it separately, matching every other
+// RingType's own getBaseNameShared/getFusionPrefixShared contract.
+static QString buildGeneralHeterocycleName(const Graph &g, const std::vector<int> &cand, int ringSize) {
+    static const int citOrd[] = {8, 16, 34, 52, 7, 15, 33, 51, 83, 14, 32, 50, 82, 5};
+    static const int citOrdLen = 14;
+    std::map<int, std::vector<int>> locsByZ;
+    std::vector<int> allZ;
+    for (int ii = 0; ii < ringSize; ++ii) {
+        int zz = g.nodes[cand[ii]].atomicNumber;
+        if (zz != 6) { locsByZ[zz].push_back(ii + 1); allZ.push_back(zz); }
+    }
+    std::vector<int> allLs;
+    for (int k = 0; k < citOrdLen; ++k) {
+        auto it2 = locsByZ.find(citOrd[k]);
+        if (it2 != locsByZ.end()) for (int l : it2->second) allLs.push_back(l);
+    }
+    QStringList lStrs;
+    for (int l : allLs) lStrs.append(QString::number(l));
+    QString locPfx = lStrs.join(",") + "-";
+    QString ePfxs;
+    for (int k = 0; k < citOrdLen; ++k) {
+        int zz = citOrd[k];
+        auto it2 = locsByZ.find(zz);
+        if (it2 == locsByZ.end()) continue;
+        int cnt = static_cast<int>(it2->second.size());
+        QString ap = hwAPrefix(zz);
+        QString mp = multiPrefix(cnt);
+        if (mp.endsWith('a') && isVowel(ap[0])) mp.chop(1);
+        QString chunk = mp + ap;
+        if (!ePfxs.isEmpty() && ePfxs.endsWith('a') && chunk.startsWith('a')) ePfxs.chop(1);
+        ePfxs += chunk;
+    }
+    QString st = hwGeneralRingStem(ringSize, allZ);
+    if (st.isEmpty()) return QString();
+    if (ePfxs.endsWith('a') && isVowel(st[0])) ePfxs.chop(1);
+    return locPfx + ePfxs + st;
+}
+
+// P-25.3.1.3: the fusion prefix for an attached component is formed by
+// replacing the component name's final letter 'e' by 'o' (indeno from
+// indene), or by adding 'o' when no final 'e' is present (pyrano from
+// pyran). Every Hantzsch-Widman stem this file produces ends in 'e'
+// (Table 2.5: -irene/-irine, -ete, -ole, -ine/-inine, -epine, -ocine,
+// -onine, -ecine), so the first branch is the one that fires in
+// practice; the second branch is kept for correctness per the rule's
+// own text, not because a real case here is expected to need it.
+static QString toFusionPrefix(const QString &name) {
+    if (name.isEmpty()) return name;
+    if (name.endsWith('e')) return name.left(name.length() - 1) + "o";
+    return name + "o";
+}
+
 // P-14.7.1: Helper to find indicated hydrogen position in a monocyclic general heterocycle.
 // Returns the 1-based locant of the saturated position (where both ring bonds are single
 // and the atom carries at least one H), or -1 if no such position, or -2 if 2+ positions.
@@ -1808,40 +1870,7 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
 
         // For GENERAL_HETEROCYCLE, build the HW name from this candidate's ring chain
         if (rType == RingType::GENERAL_HETEROCYCLE) {
-            static const int citOrd[] = {8, 16, 34, 52, 7, 15, 33, 51, 83, 14, 32, 50, 82, 5};
-            static const int citOrdLen = 14;
-            std::map<int, std::vector<int>> locsByZ;
-            std::vector<int> allZ;
-            for (int ii = 0; ii < ringSize; ++ii) {
-                int zz = g.nodes[cand[ii]].atomicNumber;
-                if (zz != 6) { locsByZ[zz].push_back(ii + 1); allZ.push_back(zz); }
-            }
-            std::vector<int> allLs;
-            for (int k = 0; k < citOrdLen; ++k) {
-                auto it2 = locsByZ.find(citOrd[k]);
-                if (it2 != locsByZ.end()) for (int l : it2->second) allLs.push_back(l);
-            }
-            QStringList lStrs;
-            for (int l : allLs) lStrs.append(QString::number(l));
-            QString locPfx = lStrs.join(",") + "-";
-            QString ePfxs;
-            for (int k = 0; k < citOrdLen; ++k) {
-                int zz = citOrd[k];
-                auto it2 = locsByZ.find(zz);
-                if (it2 == locsByZ.end()) continue;
-                int cnt = static_cast<int>(it2->second.size());
-                QString ap = hwAPrefix(zz);
-                // P-22.2.2.1.2: final 'a' of multiplying prefix elides before a vowel.
-                // e.g. "tetra"+"aza" -> "tetraza" (not "tetraaza"); "tri"+"oxa" -> "trioxa".
-                QString mp = multiPrefix(cnt);
-                if (mp.endsWith('a') && isVowel(ap[0])) mp.chop(1);
-                QString chunk = mp + ap;
-                if (!ePfxs.isEmpty() && ePfxs.endsWith('a') && chunk.startsWith('a')) ePfxs.chop(1);
-                ePfxs += chunk;
-            }
-            QString st = hwGeneralRingStem(ringSize, allZ);
-            if (st.isEmpty()) { /* should never happen for sizes accepted by tryGeneralHeterocycle */ }
-            if (ePfxs.endsWith('a') && isVowel(st[0])) ePfxs.chop(1);
+            QString bareName = buildGeneralHeterocycleName(g, cand, ringSize);
 
             // P-14.7.1: Check for indicated hydrogen (saturated ring position)
             int indicatedH = findIndicatedHydrogenLocant(g, cand);
@@ -1850,10 +1879,10 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                 candValid = false;
             } else if (indicatedH > 0) {
                 // Exactly one indicated hydrogen position - prepend "<locant>H-"
-                cs.hwNameRoot = QString("%1H-").arg(indicatedH) + locPfx + ePfxs + st;
+                cs.hwNameRoot = QString("%1H-").arg(indicatedH) + bareName;
             } else {
                 // No indicated hydrogen needed
-                cs.hwNameRoot = locPfx + ePfxs + st;
+                cs.hwNameRoot = bareName;
             }
         }
 
@@ -17196,7 +17225,7 @@ IupacResult IupacNamer::generateName(int mol) {
                            t == RingType::CYCLOPENTADIENE || t == RingType::CYCLOHEPTATRIENE ||
                            t == RingType::AZEPINE || t == RingType::OXEPINE ||
                            t == RingType::THIEPINE || t == RingType::SELENEPINE ||
-                           t == RingType::TELLUREPINE;
+                           t == RingType::TELLUREPINE || t == RingType::GENERAL_HETEROCYCLE;
                 };
 
                 bool allAllowed = allClassified;
@@ -17274,6 +17303,24 @@ IupacResult IupacNamer::generateName(int mol) {
                                     if (bwd[reqNIdx] == hN) cands.push_back(bwd);
                                 }
                             }
+                        } else if (t == RingType::GENERAL_HETEROCYCLE) {
+                            int minRank = 99;
+                            for (int nodeIdx : hNodes) {
+                                int r2 = hwSeniorityRank(g.nodes[nodeIdx].atomicNumber);
+                                if (r2 < minRank) minRank = r2;
+                            }
+                            for (int st2 = 0; st2 < rSize; ++st2) {
+                                int zz = g.nodes[rCycle[st2]].atomicNumber;
+                                if (hwSeniorityRank(zz) == minRank) {
+                                    std::vector<int> fwd3(rSize), bwd3(rSize);
+                                    for (int i = 0; i < rSize; ++i) {
+                                        fwd3[i] = rCycle[(st2 + i) % rSize];
+                                        bwd3[i] = rCycle[(st2 - i + rSize) % rSize];
+                                    }
+                                    cands.push_back(fwd3);
+                                    cands.push_back(bwd3);
+                                }
+                            }
                         }
                         return cands;
                     };
@@ -17318,14 +17365,35 @@ IupacResult IupacNamer::generateName(int mol) {
                         }
                     };
 
+                    // GENERAL_HETEROCYCLE has no single fixed seniority bucket --
+                    // its real heteroatom composition varies per instance, unlike
+                    // every other RingType here. Derive its rank from its own
+                    // most-senior heteroatom (same N > O > S > Se > Te > P order
+                    // getRankHetero already encodes for the named types) and its
+                    // own real heteroatom count, rather than a fixed per-type value.
+                    auto getRankHeteroDyn = [&](RingType t, const std::vector<int> &hNodes) {
+                        if (t != RingType::GENERAL_HETEROCYCLE) return getRankHetero(t);
+                        int best = 99;
+                        for (int n : hNodes) {
+                            int z = g.nodes[n].atomicNumber;
+                            int r = (z == 7) ? 1 : (z == 8) ? 2 : (z == 16) ? 3 : (z == 34) ? 4 : (z == 52) ? 5 : (z == 15) ? 6 : 99;
+                            if (r < best) best = r;
+                        }
+                        return best;
+                    };
+                    auto getNumHeteroDyn = [&](RingType t, const std::vector<int> &hNodes) {
+                        if (t != RingType::GENERAL_HETEROCYCLE) return getNumHetero(t);
+                        return static_cast<int>(hNodes.size());
+                    };
+
                     auto compareRingSeniority = [&](int idx1, int idx2) -> int {
                         RingType t1 = typesN[idx1], t2 = typesN[idx2];
                         if (t1 != t2) {
-                            int r1 = getRankHetero(t1), r2 = getRankHetero(t2);
+                            int r1 = getRankHeteroDyn(t1, rHeteroN[idx1]), r2 = getRankHeteroDyn(t2, rHeteroN[idx2]);
                             if (r1 != r2) return (r1 < r2) ? -1 : 1;
                             int size1 = static_cast<int>(nodesN[idx1].size()), size2 = static_cast<int>(nodesN[idx2].size());
                             if (size1 != size2) return (size1 > size2) ? -1 : 1;
-                            int nHet1 = getNumHetero(t1), nHet2 = getNumHetero(t2);
+                            int nHet1 = getNumHeteroDyn(t1, rHeteroN[idx1]), nHet2 = getNumHeteroDyn(t2, rHeteroN[idx2]);
                             if (nHet1 != nHet2) return (nHet1 > nHet2) ? -1 : 1;
                             int v1 = getVariety(rHeteroN[idx1]), v2 = getVariety(rHeteroN[idx2]);
                             if (v1 != v2) return (v1 > v2) ? -1 : 1;
@@ -17548,11 +17616,17 @@ IupacResult IupacNamer::generateName(int mol) {
 
                         struct Block {
                             QString text;
+                            QString sortKey; // citation order per P-25.3.4.2.3: alphabetical by the
+                                              // fusion-prefix WORD itself, ignoring any locants that
+                                              // precede it -- plain `text < o.text` breaks for
+                                              // GENERAL_HETEROCYCLE, whose own prefix can start with a
+                                              // locant (e.g. "1,2,4-triazolo"), which would otherwise
+                                              // sort before a plain letter-led prefix like "benzo".
                             std::vector<char> letters;
                             std::vector<int> firstOrder;
                             std::map<int, std::vector<int>> lowerLocs;
                             std::map<int, std::vector<int>> higherLocs;
-                            
+
                             bool isFirstOrderSingle = false;
                             RingType cType = RingType::BENZENE;
                             QString cPrefix;
@@ -17561,7 +17635,10 @@ IupacResult IupacNamer::generateName(int mol) {
                             int parentFaceL2 = -1;
                             char ownLetter = 0;
 
-                            bool operator<(const Block& o) const { return text < o.text; }
+                            bool operator<(const Block& o) const {
+                                if (sortKey != o.sortKey) return sortKey < o.sortKey;
+                                return text < o.text;
+                            }
                         };
 
                         auto formatLocants = [](std::pair<int, int> locs, int level) -> QString {
@@ -17662,13 +17739,27 @@ IupacResult IupacNamer::generateName(int mol) {
                                     Block b;
                                     
                                     QString myPrefix;
-                                    if (u == root) myPrefix = getBaseNameShared(typesN[u]);
-                                    else myPrefix = getFusionPrefixShared(typesN[u]);
+                                    if (typesN[u] == RingType::GENERAL_HETEROCYCLE) {
+                                        // getBaseNameShared/getFusionPrefixShared have no case for
+                                        // this type (its real name depends on this specific ring's
+                                        // own heteroatom composition, not a fixed per-type string) --
+                                        // build it from the winning candidate's own atom ordering
+                                        // (currentNum[u]) and apply P-25.3.1.3's mechanical "e"->"o"
+                                        // transform when this ring is an attached (non-root) component.
+                                        QString bareName = buildGeneralHeterocycleName(g, currentNum[u], static_cast<int>(nodesN[u].size()));
+                                        myPrefix = (u == root) ? bareName : toFusionPrefix(bareName);
+                                    } else if (u == root) {
+                                        myPrefix = getBaseNameShared(typesN[u]);
+                                    } else {
+                                        myPrefix = getFusionPrefixShared(typesN[u]);
+                                    }
+                                    b.sortKey = alphabetizationKey(myPrefix);
 
                                     if (u == root) {
-                                        if (cBlocks.size() == 2 && 
-                                            cBlocks[0].isFirstOrderSingle && cBlocks[1].isFirstOrderSingle && 
-                                            cBlocks[0].cType == cBlocks[1].cType && 
+                                        if (cBlocks.size() == 2 &&
+                                            cBlocks[0].isFirstOrderSingle && cBlocks[1].isFirstOrderSingle &&
+                                            cBlocks[0].cType != RingType::GENERAL_HETEROCYCLE &&
+                                            cBlocks[0].cType == cBlocks[1].cType &&
                                             cBlocks[0].cPrefix == cBlocks[1].cPrefix) {
                                             
                                             if (cBlocks[0].cType == typesN[root]) {
