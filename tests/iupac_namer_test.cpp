@@ -6433,6 +6433,49 @@ int main() {
         }
     }
 
+    // ===== Task 3: GENERAL_HETEROCYCLE in the degree-3+ branching mechanism =====
+
+    // Test: a real degree-3+ branching system (one ring fused to 3 others,
+    // same shape as this file's own pre-existing "Branching ground-truth
+    // molecule from Task 1" test) where the heteroatom-bearing ring is a
+    // GENERAL_HETEROCYCLE (3 consecutive nitrogens in a 6-ring -- a real,
+    // genuinely uncovered combination: PYRIDAZINE/PYRIMIDINE/PYRAZINE only
+    // cover 2-nitrogen 6-rings, none cover 3). Real topology independently
+    // verified via ring_classify.exe: 4 rings, all size 6,
+    // maxAtomRingCount=2 (simple ortho-fusion, no peri-fusion). Only this
+    // one ring has a heteroatom, so per compareRingSeniority's own
+    // Criterion (a) (heterocycle always outranks carbocycle) it
+    // unambiguously wins root/parent-hood regardless of its own structural
+    // position in the fusion graph -- confirmed by the resulting name's
+    // own shape: two benzo rings cited together ("dibenzo[...]") plus a
+    // third ("benzo[a]"), exactly 3 attached components, confirming real
+    // degree-3 branching, not a simple linear chain. The base ring's own
+    // embedded locants ("1,2,3-triazine") are canonical -- confirms
+    // Task 3's own wiring of the same canonical-lowest-locant logic
+    // Task 2's fix round established. Characterization test: pins the
+    // real, deterministic, independently-verified-topology output of the
+    // branching mechanism's own (separate, pre-existing) name-assembly
+    // code, not a full independent re-derivation of every fusion
+    // letter/locant by hand.
+    {
+        int m = indigoLoadMoleculeFromString("c12c(cccc2)c3c(nnnc3)c4c1(cccc4)");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            std::string n = r.name.toStdString();
+            if (r.success && n == "dibenzo[1a,9b:5b,9a]benzo[a]1,2,3-triazine") {
+                std::cout << "[PASS] Branching GENERAL_HETEROCYCLE test: " << n << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] Branching GENERAL_HETEROCYCLE test: expected 'dibenzo[1a,9b:5b,9a]benzo[a]1,2,3-triazine', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] Branching GENERAL_HETEROCYCLE test: SMILES did not load\n";
+            failed++;
+        }
+    }
+
     {
         int m = indigoLoadMoleculeFromString("o1ccc2nc3ccoc3cc12");
         if (m >= 0) {

@@ -861,6 +861,43 @@ static QString toFusionPrefix(const QString &name) {
     return name + "o";
 }
 
+// Builds a GENERAL_HETEROCYCLE ring's own canonical HW name directly from
+// its real ring cycle (any fixed order -- e.g. straight from
+// classifyMonocyclicHeteroRing's own buildCycle, not a pre-chosen
+// candidate), self-contained rather than depending on an outer
+// combinatorial search to have already picked the right rotation. Finds
+// every rotation seeded from a most-senior heteroatom position (per
+// P-22.2.2.1.3, locant 1 must go to one), keeps only the one(s) achieving
+// the lexicographically lowest heteroatom-locant set, and builds the name
+// from that. Used by mechanisms (like the branching one) that number each
+// ring independently rather than running the chain mechanism's own
+// multi-ring rotation search.
+static QString buildCanonicalGeneralHeterocycleName(const Graph &g, const std::vector<int> &ringCycle, const std::vector<int> &hNodes) {
+    int ringSize = static_cast<int>(ringCycle.size());
+    int minRank = 99;
+    for (int n : hNodes) {
+        int r = hwSeniorityRank(g.nodes[n].atomicNumber);
+        if (r < minRank) minRank = r;
+    }
+    std::vector<int> bestCand;
+    std::vector<int> bestSet;
+    for (int st = 0; st < ringSize; ++st) {
+        if (hwSeniorityRank(g.nodes[ringCycle[st]].atomicNumber) != minRank) continue;
+        for (int dir = 0; dir < 2; ++dir) {
+            std::vector<int> cand(ringSize);
+            std::vector<int> locs;
+            for (int i = 0; i < ringSize; ++i) {
+                int pos = dir == 0 ? (st + i) % ringSize : (st - i + ringSize) % ringSize;
+                cand[i] = ringCycle[pos];
+                if (g.nodes[cand[i]].atomicNumber != 6) locs.push_back(i + 1);
+            }
+            if (bestCand.empty() || locs < bestSet) { bestSet = locs; bestCand = cand; }
+        }
+    }
+    if (bestCand.empty()) return QString();
+    return buildGeneralHeterocycleName(g, bestCand, ringSize);
+}
+
 // P-14.7.1: Helper to find indicated hydrogen position in a monocyclic general heterocycle.
 // Returns the 1-based locant of the saturated position (where both ring bonds are single
 // and the atom carries at least one H), or -1 if no such position, or -2 if 2+ positions.
@@ -18280,7 +18317,8 @@ IupacResult IupacNamer::generateName(int mol) {
                            t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE ||
                            t == RingType::PYRROLE || t == RingType::IMIDAZOLE ||
                            t == RingType::PYRAZOLE || t == RingType::SELENOPHENE ||
-                           t == RingType::TELLUROPHENE || t == RingType::PHOSPHININE;
+                           t == RingType::TELLUROPHENE || t == RingType::PHOSPHININE ||
+                           t == RingType::GENERAL_HETEROCYCLE;
                 };
 
                 for (int i = 0; i < N_d; ++i) {
@@ -18481,8 +18519,15 @@ IupacResult IupacNamer::generateName(int mol) {
                     return t == RingType::BENZENE;
                 };
                 
-                // Get the base name for parent ring
-                QString parentBaseName = getBaseName(typesN_d[parentRing]);
+                // Get the base name for parent ring. getBaseName (this mechanism's
+                // own local lambda, separate from the chain mechanism's hwNameRoot-
+                // based approach) has no case for GENERAL_HETEROCYCLE since its real
+                // name depends on this specific ring's own heteroatom composition --
+                // build it directly from this ring's own cycle/heteroatom list,
+                // same as the base (unmodified) case needs no fusion-prefix transform.
+                QString parentBaseName = (typesN_d[parentRing] == RingType::GENERAL_HETEROCYCLE)
+                    ? buildCanonicalGeneralHeterocycleName(g, cyclesN_d[parentRing], rHeteroN_d[parentRing])
+                    : getBaseName(typesN_d[parentRing]);
                 if (parentBaseName.isEmpty()) {
                     return {false, "", "Parent ring type not supported for branching system."};
                 }
@@ -18662,9 +18707,14 @@ IupacResult IupacNamer::generateName(int mol) {
                             }
                         }
 
-                        // Get ring type and prefix
+                        // Get ring type and prefix. getFusionPrefix (this mechanism's
+                        // own local lambda) has no case for GENERAL_HETEROCYCLE -- same
+                        // reasoning as the parent base name above, but this ring is an
+                        // ATTACHED component, so P-25.3.1.3's "e"->"o" transform applies.
                         RingType rt = typesN_d[ringIdx];
-                        QString prefix = getFusionPrefix(rt);
+                        QString prefix = (rt == RingType::GENERAL_HETEROCYCLE)
+                            ? toFusionPrefix(buildCanonicalGeneralHeterocycleName(g, cyclesN_d[ringIdx], rHeteroN_d[ringIdx]))
+                            : getFusionPrefix(rt);
 
                         if (prefix.isEmpty()) {
                             return {false, "", QString("Ring type not supported for attached component at level %1.").arg(level).toStdString().c_str()};
