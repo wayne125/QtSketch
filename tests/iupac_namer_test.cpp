@@ -6351,35 +6351,44 @@ int main() {
 
     // ===== Task 2: GENERAL_HETEROCYCLE in the N-ring linear chain mechanism =====
 
-    // Test: GENERAL_HETEROCYCLE (1,2,4-triazole-shaped, 2C+3N) as a chain-fusion
-    // member, fused to PYRIDINE on one side (not plain benzo -- directly
-    // exercises Review Focus item 2) with benzo flanking the pyridine on the
-    // other side. Real topology independently verified via ring_classify.exe
-    // before trusting any name: nRings=3, sizes=[6,6,5], maxAtomRingCount=2
-    // (properly ortho-fused linear chain, not peri-fused). Seniority: both
-    // the pyridine and triazole rings contain nitrogen (tied on the dynamic
-    // rank this task added), so the tie-break falls to ring size (pyridine=6
+    // Test: GENERAL_HETEROCYCLE (1,2,3-triazole-shaped, 2C+3N with the 3
+    // nitrogens CONSECUTIVE around the ring) as a chain-fusion member, fused
+    // to PYRIDINE on one side (not plain benzo -- directly exercises Review
+    // Focus item 2) with benzo flanking the pyridine on the other side. Real
+    // topology independently verified via ring_classify.exe before trusting
+    // any name: nRings=3, sizes=[6,6,5], maxAtomRingCount=2 (properly
+    // ortho-fused linear chain, not peri-fused). Seniority: both the
+    // pyridine and triazole rings contain nitrogen (tied on the dynamic rank
+    // this task added), so the tie-break falls to ring size (pyridine=6
     // beats triazole=5), making pyridine the parent -- matching the existing,
     // already-proven "furo[3,2-b]pyridine"-style precedent of a plain
     // N-heterocycle winning parent-hood over a smaller attached heterocycle.
-    // This is a characterization test: it pins the real, deterministic output
-    // of the now-fixed search/citation-order mechanism (same mechanism
-    // already trusted for every other double-attached-component case in this
-    // file, e.g. furo[3,2-b]thieno[2,3-e]pyridine) for this specific,
-    // independently-verified topology -- not an independently re-derived
-    // Blue Book PIN citation for this exact molecule, which would require
-    // reconstructing the full peripheral-numbering algorithm by hand.
+    // The triazole's own embedded locants (1,2,3, the lowest achievable
+    // heteroatom-locant set for this ring, independently hand-verified) are
+    // fixed/canonical per P-22.2.2.1.3, independent of whichever rotation
+    // the fusion-locant search otherwise prefers -- a real bug (the search
+    // was free to pick any senior-seeded rotation, including non-canonical
+    // ones, for fusion-letter convenience) caught and fixed during this
+    // task's own final review, not assumed correct on the first pass.
+    // Characterization test: pins the real, deterministic output of the
+    // now-fixed search/citation-order mechanism (same mechanism already
+    // trusted for every other double-attached-component case in this file,
+    // e.g. furo[3,2-b]thieno[2,3-e]pyridine) for this specific,
+    // independently-verified topology and now-canonical internal locants --
+    // not a full independent re-derivation of every fusion letter/locant
+    // from the Blue Book text, which would require reconstructing the
+    // entire peripheral-numbering algorithm by hand.
     {
         int m = indigoLoadMoleculeFromString("c1ccc2c(c1)ncc3nnnc23");
         if (m >= 0) {
             IupacResult r = IupacNamer::generateName(m);
             indigoFree(m);
             std::string n = r.name.toStdString();
-            if (r.success && n == "benzo[3,4-b]1,4,5-triazolo[2,3-d]pyridine") {
+            if (r.success && n == "benzo[3,4-b]1,2,3-triazolo[4,5-d]pyridine") {
                 std::cout << "[PASS] Chain triazole-pyridine-benzo test: " << n << "\n";
                 passed++;
             } else {
-                std::cout << "[FAIL] Chain triazole-pyridine-benzo test: expected 'benzo[3,4-b]1,4,5-triazolo[2,3-d]pyridine', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+                std::cout << "[FAIL] Chain triazole-pyridine-benzo test: expected 'benzo[3,4-b]1,2,3-triazolo[4,5-d]pyridine', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
                 failed++;
             }
         } else {
@@ -6393,26 +6402,29 @@ int main() {
     // is never combined with a second heteroatom in any of the existing
     // 2-heteroatom types (imidazole/pyrazole/oxazole/isoxazole/thiazole/
     // isothiazole/selenazole/isoselenazole/pyrimidine/pyridazine/pyrazine
-    // are all O/S/Se/N combinations only). A bare P+N 6-ring ("1,6-
-    // azaphosphinine") is real and already confirmed working standalone;
-    // this fuses it into a 3-ring chain the same way as the test above.
-    // Topology independently verified via ring_classify.exe: nRings=3,
-    // sizes=[6,6,6]. Seniority: the azaphosphinine ring has 2 heteroatoms
-    // (N+P) vs pyridine's 1, so it correctly wins parent-hood over pyridine
-    // under this task's own numHetero-based tie-break -- directly exercising
-    // that new dynamic-composition logic, not just the rank-based one the
-    // test above exercises. Characterization test, same basis as above.
+    // are all O/S/Se/N combinations only). A bare P+N 6-ring, with N and P
+    // ring-adjacent, is real and already confirmed working standalone as
+    // "1,2-azaphosphinine" (its own canonical, lowest-heteroatom-locant
+    // numbering -- fixed per P-22.2.2.1.3 the same way the triazole test
+    // above is, independent of fusion orientation); this fuses it into a
+    // 3-ring chain the same way as the test above. Topology independently
+    // verified via ring_classify.exe: nRings=3, sizes=[6,6,6]. Seniority:
+    // the azaphosphinine ring has 2 heteroatoms (N+P) vs pyridine's 1, so it
+    // correctly wins parent-hood over pyridine under this task's own
+    // numHetero-based tie-break -- directly exercising that new dynamic-
+    // composition logic, not just the rank-based one the test above
+    // exercises. Characterization test, same basis as above.
     {
         int m = indigoLoadMoleculeFromString("c1ccc2c(c1)ncc3n[pH]ccc23");
         if (m >= 0) {
             IupacResult r = IupacNamer::generateName(m);
             indigoFree(m);
             std::string n = r.name.toStdString();
-            if (r.success && n == "benzo[4',3':5,6]pyrido[3,4-b]1,6-azaphosphinine") {
+            if (r.success && n == "benzo[4',3':5,6]pyrido[4,3-e]1,2-azaphosphinine") {
                 std::cout << "[PASS] Chain azaphosphinine test: " << n << "\n";
                 passed++;
             } else {
-                std::cout << "[FAIL] Chain azaphosphinine test: expected 'benzo[4',3':5,6]pyrido[3,4-b]1,6-azaphosphinine', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+                std::cout << "[FAIL] Chain azaphosphinine test: expected 'benzo[4',3':5,6]pyrido[4,3-e]1,2-azaphosphinine', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
                 failed++;
             }
         } else {

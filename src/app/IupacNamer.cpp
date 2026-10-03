@@ -17304,11 +17304,29 @@ IupacResult IupacNamer::generateName(int mol) {
                                 }
                             }
                         } else if (t == RingType::GENERAL_HETEROCYCLE) {
+                            // P-22.2.2.1.3: locant 1 goes to a most-senior-element
+                            // heteroatom (candidates seeded below only from those
+                            // positions); if there's still a choice, the real rule
+                            // is "lowest locants to heteroatoms as a set" -- this
+                            // ring's OWN citation name (e.g. "1,2,4-triazolo") must
+                            // use its own canonical numbering, fixed independent of
+                            // whatever rotation would be most convenient for this
+                            // molecule's overall fusion-locant/letter assignment
+                            // (real fusion names always cite a heterocycle's fixed
+                            // internal locants, e.g. "[1,2,4]triazolo", regardless
+                            // of fusion orientation). So: generate every senior-
+                            // seeded rotation as before, then keep only the one(s)
+                            // achieving the lexicographically lowest heteroatom-
+                            // locant SET -- not every senior-seeded rotation, which
+                            // would let the outer multi-ring search pick whichever
+                            // rotation is most convenient for fusion letters instead
+                            // of this ring's own correct numbering.
                             int minRank = 99;
                             for (int nodeIdx : hNodes) {
                                 int r2 = hwSeniorityRank(g.nodes[nodeIdx].atomicNumber);
                                 if (r2 < minRank) minRank = r2;
                             }
+                            std::vector<std::vector<int>> seededCands;
                             for (int st2 = 0; st2 < rSize; ++st2) {
                                 int zz = g.nodes[rCycle[st2]].atomicNumber;
                                 if (hwSeniorityRank(zz) == minRank) {
@@ -17317,9 +17335,24 @@ IupacResult IupacNamer::generateName(int mol) {
                                         fwd3[i] = rCycle[(st2 + i) % rSize];
                                         bwd3[i] = rCycle[(st2 - i + rSize) % rSize];
                                     }
-                                    cands.push_back(fwd3);
-                                    cands.push_back(bwd3);
+                                    seededCands.push_back(fwd3);
+                                    seededCands.push_back(bwd3);
                                 }
+                            }
+                            auto heteroLocantSet = [&](const std::vector<int> &cand) {
+                                std::vector<int> locs;
+                                for (int i = 0; i < rSize; ++i) {
+                                    if (g.nodes[cand[i]].atomicNumber != 6) locs.push_back(i + 1);
+                                }
+                                return locs;
+                            };
+                            std::vector<int> bestSet;
+                            for (const auto &c : seededCands) {
+                                std::vector<int> s = heteroLocantSet(c);
+                                if (bestSet.empty() || s < bestSet) bestSet = s;
+                            }
+                            for (const auto &c : seededCands) {
+                                if (heteroLocantSet(c) == bestSet) cands.push_back(c);
                             }
                         }
                         return cands;
@@ -17385,6 +17418,38 @@ IupacResult IupacNamer::generateName(int mol) {
                         if (t != RingType::GENERAL_HETEROCYCLE) return getNumHetero(t);
                         return static_cast<int>(hNodes.size());
                     };
+                    // Same reasoning as getRankHeteroDyn/getNumHeteroDyn: getOwnLocants
+                    // only takes a RingType, with no fixed citation-locant pattern
+                    // possible for a composition that varies per instance. Compute the
+                    // ring's own canonical (lexicographically lowest) heteroatom-locant
+                    // set directly -- the same notion getCandidates' own GENERAL_HETEROCYCLE
+                    // branch now filters its candidates down to, re-derived here from
+                    // rHeteroN[idx]/cyclesN[idx] since this tie-break only has the ring
+                    // index, not a candidate ordering, to work from.
+                    auto getOwnLocantsDyn = [&](RingType t, int idx) -> std::vector<int> {
+                        if (t != RingType::GENERAL_HETEROCYCLE) return getOwnLocants(t);
+                        const std::vector<int> &cyc = cyclesN[idx];
+                        const std::vector<int> &hNodes = rHeteroN[idx];
+                        int rSize = static_cast<int>(cyc.size());
+                        int minRank = 99;
+                        for (int n : hNodes) {
+                            int r2 = hwSeniorityRank(g.nodes[n].atomicNumber);
+                            if (r2 < minRank) minRank = r2;
+                        }
+                        std::vector<int> bestSet;
+                        for (int st2 = 0; st2 < rSize; ++st2) {
+                            if (hwSeniorityRank(g.nodes[cyc[st2]].atomicNumber) != minRank) continue;
+                            for (int dir = 0; dir < 2; ++dir) {
+                                std::vector<int> locs;
+                                for (int i = 0; i < rSize; ++i) {
+                                    int pos = dir == 0 ? (st2 + i) % rSize : (st2 - i + rSize) % rSize;
+                                    if (g.nodes[cyc[pos]].atomicNumber != 6) locs.push_back(i + 1);
+                                }
+                                if (bestSet.empty() || locs < bestSet) bestSet = locs;
+                            }
+                        }
+                        return bestSet;
+                    };
 
                     auto compareRingSeniority = [&](int idx1, int idx2) -> int {
                         RingType t1 = typesN[idx1], t2 = typesN[idx2];
@@ -17399,7 +17464,7 @@ IupacResult IupacNamer::generateName(int mol) {
                             if (v1 != v2) return (v1 > v2) ? -1 : 1;
                             int alt1 = getTopAltRank(rHeteroN[idx1]), alt2 = getTopAltRank(rHeteroN[idx2]);
                             if (alt1 != alt2) return (alt1 < alt2) ? -1 : 1;
-                            std::vector<int> own1 = getOwnLocants(t1), own2 = getOwnLocants(t2);
+                            std::vector<int> own1 = getOwnLocantsDyn(t1, idx1), own2 = getOwnLocantsDyn(t2, idx2);
                             if (own1 != own2) return (own1 < own2) ? -1 : 1;
                         }
                         return 0;
