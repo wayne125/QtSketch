@@ -816,10 +816,16 @@ void V8Process::distributeAtoms(const QString& direction) {
 }
 
 void V8Process::setStereoDescriptors(const QString& jsonMap) {
-    m_docState->setStereoDescriptors(jsonMap); applyLocalState();
+    // Tagged "stereoUpdated" (matching the original JS engine's 60-analysis.js
+    // convention, see archive/js-engine/worker/60-analysis.js) so MainWindow.qml's
+    // onStateUpdated doesn't treat this routine, automatic recalculation (fired by
+    // the calc_props debounce cycle after every edit) as a real structural edit --
+    // without this tag it was wiping a just-generated IUPAC name every ~600ms.
+    m_docState->setStereoDescriptors(jsonMap); applyLocalState("stereoUpdated");
 }
 void V8Process::setCheckIssues(const QString& jsonMap) {
-    m_docState->setCheckIssues(jsonMap); applyLocalState();
+    // Tagged "checkUpdated" for the same reason as setStereoDescriptors above.
+    m_docState->setCheckIssues(jsonMap); applyLocalState("checkUpdated");
 }
 
 QString V8Process::getOsClipboardText() const {
