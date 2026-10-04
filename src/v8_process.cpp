@@ -29,14 +29,19 @@ V8Process::V8Process(QObject *parent, TemplateLibrary* templateLibrary)
 
 V8Process::~V8Process() = default;
 
-void V8Process::applyLocalState() {
+void V8Process::applyLocalState(const QString &resultTag) {
     RenderPrimitives prims = RenderPrimitiveBuilder::build(m_docState->molecule(), m_docState->showExplicitH());
     m_primitives = renderPrimitivesToVariant(prims);
     m_selection = selectionStateToVariant(m_docState->selection());
     emit primitivesChanged();
     emit selectionChanged();
+    // resultTag lets a caller mark this update as not a structural edit (e.g.
+    // "selectionOnly" for pure selection changes) -- MainWindow.qml's onStateUpdated
+    // uses this to avoid invalidating a just-generated IUPAC name on a selection-only
+    // update, the same mechanism already used for "stereoUpdated"/"checkUpdated".
     emit stateUpdated(m_primitives, m_selection, m_docState->isDirty(),
-                       m_docState->canUndo(), m_docState->canRedo(), QVariant());
+                       m_docState->canUndo(), m_docState->canRedo(),
+                       resultTag.isEmpty() ? QVariant() : QVariant(resultTag));
 }
 
 QString V8Process::buildSdfBatchListJson() const {
@@ -435,7 +440,7 @@ void V8Process::pasteSelection(double cx, double cy) {
     applyLocalState();
 }
 void V8Process::selectAll() {
-    m_docState->selectAll(); applyLocalState(); return;
+    m_docState->selectAll(); applyLocalState("selectionOnly"); return;
 }
 void V8Process::clearCanvas() {
     m_docState->clearCanvas(); applyLocalState(); return;
@@ -740,10 +745,10 @@ void V8Process::requestAtomProperties(int id) {
     emit structureReady(QStringLiteral("atom_props"), QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)));
 }
 void V8Process::selectByRect(double x1, double y1, double x2, double y2) {
-    m_docState->selectByRect(x1, y1, x2, y2); applyLocalState(); return;
+    m_docState->selectByRect(x1, y1, x2, y2); applyLocalState("selectionOnly"); return;
 }
 void V8Process::addSelectionByRect(double x1, double y1, double x2, double y2) {
-    m_docState->addSelectionByRect(x1, y1, x2, y2); applyLocalState(); return;
+    m_docState->addSelectionByRect(x1, y1, x2, y2); applyLocalState("selectionOnly"); return;
 }
 void V8Process::selectByLasso(const QVariantList& pointsFlat) {
     QList<QPointF> pts;
@@ -751,7 +756,7 @@ void V8Process::selectByLasso(const QVariantList& pointsFlat) {
         pts.append(QPointF(pointsFlat[i].toDouble(), pointsFlat[i + 1].toDouble()));
     }
     m_docState->selectByLasso(pts);
-    applyLocalState();
+    applyLocalState("selectionOnly");
 }
 void V8Process::selectItem(const QVariant& atomId, const QVariant& bondId, const QVariant& rxnArrowId, const QVariant& rxnPlusId, const QVariant& multitailArrowId) {
     m_docState->selectSingleItem(
@@ -760,25 +765,25 @@ void V8Process::selectItem(const QVariant& atomId, const QVariant& bondId, const
         rxnArrowId.isValid() ? rxnArrowId.toInt() : -1,
         rxnPlusId.isValid() ? rxnPlusId.toInt() : -1,
         multitailArrowId.isValid() ? multitailArrowId.toInt() : -1);
-    applyLocalState();
+    applyLocalState("selectionOnly");
 }
 void V8Process::addItemToSelection(const QVariant& atomId, const QVariant& bondId) {
     // Atom-priority-over-bond dispatch, confirmed against 10-state.js:406-414.
     if (atomId.isValid()) m_docState->addAtomToSelection(atomId.toInt());
     else if (bondId.isValid()) m_docState->addBondToSelection(bondId.toInt());
-    applyLocalState();
+    applyLocalState("selectionOnly");
 }
 void V8Process::removeItemFromSelection(const QVariant& atomId, const QVariant& bondId) {
     // Confirmed against 10-state.js:416-422.
     if (atomId.isValid()) m_docState->removeAtomFromSelection(atomId.toInt());
     else if (bondId.isValid()) m_docState->removeBondFromSelection(bondId.toInt());
-    applyLocalState();
+    applyLocalState("selectionOnly");
 }
 void V8Process::selectFragment(const QVariant& atomId, const QVariant& bondId) {
     m_docState->selectFragment(
         atomId.isValid() ? atomId.toInt() : -1,
         bondId.isValid() ? bondId.toInt() : -1);
-    applyLocalState();
+    applyLocalState("selectionOnly");
 }
 void V8Process::moveSelection(double dx, double dy) {
     m_docState->moveSelectionLive(dx, dy);

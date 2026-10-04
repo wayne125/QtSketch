@@ -891,10 +891,13 @@ ApplicationWindow {
                 if (handler) handler(data);
             }
             function onStateUpdated(state, selection, dirty, undoState, redoState, result) {
-                if (result !== "stereoUpdated" && result !== "checkUpdated") {
+                if (result !== "stereoUpdated" && result !== "checkUpdated" && result !== "selectionOnly") {
                     propUpdateTimer.restart()
                     // A generated name is only valid for the exact structure it was
                     // generated from; any real structural edit (or undo/redo) invalidates it.
+                    // Pure selection changes (click/rect/lasso select, select-all, etc.) are
+                    // tagged "selectionOnly" by V8Process and don't touch the structure, so
+                    // they must not wipe a name the user just generated.
                     propPanel.iupacName = ""
                     propPanel.iupacError = ""
                 }

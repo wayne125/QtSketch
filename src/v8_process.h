@@ -157,7 +157,7 @@ private:
     // C++-mode document indistinguishable from a JS-mode one at the QML boundary. Always
     // renders with showExplicitH=false; the setShowExplicitH toggle is out of scope for this
     // pilot (see the approved spec's Scope section).
-    void applyLocalState();
+    void applyLocalState(const QString &resultTag = QString());
 
     // Ports 40-serialize.js's _buildBatchRecordsFromStructs: builds the {count, records:
     // [{index, label, thumb: {atoms, bonds}}]} JSON shape shared by deserializeRdfBatch/
