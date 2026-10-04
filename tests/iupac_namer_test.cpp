@@ -6397,6 +6397,151 @@ int main() {
         }
     }
 
+    // Final-review fix wave, I2: order-dependent base-component selection
+    // when two DIFFERENT GENERAL_HETEROCYCLE rings (1,2,5-thiadiazole and
+    // 1,2,5-oxadiazole, both tagged RingType::GENERAL_HETEROCYCLE) compete
+    // for parent-hood. compareRingSeniority's own "if (t1 != t2)" guard
+    // used to skip ALL seniority comparison whenever both rings shared the
+    // same enum tag, so which one won depended on arbitrary atom-order
+    // instead of P-25.3.4.2.1's real rule (O senior to S). Real topology
+    // verified via ring_classify.exe (nRings=3, sizes=[6,5,5],
+    // maxAtomRingCount=2 -- a linear 3-ring chain, benzo flanked by the two
+    // 5-rings). Confirmed by hand, with the pre-fix guard temporarily
+    // restored and rebuilt: the first SMILES below gave
+    // "...thiadiazolo...oxadiazole" (oxadiazole parent, correct only by
+    // luck of this atom order) while the second, topologically-equivalent
+    // SMILES flipped to "...oxadiazolo...thiadiazole" (thiadiazole wrongly
+    // made parent) -- a real, reproduced regression. Both must now agree:
+    // oxadiazole (O, rank senior to S) is always the parent/base component
+    // regardless of which ring the SMILES happens to traverse first.
+    {
+        const char *smiles1 = "c1cc2nsnc2c2nonc12";
+        const char *smiles2 = "c1cc2nonc2c2nsnc12";
+        int m1 = indigoLoadMoleculeFromString(smiles1);
+        int m2 = indigoLoadMoleculeFromString(smiles2);
+        if (m1 >= 0 && m2 >= 0) {
+            IupacResult r1 = IupacNamer::generateName(m1);
+            IupacResult r2 = IupacNamer::generateName(m2);
+            indigoFree(m1);
+            indigoFree(m2);
+            std::string n1 = r1.name.toStdString();
+            std::string n2 = r2.name.toStdString();
+            bool n1OxadiazoleParent = n1.find("thiadiazolo") != std::string::npos &&
+                                      n1.find("oxadiazole") != std::string::npos &&
+                                      n1.find("oxadiazolo") == std::string::npos;
+            bool n2OxadiazoleParent = n2.find("thiadiazolo") != std::string::npos &&
+                                       n2.find("oxadiazole") != std::string::npos &&
+                                       n2.find("oxadiazolo") == std::string::npos;
+            if (r1.success && r2.success && n1OxadiazoleParent && n2OxadiazoleParent) {
+                std::cout << "[PASS] I2 order-independence (thiadiazole vs oxadiazole base component): '"
+                          << n1 << "' / '" << n2 << "'\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] I2 order-independence: expected oxadiazole as base component (parent) "
+                           << "in both orderings, got success1=" << r1.success << " name1='" << n1
+                           << "' success2=" << r2.success << " name2='" << n2 << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] I2 order-independence test: SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    // Final-review fix wave, I4: wrong Se/Te heteroatom seniority inside the
+    // shared computePeripheralNumbering (a local "rank = z + 10" fallback
+    // put Se/Te BELOW N; real HW order is O>S>Se>Te>N). Real topology
+    // verified via ring_classify.exe (nRings=2, sizes=[6,5], a 5-ring
+    // bearing Te+N fused to benzo). Rather than deep-fix the widely-shared
+    // function this late in the fix wave, Task 1's own GENERAL_HETEROCYCLE
+    // branch now cross-checks the real hwSeniorityRank order and rejects
+    // cleanly instead of shipping the wrong locant set (previously produced
+    // "3,1-benzotellurazole" -- backwards; Te is senior to N and should get
+    // locant 1, not 3). An honest rejection here is strictly better than a
+    // silently wrong name, matching this codebase's established pattern.
+    {
+        int m = indigoLoadMoleculeFromString("c1ccc2[te]cnc2c1");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            std::string n = r.name.toStdString();
+            if (!r.success) {
+                std::cout << "[PASS] I4 Se/Te-vs-N seniority: cleanly rejected (not a wrong locant set): "
+                          << r.error.toStdString() << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] I4 Se/Te-vs-N seniority: expected clean rejection, got a name instead: '"
+                          << n << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] I4 Se/Te-vs-N seniority test: SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    // Final-review fix wave, I5 (chain mechanism): a GENERAL_HETEROCYCLE
+    // 6-ring with a sole O/S/Se/Te/Bi heteroatom (pyran-class) has no real
+    // Hantzsch-Widman name -- P-22.2.2.1.1 forbids "oxine"/"thiine" etc;
+    // the mandatory retained name "pyran" applies instead, not implemented
+    // by this mechanism. Task 1's own Phase 31 benzo-fusion mechanism
+    // already excluded this case; the chain (N>=3) mechanism had no
+    // equivalent guard. Real topology verified via ring_classify.exe
+    // (nRings=3, sizes=[6,6,6]) -- confirmed via the pre-fix driver that
+    // this exact molecule previously produced the forbidden name
+    // "benzo[3,4-b]1-oxino[3,2-d]pyridine"; must now be cleanly rejected.
+    {
+        int m = indigoLoadMoleculeFromString("c1ccc2c(c1)ncc3occcc23");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            std::string n = r.name.toStdString();
+            if (!r.success) {
+                std::cout << "[PASS] I5 chain pyran exclusion: cleanly rejected (not a forbidden oxino name): "
+                          << r.error.toStdString() << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] I5 chain pyran exclusion: expected clean rejection, got a name instead: '"
+                          << n << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] I5 chain pyran exclusion test: SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    // Final-review fix wave, I5 (branching mechanism): same pyran-class
+    // exclusion gap, in the degree-3+ branching mechanism this time. Same
+    // real topology shape as this file's own "Branching GENERAL_HETEROCYCLE
+    // test" above (one central ring fused to 3 others), with the
+    // heteroatom-bearing leaf swapped from a triazine to a pyran-class
+    // single-O 6-ring. Real topology verified via ring_classify.exe
+    // (nRings=4, sizes=[6,6,6,6], maxAtomRingCount=2). Confirmed via the
+    // pre-fix driver that this exact molecule previously produced the
+    // forbidden name "dibenzo[1a,9b:5b,9a]benzo[b]1-oxine" (using the
+    // literal forbidden word "oxine"); must now be cleanly rejected.
+    {
+        int m = indigoLoadMoleculeFromString("c12c(cccc2)c3c(occc3)c4c1(cccc4)");
+        if (m >= 0) {
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            std::string n = r.name.toStdString();
+            if (!r.success) {
+                std::cout << "[PASS] I5 branching pyran exclusion: cleanly rejected (not a forbidden oxine name): "
+                          << r.error.toStdString() << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] I5 branching pyran exclusion: expected clean rejection, got a name instead: '"
+                          << n << "'\n";
+                failed++;
+            }
+        } else {
+            std::cout << "[FAIL] I5 branching pyran exclusion test: SMILES did not load\n";
+            failed++;
+        }
+    }
+
     // Test (Review Focus item 3): a GENERAL_HETEROCYCLE with an element
     // combination not covered by any explicit named RingType -- phosphorus
     // is never combined with a second heteroatom in any of the existing

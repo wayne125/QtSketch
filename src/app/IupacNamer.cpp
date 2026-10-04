@@ -883,6 +883,22 @@ static QString toFusionPrefixBracketed(const QString &name) {
     return toFusionPrefix(name);
 }
 
+// I5 fix (final whole-branch review): P-22.2.2.1.1 forbids Hantzsch-Widman
+// names for a monocyclic 6-ring whose sole heteroatom is O/S/Se/Te/Bi --
+// "oxine"/"thiine"/etc are not real names; the mandatory retained names
+// (pyran, thiopyran, etc) apply instead and are not implemented by the
+// GENERAL_HETEROCYCLE mechanisms. Originally written inline only in the
+// Phase 31 benzo-fusion mechanism; extracted here so the chain and
+// branching mechanisms can reject the same case instead of producing a
+// forbidden "...oxino.../...thiino..." name. Applies only to the single-
+// heteroatom, 6-membered case -- a second heteroatom or a different ring
+// size is unaffected (those already get a real Hantzsch-Widman name).
+static bool isOxineAzineExcluded(const Graph &g, const std::vector<int> &hNodes, int ringSize) {
+    if (ringSize != 6 || hNodes.size() != 1) return false;
+    int z = g.nodes[hNodes[0]].atomicNumber;
+    return z == 8 || z == 16 || z == 34 || z == 52 || z == 83;
+}
+
 // Builds a GENERAL_HETEROCYCLE ring's own canonical HW name directly from
 // its real ring cycle (any fixed order -- e.g. straight from
 // classifyMonocyclicHeteroRing's own buildCycle, not a pre-chosen
@@ -15973,11 +15989,8 @@ IupacResult IupacNamer::generateName(int mol) {
                                                     }
                                                 }
                                             } else if (hType == RingType::GENERAL_HETEROCYCLE) {
-                                                if (hSize == 6 && ringHeteroNodes.size() == 1) {
-                                                    int heteroZ = g.nodes[ringHeteroNodes[0]].atomicNumber;
-                                                    if (heteroZ == 8 || heteroZ == 16 || heteroZ == 34 || heteroZ == 52 || heteroZ == 83) {
-                                                        return {false, "", "Fused ring systems other than naphthalene are not supported in this phase."};
-                                                    }
+                                                if (isOxineAzineExcluded(g, ringHeteroNodes, hSize)) {
+                                                    return {false, "", "Fused ring systems other than naphthalene are not supported in this phase."};
                                                 }
                                                 // P-25.3.5: locant 1 is the heterocycle atom next to a
                                                 // fusion atom. There are exactly 2 such atoms (one next to
@@ -16016,6 +16029,40 @@ IupacResult IupacNamer::generateName(int mol) {
                                                 // each heteroatom instead of the candidate's own 0-based
                                                 // position.
                                                 std::map<int, QString> localLocantMap = computePeripheralNumbering(g, ring1Nodes, ring2Nodes, bhA, bhB);
+
+                                                // I4 fix (final whole-branch review): computePeripheralNumbering's own
+                                                // internal heteroatom rank (a local "rank = z + 10" fallback for any
+                                                // element it doesn't special-case) wrongly ranks Se/Te BELOW N --
+                                                // real HW order is O>S>Se>Te>N, so Se/Te should always outrank N and
+                                                // receive the lower locant. Rather than risk a deep fix to this
+                                                // widely-shared function this late in the fix wave, detect the one
+                                                // asymmetric case this branch can produce (exactly one N plus one
+                                                // other chalcogen senior to N) and verify the locants
+                                                // computePeripheralNumbering actually assigned agree with the real
+                                                // hwSeniorityRank order; reject cleanly rather than ship a wrong name.
+                                                if (ringHeteroNodes.size() == 2) {
+                                                    int zA0 = g.nodes[ringHeteroNodes[0]].atomicNumber;
+                                                    int zB0 = g.nodes[ringHeteroNodes[1]].atomicNumber;
+                                                    bool exactlyOneIsN = (zA0 == 7) != (zB0 == 7);
+                                                    if (exactlyOneIsN) {
+                                                        int nNode = (zA0 == 7) ? ringHeteroNodes[0] : ringHeteroNodes[1];
+                                                        int xNode = (zA0 == 7) ? ringHeteroNodes[1] : ringHeteroNodes[0];
+                                                        int xZ0 = g.nodes[xNode].atomicNumber;
+                                                        if (hwSeniorityRank(xZ0) < hwSeniorityRank(7)) {
+                                                            auto numericLocantPart = [](const QString &s) -> int {
+                                                                QString digits;
+                                                                for (QChar c : s) { if (c.isDigit()) digits += c; else break; }
+                                                                return digits.isEmpty() ? -1 : digits.toInt();
+                                                            };
+                                                            QString nLocStr = localLocantMap.count(nNode) ? localLocantMap[nNode] : QString();
+                                                            QString xLocStr = localLocantMap.count(xNode) ? localLocantMap[xNode] : QString();
+                                                            int nNum = numericLocantPart(nLocStr), xNum = numericLocantPart(xLocStr);
+                                                            if (nNum >= 0 && xNum >= 0 && nNum < xNum) {
+                                                                return {false, "", "Heteroatom seniority between nitrogen and a more senior chalcogen (O/S/Se/Te) in this fused ring could not be verified as correctly numbered; rejecting rather than risk an incorrectly ordered locant."};
+                                                            }
+                                                        }
+                                                    }
+                                                }
 
                                                 static const int citOrd[] = {8, 16, 34, 52, 7, 15, 33, 51, 83, 14, 32, 50, 82, 5};
                                                 static const int citOrdLen = 14;
@@ -17295,7 +17342,16 @@ IupacResult IupacNamer::generateName(int mol) {
                 };
 
                 bool allAllowed = allClassified;
-                for (int i = 0; i < N && allAllowed; ++i) if (!isAllowedType(typesN[i])) allAllowed = false;
+                for (int i = 0; i < N && allAllowed; ++i) {
+                    if (!isAllowedType(typesN[i])) allAllowed = false;
+                    // I5 fix: a GENERAL_HETEROCYCLE 6-ring with a sole O/S/Se/Te/Bi
+                    // heteroatom has no real Hantzsch-Widman name (P-22.2.2.1.1 --
+                    // the mandatory retained name "pyran" etc applies instead).
+                    else if (typesN[i] == RingType::GENERAL_HETEROCYCLE &&
+                             isOxineAzineExcluded(g, rHeteroN[i], static_cast<int>(nodesN[i].size()))) {
+                        allAllowed = false;
+                    }
+                }
 
                 if (allAllowed) {
                     auto getCandidates = [&](RingType t, const std::vector<int> &hNodes, int rSize, const std::vector<int> &rCycle) {
@@ -17492,8 +17548,22 @@ IupacResult IupacNamer::generateName(int mol) {
                     // branch now filters its candidates down to, re-derived here from
                     // rHeteroN[idx]/cyclesN[idx] since this tie-break only has the ring
                     // index, not a candidate ordering, to work from.
+                    // Memoized per ring index: I2's fix (below) made this get called
+                    // unconditionally whenever two GENERAL_HETEROCYCLE rings are compared
+                    // (previously short-circuited away entirely for same-type pairs), and
+                    // compareRingSeniority is invoked repeatedly across this mechanism's
+                    // own combinatorial candidate search -- without caching, the same
+                    // ring's O(ringSize^2) rotation search was being recomputed from
+                    // scratch on every comparison, causing a real, measured ~5x wall-clock
+                    // slowdown on a 5-ring real-drug molecule (NILOTINIB) during FDA-sweep
+                    // verification. Caching by ring index (not by molecule or call site)
+                    // is safe: the result depends only on that ring's own fixed cycle/
+                    // heteroatom data, never on which other ring it's being compared against.
+                    std::vector<std::vector<int>> ownLocantsCacheDyn(N);
+                    std::vector<bool> ownLocantsCachedDyn(N, false);
                     auto getOwnLocantsDyn = [&](RingType t, int idx) -> std::vector<int> {
                         if (t != RingType::GENERAL_HETEROCYCLE) return getOwnLocants(t);
+                        if (ownLocantsCachedDyn[idx]) return ownLocantsCacheDyn[idx];
                         const std::vector<int> &cyc = cyclesN[idx];
                         const std::vector<int> &hNodes = rHeteroN[idx];
                         int rSize = static_cast<int>(cyc.size());
@@ -17514,12 +17584,14 @@ IupacResult IupacNamer::generateName(int mol) {
                                 if (bestSet.empty() || locs < bestSet) bestSet = locs;
                             }
                         }
+                        ownLocantsCacheDyn[idx] = bestSet;
+                        ownLocantsCachedDyn[idx] = true;
                         return bestSet;
                     };
 
                     auto compareRingSeniority = [&](int idx1, int idx2) -> int {
                         RingType t1 = typesN[idx1], t2 = typesN[idx2];
-                        if (t1 != t2) {
+                        if (t1 != t2 || t1 == RingType::GENERAL_HETEROCYCLE) {
                             int r1 = getRankHeteroDyn(t1, rHeteroN[idx1]), r2 = getRankHeteroDyn(t2, rHeteroN[idx2]);
                             if (r1 != r2) return (r1 < r2) ? -1 : 1;
                             int size1 = static_cast<int>(nodesN[idx1].size()), size2 = static_cast<int>(nodesN[idx2].size());
@@ -18370,6 +18442,13 @@ IupacResult IupacNamer::generateName(int mol) {
 
                 for (int i = 0; i < N_d; ++i) {
                     if (!isAllowedType(typesN_d[i])) {
+                        return {false, "", "Ring type not supported in branching system."};
+                    }
+                    // I5 fix: a GENERAL_HETEROCYCLE 6-ring with a sole O/S/Se/Te/Bi
+                    // heteroatom has no real Hantzsch-Widman name (P-22.2.2.1.1 --
+                    // the mandatory retained name "pyran" etc applies instead).
+                    if (typesN_d[i] == RingType::GENERAL_HETEROCYCLE &&
+                        isOxineAzineExcluded(g, rHeteroN_d[i], static_cast<int>(nodesN_d[i].size()))) {
                         return {false, "", "Ring type not supported in branching system."};
                     }
                 }
