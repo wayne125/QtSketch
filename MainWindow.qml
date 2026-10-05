@@ -1407,6 +1407,17 @@ ApplicationWindow {
                         clip: true
                         ScrollBar.horizontal.policy: ScrollBar.AlwaysOn
                         ScrollBar.vertical.policy: ScrollBar.AlwaysOn
+                        // ScrollView infers its scrollable extent from the content item's
+                        // IMPLICIT size, but workspaceContent is a plain Item whose explicit
+                        // width/height (below) never becomes implicitWidth/implicitHeight
+                        // automatically (unlike Column/Row/Layout types). Without this, ScrollView
+                        // thought content was always exactly viewport-sized -- the scrollbar thumb
+                        // filled the whole track (nothing to grab) and wheel/drag scrolling did
+                        // nothing. Same bug class already hit and fixed in components/
+                        // StatusPlaceholder.qml; see also centerViewOnPage()'s own comment above,
+                        // which worked around half of this same problem for a different call site.
+                        contentWidth: workspaceContent.width
+                        contentHeight: workspaceContent.height
 
                         Item {
                             id: workspaceContent
