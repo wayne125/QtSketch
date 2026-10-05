@@ -64,11 +64,21 @@ PlacementResult FragmentPlacementEngine::compute(const QPointF& startPos, const 
     PlacementResult res;
     double dx = currentMouse.x() - startPos.x();
     double dy = currentMouse.y() - startPos.y();
-    if (std::abs(dx) < 0.01 && std::abs(dy) < 0.01) { dx = 1.0; dy = 0.0; }
+    bool noDrag = false;
+    if (std::abs(dx) < 0.01 && std::abs(dy) < 0.01) { 
+        dx = 1.0; dy = 0.0; 
+        noDrag = true;
+    }
     
     double rawAngle = std::atan2(dy, dx);
     double snapInterval = PI / 6.0;
     double snappedAngle = std::round(rawAngle / snapInterval) * snapInterval;
+    
+    // For no-drag placement (plain click), rotate by 90 degrees for vertex-up orientation
+    // (standard chemistry drawing convention: vertex at top/bottom, not flat-top)
+    if (noDrag) {
+        snappedAngle += PI / 2.0;
+    }
 
     // fragmentId is always a TEMPLATE_ id now -- PlacementPreviewManager::updatePreview routes
     // FG_/SS_/LIB_ tool ids to V8Process::getFunctionalGroupPlacementResult instead (real
