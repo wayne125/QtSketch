@@ -199,14 +199,22 @@ Rectangle {
                 Button {
                     Layout.alignment: Qt.AlignRight
                     text: root.iupacLoading ? "Generating…" : "Generate"
-                    enabled: !root.iupacLoading && root.canvas && root.canvas.sketch
+                    // ChemDraw's "Structure to Name" convention: selection required, named
+                    // only when something is selected (never silently names the whole
+                    // document -- a multi-structure canvas would otherwise be ambiguous
+                    // about which structure the name even describes).
+                    enabled: !root.iupacLoading && root.canvas && root.canvas.sketch &&
+                             root.canvas.sketch.selection && root.canvas.sketch.selection.atom_ids &&
+                             root.canvas.sketch.selection.atom_ids.length > 0
                     font { pixelSize: Theme.fontSizeCaption; family: Theme.fontFamily }
+                    ToolTip.visible: hovered && !enabled && !root.iupacLoading
+                    ToolTip.text: "Select the structure to name first"
                     onClicked: {
                         if (root.canvas && root.canvas.sketch) {
                             root.iupacLoading = true
                             root.iupacName = ""
                             root.iupacError = ""
-                            root.canvas.sketch.requestSerialize("iupac_name")
+                            root.canvas.sketch.requestMolfileForNamingSelection("iupac_name")
                         }
                     }
                 }

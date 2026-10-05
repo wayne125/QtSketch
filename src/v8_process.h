@@ -66,6 +66,11 @@ public:
     Q_INVOKABLE void requestSelectionStructure(const QString& reqId);
     Q_INVOKABLE void requestSerialize(const QString& reqId);
     Q_INVOKABLE void requestMolfileForNaming(const QString& reqId);
+    // Selection-scoped variant: names only the currently selected fragment
+    // (ChemDraw's "Structure to Name" behavior -- selection required, only
+    // the selection is named, not the whole document). Emits structureReady
+    // with an empty string if the selection is empty.
+    Q_INVOKABLE void requestMolfileForNamingSelection(const QString& reqId);
     Q_INVOKABLE QString getStructure(const QString& fmt);
     Q_INVOKABLE QString serializeMol();
     Q_INVOKABLE QString getMolfileForNaming();

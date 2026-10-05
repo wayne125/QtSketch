@@ -480,6 +480,9 @@ void V8Process::requestMolfileForNaming(const QString& reqId) {
     QString mf = getMolfileForNaming();
     emit structureReady(reqId, mf);
 }
+void V8Process::requestMolfileForNamingSelection(const QString& reqId) {
+    emit structureReady(reqId, m_docState->copySelection());
+}
 QString V8Process::getStructure(const QString& fmt) {
     if (fmt != "mol") return QString(); // only molfile export is in scope for this pilot
     StringResult r = m_docState->molecule().toMolfile();
