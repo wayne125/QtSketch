@@ -162,8 +162,8 @@ Expected: `100% tests passed, 0 tests failed out of 10`.
 | Test | Covers |
 |---|---|
 | `iupac_namer_test` | The IUPAC namer's own growing regression suite |
-| `fused_ring_orientation_test` | Geometric ring-orientation module (standalone; not yet wired into the naming pipeline) |
-| `fused_ring_direction_detector_test` | Geometric ring-direction module (standalone; not yet wired into the naming pipeline) |
+| `fused_ring_orientation_test` | Geometric ring-orientation module, used by the IUPAC namer's degree-3+ branching-fusion mechanism (`IupacNamer.cpp`'s `computePreferredOrientation` call) |
+| `fused_ring_direction_detector_test` | Geometric ring-direction module, used by the same branching-fusion mechanism (`IupacNamer.cpp`'s `detectFusedRingDirections` call) |
 | `editable_molecule_test` | Core molecule-editing operations |
 | `document_state_test` | Document-level state (undo/redo, selection, commands) |
 | `render_primitives_test` | Geometry → render-primitive conversion |
