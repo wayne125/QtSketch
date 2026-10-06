@@ -1568,10 +1568,15 @@ ApplicationWindow {
             }
         }
 
-        // Bottom atom bar: the most-used atoms one click away, Ketcher-style
+        // Bottom bar: quick-atom picker + status/zoom controls, merged into
+        // one row (was two stacked bars costing ~80px combined; see
+        // docs/superpowers/specs/2026-10-06-layout-space-maximization-design.md).
+        // Tall enough to actually contain a standard-height control plus its
+        // padding; at a tighter fixed height the controls inside were
+        // squeezed, which is what made the zoom handle read as oversized.
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: Theme.toolCellSize + 8
+            Layout.preferredHeight: Theme.controlHeight + 8
             color: Theme.surface
 
             Rectangle {
@@ -1582,7 +1587,11 @@ ApplicationWindow {
             }
 
             RowLayout {
-                anchors.centerIn: parent
+                anchors {
+                    left: parent ? parent.left : undefined
+                    leftMargin: 10
+                    verticalCenter: parent ? parent.verticalCenter : undefined
+                }
                 spacing: Theme.spacingSmall
 
                 Repeater {
@@ -1618,32 +1627,8 @@ ApplicationWindow {
                         }
                     }
                 }
-            }
-        }
 
-        // Status bar with Zoom Control
-        Rectangle {
-            Layout.fillWidth: true
-            // Tall enough to actually contain a standard-height control plus its
-            // padding; at the previous fixed 30px the 32px controls inside were
-            // squeezed, which is what made the zoom handle read as oversized.
-            Layout.preferredHeight: Theme.controlHeight + 8
-            color: Theme.background
-            
-            Rectangle {
-                anchors.top: parent.top
-                width: parent.width
-                height: 1
-                color: Theme.outline
-            }
-
-            RowLayout {
-                anchors {
-                    left: parent ? parent.left : undefined
-                    leftMargin: 16
-                    verticalCenter: parent ? parent.verticalCenter : undefined
-                }
-                spacing: 12
+                Rectangle { width: 1; height: 20; color: Theme.outline; opacity: 0.6 }
 
                 Text {
                     text: activeCanvas ? "Tool: " + ToolLabels.label(activeCanvas.currentTool) : "No document"
@@ -1704,7 +1689,7 @@ ApplicationWindow {
                     height: 20
                     radius: 10
                     color: Theme.error
-                    
+
                     RowLayout {
                         id: issueRow
                         anchors.centerIn: parent
@@ -1727,8 +1712,11 @@ ApplicationWindow {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
-                            // Property panel is always visible, but if it has a collapsible section later, we would expand it here.
-                            // Currently, no explicit action needed as it's persistently visible.
+                            // Re-expand the Properties panel if it's collapsed/floating --
+                            // wired in Task 3/4; a no-op here if already docked.
+                            if (typeof uiSettings !== "undefined" && uiSettings.panelState !== "docked") {
+                                uiSettings.panelState = "docked"
+                            }
                         }
                     }
                 }
@@ -1752,9 +1740,7 @@ ApplicationWindow {
                     // ViewAll (large cells) when compact is active, GridView
                     // (dense cells) when comfortable is — the icon shows the
                     // layout the click switches TO, matching the tooltip.
-                    // Replaces the ◧/◨ geometric characters, which were text
-                    // standing in for icons and took the body font's metrics.
-                    text: Theme.compactDensity ? "" : ""
+                    text: Theme.compactDensity ? "" : ""
                     font { family: Theme.fontIcons; pixelSize: Theme.iconSize }
                     implicitWidth: Theme.controlHeight
                     implicitHeight: Theme.controlHeight
@@ -1771,12 +1757,7 @@ ApplicationWindow {
                 Text {
                     text: Math.round(window.zoomLevel * 100) + "%"
                     color: Theme.textSecondary
-                    font {
-                        pixelSize: Theme.fontSizeBody
-                        bold: true
-                        family: Theme.fontMono
-                    }
-                    
+                    font { pixelSize: Theme.fontSizeBody; bold: true; family: Theme.fontMono }
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
