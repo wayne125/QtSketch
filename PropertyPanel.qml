@@ -136,17 +136,38 @@ Rectangle {
         }
         spacing: Theme.spacingLarge
 
-        Text {
-            textFormat: Text.PlainText
-            text: root._panelTitle()
-            color: Theme.textSecondary
-            font {
-                pixelSize: Theme.fontSizeCaption
-                bold: true
-                letterSpacing: 2
-                family: Theme.fontFamily
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.spacingSmall
+
+            Text {
+                textFormat: Text.PlainText
+                text: root._panelTitle()
+                color: Theme.textSecondary
+                font {
+                    pixelSize: Theme.fontSizeCaption
+                    bold: true
+                    letterSpacing: 2
+                    family: Theme.fontFamily
+                }
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignHCenter
             }
-            Layout.alignment: Qt.AlignHCenter
+
+            // Collapse: reclaims this panel's full width back to the canvas.
+            // Re-expand happens via the slim tab MainWindow shows in its place
+            // (Step 3) or the bottom bar's issue badge (Task 2).
+            ToolButton {
+                text: ""
+                font { family: Theme.fontIcons; pixelSize: Theme.iconSize }
+                implicitWidth: Theme.controlHeight
+                implicitHeight: Theme.controlHeight
+                Accessible.name: "Collapse properties panel"
+                ToolTip.text: "Collapse"
+                ToolTip.visible: hovered
+                ToolTip.delay: 500
+                onClicked: uiSettings.panelState = "collapsed"
+            }
         }
 
         Rectangle {

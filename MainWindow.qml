@@ -333,6 +333,7 @@ ApplicationWindow {
         property bool cpkColorsEnabled: true
         property string recentFilesJoined: ""
         property bool fgFullStructure: true
+        property string panelState: "docked"
     }
     Component.onCompleted: {
         Theme.compactDensity = uiSettings.compactDensity
@@ -1553,18 +1554,43 @@ ApplicationWindow {
                 }
             }
 
-            // Thin separator
+            // Thin separator (hidden when the docked panel is collapsed/floating --
+            // there's nothing for it to separate from in that state).
             Rectangle {
                 Layout.preferredWidth: 1
                 Layout.fillHeight: true
                 color: Theme.outline
+                visible: uiSettings.panelState === "docked"
             }
 
             PropertyPanel {
                 id: propPanel
-                Layout.preferredWidth: Theme.propertyPanelWidth
+                Layout.preferredWidth: uiSettings.panelState === "docked" ? Theme.propertyPanelWidth : 0
                 Layout.fillHeight: true
+                visible: uiSettings.panelState === "docked"
                 canvas: activeCanvas
+            }
+
+            // Slim re-expand tab, shown only when the panel isn't docked (covers
+            // both "collapsed" and, once Task 4 lands, "floating").
+            Rectangle {
+                Layout.preferredWidth: 20
+                Layout.fillHeight: true
+                visible: uiSettings.panelState !== "docked"
+                color: Theme.surface
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "◀"
+                    font.pixelSize: Theme.fontSizeCaption
+                    color: Theme.textSecondary
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: uiSettings.panelState = "docked"
+                }
             }
         }
 
