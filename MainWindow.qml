@@ -329,7 +329,7 @@ ApplicationWindow {
     Settings {
         id: uiSettings
         category: "ui"
-        property bool compactDensity: false
+        property bool compactDensity: true
         property bool cpkColorsEnabled: true
         property string recentFilesJoined: ""
         property bool fgFullStructure: true

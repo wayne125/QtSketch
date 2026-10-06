@@ -3,7 +3,7 @@ import QtQuick
 
 QtObject {
     // Toggled from the status bar; persisted via MainWindow's ui Settings.
-    property bool compactDensity: false
+    property bool compactDensity: true
     property bool cpkColorsEnabled: true
 
     // ── Fluent (Windows 11) light palette ──────────────────────────────────
