@@ -326,6 +326,17 @@ ApplicationWindow {
         fileIO.write(appData + "/user_templates.json", JSON.stringify(window._userTemplates))
     }
 
+    // Mirrors externally-pushed PropertyPanel values onto the floating
+    // instance too. Canvas-derived display values (most of PropertyPanel's
+    // own computed bindings) don't need this -- both instances already
+    // share the same `canvas: activeCanvas` binding and update themselves.
+    // This is only for values a signal handler pushes directly onto
+    // `propPanel.X`, which the floating instance would otherwise never see.
+    function syncFloatingPanel(props) {
+        if (!floatingPropPanel) return
+        for (const key in props) floatingPropPanel[key] = props[key]
+    }
+
     Settings {
         id: uiSettings
         category: "ui"
@@ -334,6 +345,8 @@ ApplicationWindow {
         property string recentFilesJoined: ""
         property bool fgFullStructure: true
         property string panelState: "docked"
+        property real floatingPanelX: -1
+        property real floatingPanelY: -1
     }
     Component.onCompleted: {
         Theme.compactDensity = uiSettings.compactDensity
@@ -679,6 +692,14 @@ ApplicationWindow {
                 propPanel.molMostAbundantMass = mostAbundantMass
                 propPanel.molFragmentCount = fragmentCount
                 propPanel.molRingCount = ringCount
+                syncFloatingPanel({
+                    molMW: mw, molMono: mono, molFormula: mf, molAtoms: atoms,
+                    molBonds: bonds, molTPSA: tpsa, molLogP: logp, molHBA: hba,
+                    molHBD: hbd, molRotBonds: rotBonds, molMolarRefractivity: molarRefractivity,
+                    molPka: pka, molHeavyAtoms: heavyAtoms, molIsChiral: isChiral,
+                    molMostAbundantMass: mostAbundantMass, molFragmentCount: fragmentCount,
+                    molRingCount: ringCount
+                })
             }
             function onStereoDescriptorsReady(jsonMap) {
                 if (activeSketch) activeSketch.setStereoDescriptors(jsonMap)
@@ -711,6 +732,7 @@ ApplicationWindow {
                 propPanel.iupacLoading = false
                 propPanel.iupacName = name
                 propPanel.iupacError = error
+                syncFloatingPanel({ iupacLoading: false, iupacName: name, iupacError: error })
             }
 
             // Biopolymer load
@@ -875,9 +897,11 @@ ApplicationWindow {
                 },
                 mol_name: (data) => {
                     propPanel.molName = data;
+                    syncFloatingPanel({ molName: data })
                 },
                 sdf_props: (data) => {
                     propPanel.sdfProps = JSON.parse(data);
+                    syncFloatingPanel({ sdfProps: JSON.parse(data) })
                 },
                 clipboard_preview: (data) => {
                     if (activeCanvas) activeCanvas.clipboardPreview = data === "null" ? null : JSON.parse(data);
@@ -901,11 +925,13 @@ ApplicationWindow {
                     // they must not wipe a name the user just generated.
                     propPanel.iupacName = ""
                     propPanel.iupacError = ""
+                    syncFloatingPanel({ iupacName: "", iupacError: "" })
                 }
             }
             function onErrorOccurred(error) {
                 window.isProcessing = false
                 propPanel.iupacLoading = false
+                syncFloatingPanel({ iupacLoading: false })
                 messageDialogsGroup.workerErrorDialog.errorText = error
                 // Explicit even though severe defaults to true -- guards against
                 // a previous recoverable-error call site's severe = false
@@ -1593,6 +1619,62 @@ ApplicationWindow {
                 }
             }
         }
+
+    Window {
+        id: floatingPropertyWindow
+        title: "Properties"
+        width: 280
+        height: 420
+        visible: uiSettings.panelState === "floating"
+        flags: Qt.Window
+
+        // Restore the saved position once, before the window first shows --
+        // not reactively on panelState change, so a later re-float after a
+        // dock/undock cycle doesn't re-run this (the window keeps whatever
+        // position the user last dragged it to within the same session).
+        Component.onCompleted: {
+            if (uiSettings.floatingPanelX < 0 || uiSettings.floatingPanelY < 0) return
+            let fits = false
+            for (const screen of Qt.application.screens) {
+                if (uiSettings.floatingPanelX >= screen.virtualX &&
+                    uiSettings.floatingPanelX < screen.virtualX + screen.width &&
+                    uiSettings.floatingPanelY >= screen.virtualY &&
+                    uiSettings.floatingPanelY < screen.virtualY + screen.height) {
+                    fits = true
+                    break
+                }
+            }
+            if (fits) {
+                x = uiSettings.floatingPanelX
+                y = uiSettings.floatingPanelY
+            } else {
+                // Saved monitor is gone (disconnected, resolution changed,
+                // etc.) -- fall back to a position relative to the main
+                // window instead of restoring stale, possibly-unreachable
+                // coordinates.
+                x = window.x + 40
+                y = window.y + 40
+            }
+        }
+
+        onXChanged: if (visible) { uiSettings.floatingPanelX = x }
+        onYChanged: if (visible) { uiSettings.floatingPanelY = y }
+
+        // Closing via the OS [X] must not strand panelState as "floating"
+        // with the window gone and the docked slot still collapsed to 0 --
+        // that would make the panel unreachable. Dock instead of closing.
+        onClosing: function(closeEvent) {
+            closeEvent.accepted = false
+            uiSettings.panelState = "docked"
+        }
+
+        PropertyPanel {
+            id: floatingPropPanel
+            anchors.fill: parent
+            canvas: activeCanvas
+            isFloating: true
+        }
+    }
 
         // Bottom bar: quick-atom picker + status/zoom controls, merged into
         // one row (was two stacked bars costing ~80px combined; see

@@ -5,6 +5,11 @@ import QtQuick.Layouts
 Rectangle {
     id: root
     property Item canvas
+    // Set true only on the instance living inside floatingPropertyWindow
+    // (MainWindow.qml). Purely cosmetic -- swaps which icon/tooltip/target-
+    // state this panel's float/dock button shows; both instances otherwise
+    // behave identically.
+    property bool isFloating: false
     // Null-safe accessors: `canvas` is bound to activeCanvas, which is null for a
     // moment at startup before the per-document Repeater instantiates. Every binding
     // below reads these instead of dereferencing canvas directly.
@@ -167,6 +172,24 @@ Rectangle {
                 ToolTip.visible: hovered
                 ToolTip.delay: 500
                 onClicked: uiSettings.panelState = "collapsed"
+                visible: !root.isFloating
+            }
+            // Float: detaches this panel's content into its own draggable
+            // window (floatingPropertyWindow in MainWindow.qml). The SAME
+            // button, shown in BOTH the docked and floating instances, docks
+            // back when clicked while already floating -- root.isFloating
+            // (set by MainWindow when instantiating the floating instance)
+            // tells each instance which state to toggle TO on click.
+            ToolButton {
+                text: root.isFloating ? "" : ""
+                font { family: Theme.fontIcons; pixelSize: Theme.iconSize }
+                implicitWidth: Theme.controlHeight
+                implicitHeight: Theme.controlHeight
+                Accessible.name: root.isFloating ? "Dock properties panel" : "Float properties panel"
+                ToolTip.text: root.isFloating ? "Dock" : "Float"
+                ToolTip.visible: hovered
+                ToolTip.delay: 500
+                onClicked: uiSettings.panelState = root.isFloating ? "docked" : "floating"
             }
         }
 
