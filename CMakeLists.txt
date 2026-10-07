@@ -21,7 +21,17 @@ endif()
 # phase, not dead weight to ship in the app binary today. They're still built
 # and exercised by their own standalone test executables below.
 
-# set_target_properties( PROPERTIES WIN32_EXECUTABLE TRUE)
+# Console subsystem (the default here) ships with no embedded Windows
+# manifest, so Windows falls back to DPI-Unaware and bitmap-stretches the
+# whole window to match the display's scale factor -- this is what reads as
+# "foggy" text/icons on any scaled display, vs. a native GUI app like Word
+# which is manifest-declared Per-Monitor-V2 DPI aware and renders crisp.
+# WIN32_EXECUTABLE triggers Qt's CMake tooling to embed that manifest.
+# Confirmed via GetProcessDpiAwareness() against the built binary: returned
+# Unaware (0) before this change. Trades away the console window (qDebug()/
+# stderr no longer show in a terminal) -- run with a debugger attached, or
+# temporarily comment this back out, if console output is needed.
+set_target_properties(sketch PROPERTIES WIN32_EXECUTABLE TRUE)
 
 qt_add_qml_module(sketch
     URI Sketch.App
