@@ -46,4 +46,19 @@ struct FusedRingSystemInput {
     std::vector<std::set<int>> ringAtoms;
 };
 
+// Returns every orientation that ties for the best P-25.3.2.3 score (within
+// floating-point tolerance) -- a topologically-symmetric branching system
+// (e.g. 3 equivalent leaf rings off one central ring) can have several
+// genuinely tied-best orientations, distinguishable only by which real
+// heteroatom ends up in which ring. This module has no atom-identity data
+// (only FusedRingSystemInput's own graph-of-rings topology) to break that
+// tie correctly -- callers with real atom data (IupacNamer.cpp) should use
+// this function and pick among the results themselves via the real Blue
+// Book heteroatom-lowest-locant rule, rather than accepting an arbitrary one.
+std::vector<FusedRingOrientationResult> computeAllPreferredOrientations(const FusedRingSystemInput &input);
+
+// Convenience wrapper: returns just the first tied-best orientation. Use
+// computeAllPreferredOrientations instead when the caller can tell tied
+// candidates apart (e.g. by heteroatom position) and ties are possible for
+// the input's topology (any branching/non-linear system).
 FusedRingOrientationResult computePreferredOrientation(const FusedRingSystemInput &input);

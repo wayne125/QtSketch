@@ -45,18 +45,18 @@ struct ScoreTuple {
     }
 };
 
-FusedRingOrientationResult computePreferredOrientation(const FusedRingSystemInput &input) {
+std::vector<FusedRingOrientationResult> computeAllPreferredOrientations(const FusedRingSystemInput &input) {
     FusedRingOrientationResult res;
     if (input.ringSizes.empty()) {
         res.success = true;
-        return res;
+        return {res};
     }
 
     int num_rings = static_cast<int>(input.ringSizes.size());
     if (input.fusions.size() >= static_cast<size_t>(num_rings)) {
         res.success = false;
         res.error = "Non-tree ring systems (ortho-and-peri-fused like phenalene/pyrene) are not yet supported.";
-        return res;
+        return {res};
     }
 
     // adj[ring] = list of (neighborRing, bondIndexWithinRing, isOutgoing)
@@ -104,7 +104,7 @@ FusedRingOrientationResult computePreferredOrientation(const FusedRingSystemInpu
     if (visited_count != num_rings) {
         res.success = false;
         res.error = "Disconnected ring system";
-        return res;
+        return {res};
     }
 
     for (int i = 0; i < num_rings; i++) {
@@ -116,7 +116,7 @@ FusedRingOrientationResult computePreferredOrientation(const FusedRingSystemInpu
             if (distSq < minExpectedDist * minExpectedDist) {
                 res.success = false;
                 res.error = "Geometric contradiction: Rings overlap";
-                return res;
+                return {res};
             }
         }
     }
@@ -126,6 +126,13 @@ FusedRingOrientationResult computePreferredOrientation(const FusedRingSystemInpu
     // reflection (flip y) -- a small, chemically-meaningful candidate set
     // (not continuous/arbitrary rotation search), generalizing the old
     // code's 12 discrete hex symmetries.
+    //
+    // NOTE: a broader "every vertex of every ring" candidate set was tried
+    // here and made things WORSE (regressed naphthalene/anthracene/
+    // naphthacene, which were correct with the narrower set) -- the
+    // branching-ground-truth regression's real cause is NOT candidate
+    // breadth; it's elsewhere (scoring criteria or tie-break behavior).
+    // Reverted to this narrower, empirically-correct-for-linear-chains set.
     std::vector<double> candidateRotations;
     for (const auto &edge : input.fusions) {
         double a = edgeMidpointAngle(placed[edge.ring1].rotation, input.ringSizes[edge.ring1], edge.bondIndex);
@@ -133,10 +140,13 @@ FusedRingOrientationResult computePreferredOrientation(const FusedRingSystemInpu
     }
     if (candidateRotations.empty()) candidateRotations.push_back(0.0);
 
-    ScoreTuple best_score = {-1, -1e9, -1e9, -1e9};
-    std::vector<std::pair<double,double>> best_pos;
-    std::vector<double> best_rotation;
-    double best_y_main = 0, best_x_mid = 0;
+    struct CandidateResult {
+        ScoreTuple score;
+        std::vector<std::pair<double,double>> pos;
+        std::vector<double> rotation;
+        double y_main, x_mid;
+    };
+    std::vector<CandidateResult> allCandidates;
 
     for (double rot : candidateRotations) {
         for (int reflect = 0; reflect < 2; ++reflect) {
@@ -206,37 +216,77 @@ FusedRingOrientationResult computePreferredOrientation(const FusedRingSystemInpu
             }
 
             ScoreTuple cand_score = {max_block_size, ur, -ll, above};
-            if (best_score < cand_score) {
-                best_score = cand_score;
-                best_pos = cur_pos;
-                best_rotation = cur_rotation;
-                best_y_main = y_main;
-                best_x_mid = x_mid;
-            }
+            allCandidates.push_back({cand_score, cur_pos, cur_rotation, y_main, x_mid});
         }
     }
 
-    res.success = true;
-    res.ringsInHorizontalRow = best_score.maxRow;
-    res.ringsInUpperRightQuadrant = best_score.ur;
-    res.ringsInLowerLeftQuadrant = -best_score.inv_ll;
-    res.ringsAboveHorizontalRow = best_score.above;
+    // Find the best score, then collect EVERY candidate that ties it (within
+    // floating-point tolerance) -- not just the first one found. For a
+    // topologically-symmetric system (e.g. 3 equivalent leaf rings off one
+    // central ring), multiple genuinely-tied orientations exist and only a
+    // heteroatom-aware tie-break (which this purely-geometric module has no
+    // atom-identity data to perform) can correctly choose among them. Real,
+    // confirmed bug this fixes: picking an arbitrary "first" tied candidate
+    // here silently chose a different (and wrong, by the already-hand-
+    // verified ground truth) orientation than before this refactor, for a
+    // real 3-leaf branching molecule -- not a hex-grid-specific issue, a
+    // pre-existing gap this is the first change to actually expose. Callers
+    // that have real atom/heteroatom data (IupacNamer.cpp) use
+    // computeAllPreferredOrientations to get every tied candidate and pick
+    // correctly; computePreferredOrientation (below) stays as a thin
+    // backward-compatible wrapper returning just the first for callers that
+    // don't need tie-aware behavior.
+    ScoreTuple best_score = {-1, -1e9, -1e9, -1e9};
+    for (const auto &c : allCandidates) {
+        if (best_score < c.score) best_score = c.score;
+    }
 
-    std::vector<int> sorted_rings(num_rings);
-    for (int i = 0; i < num_rings; i++) sorted_rings[i] = i;
-    std::sort(sorted_rings.begin(), sorted_rings.end(), [&](int a, int b) {
-        double yA = best_pos[a].second, yB = best_pos[b].second;
-        double xA = best_pos[a].first, xB = best_pos[b].first;
-        bool a_in_main = (std::abs(yA - best_y_main) <= 0.1);
-        bool b_in_main = (std::abs(yB - best_y_main) <= 0.1);
-        if (a_in_main != b_in_main) return a_in_main > b_in_main;
-        if (a_in_main) return xA < xB;
-        if (std::abs(yA - yB) > 0.1) return yA > yB;
-        return xA < xB;
-    });
+    auto scoreTies = [](const ScoreTuple &a, const ScoreTuple &b) {
+        const double eps = 1e-6;
+        return a.maxRow == b.maxRow && std::abs(a.ur - b.ur) < eps &&
+               std::abs(a.inv_ll - b.inv_ll) < eps && std::abs(a.above - b.above) < eps;
+    };
 
-    res.ringOrder = sorted_rings;
-    res.ringPos = best_pos;
-    res.ringRotation = best_rotation;
-    return res;
+    std::vector<FusedRingOrientationResult> results;
+    for (const auto &c : allCandidates) {
+        if (!scoreTies(c.score, best_score)) continue;
+
+        FusedRingOrientationResult r;
+        r.success = true;
+        r.ringsInHorizontalRow = best_score.maxRow;
+        r.ringsInUpperRightQuadrant = best_score.ur;
+        r.ringsInLowerLeftQuadrant = -best_score.inv_ll;
+        r.ringsAboveHorizontalRow = best_score.above;
+
+        std::vector<int> sorted_rings(num_rings);
+        for (int i = 0; i < num_rings; i++) sorted_rings[i] = i;
+        std::sort(sorted_rings.begin(), sorted_rings.end(), [&](int a, int b) {
+            double yA = c.pos[a].second, yB = c.pos[b].second;
+            double xA = c.pos[a].first, xB = c.pos[b].first;
+            bool a_in_main = (std::abs(yA - c.y_main) <= 0.1);
+            bool b_in_main = (std::abs(yB - c.y_main) <= 0.1);
+            if (a_in_main != b_in_main) return a_in_main > b_in_main;
+            if (a_in_main) return xA < xB;
+            if (std::abs(yA - yB) > 0.1) return yA > yB;
+            return xA < xB;
+        });
+
+        r.ringOrder = sorted_rings;
+        r.ringPos = c.pos;
+        r.ringRotation = c.rotation;
+        results.push_back(r);
+    }
+    return results;
+}
+
+FusedRingOrientationResult computePreferredOrientation(const FusedRingSystemInput &input) {
+    std::vector<FusedRingOrientationResult> all = computeAllPreferredOrientations(input);
+    if (all.empty()) {
+        FusedRingOrientationResult res;
+        if (input.ringSizes.empty()) { res.success = true; return res; }
+        res.success = false;
+        res.error = "Non-tree ring systems (ortho-and-peri-fused like phenalene/pyrene) are not yet supported.";
+        return res;
+    }
+    return all[0];
 }
