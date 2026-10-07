@@ -163,8 +163,15 @@ Rectangle {
             // Re-expand happens via the slim tab MainWindow shows in its place
             // (Step 3) or the bottom bar's issue badge (Task 2).
             ToolButton {
-                text: ""
-                font { family: Theme.fontIcons; pixelSize: Theme.iconSize }
+                // Theme.fontIcons (Segoe Fluent Icons) private-use-area glyphs
+                // do not reliably survive every editing path -- confirmed by
+                // screenshot that this exact pattern renders empty elsewhere
+                // in this codebase (MainWindow.qml's density toggle, same
+                // issue, pre-existing). Plain font + a standard BMP arrow
+                // avoids the whole class of bug; matches the re-expand tab's
+                // "◀" below, which is already proven to render correctly.
+                text: "▶"
+                font { family: Theme.fontFamily; pixelSize: Theme.iconSize }
                 implicitWidth: Theme.controlHeight
                 implicitHeight: Theme.controlHeight
                 Accessible.name: "Collapse properties panel"
@@ -181,8 +188,10 @@ Rectangle {
             // (set by MainWindow when instantiating the floating instance)
             // tells each instance which state to toggle TO on click.
             ToolButton {
-                text: root.isFloating ? "" : ""
-                font { family: Theme.fontIcons; pixelSize: Theme.iconSize }
+                // Same private-use-glyph issue as the collapse button above --
+                // plain font + standard arrows instead.
+                text: root.isFloating ? "↙" : "↗"
+                font { family: Theme.fontFamily; pixelSize: Theme.iconSize }
                 implicitWidth: Theme.controlHeight
                 implicitHeight: Theme.controlHeight
                 Accessible.name: root.isFloating ? "Dock properties panel" : "Float properties panel"
