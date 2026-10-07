@@ -937,17 +937,18 @@ static QString buildCanonicalGeneralHeterocycleName(const Graph &g, const std::v
 }
 
 // P-14.7.1: Helper to find indicated hydrogen position in a monocyclic general heterocycle.
-// Returns the 1-based locant of the saturated position (where both ring bonds are single
-// and the atom carries at least one H), or -1 if no such position, or -2 if 2+ positions.
+// Returns a sorted vector of all 1-based locants of saturated positions (where both ring bonds are single
+// and the atom carries at least one H) in the given ring chain.
 // Only checks ring-internal bonds (bonds to the two adjacent ring atoms).
 // Note: After indigoAromatize(), bonds in aromatic systems have order 4 (not alternating 1/2).
 // However, for odd-membered rings that cannot be fully aromatic (e.g., 7-membered with 4N),
 // the bonds are still explicit single/double (not all order 4).
-static int findIndicatedHydrogenLocant(const Graph &g, const std::vector<int> &ringChain) {
+static std::vector<int> findIndicatedHydrogenLocants(const Graph &g, const std::vector<int> &ringChain) {
     int ringSize = static_cast<int>(ringChain.size());
-    if (ringSize < 3) return -1; // not a valid ring
+    std::vector<int> indicatedHLocants;
+    if (ringSize < 3) return indicatedHLocants; // not a valid ring
 
-    int indicatedHLocant = -1;
+    // First pass: collect all positions with explicit single bonds to both neighbors
     for (int i = 0; i < ringSize; ++i) {
         int nodeIdx = ringChain[i];
         const GraphNode &node = g.nodes[nodeIdx];
@@ -977,11 +978,7 @@ static int findIndicatedHydrogenLocant(const Graph &g, const std::vector<int> &r
         // to its ring neighbors is the saturated position.
         
         if (orderToPrev == 1 && orderToNext == 1 && node.totalH >= 1) {
-            if (indicatedHLocant != -1) {
-                // Already found one, this is a second -> multiple indicated H positions
-                return -2;
-            }
-            indicatedHLocant = i + 1; // 1-based locant
+            indicatedHLocants.push_back(i + 1); // 1-based locant
         }
     }
 
@@ -989,9 +986,9 @@ static int findIndicatedHydrogenLocant(const Graph &g, const std::vector<int> &r
     // check if all bonds are aromatic (order 4). This can happen when Indigo treats
     // an odd-membered ring as aromatic even though it cannot be by Huckel's rule.
     // In such cases, structurally there MUST be one saturated position.
-    if (indicatedHLocant == -1 && (ringSize == 3 || ringSize == 7 || ringSize == 9)) {
+    if (indicatedHLocants.empty() && (ringSize == 3 || ringSize == 7 || ringSize == 9)) {
         bool allBondsAromatic = true;
-        int firstHAtom = -1;
+        std::vector<int> hAtoms;
         
         for (int i = 0; i < ringSize; ++i) {
             int nodeIdx = ringChain[i];
@@ -1015,9 +1012,9 @@ static int findIndicatedHydrogenLocant(const Graph &g, const std::vector<int> &r
                 allBondsAromatic = false;
             }
 
-            // Track first atom with totalH >= 1
-            if (firstHAtom == -1 && node.totalH >= 1) {
-                firstHAtom = i + 1; // 1-based locant
+            // Track atoms with totalH >= 1
+            if (node.totalH >= 1) {
+                hAtoms.push_back(i + 1); // 1-based locant
             }
         }
 
@@ -1026,12 +1023,26 @@ static int findIndicatedHydrogenLocant(const Graph &g, const std::vector<int> &r
         // with totalH >= 1 as the indicated hydrogen position.
         // Note: For odd-membered rings, structural constraints guarantee
         // exactly one such position exists in the mancude form.
-        if (allBondsAromatic && firstHAtom != -1) {
-            indicatedHLocant = firstHAtom;
+        if (allBondsAromatic && !hAtoms.empty()) {
+            indicatedHLocants.push_back(hAtoms[0]);
         }
     }
 
-    return indicatedHLocant; // -1 if none, positive if exactly one
+    std::sort(indicatedHLocants.begin(), indicatedHLocants.end());
+    return indicatedHLocants;
+}
+
+// Returns the 1-based locant of the saturated position (where both ring bonds are single
+// and the atom carries at least one H), or -1 if no such position, or -2 if 2+ positions.
+// Only checks ring-internal bonds (bonds to the two adjacent ring atoms).
+// Note: After indigoAromatize(), bonds in aromatic systems have order 4 (not alternating 1/2).
+// However, for odd-membered rings that cannot be fully aromatic (e.g., 7-membered with 4N),
+// the bonds are still explicit single/double (not all order 4).
+static int findIndicatedHydrogenLocant(const Graph &g, const std::vector<int> &ringChain) {
+    std::vector<int> locants = findIndicatedHydrogenLocants(g, ringChain);
+    if (locants.empty()) return -1;
+    if (locants.size() == 1) return locants[0];
+    return -2; // 2+ positions
 }
 
 // A single-heteroatom mancude ring (furan, pyridine, oxepine, ...) needs no
@@ -1948,13 +1959,15 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
             QString bareName = buildGeneralHeterocycleName(g, cand, ringSize);
 
             // P-14.7.1: Check for indicated hydrogen (saturated ring position)
-            int indicatedH = findIndicatedHydrogenLocant(g, cand);
-            if (indicatedH == -2) {
-                // Multiple indicated hydrogen positions - reject cleanly
-                candValid = false;
-            } else if (indicatedH > 0) {
-                // Exactly one indicated hydrogen position - prepend "<locant>H-"
-                cs.hwNameRoot = QString("%1H-").arg(indicatedH) + bareName;
+            std::vector<int> indicatedHLocants = findIndicatedHydrogenLocants(g, cand);
+            if (!indicatedHLocants.empty()) {
+                // Build indicated hydrogen prefix: each locant gets its own trailing "H", comma-separated
+                QStringList hParts;
+                for (int locant : indicatedHLocants) {
+                    hParts.append(QString("%1H").arg(locant));
+                }
+                QString hPrefix = hParts.join(",") + "-";
+                cs.hwNameRoot = hPrefix + bareName;
             } else {
                 // No indicated hydrogen needed
                 cs.hwNameRoot = bareName;
@@ -12203,13 +12216,15 @@ IupacResult IupacNamer::generateName(int mol) {
             parentNameRoot = locantPrefix + elemPrefixes + stem;
         } else {
         // P-14.7.1: Check for indicated hydrogen (saturated ring position)
-        int indicatedH = findIndicatedHydrogenLocant(g, bestSig.ringChain);
-        if (indicatedH == -2) {
-            // Multiple indicated hydrogen positions - not supported for general heterocycles
-            return {false, "", "Multiple indicated hydrogen positions found; this general heterocycle case is not yet supported."};
-        } else if (indicatedH > 0) {
-            // Exactly one indicated hydrogen position - prepend "<locant>H-"
-            parentNameRoot = QString("%1H-").arg(indicatedH) + locantPrefix + elemPrefixes + stem;
+        std::vector<int> indicatedHLocants = findIndicatedHydrogenLocants(g, bestSig.ringChain);
+        if (!indicatedHLocants.empty()) {
+            // Build indicated hydrogen prefix: each locant gets its own trailing "H", comma-separated
+            QStringList hParts;
+            for (int locant : indicatedHLocants) {
+                hParts.append(QString("%1H").arg(locant));
+            }
+            QString hPrefix = hParts.join(",") + "-";
+            parentNameRoot = hPrefix + locantPrefix + elemPrefixes + stem;
         } else {
             // No indicated hydrogen needed
             parentNameRoot = locantPrefix + elemPrefixes + stem;
