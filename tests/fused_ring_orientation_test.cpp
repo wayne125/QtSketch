@@ -42,23 +42,29 @@ int main() {
     naph.fusions = {{0, 1, 0}};
     run_test("Naphthalene", naph, 2, 0.5); 
 
-    // Case 2: Anthracene
+    // Case 2: Anthracene (straight line -- each hop continues at the "opposite
+    // side" of the next ring's own 6-membered cycle from its incoming bond,
+    // bondIndex=3, not 0; bondIndex is now a raw local cycle-position index,
+    // not a propagated global direction -- see FusedRingDirectionDetector.cpp's
+    // own comment on this same formula change).
     FusedRingSystemInput anthra;
     anthra.ringSizes = {6, 6, 6};
-    anthra.fusions = {{0, 1, 0}, {1, 2, 0}};
+    anthra.fusions = {{0, 1, 0}, {1, 2, 3}};
     run_test("Anthracene", anthra, 3, 0.75);
 
-    // Case 3: Phenanthrene
+    // Case 3: Phenanthrene (angular -- verified empirically against the real
+    // detector's own output for this same real molecule's topology).
     FusedRingSystemInput phenan;
     phenan.ringSizes = {6, 6, 6};
-    phenan.fusions = {{0, 1, 0}, {1, 2, 5}};
+    phenan.fusions = {{0, 1, 0}, {1, 2, 2}};
     run_test("Phenanthrene", phenan, 2, 1.5);
-    
-    // Case 4: Naphthacene (Tetracene)
+
+    // Case 4: Naphthacene (Tetracene) -- straight line, same bondIndex=3
+    // continuation as Anthracene for every hop.
     FusedRingSystemInput tetra;
     tetra.ringSizes = {6, 6, 6, 6};
-    tetra.fusions = {{0, 1, 0}, {1, 2, 0}, {2, 3, 0}};
-    run_test("Naphthacene", tetra, 4, 1.0); 
+    tetra.fusions = {{0, 1, 0}, {1, 2, 3}, {2, 3, 3}};
+    run_test("Naphthacene", tetra, 4, 1.0);
     
     // Case 5: Branching / Triple junction cycle
     FusedRingSystemInput phenal;
@@ -74,10 +80,10 @@ int main() {
         failed++;
     }
     
-    // Case 6: Branching molecule (degree-3 central ring) - verify new ringHexPos field
+    // Case 6: Branching molecule (degree-3 central ring) - verify new ringPos field
     // Manually constructed input simulating a branching molecule with 4 rings
     // Ring 0 is central, fused to rings 1, 2, 3 at positions 0, 2, 4
-    cout << "Test: Branching molecule (ringHexPos)" << endl;
+    cout << "Test: Branching molecule (ringPos)" << endl;
     FusedRingSystemInput branch_input;
     branch_input.ringSizes = {6, 6, 6, 6};
     branch_input.fusions = {{0, 1, 0}, {0, 2, 2}, {0, 3, 4}};
@@ -86,15 +92,17 @@ int main() {
     if (!res_branch.success) {
         cout << "  FAIL: computePreferredOrientation failed: " << res_branch.error << endl;
         failed++;
-    } else if (res_branch.ringHexPos.size() != 4) {
-        cout << "  FAIL: Expected ringHexPos.size() == 4, got " << res_branch.ringHexPos.size() << endl;
+    } else if (res_branch.ringPos.size() != 4) {
+        cout << "  FAIL: Expected ringPos.size() == 4, got " << res_branch.ringPos.size() << endl;
         failed++;
     } else {
-        // Verify all positions are distinct
+        // Verify all positions are distinct (tolerance-based for floating point)
         bool allDistinct = true;
-        for (size_t i = 0; i < res_branch.ringHexPos.size(); ++i) {
-            for (size_t j = i + 1; j < res_branch.ringHexPos.size(); ++j) {
-                if (res_branch.ringHexPos[i] == res_branch.ringHexPos[j]) {
+        for (size_t i = 0; i < res_branch.ringPos.size(); ++i) {
+            for (size_t j = i + 1; j < res_branch.ringPos.size(); ++j) {
+                double dx = res_branch.ringPos[i].first - res_branch.ringPos[j].first;
+                double dy = res_branch.ringPos[i].second - res_branch.ringPos[j].second;
+                if (dx*dx + dy*dy < 1e-6) {
                     allDistinct = false;
                     break;
                 }
@@ -102,10 +110,10 @@ int main() {
             if (!allDistinct) break;
         }
         if (!allDistinct) {
-            cout << "  FAIL: Not all ringHexPos positions are distinct" << endl;
+            cout << "  FAIL: Not all ringPos positions are distinct" << endl;
             failed++;
         } else {
-            cout << "  PASS: Branching molecule accepted, ringHexPos has 4 distinct positions" << endl;
+            cout << "  PASS: Branching molecule accepted, ringPos has 4 distinct positions" << endl;
             passed++;
         }
     }

@@ -20,9 +20,9 @@ void check_fusions_identical(const FusedRingSystemInput& input, const std::vecto
     for (size_t i = 0; i < input.fusions.size(); ++i) {
         const auto& f = input.fusions[i];
         const auto& e = expected_fusions[i];
-        if (f.ring1 != e.ring1 || f.ring2 != e.ring2 || f.dir != e.dir) {
-            cout << "  FAIL: fusion[" << i << "] mismatch: (" << f.ring1 << "," << f.ring2 << "," << f.dir 
-                 << ") vs (" << e.ring1 << "," << e.ring2 << "," << e.dir << ")" << endl;
+        if (f.ring1 != e.ring1 || f.ring2 != e.ring2 || f.bondIndex != e.bondIndex) {
+            cout << "  FAIL: fusion[" << i << "] mismatch: (" << f.ring1 << "," << f.ring2 << "," << f.bondIndex 
+                 << ") vs (" << e.ring1 << "," << e.ring2 << "," << e.bondIndex << ")" << endl;
             failed++;
             return;
         }
@@ -112,8 +112,13 @@ int main() {
         FusedRingSystemInput input_anth = detectFusedRingDirections(mol_anth);
         indigoFree(mol_anth);
         
-        // Expected fusions for linear anthracene: ring0->ring1 dir=0, ring1->ring2 dir=0
-        std::vector<FusedRingEdge> expected_fusions = {{0, 1, 0}, {1, 2, 0}};
+        // Expected fusions for linear anthracene: ring0->ring1 bondIndex=0 (root's
+        // first/seeding edge), ring1->ring2 bondIndex=3 (a straight-line continuation
+        // sits at the "opposite side" of ring1's own 6-membered cycle from its
+        // incoming bond -- position 0+3=3, not 0; verified empirically after the
+        // bondIndex semantic change from a propagated global direction to a raw
+        // local cycle-position index).
+        std::vector<FusedRingEdge> expected_fusions = {{0, 1, 0}, {1, 2, 3}};
         check_fusions_identical(input_anth, expected_fusions);
     }
     
@@ -160,15 +165,18 @@ int main() {
                 if (!orient_res.success) {
                     cout << "  FAIL: computePreferredOrientation failed: " << orient_res.error << endl;
                     failed++;
-                } else if (orient_res.ringHexPos.size() != 4) {
-                    cout << "  FAIL: Expected ringHexPos.size() == 4, got " << orient_res.ringHexPos.size() << endl;
+                } else if (orient_res.ringPos.size() != 4) {
+                    cout << "  FAIL: Expected ringPos.size() == 4, got " << orient_res.ringPos.size() << endl;
                     failed++;
                 } else {
-                    // Check all positions are distinct
+                    // Check all positions are distinct (floating-point tolerance,
+                    // not exact equality -- ringPos is now real (x,y), not hex ints).
                     bool allDistinct = true;
-                    for (size_t i = 0; i < orient_res.ringHexPos.size(); ++i) {
-                        for (size_t j = i + 1; j < orient_res.ringHexPos.size(); ++j) {
-                            if (orient_res.ringHexPos[i] == orient_res.ringHexPos[j]) {
+                    for (size_t i = 0; i < orient_res.ringPos.size(); ++i) {
+                        for (size_t j = i + 1; j < orient_res.ringPos.size(); ++j) {
+                            double dx = orient_res.ringPos[i].first - orient_res.ringPos[j].first;
+                            double dy = orient_res.ringPos[i].second - orient_res.ringPos[j].second;
+                            if (dx*dx + dy*dy < 1e-6) {
                                 allDistinct = false;
                                 break;
                             }
@@ -176,7 +184,7 @@ int main() {
                         if (!allDistinct) break;
                     }
                     if (!allDistinct) {
-                        cout << "  FAIL: Not all ringHexPos positions are distinct" << endl;
+                        cout << "  FAIL: Not all ringPos positions are distinct" << endl;
                         failed++;
                     } else {
                         cout << "  PASS: Branching molecule accepted, 4 rings, 3 fusions, all ringAtoms non-empty, orientation computed with 4 distinct positions" << endl;

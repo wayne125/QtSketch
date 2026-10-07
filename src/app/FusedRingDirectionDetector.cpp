@@ -76,9 +76,12 @@ FusedRingSystemInput detectFusedRingDirections(int mol) {
     int numRings = static_cast<int>(rings.size());
     if (numRings < 1) return input;
     
-    // Check ring sizes (only 6-membered rings supported in this phase)
+    // Ring sizes 3-10 supported (matches this file's own monocyclic
+    // Hantzsch-Widman range, RingType::GENERAL_HETEROCYCLE); outside that,
+    // this detector's own downstream geometry (FusedRingOrientation) has no
+    // defined regular-polygon behavior, so reject rather than guess.
     for (int i = 0; i < numRings; ++i) {
-        if (rings[i].size() != 6) return input; 
+        if (rings[i].size() < 3 || rings[i].size() > 10) return input;
     }
     
     // 3. Find shared bonds and ring adjacency
@@ -104,7 +107,10 @@ FusedRingSystemInput detectFusedRingDirections(int mol) {
     }
     
     input.ringAtoms = rings;
-    input.ringSizes.assign(numRings, 6);
+    input.ringSizes.resize(numRings);
+    for (int i = 0; i < numRings; ++i) {
+        input.ringSizes[i] = static_cast<int>(rings[i].size());
+    }
     if (numRings == 1) return input; // Trivial 1-ring system
 
     std::vector<bool> visited(numRings, false);
@@ -136,12 +142,6 @@ FusedRingSystemInput detectFusedRingDirections(int mol) {
     queue.push_back({rootRing, rootBond.first, rootBond.second});
     size_t qi = 0;
 
-    // dirFromParent[ringIndex] = the direction FROM its parent TO this ring, filled in
-    // as each ring is first visited; used to emit input.fusions in (parent, child, dir)
-    // form exactly like the original code's input.fusions.push_back({i, i+1, currentDir}).
-    // The root itself has no incoming direction and needs none.
-    std::map<int,int> dirFromParent;
-    
     while (qi < queue.size()) {
         QueueEntry entry = queue[qi++];
         int r = entry.ring;
@@ -172,23 +172,22 @@ FusedRingSystemInput detectFusedRingDirections(int mol) {
                 return input;
             }
 
-            // For the ROOT ring's FIRST outgoing edge (the one used to seed the BFS),
-            // the direction is 0 by fiat, mirroring the original code's `int currentDir = 0;`
-            // for chain[0]->chain[1]. For the root's OTHER outgoing edges (branching case),
-            // and for ALL outgoing edges from non-root rings, compute the direction using
-            // the same formula the original code used: `currentDir = (currentDir + 3 + k) % 6`,
-            // where the incoming direction from the parent is substituted for `currentDir`.
-            int outgoingDir;
-            if (r == rootRing && entry.u == rootBond.first && entry.v == rootBond.second) {
-                // First edge from root: direction 0
-                outgoingDir = 0;
-            } else {
-                int incomingDir = dirFromParent.at(r);
-                outgoingDir = (incomingDir + 3 + k) % 6;
-            }
+            // bondIndex is simply k: the real, local position of this fusion's
+            // shared edge within ring r's own directed cycle (cycle[0..1] is
+            // r's own incoming bond -- the same cycle this k was searched
+            // against). No propagation/global-direction bookkeeping is
+            // needed here; FusedRingOrientation.cpp converts this local
+            // index to a real angle using ring r's own accumulated rotation,
+            // which already carries forward the "direction so far" that the
+            // old hex model's dir value used to encode by a different route
+            // (a global, molecule-wide-consistent compass direction --
+            // meaningful only because every ring was assumed 6-membered;
+            // with mixed ring sizes there is no single shared compass to
+            // propagate, so the local-index + per-ring-rotation split below
+            // is the only general representation).
+            int outgoingDir = k;
 
             input.fusions.push_back({r, nextR, outgoingDir});
-            dirFromParent[nextR] = outgoingDir;
 
             // Next ring's incoming bond is traversed in reverse, exactly as the original
             // code's `u = out_v; v = out_u;` step.
