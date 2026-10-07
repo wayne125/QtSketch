@@ -3082,7 +3082,17 @@ int main() {
             {"CCOc1ccc2sc(S(N)(=O)=O)nc2c1", "5-ethoxy-2-sulfamoyl[1,3]benzothiazole", false, ""},
             // Sibling case from this same report: identical bug reproduced on the benzimidazole
             // path (not just benzothiazole) with the same sulfonamide-substituent shape.
-            {"CCOc1ccc2[nH]c(S(N)(=O)=O)nc2c1", "5-ethoxy-2-sulfamoylbenzimidazole", false, ""}
+            {"CCOc1ccc2[nH]c(S(N)(=O)=O)nc2c1", "5-ethoxy-2-sulfamoylbenzimidazole", false, ""},
+            // Isothiazole (1,2-thiazole) and isoxazole (1,2-oxazole) benzo-fusion cases.
+            // Blue Book P-25.3.2.1.2: plain "isothiazole"/"isoxazole" are NOT recommended as
+            // fusion-component names; use Hantzsch-Widman "1,2-thiazole"/"1,2-oxazole" with
+            // bracketed locants. Two distinct fusion geometries exist for each (heteroatoms
+            // at 1,2 are adjacent, unlike 1,3-thiazole/oxazole which have only one geometry).
+            // The two geometries are distinguished by the order of the locants in brackets.
+            {"c1ccc2sncc2c1", "[1,2]benzothiazole", false, ""},  // Isothiazole: N closer to fusion
+            {"c1ccc2csnc2c1", "[2,1]benzothiazole", false, ""},  // Isothiazole: S closer to fusion
+            {"c1ccc2oncc2c1", "[1,2]benzoxazole", false, ""},   // Isoxazole: N closer to fusion
+            {"c1ccc2conc2c1", "[2,1]benzoxazole", false, ""}   // Isoxazole: O closer to fusion
         };
 
         for (const auto &t : p31ThiazoleOxazoleTests) {

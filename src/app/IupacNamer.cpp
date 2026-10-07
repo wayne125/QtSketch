@@ -15988,6 +15988,54 @@ IupacResult IupacNamer::generateName(int mol) {
                                                         else if (minDist == 2) resultName = "phthalazine";
                                                     }
                                                 }
+                                            } else if (hType == RingType::ISOTHIAZOLE || hType == RingType::ISOXAZOLE) {
+                                                // Isothiazole (1,2-thiazole, S=1 N=2) and isoxazole (1,2-oxazole, O=1 N=2)
+                                                // have TWO distinct fusion geometries. Both heteroatoms are adjacent,
+                                                // so the ring is not symmetric with respect to fusion bonds (unlike
+                                                // 1,3-thiazole/oxazole). Blue Book P-25.3.2.1.2 deprecates plain
+                                                // "isothiazole"/"isoxazole" fusion-component names; instead use
+                                                // Hantzsch-Widman "1,2-thiazole"/"1,2-oxazole" with bracketed locants.
+                                                // The two geometries are distinguished by the order of the locants:
+                                                // which heteroatom is closer to the fusion atoms determines the
+                                                // citation order in the brackets (P-25.3.1.3, P-25.3.2.4(d)).
+                                                if (ringHeteroNodes.size() == 2) {
+                                                    int het1 = ringHeteroNodes[0];
+                                                    int het2 = ringHeteroNodes[1];
+                                                    int idxHet1 = -1, idxHet2 = -1;
+                                                    for (int i = 0; i < hSize; ++i) {
+                                                        if (heteroCycle[i] == het1) idxHet1 = i;
+                                                        if (heteroCycle[i] == het2) idxHet2 = i;
+                                                    }
+                                                    if (idxHet1 != -1 && idxHet2 != -1) {
+                                                        // Identify which heteroatom is the chalcogen (O/S) and which is N
+                                                        int hetChalcogen = -1, hetN = -1;
+                                                        int idxChalcogen = -1, idxN = -1;
+                                                        if (g.nodes[het1].atomicNumber == 7) {
+                                                            hetN = het1; idxN = idxHet1;
+                                                            hetChalcogen = het2; idxChalcogen = idxHet2;
+                                                        } else if (g.nodes[het2].atomicNumber == 7) {
+                                                            hetN = het2; idxN = idxHet2;
+                                                            hetChalcogen = het1; idxChalcogen = idxHet1;
+                                                        }
+                                                        if (hetN != -1 && hetChalcogen != -1 && idxN != -1 && idxChalcogen != -1) {
+                                                            int minDistN = std::min(getDistInCycle(idxN, idxA), getDistInCycle(idxN, idxB));
+                                                            int minDistChalcogen = std::min(getDistInCycle(idxChalcogen, idxA), getDistInCycle(idxChalcogen, idxB));
+                                                            // Verified against real test output: the initial
+                                                            // assignment here had this backwards (every one of
+                                                            // 4 independent test cases came out swapped, a clean
+                                                            // consistent sign-flip, not a logic error -- the
+                                                            // geometric distinction itself is sound, only which
+                                                            // bracket form it mapped to was inverted).
+                                                            if (minDistN < minDistChalcogen) {
+                                                                if (hType == RingType::ISOTHIAZOLE) resultName = "[2,1]benzothiazole";
+                                                                else if (hType == RingType::ISOXAZOLE) resultName = "[2,1]benzoxazole";
+                                                            } else {
+                                                                if (hType == RingType::ISOTHIAZOLE) resultName = "[1,2]benzothiazole";
+                                                                else if (hType == RingType::ISOXAZOLE) resultName = "[1,2]benzoxazole";
+                                                            }
+                                                        }
+                                                    }
+                                                }
                                             } else if (hType == RingType::GENERAL_HETEROCYCLE) {
                                                 if (isOxineAzineExcluded(g, ringHeteroNodes, hSize)) {
                                                     return {false, "", "Fused ring systems other than naphthalene are not supported in this phase."};
