@@ -3061,17 +3061,28 @@ int main() {
 
     {
         // Phase 31 Thiazole/Oxazole extension tests
-        // Note: ETHOXZOLAMIDE (CCOc1ccc2sc(S(N)(=O)=O)nc2c1) deliberately not pinned here --
-        // the real generated name mangles its sulfonamide substituent into a nonsensical
-        // "aminodihydroxymethyl" fragment, a pre-existing bug in shared ring-substituent-naming
-        // machinery unrelated to this task's 2-line dispatch addition (confirmed: the mangling
-        // is unaffected by removing the new [1,3] prefix). Not fixed here (out of scope); not
-        // pinned as an "expected" value either, since that value is wrong.
         std::vector<TestCase> p31ThiazoleOxazoleTests = {
             {"c1ccc2scnc2c1", "[1,3]benzothiazole", false, ""},
             {"c1ccc2ocnc2c1", "[1,3]benzoxazole", false, ""},
             {"c1ccc2[nH]cnc2c1", "benzimidazole", false, ""},  // Existing Phase 31 case - regression
-            {"c1cccc2ccccc12", "naphthalene", false, ""}  // Phase 3 naphthalene - regression
+            {"c1cccc2ccccc12", "naphthalene", false, ""},  // Phase 3 naphthalene - regression
+            // ETHOXZOLAMIDE, the real drug this file's own history flagged as mangling its
+            // sulfonamide substituent into "aminodihydroxymethyl..." (sulfur-rooted composite
+            // functional groups were handed to nameBranchGraph, a plain acyclic-chain namer
+            // with no concept of -SO2NH2). Fixed by classifying carbonSulfonamide (and its 5
+            // siblings) before falling back to nameBranchGraph, mirroring the identical pattern
+            // already used at the other 3 duplicated ring-substituent regions in this file.
+            // NOTE: this is the correctly-FORMED prefix name, not necessarily the true PIN --
+            // Phase 31 has no principal-characteristic-group/suffix mechanism at all for
+            // benzo-fused rings (every substituent here is cited as a prefix, unconditionally),
+            // so a real senior group like sulfonamide isn't expressed as "...-2-sulfonamide"
+            // the way the true PIN would. That's a separate, materially larger, pre-existing
+            // architectural gap -- out of scope for this fix, which only targets the garbled-
+            // name bug. Pinning the honest, verified-correct-as-far-as-it-goes output.
+            {"CCOc1ccc2sc(S(N)(=O)=O)nc2c1", "5-ethoxy-2-sulfamoyl[1,3]benzothiazole", false, ""},
+            // Sibling case from this same report: identical bug reproduced on the benzimidazole
+            // path (not just benzothiazole) with the same sulfonamide-substituent shape.
+            {"CCOc1ccc2[nH]c(S(N)(=O)=O)nc2c1", "5-ethoxy-2-sulfamoylbenzimidazole", false, ""}
         };
 
         for (const auto &t : p31ThiazoleOxazoleTests) {

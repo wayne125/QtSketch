@@ -16157,7 +16157,31 @@ IupacResult IupacNamer::generateName(int mol) {
                                                         return {false, "", "Fused ring systems other than naphthalene are not supported in this phase."};
                                                     }
 
-                                                    QString subName = nameBranchGraph(g, sNode, rNode);
+                                                    // Sulfur-rooted composite functional groups (sulfonamide
+                                                    // and siblings) are not plain acyclic subtrees -- handing
+                                                    // them to nameBranchGraph below walks S/O/O/N as if they
+                                                    // were an unrecognized carbon chain, producing a garbled
+                                                    // name instead of a clean rejection or the correct prefix.
+                                                    // Classify them first, mirroring the identical pattern
+                                                    // already proven at the other 3 duplicated ring-substituent
+                                                    // regions in this file (which use these same maps, already
+                                                    // populated earlier in generateName()).
+                                                    QString subName;
+                                                    if (carbonSulfonicAcid.count(rNode) && carbonSulfonicAcid[rNode] == sNode) {
+                                                        subName = "sulfo";
+                                                    } else if (carbonSulfonamide.count(rNode) && carbonSulfonamide[rNode] == sNode) {
+                                                        subName = "sulfamoyl";
+                                                    } else if (carbonSulfonylHalide.count(rNode) && carbonSulfonylHalide[rNode] == sNode) {
+                                                        subName = halogenPrefix(sulfonylHalideZ[rNode]) + "sulfonyl";
+                                                    } else if (carbonSulfinylHalide.count(rNode) && carbonSulfinylHalide[rNode] == sNode) {
+                                                        subName = halogenPrefix(sulfinylHalideZ[rNode]) + "sulfinyl";
+                                                    } else if (carbonSulfinicAcid.count(rNode) && carbonSulfinicAcid[rNode] == sNode) {
+                                                        subName = "sulfino";
+                                                    } else if (carbonSulfinamide.count(rNode) && carbonSulfinamide[rNode] == sNode) {
+                                                        subName = "sulfinamoyl";
+                                                    } else {
+                                                        subName = nameBranchGraph(g, sNode, rNode);
+                                                    }
                                                     if (subName.isEmpty()) {
                                                         return {false, "", "Unrecognized or unsupported substituent on ring."};
                                                     }
