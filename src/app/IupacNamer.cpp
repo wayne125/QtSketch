@@ -88,6 +88,12 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
     const std::map<int, int> &indigoToGraphIdx,
     int ringCount);
 
+std::vector<RingSystemNameResult> nameBranchingFusion(
+    const Graph &g,
+    int mol,
+    const std::map<int, int> &indigoToGraphIdx,
+    int ringCount);
+
 namespace {
 
 enum class GroupType {
@@ -6049,6 +6055,864 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
             return {RingSystemNameResult{false, "Linear chain: no match", "", {}}};
         }
     return {RingSystemNameResult{false, "Linear chain: no match", "", {}}};
+}
+
+std::vector<RingSystemNameResult> nameBranchingFusion(
+    const Graph &g,
+    int mol,
+    const std::map<int, int> &indigoToGraphIdx,
+    int ringCount) {
+    // --- Degree-3+ branching fusion mechanism ---
+    // This function duplicates the ring-detection setup from the linear chain
+    // mechanism (per this codebase's established preference for duplication over
+    // new shared-state interfaces between independently-evolving mechanisms).
+    
+    // SSSR ring computation
+    int sssrIter = indigoIterateSSSR(mol);
+    bool allDisjoint = true;
+    std::vector<std::set<int>> sssrRings;
+    if (sssrIter >= 0) {
+        int subMol = 0;
+        while ((subMol = indigoNext(sssrIter)) != 0) {
+            std::set<int> rAtoms;
+            int ringAtomIter = indigoIterateAtoms(subMol);
+            if (ringAtomIter >= 0) {
+                int ringAtomHandle = 0;
+                while ((ringAtomHandle = indigoNext(ringAtomIter)) != 0) {
+                    rAtoms.insert(indigoIndex(ringAtomHandle));
+                    indigoFree(ringAtomHandle);
+                }
+                indigoFree(ringAtomIter);
+            }
+            sssrRings.push_back(rAtoms);
+            indigoFree(subMol);
+        }
+        indigoFree(sssrIter);
+        for (size_t i = 0; i < sssrRings.size() && allDisjoint; ++i) {
+            for (size_t j = i + 1; j < sssrRings.size(); ++j) {
+                for (int a : sssrRings[i]) {
+                    if (sssrRings[j].count(a)) {
+                        allDisjoint = false;
+                        break;
+                    }
+                }
+                if (!allDisjoint) break;
+            }
+        }
+    } else {
+        allDisjoint = false;
+    }
+
+    if (!allDisjoint) {
+        int N = sssrRings.size();
+        std::vector<std::vector<int>> shared(N, std::vector<int>(N, 0));
+        std::vector<std::vector<std::vector<int>>> sharedNodesPairs(N, std::vector<std::vector<int>>(N));
+        for (int i = 0; i < N; ++i) {
+            for (int j = i + 1; j < N; ++j) {
+                for (int a : sssrRings[i]) {
+                    if (sssrRings[j].count(a)) {
+                        if (indigoToGraphIdx.count(a)) {
+                            sharedNodesPairs[i][j].push_back(indigoToGraphIdx.at(a));
+                            sharedNodesPairs[j][i].push_back(indigoToGraphIdx.at(a));
+                        }
+                    }
+                }
+                shared[i][j] = shared[j][i] = sharedNodesPairs[i][j].size();
+            }
+        }
+
+        std::vector<int> degree(N, 0);
+        bool validFusion = true;
+        for (int i = 0; i < N; ++i) {
+            for (int j = 0; j < N; ++j) {
+                if (shared[i][j] == 2) degree[i]++;
+                else if (shared[i][j] != 0) validFusion = false;
+            }
+        }
+
+        int ends = 0, centers = 0;
+        bool hasBranching = false;
+        for (int i = 0; i < N; ++i) {
+            if (degree[i] == 1) ends++;
+            else if (degree[i] == 2) centers++;
+            else if (degree[i] > 2) hasBranching = true;
+        }
+
+        if (validFusion && hasBranching) { // Branching case: valid ortho-fusion but at least one ring has degree > 2
+            // Call detectFusedRingDirections to get proper orientation
+            FusedRingSystemInput detectedInput = detectFusedRingDirections(mol);
+            if (detectedInput.ringSizes.empty()) {
+                // detectFusedRingDirections only handles 6-membered rings
+                // Fall through to the standard rejection for non-6-membered systems
+                return {RingSystemNameResult{false, "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2.", "", {}}};
+            }
+            
+            // Convert ringAtoms from indigo indices to graph indices for consistency with g
+            FusedRingSystemInput detectedInputGraph = detectedInput;
+            for (auto &ring : detectedInputGraph.ringAtoms) {
+                std::set<int> converted;
+                for (int idx : ring) {
+                    if (indigoToGraphIdx.count(idx)) {
+                        converted.insert(indigoToGraphIdx.at(idx));
+                    }
+                }
+                ring = converted;
+            }
+            
+            // Use the detected input which has proper directions
+            FusedRingOrientationResult orientation = computePreferredOrientation(detectedInputGraph);
+            if (!orientation.success) {
+                return {RingSystemNameResult{false, orientation.error.c_str(), "", {}}};
+            }
+            
+            // Compute peripheral numbering
+            std::map<int, QString> periphNum = computePeripheralNumberingGeneral(g, detectedInputGraph);
+            if (periphNum.empty()) {
+                return {RingSystemNameResult{false, "Failed to compute peripheral numbering for branching system.", "", {}}};
+            }
+            
+            int N_d = static_cast<int>(detectedInputGraph.ringAtoms.size());
+            
+            // Build nodesN, cyclesN, typesN, rHeteroN from detectedInputGraph
+            std::vector<std::set<int>> nodesN_d(N_d);
+            std::vector<std::vector<int>> cyclesN_d(N_d);
+            std::vector<RingType> typesN_d(N_d, RingType::BENZENE);
+            std::vector<std::vector<int>> rHeteroN_d(N_d);
+            
+            for (int i = 0; i < N_d; ++i) {
+                nodesN_d[i] = detectedInputGraph.ringAtoms[i];
+                
+                // Build cycle from ring atoms
+                auto buildCycle = [&](const std::set<int> &rNodes) -> std::vector<int> {
+                    int rSize = static_cast<int>(rNodes.size());
+                    std::vector<int> cycle;
+                    if (rNodes.empty()) return cycle;
+                    int startNode = *rNodes.begin();
+                    cycle.push_back(startNode);
+                    int current = startNode;
+                    int previous = -1;
+                    for (int step = 1; step < rSize; ++step) {
+                        int nextNode = -1;
+                        for (int nei : g.nodes[current].neighbors) {
+                            if (rNodes.count(nei) && nei != previous) {
+                                if (step == rSize - 1) {
+                                    bool connectedToStart = false;
+                                    for (int startNei : g.nodes[nei].neighbors) {
+                                        if (startNei == startNode) { connectedToStart = true; break; }
+                                    }
+                                    if (!connectedToStart) continue;
+                                }
+                                nextNode = nei;
+                                break;
+                            }
+                        }
+                        if (nextNode == -1) break;
+                        previous = current;
+                        current = nextNode;
+                        cycle.push_back(current);
+                    }
+                    if (static_cast<int>(cycle.size()) != rSize) return {};
+                    return cycle;
+                };
+                cyclesN_d[i] = buildCycle(nodesN_d[i]);
+                
+                // Classify ring type
+                for (int n : nodesN_d[i]) {
+                    if (g.nodes[n].atomicNumber != 6) {
+                        rHeteroN_d[i].push_back(n);
+                    }
+                }
+                
+                // Use the same classification as linear chain
+                if (cyclesN_d[i].size() == nodesN_d[i].size()) {
+                    QString d1, d2;
+                    bool classOk = classifyMonocyclicHeteroRing(g, rHeteroN_d[i], static_cast<int>(nodesN_d[i].size()), cyclesN_d[i], typesN_d[i], d1, d2);
+                    if (!classOk) {
+                        return {RingSystemNameResult{false, "Failed to classify ring type in branching system.", "", {}}};
+                    }
+                } else {
+                    return {RingSystemNameResult{false, "Failed to build cycle for ring in branching system.", "", {}}};
+                }
+            }
+            
+            // Check all ring types are allowed. Non-6-membered rings
+            // (CYCLOPENTADIENE/CYCLOHEPTATRIENE and the 5 single-heteroatom
+            // 7-membered types) are deliberately excluded from the branching
+            // mechanism -- out of scope per this plan's own spec (not worth
+            // the engineering cost there), unlike the linear chain mechanism
+            // above, which does support them.
+            auto isAllowedType = [](RingType t) {
+                return t == RingType::BENZENE || t == RingType::FURAN || t == RingType::THIOPHENE ||
+                       t == RingType::PYRIDINE || t == RingType::PYRIMIDINE ||
+                       t == RingType::PYRIDAZINE || t == RingType::PYRAZINE ||
+                       t == RingType::OXAZOLE || t == RingType::ISOXAZOLE ||
+                       t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE ||
+                       t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE ||
+                       t == RingType::PYRROLE || t == RingType::IMIDAZOLE ||
+                       t == RingType::PYRAZOLE || t == RingType::SELENOPHENE ||
+                       t == RingType::TELLUROPHENE || t == RingType::PHOSPHININE ||
+                       t == RingType::GENERAL_HETEROCYCLE;
+            };
+
+            for (int i = 0; i < N_d; ++i) {
+                if (!isAllowedType(typesN_d[i])) {
+                    return {RingSystemNameResult{false, "Ring type not supported in branching system.", "", {}}};
+                }
+                // I5 fix: a GENERAL_HETEROCYCLE 6-ring with a sole O/S/Se/Te/Bi
+                // heteroatom has no real Hantzsch-Widman name (P-22.2.2.1.1 --
+                // the mandatory retained name "pyran" etc applies instead).
+                if (typesN_d[i] == RingType::GENERAL_HETEROCYCLE &&
+                    isOxineAzineExcluded(g, rHeteroN_d[i], static_cast<int>(nodesN_d[i].size()))) {
+                    return {RingSystemNameResult{false, "Ring type not supported in branching system.", "", {}}};
+                }
+            }
+
+            // Retained-name-collision guard (P-25.1 mandatory retained PINs): an
+            // all-carbocyclic branching topology can collide with a Blue Book name that
+            // has its own special numbering, rather than being named systematically.
+            // Heterocyclic branching systems can never collide with an all-carbocyclic
+            // retained name and proceed through the normal path below unaffected.
+            {
+                bool allBenzeneBranching = true;
+                for (int i = 0; i < N_d; ++i) {
+                    if (typesN_d[i] != RingType::BENZENE) { allBenzeneBranching = false; break; }
+                }
+                if (allBenzeneBranching) {
+                    std::vector<int> ringDegree(N_d, 0);
+                    for (const auto &f : detectedInputGraph.fusions) {
+                        ringDegree[f.ring1]++;
+                        ringDegree[f.ring2]++;
+                    }
+                    int degree3Count = 0, degree1Count = 0;
+                    for (int i = 0; i < N_d; ++i) {
+                        if (ringDegree[i] == 3) degree3Count++;
+                        else if (ringDegree[i] == 1) degree1Count++;
+                    }
+                    // Triphenylene: one central benzo ring fused to exactly 3 other benzo
+                    // rings (each a degree-1 leaf) on alternating sides.
+                    if (N_d == 4 && degree3Count == 1 && degree1Count == 3) {
+                        // Return single-element vector: today's existing single-best-answer
+                        // behavior. True multi-candidate exploration (calling
+                        // computeAllPreferredOrientations directly instead of
+                        // computePreferredOrientation, to get the full tied-orientation
+                        // set for Task 4's attachment-locant tie-break) is deferred until
+                        // nameRingSystemAsSubstituent (Task 4) actually needs it.
+                        return {RingSystemNameResult{true, "", "triphenylene", {}}};
+                    }
+                    return {RingSystemNameResult{false, "This all-carbocyclic branching ring system may require a retained name not yet recognized by this mechanism.", "", {}}};
+                }
+            }
+
+            // STEP 2: Select parent component using compareRingSeniority
+            int parentRing = 0;
+            for (int i = 1; i < N_d; ++i) {
+                int cmp = compareRingSeniority(g, nodesN_d[parentRing], nodesN_d[i]);
+                if (cmp < 0) { // i has higher seniority
+                    parentRing = i;
+                }
+            }
+            
+            // Build adjacency from detectedInputGraph.fusions
+            std::vector<std::vector<int>> fusionAdj(N_d);
+            for (const auto &f : detectedInputGraph.fusions) {
+                fusionAdj[f.ring1].push_back(f.ring2);
+                fusionAdj[f.ring2].push_back(f.ring1);
+            }
+            
+            // Check for substituents on any ring atom - classify and collect
+            std::set<int> allSystemNodesUnion;
+            for (const auto &ringNodes : nodesN_d) {
+                allSystemNodesUnion.insert(ringNodes.begin(), ringNodes.end());
+            }
+            std::vector<std::pair<int, QString>> collectedSubstituents;
+            bool hasUnsupportedSubstituent = false;
+            
+            for (int i = 0; i < N_d; ++i) {
+                for (int node : nodesN_d[i]) {
+                    const GraphNode &n = g.nodes[node];
+                    for (size_t j = 0; j < n.neighbors.size(); ++j) {
+                        int nei = n.neighbors[j];
+                        if (!allSystemNodesUnion.count(nei) && g.nodes[nei].atomicNumber != 1) {
+                            QString subName = simpleRingSubstituentName(g, node, nei, allSystemNodesUnion);
+                            if (subName.isEmpty()) {
+                                hasUnsupportedSubstituent = true;
+                            } else {
+                                collectedSubstituents.push_back({node, subName});
+                            }
+                        }
+                    }
+                }
+            }
+            if (hasUnsupportedSubstituent) {
+                return {RingSystemNameResult{false, "Substituents on branching fused ring systems are not yet supported.", "", {}}};
+            }
+            
+            // Helper functions
+            auto getBaseName = [](RingType t) -> QString {
+                if (t == RingType::BENZENE) return "benzene";
+                if (t == RingType::FURAN) return "furan";
+                if (t == RingType::THIOPHENE) return "thiophene";
+                if (t == RingType::SELENOPHENE) return "selenophene";
+                if (t == RingType::TELLUROPHENE) return "tellurophene";
+                if (t == RingType::PHOSPHININE) return "phosphinine";
+                if (t == RingType::PYRIDINE) return "pyridine";
+                if (t == RingType::PYRIMIDINE) return "pyrimidine";
+                if (t == RingType::PYRIDAZINE) return "pyridazine";
+                if (t == RingType::PYRAZINE) return "pyrazine";
+                if (t == RingType::OXAZOLE) return "oxazole";
+                if (t == RingType::ISOXAZOLE) return "isoxazole";
+                if (t == RingType::THIAZOLE) return "thiazole";
+                if (t == RingType::ISOTHIAZOLE) return "isothiazole";
+                if (t == RingType::SELENAZOLE) return "selenazole";
+                if (t == RingType::ISOSELENAZOLE) return "isoselenazole";
+                if (t == RingType::PYRROLE) return "pyrrole";
+                if (t == RingType::IMIDAZOLE) return "imidazole";
+                if (t == RingType::PYRAZOLE) return "pyrazole";
+                return "";
+            };
+            
+            // Get side letter from numeric locants
+            auto getSideLetter = [](int loc1, int loc2) -> char {
+                // Normalize: ensure loc1 < loc2
+                if (loc1 > loc2) std::swap(loc1, loc2);
+                // Side letters for 6-membered rings: a=1-2, b=2-3, c=3-4, d=4-5, e=5-6, f=6-1
+                if (loc1 == 1 && loc2 == 2) return 'a';
+                if (loc1 == 2 && loc2 == 3) return 'b';
+                if (loc1 == 3 && loc2 == 4) return 'c';
+                if (loc1 == 4 && loc2 == 5) return 'd';
+                if (loc1 == 5 && loc2 == 6) return 'e';
+                if (loc1 == 6 && loc2 == 1) return 'f';
+                return '?';
+            };
+            
+            // Get side letter from a pair of locant strings
+            auto getSideLetterFromLocants = [&getSideLetter](const QString& loc1, const QString& loc2) -> char {
+                // Peripheral numbering for fusion atoms can have letter suffixes like "12a", "8b", etc.
+                // The numeric part is the base locant, the letter is a suffix for fusion atoms.
+                // We need to extract just the numeric part and use it with getSideLetter.
+                
+                // Extract numeric part from loc1 (strip trailing letters)
+                QString num1;
+                for (QChar c : loc1) {
+                    if (c.isDigit()) {
+                        num1 += c;
+                    } else {
+                        break; // Stop at first non-digit
+                    }
+                }
+                
+                // Extract numeric part from loc2
+                QString num2;
+                for (QChar c : loc2) {
+                    if (c.isDigit()) {
+                        num2 += c;
+                    } else {
+                        break;
+                    }
+                }
+                
+                if (num1.isEmpty() || num2.isEmpty()) {
+                    return '?';
+                }
+                
+                bool ok1 = false, ok2 = false;
+                int n1 = num1.toInt(&ok1);
+                int n2 = num2.toInt(&ok2);
+                if (!ok1 || !ok2) return '?';
+                return getSideLetter(n1, n2);
+            };
+            
+            // Collect all fusion atom pairs between rings
+            std::map<std::pair<int, int>, std::vector<int>> fusionAtomsMap;
+            for (int i = 0; i < N; ++i) {
+                for (int j = i + 1; j < N; ++j) {
+                    if (shared[i][j] == 2) {
+                        fusionAtomsMap[{i, j}] = sharedNodesPairs[i][j];
+                        fusionAtomsMap[{j, i}] = sharedNodesPairs[i][j];
+                    }
+                }
+            }
+            
+            // REPLACE WITH REAL GENERAL ALGORITHM
+            // Walk the fusion tree from parent and build name components
+            
+            // Get fusion prefix for a ring type (reusing existing linear-chain logic)
+            auto getFusionPrefix = [](RingType t) -> QString {
+                if (t == RingType::BENZENE) return "benzo";
+                if (t == RingType::FURAN) return "furo";
+                if (t == RingType::THIOPHENE) return "thieno";
+                if (t == RingType::SELENOPHENE) return "selenolo";
+                if (t == RingType::TELLUROPHENE) return "tellurolo";
+                if (t == RingType::PHOSPHININE) return "phosphinino";
+                if (t == RingType::PYRIDINE) return "pyrido";
+                if (t == RingType::PYRIMIDINE) return "pyrimido";
+                if (t == RingType::PYRIDAZINE) return "pyridazino";
+                if (t == RingType::PYRAZINE) return "pyrazino";
+                if (t == RingType::OXAZOLE) return "oxazolo";
+                if (t == RingType::ISOXAZOLE) return "isoxazolo";
+                if (t == RingType::THIAZOLE) return "thiazolo";
+                if (t == RingType::ISOTHIAZOLE) return "isothiazolo";
+                if (t == RingType::SELENAZOLE) return "selenazolo";
+                if (t == RingType::ISOSELENAZOLE) return "isoselenazolo";
+                if (t == RingType::PYRROLE) return "pyrrolo";
+                if (t == RingType::IMIDAZOLE) return "imidazo";
+                if (t == RingType::PYRAZOLE) return "pyrazolo";
+                return "";
+            };
+            
+            // Check if a ring type is a plain symmetric monocyclic hydrocarbon (P-25.3.8.1: locants omitted)
+            auto isPlainSymmetricHydrocarbon = [](RingType t) -> bool {
+                return t == RingType::BENZENE;
+            };
+            
+            // Get the base name for parent ring. getBaseName (this mechanism's
+            // own local lambda, separate from the chain mechanism's hwNameRoot-
+            // based approach) has no case for GENERAL_HETEROCYCLE since its real
+            // name depends on this specific ring's own heteroatom composition --
+            // build it directly from this ring's own cycle/heteroatom list,
+            // same as the base (unmodified) case needs no fusion-prefix transform.
+            QString parentBaseName = (typesN_d[parentRing] == RingType::GENERAL_HETEROCYCLE)
+                ? buildCanonicalGeneralHeterocycleName(g, cyclesN_d[parentRing], rHeteroN_d[parentRing])
+                : getBaseName(typesN_d[parentRing]);
+            if (parentBaseName.isEmpty()) {
+                return {RingSystemNameResult{false, "Parent ring type not supported for branching system.", "", {}}};
+            }
+            
+            // Build the attached component tree and collect name fragments
+            // For each ring in the system (except parent), determine its relationship to parent
+            
+            // First, build a proper tree structure with parent at root
+            // We need to identify which rings are attached to which
+            // For now, handle the case where we have a parent and direct attached components
+            
+            // Separate rings into levels: first-order (attached to parent), second-order (attached to first-order), etc.
+            std::vector<std::vector<int>> levels;
+            levels.push_back({parentRing}); // Level 0: parent
+            
+            // BFS from parent to identify levels
+            std::vector<int> ringLevel(N_d, -1); // -1 = unassigned
+            ringLevel[parentRing] = 0;
+            std::vector<std::vector<int>> children(N_d); // children[i] = rings directly fused to i that are further from parent
+            
+            // Build tree: parent first, then its neighbors, then their neighbors
+            std::queue<int> q;
+            q.push(parentRing);
+            
+            while (!q.empty()) {
+                int current = q.front();
+                q.pop();
+                
+                for (int neighbor : fusionAdj[current]) {
+                    if (ringLevel[neighbor] == -1) {
+                        ringLevel[neighbor] = ringLevel[current] + 1;
+                        children[current].push_back(neighbor);
+                        q.push(neighbor);
+                        
+                        // Ensure we have enough levels
+                        if (ringLevel[neighbor] >= static_cast<int>(levels.size())) {
+                            levels.push_back({});
+                        }
+                        levels[ringLevel[neighbor]].push_back(neighbor);
+                    }
+                }
+            }
+            
+            // Now process from outermost level inward (P-25.3.1.2: attached components are cited in order)
+            // For branching systems with multiple levels, we need to handle this carefully
+            
+            // For now, implement support for first-order and second-order attached components
+            // Third-order and beyond: reject with honest message
+            int maxLevel = 0;
+            for (int i = 0; i < N_d; ++i) {
+                if (ringLevel[i] > maxLevel) {
+                    maxLevel = ringLevel[i];
+                }
+            }
+            
+            if (maxLevel > 2) {
+                return {RingSystemNameResult{false, "Branching fused ring systems with more than 2 levels of attachment are not yet supported.", "", {}}};
+            }
+            
+            // Collect name components at each level
+            // We'll build strings for each level, then combine them
+            // Per P-25.3.1.2.3: components at same level are grouped together
+            
+            struct AttachedComponent {
+                QString prefix;  // display text, e.g., "benzo", "pyrido", "[1,2,3]triazolo"
+                QString sortKey; // citation-order key per P-25.3.4.2.3: alphabetical by the
+                                 // prefix WORD itself, ignoring any bracketed/locant-prefixed
+                                 // run in front of it -- grouping+ordering below uses this, not
+                                 // `prefix` directly, since a GENERAL_HETEROCYCLE prefix can
+                                 // start with "[", which would sort before every letter-led prefix in plain QString
+                                 // comparison, same class of bug the chain mechanism's own Block::sortKey fixes).
+                QString locant;  // e.g., "[b]", "[c,e]" for multiple
+                bool locantOmittable; // true for plain symmetric monocyclic hydrocarbons
+                RingType ringType;
+            };
+            
+            std::vector<std::vector<AttachedComponent>> levelComponents(maxLevel + 1);
+            
+            // Process from outer levels inward
+            for (int level = maxLevel; level >= 1; --level) {
+                for (int ringIdx : levels[level]) {
+                    // Get fusion atoms between this ring and its parent in the tree
+                    int treeParent = -1;
+                    for (int potentialParent : fusionAdj[ringIdx]) {
+                        if (ringLevel[potentialParent] == level - 1) {
+                            treeParent = potentialParent;
+                            break;
+                        }
+                    }
+                    
+                    if (treeParent == -1) {
+                        continue; // Shouldn't happen if tree is built correctly
+                    }
+                    
+                    // Find fusion atoms between ringIdx and treeParent
+                    std::vector<int> fusionAtoms;
+                    for (const auto &f : detectedInputGraph.fusions) {
+                        if ((f.ring1 == ringIdx && f.ring2 == treeParent) ||
+                            (f.ring1 == treeParent && f.ring2 == ringIdx)) {
+                            // Get the shared atoms (using graph indices from detectedInputGraph)
+                            for (int a : detectedInputGraph.ringAtoms[ringIdx]) {
+                                if (detectedInputGraph.ringAtoms[treeParent].count(a)) {
+                                    fusionAtoms.push_back(a);
+                                }
+                            }
+                            break;
+                        }
+                    }
+                    
+                    if (fusionAtoms.size() != 2) {
+                        // Expected 2 fusion atoms for ortho-fused rings
+                        continue;
+                    }
+                    
+                    // Get peripheral locants for these fusion atoms
+                    QString loc1 = periphNum.count(fusionAtoms[0]) ? periphNum.at(fusionAtoms[0]) : "";
+                    QString loc2 = periphNum.count(fusionAtoms[1]) ? periphNum.at(fusionAtoms[1]) : "";
+
+                    // Determine side letter
+                    // The peripheral numbering gives global locants. We need ring-local positions.
+                    // For a 6-membered ring, we need to determine which two positions (in the ring's local numbering)
+                    // the fusion atoms are at, then determine the bond between them.
+
+                    // P-25.3.1.3 / P-25.3.8.1-2: a letter side descriptor (a,b,c...) is only
+                    // meaningful for fusion directly to the actual PARENT component -- the
+                    // parent alone has a fixed, conventional numbering that letters refer to.
+                    // Fusion of a component to any OTHER attached component (second-order or
+                    // higher) instead cites numeric peripheral locants of the host ring being
+                    // fused into (P-25.3.8.2 example: cyclopenta[4,5]pyrrolo[2,3-c]pyridine --
+                    // "[4,5]" are pyrrolo's own numbers, not a letter).
+                    bool fusedToTrueParent = (treeParent == parentRing);
+
+                    char sideLetter = '?';
+                    if (fusedToTrueParent) {
+                        // buildCycle starts at an arbitrary atom (lowest raw index) and an
+                        // arbitrary direction, neither tied to the parent's own conventional
+                        // numbering. The parent's real numbering fixes a heteroatom at position 1
+                        // (e.g. pyridine's N); rotate a local copy of its cycle to match. Winding
+                        // direction is still free (a symmetric ring like pyridine has no reason to
+                        // prefer one), so try both and keep whichever gives the LOWER side letter
+                        // (lowest-locants convention) -- this is what makes "b" (locants 2,3), not
+                        // its mirror-equivalent "e" (locants 5,6), come out for a fusion bond one
+                        // step from N, matching quinoline's own confirmed C2-C3 precedent.
+                        std::vector<int> parentCycle = cyclesN_d[treeParent];
+                        if (rHeteroN_d[treeParent].size() == 1) {
+                            auto heteroIt = std::find(parentCycle.begin(), parentCycle.end(), rHeteroN_d[treeParent][0]);
+                            if (heteroIt != parentCycle.end()) {
+                                std::rotate(parentCycle.begin(), heteroIt, parentCycle.end());
+                            }
+                        }
+
+                        auto letterForCycle = [&](const std::vector<int> &cyc) -> char {
+                            int pos0 = -1, pos1 = -1;
+                            for (int i = 0; i < static_cast<int>(cyc.size()); ++i) {
+                                if (cyc[i] == fusionAtoms[0]) pos0 = i;
+                                if (cyc[i] == fusionAtoms[1]) pos1 = i;
+                            }
+                            if (pos0 == -1 || pos1 == -1) return '?';
+                            int p0 = pos0, p1 = pos1;
+                            if (p0 > p1) std::swap(p0, p1);
+                            int diff = p1 - p0;
+                            if (diff == 1) {
+                                return getSideLetter(p0 + 1, p1 + 1);
+                            } else if (diff == static_cast<int>(cyc.size()) - 1) {
+                                return getSideLetter(static_cast<int>(cyc.size()), 1);
+                            }
+                            return '?';
+                        };
+
+                        std::vector<int> reversedCycle = parentCycle;
+                        if (reversedCycle.size() > 1) {
+                            std::reverse(reversedCycle.begin() + 1, reversedCycle.end());
+                        }
+
+                        char letterForward = letterForCycle(parentCycle);
+                        char letterReversed = letterForCycle(reversedCycle);
+                        if (letterForward != '?' && (letterReversed == '?' || letterForward <= letterReversed)) {
+                            sideLetter = letterForward;
+                        } else if (letterReversed != '?') {
+                            sideLetter = letterReversed;
+                        } else {
+                            sideLetter = getSideLetterFromLocants(loc1, loc2);
+                        }
+                    }
+
+                    // Get ring type and prefix. getFusionPrefix (this mechanism's
+                    // own local lambda) has no case for GENERAL_HETEROCYCLE -- same
+                    // reasoning as the parent base name above, but this ring is an
+                    // ATTACHED component, so P-25.3.1.3's "e"->"o" transform applies.
+                    RingType rt = typesN_d[ringIdx];
+                    QString prefix, prefixSortKey;
+                    if (rt == RingType::GENERAL_HETEROCYCLE) {
+                        QString bareName = buildCanonicalGeneralHeterocycleName(g, cyclesN_d[ringIdx], rHeteroN_d[ringIdx]);
+                        prefix = toFusionPrefixBracketed(bareName);
+                        prefixSortKey = alphabetizationKey(toFusionPrefix(bareName));
+                    } else {
+                        prefix = getFusionPrefix(rt);
+                        prefixSortKey = alphabetizationKey(prefix);
+                    }
+
+                    if (prefix.isEmpty()) {
+                        return {RingSystemNameResult{false, QString("Ring type not supported for attached component at level %1.").arg(level).toStdString().c_str(), "", {}}};
+                    }
+
+                    bool locantOmittable = isPlainSymmetricHydrocarbon(rt);
+                    QString locantStr;
+
+                    if (fusedToTrueParent) {
+                        // P-25.3.8.1: the attached component's OWN numbering is omitted for a
+                        // plain symmetric monocyclic hydrocarbon, but the letter bracket itself
+                        // (referring to the PARENT's own side) is always cited.
+                        locantStr = QString("[%1]").arg(sideLetter);
+                    } else {
+                        // Fusion to a non-parent attached component: cite the numeric peripheral
+                        // locants of the host ring at the fusion bond (lowest-first).
+                        if (!locantOmittable) {
+                            return {RingSystemNameResult{false, QString("Fusion of a non-hydrocarbon component to another attached component (level %1) is not yet supported.").arg(level).toStdString().c_str(), "", {}}};
+                        }
+                        auto locantKey = [](const QString &s) -> std::pair<int, QString> {
+                            int i = 0;
+                            QString num;
+                            for (; i < s.size() && s[i].isDigit(); ++i) num += s[i];
+                            return {num.isEmpty() ? -1 : num.toInt(), s.mid(i)};
+                        };
+                        QString a = loc1, b = loc2;
+                        if (locantKey(b) < locantKey(a)) std::swap(a, b);
+                        locantStr = QString("[%1,%2]").arg(a, b);
+                    }
+
+                    levelComponents[level].push_back({prefix, prefixSortKey, locantStr, locantOmittable, rt});
+                }
+            }
+            
+            // Now we have components organized by level
+            // Build the name from outermost to innermost (reverse level order)
+            // Per IUPAC P-25.3.1.2: attached components are cited in order of increasing complexity/decreasing seniority
+            // For same-level components, we need to handle grouping
+            
+            // Start with outermost level and work inward
+            QStringList nameParts;
+            
+            // We need to handle this carefully for branching
+            // For the ground truth case (dibenzo[c,e]benzo[b]pyridine):
+            // - Level 2: two benzene leaves attached to central benzene -> dibenzo[c,e]
+            // - Level 1: one benzene (central) attached to parent pyridine -> benzo[b]
+            // - Level 0: parent pyridine -> pyridine
+            
+            // Strategy: process levels from highest to lowest
+            // For each level, group identical components with multiplying prefix
+            
+            for (int level = maxLevel; level >= 1; --level) {
+                if (levelComponents[level].empty()) {
+                    continue;
+                }
+                
+                // Group components at this level by their real prefix word, keyed and
+                // thus citation-ordered by sortKey (not the raw display `prefix` text --
+                // a GENERAL_HETEROCYCLE prefix can start with "[", which would sort
+                // before every letter-led prefix in plain QString comparison, same class
+                // of bug the chain mechanism's own Block::sortKey fixes).
+                std::map<QString, std::vector<AttachedComponent>> groupedComponents;
+                for (const auto &comp : levelComponents[level]) {
+                    groupedComponents[comp.sortKey].push_back(comp);
+                }
+
+                // Build component string for this level
+                QStringList levelParts;
+
+                for (const auto &group : groupedComponents) {
+                    const QString &prefix = group.second.front().prefix;
+                    const auto &comps = group.second;
+                    
+                    if (comps.size() == 1) {
+                        // Single component: prefix + bracket always cited (P-25.3.8.1: only the
+                        // component's own numbering is omittable, never the bracket itself).
+                        levelParts.append(prefix + comps[0].locant);
+                    } else {
+                        // Multiple identical components: use multiplying prefix, combine locants.
+                        // Level 1 (fused to the true parent): each locant is a single letter,
+                        // e.g. dibenzo[c,e] -- comma-joined inside one bracket.
+                        // Level >=2 (fused to a non-parent attached component): each locant is
+                        // already a sorted numeric pair, e.g. "8a,12a" -- separate components'
+                        // pairs are colon-joined, per the general P-25.3.8.3 multi-locant-set
+                        // convention (e.g. furo[3,4:5,6]pyrazino[2,3-c]pyridazine).
+                        QStringList contents;
+                        for (const auto &c : comps) {
+                            QString locant = c.locant;
+                            if (locant.startsWith('[') && locant.endsWith(']')) {
+                                contents.append(locant.mid(1, locant.size() - 2));
+                            } else {
+                                contents.append(locant);
+                            }
+                        }
+
+                        QString combinedLocant;
+                        if (level == 1) {
+                            std::sort(contents.begin(), contents.end());
+                            combinedLocant = "[" + contents.join(",") + "]";
+                        } else {
+                            std::sort(contents.begin(), contents.end());
+                            combinedLocant = "[" + contents.join(":") + "]";
+                        }
+
+                        levelParts.append(multiPrefix(comps.size()) + prefix + combinedLocant);
+                    }
+                }
+                
+                // Sort level parts alphabetically (for consistent ordering)
+                std::sort(levelParts.begin(), levelParts.end());
+                
+                // Join level parts with nothing (they're already in the right format)
+                // But we need to prefix with the multiplying prefix if there are multiple
+                // Actually, we already did that per-group above
+                
+                // Add to name parts. The outer loop already runs from maxLevel down to 1,
+                // i.e. outermost (highest-order) attached components first -- exactly the
+                // citation order P-25.3.2 requires (each second-order component cited in
+                // front of the first-order component it's fused to) -- so appending here
+                // preserves that order; prepending would reverse it.
+                for (const QString &part : levelParts) {
+                    nameParts.append(part);
+                }
+            }
+            
+            // Finally, add the parent name
+            nameParts.append(parentBaseName);
+            
+            // Join all parts
+            QString resultName = nameParts.join("");
+            
+            // Handle substituents for branching case: build prefix string
+            if (!collectedSubstituents.empty()) {
+                // Build bridgehead set: any atom that is a member of 2+ rings
+                std::set<int> bheads;
+                for (int node : allSystemNodesUnion) {
+                    int ringCount = 0;
+                    for (const auto &ringNodes : nodesN_d) {
+                        if (ringNodes.count(node)) ringCount++;
+                    }
+                    if (ringCount >= 2) {
+                        bheads.insert(node);
+                    }
+                }
+                // Collect substituent-bearing nodes
+                std::set<int> substituentBearingNodes;
+                for (const auto &sub : collectedSubstituents) {
+                    substituentBearingNodes.insert(sub.first);
+                }
+                // Compute peripheral numbering with substituent set
+                std::map<int, QString> periphMapWithSubs = computePeripheralNumberingGeneral(g, detectedInputGraph, substituentBearingNodes);
+                
+                // Build named substituents with locants
+                std::vector<std::pair<QString, QString>> namedSubstituents;
+                for (const auto &sub : collectedSubstituents) {
+                    int ringNode = sub.first;
+                    QString subName = sub.second;
+                    if (!periphMapWithSubs.count(ringNode)) {
+                        return {RingSystemNameResult{false, "Failed to compute peripheral locant for substituent.", "", {}}};
+                    }
+                    QString locStr = periphMapWithSubs[ringNode];
+                    // Reject letter-suffixed locants (bridgehead atoms)
+                    bool okInt = false;
+                    locStr.toInt(&okInt);
+                    if (!okInt) {
+                        return {RingSystemNameResult{false, "Substituents on bridgehead atoms of fused ring systems are not yet supported.", "", {}}};
+                    }
+                    namedSubstituents.push_back({subName, locStr});
+                }
+                
+                // Build prefix string: group by substituent name, alphabetize
+                std::map<QString, std::vector<QString>> prefixLocantsMap;
+                for (const auto &ns : namedSubstituents) {
+                    prefixLocantsMap[ns.first].push_back(ns.second);
+                }
+                
+                struct PrefixGroup {
+                    QString baseName;
+                    QString formattedStr;
+                };
+                std::vector<PrefixGroup> pGroups;
+                for (auto it = prefixLocantsMap.begin(); it != prefixLocantsMap.end(); ++it) {
+                    QString pName = it->first;
+                    std::vector<QString> locs = it->second;
+                    std::sort(locs.begin(), locs.end());
+                    
+                    QStringList locStrs;
+                    for (const QString &l : locs) locStrs.append(l);
+                    
+                    QString pStr = locStrs.join(",");
+                    if (locs.size() > 1) {
+                        pStr += "-" + multiPrefix(static_cast<int>(locs.size())) + pName;
+                    } else {
+                        pStr += "-" + pName;
+                    }
+                    
+                    PrefixGroup pg;
+                    pg.baseName = alphabetizationKey(pName);
+                    pg.formattedStr = pStr;
+                    pGroups.push_back(pg);
+                }
+                
+                std::sort(pGroups.begin(), pGroups.end(), [](const PrefixGroup &a, const PrefixGroup &b) {
+                    return a.baseName.toLower() < b.baseName.toLower();
+                });
+                
+                QString prefixPart;
+                if (!pGroups.empty()) {
+                    QStringList pStrs;
+                    for (const auto &pg : pGroups) pStrs.append(pg.formattedStr);
+                    prefixPart = pStrs.join("-");
+                }
+                
+                if (!prefixPart.isEmpty()) {
+                    // See the equivalent fix in Phase 31 / the chain mechanism.
+                    QString sep = (!resultName.isEmpty() && resultName[0].isDigit()) ? "-" : "";
+                    resultName = prefixPart + sep + resultName;
+                }
+            }
+            
+            // Handle special case: if parent is pyridine and we have benzo[b]pyridine pattern
+            // This is the quinoline case, and the name should just be the combination
+            // Our algorithm should naturally produce: benzo[b]pyridine for first-order attachment
+            
+            // Return single-element vector: today's existing single-best-answer
+            // behavior. True multi-candidate exploration (calling computeAllPreferredOrientations
+            // directly instead of computePreferredOrientation, to get the full tied-orientation
+            // set for Task 4's attachment-locant tie-break) is deferred until nameRingSystemAsSubstituent
+            // (Task 4) actually needs it.
+            return {RingSystemNameResult{true, "", resultName, {}}};
+        } else {
+            // validFusion is false or hasBranching is false: this doesn't apply at all
+            // Return the "no match" sentinel for the call site to recognize as "fall through"
+            return {RingSystemNameResult{false, "Branching fusion: no match", "", {}}};
+        }
+    } else {
+        // allDisjoint is true: this doesn't apply at all
+        // Return the "no match" sentinel for the call site to recognize as "fall through"
+        return {RingSystemNameResult{false, "Branching fusion: no match", "", {}}};
+    }
 }
 
 
@@ -18550,760 +19414,20 @@ IupacResult IupacNamer::generateName(int mol) {
                 return {false, "", "Linear chain: unexpected fallthrough"};
             }
             else if (validFusion && hasBranching) { // Branching case: valid ortho-fusion but at least one ring has degree > 2
-                // Call detectFusedRingDirections to get proper orientation
-                FusedRingSystemInput detectedInput = detectFusedRingDirections(mol);
-                if (detectedInput.ringSizes.empty()) {
-                    // detectFusedRingDirections only handles 6-membered rings
-                    // Fall through to the standard rejection for non-6-membered systems
-                    return {false, "", "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."};
+                std::vector<RingSystemNameResult> branchResults = nameBranchingFusion(g, mol, indigoToGraphIdx, ringCount);
+                if (!branchResults.empty() && branchResults[0].error != "Branching fusion: no match" && !branchResults[0].success) {
+                    return {false, "", branchResults[0].error};
                 }
-                
-                // Convert ringAtoms from indigo indices to graph indices for consistency with g
-                FusedRingSystemInput detectedInputGraph = detectedInput;
-                for (auto &ring : detectedInputGraph.ringAtoms) {
-                    std::set<int> converted;
-                    for (int idx : ring) {
-                        if (indigoToGraphIdx.count(idx)) {
-                            converted.insert(indigoToGraphIdx[idx]);
-                        }
-                    }
-                    ring = converted;
+                if (!branchResults.empty() && branchResults[0].success) {
+                    // The extracted function already bakes any exocyclic
+                    // substituents, indicated-hydrogen prefixes, and the
+                    // branching-specific special cases directly into baseName --
+                    // so there is no separate tail step needed here.
+                    return {true, branchResults[0].baseName, ""};
                 }
-                
-                // Use the detected input which has proper directions
-                FusedRingOrientationResult orientation = computePreferredOrientation(detectedInputGraph);
-                if (!orientation.success) {
-                    return {false, "", orientation.error.c_str()};
-                }
-                
-                // Compute peripheral numbering
-                std::map<int, QString> periphNum = computePeripheralNumberingGeneral(g, detectedInputGraph);
-                if (periphNum.empty()) {
-                    return {false, "", "Failed to compute peripheral numbering for branching system."};
-                }
-                
-                int N_d = static_cast<int>(detectedInputGraph.ringAtoms.size());
-                
-                // Build nodesN, cyclesN, typesN, rHeteroN from detectedInputGraph
-                std::vector<std::set<int>> nodesN_d(N_d);
-                std::vector<std::vector<int>> cyclesN_d(N_d);
-                std::vector<RingType> typesN_d(N_d, RingType::BENZENE);
-                std::vector<std::vector<int>> rHeteroN_d(N_d);
-                
-                for (int i = 0; i < N_d; ++i) {
-                    nodesN_d[i] = detectedInputGraph.ringAtoms[i];
-                    
-                    // Build cycle from ring atoms
-                    auto buildCycle = [&](const std::set<int> &rNodes) -> std::vector<int> {
-                        int rSize = static_cast<int>(rNodes.size());
-                        std::vector<int> cycle;
-                        if (rNodes.empty()) return cycle;
-                        int startNode = *rNodes.begin();
-                        cycle.push_back(startNode);
-                        int current = startNode;
-                        int previous = -1;
-                        for (int step = 1; step < rSize; ++step) {
-                            int nextNode = -1;
-                            for (int nei : g.nodes[current].neighbors) {
-                                if (rNodes.count(nei) && nei != previous) {
-                                    if (step == rSize - 1) {
-                                        bool connectedToStart = false;
-                                        for (int startNei : g.nodes[nei].neighbors) {
-                                            if (startNei == startNode) { connectedToStart = true; break; }
-                                        }
-                                        if (!connectedToStart) continue;
-                                    }
-                                    nextNode = nei;
-                                    break;
-                                }
-                            }
-                            if (nextNode == -1) break;
-                            previous = current;
-                            current = nextNode;
-                            cycle.push_back(current);
-                        }
-                        if (static_cast<int>(cycle.size()) != rSize) return {};
-                        return cycle;
-                    };
-                    cyclesN_d[i] = buildCycle(nodesN_d[i]);
-                    
-                    // Classify ring type
-                    for (int n : nodesN_d[i]) {
-                        if (g.nodes[n].atomicNumber != 6) {
-                            rHeteroN_d[i].push_back(n);
-                        }
-                    }
-                    
-                    // Use the same classification as linear chain
-                    if (cyclesN_d[i].size() == nodesN_d[i].size()) {
-                        QString d1, d2;
-                        bool classOk = classifyMonocyclicHeteroRing(g, rHeteroN_d[i], static_cast<int>(nodesN_d[i].size()), cyclesN_d[i], typesN_d[i], d1, d2);
-                        if (!classOk) {
-                            return {false, "", "Failed to classify ring type in branching system."};
-                        }
-                    } else {
-                        return {false, "", "Failed to build cycle for ring in branching system."};
-                    }
-                }
-                
-                // Check all ring types are allowed. Non-6-membered rings
-                // (CYCLOPENTADIENE/CYCLOHEPTATRIENE and the 5 single-heteroatom
-                // 7-membered types) are deliberately excluded from the branching
-                // mechanism -- out of scope per this plan's own spec (not worth
-                // the engineering cost there), unlike the linear chain mechanism
-                // above, which does support them.
-                auto isAllowedType = [](RingType t) {
-                    return t == RingType::BENZENE || t == RingType::FURAN || t == RingType::THIOPHENE ||
-                           t == RingType::PYRIDINE || t == RingType::PYRIMIDINE ||
-                           t == RingType::PYRIDAZINE || t == RingType::PYRAZINE ||
-                           t == RingType::OXAZOLE || t == RingType::ISOXAZOLE ||
-                           t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE ||
-                           t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE ||
-                           t == RingType::PYRROLE || t == RingType::IMIDAZOLE ||
-                           t == RingType::PYRAZOLE || t == RingType::SELENOPHENE ||
-                           t == RingType::TELLUROPHENE || t == RingType::PHOSPHININE ||
-                           t == RingType::GENERAL_HETEROCYCLE;
-                };
-
-                for (int i = 0; i < N_d; ++i) {
-                    if (!isAllowedType(typesN_d[i])) {
-                        return {false, "", "Ring type not supported in branching system."};
-                    }
-                    // I5 fix: a GENERAL_HETEROCYCLE 6-ring with a sole O/S/Se/Te/Bi
-                    // heteroatom has no real Hantzsch-Widman name (P-22.2.2.1.1 --
-                    // the mandatory retained name "pyran" etc applies instead).
-                    if (typesN_d[i] == RingType::GENERAL_HETEROCYCLE &&
-                        isOxineAzineExcluded(g, rHeteroN_d[i], static_cast<int>(nodesN_d[i].size()))) {
-                        return {false, "", "Ring type not supported in branching system."};
-                    }
-                }
-
-                // Retained-name-collision guard (P-25.1 mandatory retained PINs): an
-                // all-carbocyclic branching topology can collide with a Blue Book name that
-                // has its own special numbering, rather than being named systematically.
-                // Heterocyclic branching systems can never collide with an all-carbocyclic
-                // retained name and proceed through the normal path below unaffected.
-                {
-                    bool allBenzeneBranching = true;
-                    for (int i = 0; i < N_d; ++i) {
-                        if (typesN_d[i] != RingType::BENZENE) { allBenzeneBranching = false; break; }
-                    }
-                    if (allBenzeneBranching) {
-                        std::vector<int> ringDegree(N_d, 0);
-                        for (const auto &f : detectedInputGraph.fusions) {
-                            ringDegree[f.ring1]++;
-                            ringDegree[f.ring2]++;
-                        }
-                        int degree3Count = 0, degree1Count = 0;
-                        for (int i = 0; i < N_d; ++i) {
-                            if (ringDegree[i] == 3) degree3Count++;
-                            else if (ringDegree[i] == 1) degree1Count++;
-                        }
-                        // Triphenylene: one central benzo ring fused to exactly 3 other benzo
-                        // rings (each a degree-1 leaf) on alternating sides.
-                        if (N_d == 4 && degree3Count == 1 && degree1Count == 3) {
-                            return {true, "triphenylene", ""};
-                        }
-                        return {false, "", "This all-carbocyclic branching ring system may require a retained name not yet recognized by this mechanism."};
-                    }
-                }
-
-                // STEP 2: Select parent component using compareRingSeniority
-                int parentRing = 0;
-                for (int i = 1; i < N_d; ++i) {
-                    int cmp = compareRingSeniority(g, nodesN_d[parentRing], nodesN_d[i]);
-                    if (cmp < 0) { // i has higher seniority
-                        parentRing = i;
-                    }
-                }
-                
-                // Build adjacency from detectedInputGraph.fusions
-                std::vector<std::vector<int>> fusionAdj(N_d);
-                for (const auto &f : detectedInputGraph.fusions) {
-                    fusionAdj[f.ring1].push_back(f.ring2);
-                    fusionAdj[f.ring2].push_back(f.ring1);
-                }
-                
-                // Check for substituents on any ring atom - classify and collect
-                std::set<int> allSystemNodesUnion;
-                for (const auto &ringNodes : nodesN_d) {
-                    allSystemNodesUnion.insert(ringNodes.begin(), ringNodes.end());
-                }
-                std::vector<std::pair<int, QString>> collectedSubstituents;
-                bool hasUnsupportedSubstituent = false;
-                
-                for (int i = 0; i < N_d; ++i) {
-                    for (int node : nodesN_d[i]) {
-                        const GraphNode &n = g.nodes[node];
-                        for (size_t j = 0; j < n.neighbors.size(); ++j) {
-                            int nei = n.neighbors[j];
-                            if (!allSystemNodesUnion.count(nei) && g.nodes[nei].atomicNumber != 1) {
-                                QString subName = simpleRingSubstituentName(g, node, nei, allSystemNodesUnion);
-                                if (subName.isEmpty()) {
-                                    hasUnsupportedSubstituent = true;
-                                } else {
-                                    collectedSubstituents.push_back({node, subName});
-                                }
-                            }
-                        }
-                    }
-                }
-                if (hasUnsupportedSubstituent) {
-                    return {false, "", "Substituents on branching fused ring systems are not yet supported."};
-                }
-                
-                // Helper functions
-                auto getBaseName = [](RingType t) -> QString {
-                    if (t == RingType::BENZENE) return "benzene";
-                    if (t == RingType::FURAN) return "furan";
-                    if (t == RingType::THIOPHENE) return "thiophene";
-                    if (t == RingType::SELENOPHENE) return "selenophene";
-                    if (t == RingType::TELLUROPHENE) return "tellurophene";
-                    if (t == RingType::PHOSPHININE) return "phosphinine";
-                    if (t == RingType::PYRIDINE) return "pyridine";
-                    if (t == RingType::PYRIMIDINE) return "pyrimidine";
-                    if (t == RingType::PYRIDAZINE) return "pyridazine";
-                    if (t == RingType::PYRAZINE) return "pyrazine";
-                    if (t == RingType::OXAZOLE) return "oxazole";
-                    if (t == RingType::ISOXAZOLE) return "isoxazole";
-                    if (t == RingType::THIAZOLE) return "thiazole";
-                    if (t == RingType::ISOTHIAZOLE) return "isothiazole";
-                    if (t == RingType::SELENAZOLE) return "selenazole";
-                    if (t == RingType::ISOSELENAZOLE) return "isoselenazole";
-                    if (t == RingType::PYRROLE) return "pyrrole";
-                    if (t == RingType::IMIDAZOLE) return "imidazole";
-                    if (t == RingType::PYRAZOLE) return "pyrazole";
-                    return "";
-                };
-                
-                // Get side letter from numeric locants
-                auto getSideLetter = [](int loc1, int loc2) -> char {
-                    // Normalize: ensure loc1 < loc2
-                    if (loc1 > loc2) std::swap(loc1, loc2);
-                    // Side letters for 6-membered rings: a=1-2, b=2-3, c=3-4, d=4-5, e=5-6, f=6-1
-                    if (loc1 == 1 && loc2 == 2) return 'a';
-                    if (loc1 == 2 && loc2 == 3) return 'b';
-                    if (loc1 == 3 && loc2 == 4) return 'c';
-                    if (loc1 == 4 && loc2 == 5) return 'd';
-                    if (loc1 == 5 && loc2 == 6) return 'e';
-                    if (loc1 == 6 && loc2 == 1) return 'f';
-                    return '?';
-                };
-                
-                // Get side letter from a pair of locant strings
-                auto getSideLetterFromLocants = [&getSideLetter](const QString& loc1, const QString& loc2) -> char {
-                    // Peripheral numbering for fusion atoms can have letter suffixes like "12a", "8b", etc.
-                    // The numeric part is the base locant, the letter is a suffix for fusion atoms.
-                    // We need to extract just the numeric part and use it with getSideLetter.
-                    
-                    // Extract numeric part from loc1 (strip trailing letters)
-                    QString num1;
-                    for (QChar c : loc1) {
-                        if (c.isDigit()) {
-                            num1 += c;
-                        } else {
-                            break; // Stop at first non-digit
-                        }
-                    }
-                    
-                    // Extract numeric part from loc2
-                    QString num2;
-                    for (QChar c : loc2) {
-                        if (c.isDigit()) {
-                            num2 += c;
-                        } else {
-                            break;
-                        }
-                    }
-                    
-                    if (num1.isEmpty() || num2.isEmpty()) {
-                        return '?';
-                    }
-                    
-                    bool ok1 = false, ok2 = false;
-                    int n1 = num1.toInt(&ok1);
-                    int n2 = num2.toInt(&ok2);
-                    if (!ok1 || !ok2) return '?';
-                    return getSideLetter(n1, n2);
-                };
-                
-                // Collect all fusion atom pairs between rings
-                std::map<std::pair<int, int>, std::vector<int>> fusionAtomsMap;
-                for (int i = 0; i < N; ++i) {
-                    for (int j = i + 1; j < N; ++j) {
-                        if (shared[i][j] == 2) {
-                            fusionAtomsMap[{i, j}] = sharedNodesPairs[i][j];
-                            fusionAtomsMap[{j, i}] = sharedNodesPairs[i][j];
-                        }
-                    }
-                }
-                
-                // REPLACE WITH REAL GENERAL ALGORITHM
-                // Walk the fusion tree from parent and build name components
-                
-                // Get fusion prefix for a ring type (reusing existing linear-chain logic)
-                auto getFusionPrefix = [](RingType t) -> QString {
-                    if (t == RingType::BENZENE) return "benzo";
-                    if (t == RingType::FURAN) return "furo";
-                    if (t == RingType::THIOPHENE) return "thieno";
-                    if (t == RingType::SELENOPHENE) return "selenolo";
-                    if (t == RingType::TELLUROPHENE) return "tellurolo";
-                    if (t == RingType::PHOSPHININE) return "phosphinino";
-                    if (t == RingType::PYRIDINE) return "pyrido";
-                    if (t == RingType::PYRIMIDINE) return "pyrimido";
-                    if (t == RingType::PYRIDAZINE) return "pyridazino";
-                    if (t == RingType::PYRAZINE) return "pyrazino";
-                    if (t == RingType::OXAZOLE) return "oxazolo";
-                    if (t == RingType::ISOXAZOLE) return "isoxazolo";
-                    if (t == RingType::THIAZOLE) return "thiazolo";
-                    if (t == RingType::ISOTHIAZOLE) return "isothiazolo";
-                    if (t == RingType::SELENAZOLE) return "selenazolo";
-                    if (t == RingType::ISOSELENAZOLE) return "isoselenazolo";
-                    if (t == RingType::PYRROLE) return "pyrrolo";
-                    if (t == RingType::IMIDAZOLE) return "imidazo";
-                    if (t == RingType::PYRAZOLE) return "pyrazolo";
-                    return "";
-                };
-                
-                // Check if a ring type is a plain symmetric monocyclic hydrocarbon (P-25.3.8.1: locants omitted)
-                auto isPlainSymmetricHydrocarbon = [](RingType t) -> bool {
-                    return t == RingType::BENZENE;
-                };
-                
-                // Get the base name for parent ring. getBaseName (this mechanism's
-                // own local lambda, separate from the chain mechanism's hwNameRoot-
-                // based approach) has no case for GENERAL_HETEROCYCLE since its real
-                // name depends on this specific ring's own heteroatom composition --
-                // build it directly from this ring's own cycle/heteroatom list,
-                // same as the base (unmodified) case needs no fusion-prefix transform.
-                QString parentBaseName = (typesN_d[parentRing] == RingType::GENERAL_HETEROCYCLE)
-                    ? buildCanonicalGeneralHeterocycleName(g, cyclesN_d[parentRing], rHeteroN_d[parentRing])
-                    : getBaseName(typesN_d[parentRing]);
-                if (parentBaseName.isEmpty()) {
-                    return {false, "", "Parent ring type not supported for branching system."};
-                }
-                
-                // Build the attached component tree and collect name fragments
-                // For each ring in the system (except parent), determine its relationship to parent
-                
-                // First, build a proper tree structure with parent at root
-                // We need to identify which rings are attached to which
-                // For now, handle the case where we have a parent and direct attached components
-                
-                // Separate rings into levels: first-order (attached to parent), second-order (attached to first-order), etc.
-                std::vector<std::vector<int>> levels;
-                levels.push_back({parentRing}); // Level 0: parent
-                
-                // BFS from parent to identify levels
-                std::vector<int> ringLevel(N_d, -1); // -1 = unassigned
-                ringLevel[parentRing] = 0;
-                std::vector<std::vector<int>> children(N_d); // children[i] = rings directly fused to i that are further from parent
-                
-                // Build tree: parent first, then its neighbors, then their neighbors
-                std::queue<int> q;
-                q.push(parentRing);
-                
-                while (!q.empty()) {
-                    int current = q.front();
-                    q.pop();
-                    
-                    for (int neighbor : fusionAdj[current]) {
-                        if (ringLevel[neighbor] == -1) {
-                            ringLevel[neighbor] = ringLevel[current] + 1;
-                            children[current].push_back(neighbor);
-                            q.push(neighbor);
-                            
-                            // Ensure we have enough levels
-                            if (ringLevel[neighbor] >= static_cast<int>(levels.size())) {
-                                levels.push_back({});
-                            }
-                            levels[ringLevel[neighbor]].push_back(neighbor);
-                        }
-                    }
-                }
-                
-                // Now process from outermost level inward (P-25.3.1.2: attached components are cited in order)
-                // For branching systems with multiple levels, we need to handle this carefully
-                
-                // For now, implement support for first-order and second-order attached components
-                // Third-order and beyond: reject with honest message
-                int maxLevel = 0;
-                for (int i = 0; i < N_d; ++i) {
-                    if (ringLevel[i] > maxLevel) {
-                        maxLevel = ringLevel[i];
-                    }
-                }
-                
-                if (maxLevel > 2) {
-                    return {false, "", "Branching fused ring systems with more than 2 levels of attachment are not yet supported."};
-                }
-                
-                // Collect name components at each level
-                // We'll build strings for each level, then combine them
-                // Per P-25.3.1.2.3: components at same level are grouped together
-                
-                struct AttachedComponent {
-                    QString prefix;  // display text, e.g., "benzo", "pyrido", "[1,2,3]triazolo"
-                    QString sortKey; // citation-order key per P-25.3.4.2.3: alphabetical by the
-                                     // prefix WORD itself, ignoring any bracketed/locant-prefixed
-                                     // run in front of it -- grouping+ordering below uses this, not
-                                     // `prefix` directly, since a GENERAL_HETEROCYCLE prefix can
-                                     // start with "[" (sorts before any letter in plain QString
-                                     // comparison, same class of bug the chain mechanism's own
-                                     // Block::sortKey fixes).
-                    QString locant;  // e.g., "[b]", "[c,e]" for multiple
-                    bool locantOmittable; // true for plain symmetric monocyclic hydrocarbons
-                    RingType ringType;
-                };
-                
-                std::vector<std::vector<AttachedComponent>> levelComponents(maxLevel + 1);
-                
-                // Process from outer levels inward
-                for (int level = maxLevel; level >= 1; --level) {
-                    for (int ringIdx : levels[level]) {
-                        // Get fusion atoms between this ring and its parent in the tree
-                        int treeParent = -1;
-                        for (int potentialParent : fusionAdj[ringIdx]) {
-                            if (ringLevel[potentialParent] == level - 1) {
-                                treeParent = potentialParent;
-                                break;
-                            }
-                        }
-                        
-                        if (treeParent == -1) {
-                            continue; // Shouldn't happen if tree is built correctly
-                        }
-                        
-                        // Find fusion atoms between ringIdx and treeParent
-                        std::vector<int> fusionAtoms;
-                        for (const auto &f : detectedInputGraph.fusions) {
-                            if ((f.ring1 == ringIdx && f.ring2 == treeParent) ||
-                                (f.ring1 == treeParent && f.ring2 == ringIdx)) {
-                                // Get the shared atoms (using graph indices from detectedInputGraph)
-                                for (int a : detectedInputGraph.ringAtoms[ringIdx]) {
-                                    if (detectedInputGraph.ringAtoms[treeParent].count(a)) {
-                                        fusionAtoms.push_back(a);
-                                    }
-                                }
-                                break;
-                            }
-                        }
-                        
-                        if (fusionAtoms.size() != 2) {
-                            // Expected 2 fusion atoms for ortho-fused rings
-                            continue;
-                        }
-                        
-                        // Get peripheral locants for these fusion atoms
-                        QString loc1 = periphNum.count(fusionAtoms[0]) ? periphNum.at(fusionAtoms[0]) : "";
-                        QString loc2 = periphNum.count(fusionAtoms[1]) ? periphNum.at(fusionAtoms[1]) : "";
-
-                        // Determine side letter
-                        // The peripheral numbering gives global locants. We need ring-local positions.
-                        // For a 6-membered ring, we need to determine which two positions (in the ring's local numbering)
-                        // the fusion atoms are at, then determine the bond between them.
-
-                        // P-25.3.1.3 / P-25.3.8.1-2: a letter side descriptor (a,b,c...) is only
-                        // meaningful for fusion directly to the actual PARENT component -- the
-                        // parent alone has a fixed, conventional numbering that letters refer to.
-                        // Fusion of a component to any OTHER attached component (second-order or
-                        // higher) instead cites numeric peripheral locants of the host ring being
-                        // fused into (P-25.3.8.2 example: cyclopenta[4,5]pyrrolo[2,3-c]pyridine --
-                        // "[4,5]" are pyrrolo's own numbers, not a letter).
-                        bool fusedToTrueParent = (treeParent == parentRing);
-
-                        char sideLetter = '?';
-                        if (fusedToTrueParent) {
-                            // buildCycle starts at an arbitrary atom (lowest raw index) and an
-                            // arbitrary direction, neither tied to the parent's own conventional
-                            // numbering. The parent's real numbering fixes a heteroatom at position 1
-                            // (e.g. pyridine's N); rotate a local copy of its cycle to match. Winding
-                            // direction is still free (a symmetric ring like pyridine has no reason to
-                            // prefer one), so try both and keep whichever gives the LOWER side letter
-                            // (lowest-locants convention) -- this is what makes "b" (locants 2,3), not
-                            // its mirror-equivalent "e" (locants 5,6), come out for a fusion bond one
-                            // step from N, matching quinoline's own confirmed C2-C3 precedent.
-                            std::vector<int> parentCycle = cyclesN_d[treeParent];
-                            if (rHeteroN_d[treeParent].size() == 1) {
-                                auto heteroIt = std::find(parentCycle.begin(), parentCycle.end(), rHeteroN_d[treeParent][0]);
-                                if (heteroIt != parentCycle.end()) {
-                                    std::rotate(parentCycle.begin(), heteroIt, parentCycle.end());
-                                }
-                            }
-
-                            auto letterForCycle = [&](const std::vector<int> &cyc) -> char {
-                                int pos0 = -1, pos1 = -1;
-                                for (int i = 0; i < static_cast<int>(cyc.size()); ++i) {
-                                    if (cyc[i] == fusionAtoms[0]) pos0 = i;
-                                    if (cyc[i] == fusionAtoms[1]) pos1 = i;
-                                }
-                                if (pos0 == -1 || pos1 == -1) return '?';
-                                int p0 = pos0, p1 = pos1;
-                                if (p0 > p1) std::swap(p0, p1);
-                                int diff = p1 - p0;
-                                if (diff == 1) {
-                                    return getSideLetter(p0 + 1, p1 + 1);
-                                } else if (diff == static_cast<int>(cyc.size()) - 1) {
-                                    return getSideLetter(static_cast<int>(cyc.size()), 1);
-                                }
-                                return '?';
-                            };
-
-                            std::vector<int> reversedCycle = parentCycle;
-                            if (reversedCycle.size() > 1) {
-                                std::reverse(reversedCycle.begin() + 1, reversedCycle.end());
-                            }
-
-                            char letterForward = letterForCycle(parentCycle);
-                            char letterReversed = letterForCycle(reversedCycle);
-                            if (letterForward != '?' && (letterReversed == '?' || letterForward <= letterReversed)) {
-                                sideLetter = letterForward;
-                            } else if (letterReversed != '?') {
-                                sideLetter = letterReversed;
-                            } else {
-                                sideLetter = getSideLetterFromLocants(loc1, loc2);
-                            }
-                        }
-
-                        // Get ring type and prefix. getFusionPrefix (this mechanism's
-                        // own local lambda) has no case for GENERAL_HETEROCYCLE -- same
-                        // reasoning as the parent base name above, but this ring is an
-                        // ATTACHED component, so P-25.3.1.3's "e"->"o" transform applies.
-                        RingType rt = typesN_d[ringIdx];
-                        QString prefix, prefixSortKey;
-                        if (rt == RingType::GENERAL_HETEROCYCLE) {
-                            QString bareName = buildCanonicalGeneralHeterocycleName(g, cyclesN_d[ringIdx], rHeteroN_d[ringIdx]);
-                            prefix = toFusionPrefixBracketed(bareName);
-                            prefixSortKey = alphabetizationKey(toFusionPrefix(bareName));
-                        } else {
-                            prefix = getFusionPrefix(rt);
-                            prefixSortKey = alphabetizationKey(prefix);
-                        }
-
-                        if (prefix.isEmpty()) {
-                            return {false, "", QString("Ring type not supported for attached component at level %1.").arg(level).toStdString().c_str()};
-                        }
-
-                        bool locantOmittable = isPlainSymmetricHydrocarbon(rt);
-                        QString locantStr;
-
-                        if (fusedToTrueParent) {
-                            // P-25.3.8.1: the attached component's OWN numbering is omitted for a
-                            // plain symmetric monocyclic hydrocarbon, but the letter bracket itself
-                            // (referring to the PARENT's own side) is always cited.
-                            locantStr = QString("[%1]").arg(sideLetter);
-                        } else {
-                            // Fusion to a non-parent attached component: cite the numeric peripheral
-                            // locants of the host ring at the fusion bond (lowest-first).
-                            if (!locantOmittable) {
-                                return {false, "", QString("Fusion of a non-hydrocarbon component to another attached component (level %1) is not yet supported.").arg(level).toStdString().c_str()};
-                            }
-                            auto locantKey = [](const QString &s) -> std::pair<int, QString> {
-                                int i = 0;
-                                QString num;
-                                for (; i < s.size() && s[i].isDigit(); ++i) num += s[i];
-                                return {num.isEmpty() ? -1 : num.toInt(), s.mid(i)};
-                            };
-                            QString a = loc1, b = loc2;
-                            if (locantKey(b) < locantKey(a)) std::swap(a, b);
-                            locantStr = QString("[%1,%2]").arg(a, b);
-                        }
-
-                        levelComponents[level].push_back({prefix, prefixSortKey, locantStr, locantOmittable, rt});
-                    }
-                }
-                
-                // Now we have components organized by level
-                // Build the name from outermost to innermost (reverse level order)
-                // Per IUPAC P-25.3.1.2: attached components are cited in order of increasing complexity/decreasing seniority
-                // For same-level components, we need to handle grouping
-                
-                // Start with outermost level and work inward
-                QStringList nameParts;
-                
-                // We need to handle this carefully for branching
-                // For the ground truth case (dibenzo[c,e]benzo[b]pyridine):
-                // - Level 2: two benzene leaves attached to central benzene -> dibenzo[c,e]
-                // - Level 1: one benzene (central) attached to parent pyridine -> benzo[b]
-                // - Level 0: parent pyridine -> pyridine
-                
-                // Strategy: process levels from highest to lowest
-                // For each level, group identical components with multiplying prefix
-                
-                for (int level = maxLevel; level >= 1; --level) {
-                    if (levelComponents[level].empty()) {
-                        continue;
-                    }
-                    
-                    // Group components at this level by their real prefix word, keyed and
-                    // thus citation-ordered by sortKey (not the raw display `prefix` text --
-                    // a GENERAL_HETEROCYCLE prefix can start with "[", which would sort
-                    // before every letter-led prefix in plain QString comparison, same class
-                    // of bug the chain mechanism's own Block::sortKey fixes).
-                    std::map<QString, std::vector<AttachedComponent>> groupedComponents;
-                    for (const auto &comp : levelComponents[level]) {
-                        groupedComponents[comp.sortKey].push_back(comp);
-                    }
-
-                    // Build component string for this level
-                    QStringList levelParts;
-
-                    for (const auto &group : groupedComponents) {
-                        const QString &prefix = group.second.front().prefix;
-                        const auto &comps = group.second;
-                        
-                        if (comps.size() == 1) {
-                            // Single component: prefix + bracket always cited (P-25.3.8.1: only the
-                            // component's own numbering is omittable, never the bracket itself).
-                            levelParts.append(prefix + comps[0].locant);
-                        } else {
-                            // Multiple identical components: use multiplying prefix, combine locants.
-                            // Level 1 (fused to the true parent): each locant is a single letter,
-                            // e.g. dibenzo[c,e] -- comma-joined inside one bracket.
-                            // Level >=2 (fused to a non-parent attached component): each locant is
-                            // already a sorted numeric pair, e.g. "8a,12a" -- separate components'
-                            // pairs are colon-joined, per the general P-25.3.8.3 multi-locant-set
-                            // convention (e.g. furo[3,4:5,6]pyrazino[2,3-c]pyridazine).
-                            QStringList contents;
-                            for (const auto &c : comps) {
-                                QString locant = c.locant;
-                                if (locant.startsWith('[') && locant.endsWith(']')) {
-                                    contents.append(locant.mid(1, locant.size() - 2));
-                                } else {
-                                    contents.append(locant);
-                                }
-                            }
-
-                            QString combinedLocant;
-                            if (level == 1) {
-                                std::sort(contents.begin(), contents.end());
-                                combinedLocant = "[" + contents.join(",") + "]";
-                            } else {
-                                std::sort(contents.begin(), contents.end());
-                                combinedLocant = "[" + contents.join(":") + "]";
-                            }
-
-                            levelParts.append(multiPrefix(comps.size()) + prefix + combinedLocant);
-                        }
-                    }
-                    
-                    // Sort level parts alphabetically (for consistent ordering)
-                    std::sort(levelParts.begin(), levelParts.end());
-                    
-                    // Join level parts with nothing (they're already in the right format)
-                    // But we need to prefix with the multiplying prefix if there are multiple
-                    // Actually, we already did that per-group above
-                    
-                    // Add to name parts. The outer loop already runs from maxLevel down to 1,
-                    // i.e. outermost (highest-order) attached components first -- exactly the
-                    // citation order P-25.3.2 requires (each second-order component cited in
-                    // front of the first-order component it's fused to) -- so appending here
-                    // preserves that order; prepending would reverse it.
-                    for (const QString &part : levelParts) {
-                        nameParts.append(part);
-                    }
-                }
-                
-                // Finally, add the parent name
-                nameParts.append(parentBaseName);
-                
-                // Join all parts
-                QString resultName = nameParts.join("");
-                
-                // Handle substituents for branching case: build prefix string
-                if (!collectedSubstituents.empty()) {
-                    // Build bridgehead set: any atom that is a member of 2+ rings
-                    std::set<int> bheads;
-                    for (int node : allSystemNodesUnion) {
-                        int ringCount = 0;
-                        for (const auto &ringNodes : nodesN_d) {
-                            if (ringNodes.count(node)) ringCount++;
-                        }
-                        if (ringCount >= 2) {
-                            bheads.insert(node);
-                        }
-                    }
-                    // Collect substituent-bearing nodes
-                    std::set<int> substituentBearingNodes;
-                    for (const auto &sub : collectedSubstituents) {
-                        substituentBearingNodes.insert(sub.first);
-                    }
-                    // Compute peripheral numbering with substituent set
-                    std::map<int, QString> periphMapWithSubs = computePeripheralNumberingGeneral(g, detectedInputGraph, substituentBearingNodes);
-                    
-                    // Build named substituents with locants
-                    std::vector<std::pair<QString, QString>> namedSubstituents;
-                    for (const auto &sub : collectedSubstituents) {
-                        int ringNode = sub.first;
-                        QString subName = sub.second;
-                        if (!periphMapWithSubs.count(ringNode)) {
-                            return {false, "", "Failed to compute peripheral locant for substituent."};
-                        }
-                        QString locStr = periphMapWithSubs[ringNode];
-                        // Reject letter-suffixed locants (bridgehead atoms)
-                        bool okInt = false;
-                        locStr.toInt(&okInt);
-                        if (!okInt) {
-                            return {false, "", "Substituents on bridgehead atoms of fused ring systems are not yet supported."};
-                        }
-                        namedSubstituents.push_back({subName, locStr});
-                    }
-                    
-                    // Build prefix string: group by substituent name, alphabetize
-                    std::map<QString, std::vector<QString>> prefixLocantsMap;
-                    for (const auto &ns : namedSubstituents) {
-                        prefixLocantsMap[ns.first].push_back(ns.second);
-                    }
-                    
-                    struct PrefixGroup {
-                        QString baseName;
-                        QString formattedStr;
-                    };
-                    std::vector<PrefixGroup> pGroups;
-                    for (auto it = prefixLocantsMap.begin(); it != prefixLocantsMap.end(); ++it) {
-                        QString pName = it->first;
-                        std::vector<QString> locs = it->second;
-                        std::sort(locs.begin(), locs.end());
-                        
-                        QStringList locStrs;
-                        for (const QString &l : locs) locStrs.append(l);
-                        
-                        QString pStr = locStrs.join(",");
-                        if (locs.size() > 1) {
-                            pStr += "-" + multiPrefix(static_cast<int>(locs.size())) + pName;
-                        } else {
-                            pStr += "-" + pName;
-                        }
-                        
-                        PrefixGroup pg;
-                        pg.baseName = alphabetizationKey(pName);
-                        pg.formattedStr = pStr;
-                        pGroups.push_back(pg);
-                    }
-                    
-                    std::sort(pGroups.begin(), pGroups.end(), [](const PrefixGroup &a, const PrefixGroup &b) {
-                        return a.baseName.toLower() < b.baseName.toLower();
-                    });
-                    
-                    QString prefixPart;
-                    if (!pGroups.empty()) {
-                        QStringList pStrs;
-                        for (const auto &pg : pGroups) pStrs.append(pg.formattedStr);
-                        prefixPart = pStrs.join("-");
-                    }
-                    
-                    if (!prefixPart.isEmpty()) {
-                        // See the equivalent fix in Phase 31 / the chain mechanism.
-                        QString sep = (!resultName.isEmpty() && resultName[0].isDigit()) ? "-" : "";
-                        resultName = prefixPart + sep + resultName;
-                    }
-                }
-                
-                // Handle special case: if parent is pyridine and we have benzo[b]pyridine pattern
-                // This is the quinoline case, and the name should just be the combination
-                // Our algorithm should naturally produce: benzo[b]pyridine for first-order attachment
-                
-                return {true, resultName, ""};
+                // Both success and "no match" are handled above; reaching
+                // here means a logic error in nameBranchingFusion itself.
+                return {false, "", "Branching fusion: unexpected fallthrough"};
             }
         } else {
             // allDisjoint == true: handle disjoint rings
