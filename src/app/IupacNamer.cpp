@@ -2552,9 +2552,71 @@ QString nameRingSystemAsSubstituent(
         }
     }
 
+    // Naphthalene (a mandatory IUPAC retained name) is deliberately out of
+    // scope for all three systematic-fusion mechanisms above -- Phase 31
+    // requires a heteroatom, and linear-chain/branching both explicitly
+    // reject all-carbocyclic systems (same reasoning as their own anthracene/
+    // phenanthrene rejections). It still needs its own real locant map here
+    // (not just a hardcoded "1 or 2" like the special case this replaces),
+    // reusing computePeripheralNumbering -- the same numbering helper
+    // namePhase31BenzoFusion itself relies on -- rather than reinventing
+    // perimeter-walking logic for this one retained name.
+    if (candidates.empty() && ringCount == 2 && fusedSystemRingIdx.size() == 2) {
+        auto it = fusedSystemRingIdx.begin();
+        const std::set<int> &ring1Nodes = allIndependentRings[*it];
+        const std::set<int> &ring2Nodes = allIndependentRings[*std::next(it)];
+        if (ring1Nodes.size() == 6 && ring2Nodes.size() == 6) {
+            std::vector<int> shared;
+            for (int n : ring1Nodes) if (ring2Nodes.count(n)) shared.push_back(n);
+            if (shared.size() == 2) {
+                int bhA = shared[0], bhB = shared[1];
+                bool bhBonded = false;
+                for (int nei : g.nodes[bhA].neighbors) if (nei == bhB) { bhBonded = true; break; }
+                if (bhBonded) {
+                    std::set<int> naphNodes = ring1Nodes;
+                    for (int n : ring2Nodes) naphNodes.insert(n);
+                    bool allCarbon = true;
+                    for (int n : naphNodes) {
+                        if (g.nodes[n].atomicNumber != 6) { allCarbon = false; break; }
+                    }
+                    bool allAromatic = true;
+                    for (const auto &gb : g.bonds) {
+                        if (naphNodes.count(gb.u) && naphNodes.count(gb.v)) {
+                            if (gb.order != 4) { allAromatic = false; break; }
+                        }
+                    }
+                    if (allCarbon && allAromatic && naphNodes.size() == 10) {
+                        // Naphthalene's D2h symmetry means the attachment atom's
+                        // own lowest locant depends on which of the 4 equivalent
+                        // "position 1" atoms the numbering happens to start from.
+                        // computePeripheralNumbering picks ONE fixed orientation;
+                        // swapping which ring is "first" and/or which bridgehead
+                        // is "first" generates the other 3 symmetry-equivalent
+                        // numberings, so Step 2's own lowest-locant selection
+                        // (already designed for exactly this kind of tie) can
+                        // pick whichever one gives rootAtom locant 1 or 2 instead
+                        // of 4 or 5.
+                        for (int swapRings = 0; swapRings < 2; ++swapRings) {
+                            for (int swapBh = 0; swapBh < 2; ++swapBh) {
+                                const std::set<int> &r1 = swapRings ? ring2Nodes : ring1Nodes;
+                                const std::set<int> &r2 = swapRings ? ring1Nodes : ring2Nodes;
+                                int b1 = swapBh ? bhB : bhA;
+                                int b2 = swapBh ? bhA : bhB;
+                                std::map<int, QString> locantMap = computePeripheralNumbering(g, r1, r2, b1, b2);
+                                if (!locantMap.empty()) {
+                                    candidates.push_back(RingSystemNameResult{true, "", "naphthalene", locantMap});
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     if (candidates.empty()) {
-        // None of the three mechanisms matched at all (every one returned
-        // its own "no match" sentinel) -- out of scope (peri-fused, bridged,
+        // None of the three mechanisms (nor the naphthalene retained-name
+        // check above) matched at all -- out of scope (peri-fused, bridged,
         // or something else not yet supported), matching nameBranchGraph's
         // existing contract for an unnameable substituent.
         return "";
@@ -2607,53 +2669,12 @@ QString nameBranchGraph(const Graph &g, int rootIdx, int parentIdx, const std::v
     if (forbiddenNodes.count(rootIdx)) return "";
 
     if (!allIndependentRings.empty()) {
-        for (size_t i = 0; i < allIndependentRings.size(); ++i) {
-            for (size_t j = i + 1; j < allIndependentRings.size(); ++j) {
-                const auto &r1 = allIndependentRings[i];
-                const auto &r2 = allIndependentRings[j];
-                if (r1.count(rootIdx) || r2.count(rootIdx)) {
-                    std::vector<int> shared;
-                    for (int n : r1) if (r2.count(n)) shared.push_back(n);
-                    if (shared.size() == 2 && r1.size() == 6 && r2.size() == 6) {
-                        int bhA = shared[0], bhB = shared[1];
-                        bool bhBonded = false;
-                        for (int nei : g.nodes[bhA].neighbors) if (nei == bhB) { bhBonded = true; break; }
-                        if (bhBonded) {
-                            std::set<int> naphNodes = r1;
-                            for (int n : r2) naphNodes.insert(n);
-                            // A ring-pair sharing exactly 2 bonded atoms is only naphthalene if
-                            // it's genuinely an all-carbon, fully aromatic 10-atom system -- the
-                            // same validation the properly-guarded ring-is-parent naphthalene
-                            // detector already applies elsewhere in this file. Without this check,
-                            // ANY ortho-fused bicyclic system reached as a substituent (a
-                            // benzothiazole, a penicillin's beta-lactam+thiazolidine core, a
-                            // chromenone) was wrongly labeled "naphthalen-1-yl"/"naphthalen-2-yl"
-                            // -- a real, confirmed bug (amoxicillin and warfarin's real structures
-                            // both hit this, producing garbled names that spuriously mention
-                            // "naphthalen" for ring systems that aren't naphthalene at all).
-                            bool allCarbon = true;
-                            for (int n : naphNodes) {
-                                if (g.nodes[n].atomicNumber != 6) { allCarbon = false; break; }
-                            }
-                            bool allAromatic = true;
-                            for (const auto &gb : g.bonds) {
-                                if (naphNodes.count(gb.u) && naphNodes.count(gb.v)) {
-                                    if (gb.order != 4) { allAromatic = false; break; }
-                                }
-                            }
-                            if (naphNodes.count(rootIdx) && allCarbon && allAromatic && naphNodes.size() == 10) {
-                                bool is1Type = false;
-                                for (int nei : g.nodes[rootIdx].neighbors) {
-                                    if (nei == bhA || nei == bhB) { is1Type = true; break; }
-                                }
-                                return is1Type ? "naphthalen-1-yl" : "naphthalen-2-yl";
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
+        // Naphthalene-as-substituent (along with every other fused/bridged
+        // ring system reached this way) is now handled generally by
+        // nameRingSystemAsSubstituent below, via the isFusedOrBridged check --
+        // it has its own retained-name case for naphthalene specifically,
+        // verified byte-identical against the hardcoded special case this
+        // replaced for every existing naphthalen-1-yl/naphthalen-2-yl test.
         for (const auto &rNodes : allIndependentRings) {
             if (rNodes.count(rootIdx)) {
                 bool isFusedOrBridged = false;
