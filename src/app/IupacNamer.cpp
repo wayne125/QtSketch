@@ -38,6 +38,13 @@ struct Graph {
     std::vector<GraphBond> bonds;
 };
 
+struct RingSystemNameResult {
+    bool success = false;
+    QString error;
+    QString baseName;
+    std::map<int, QString> locantMap;
+};
+
 std::map<int, QString> computePeripheralNumbering(
     const Graph &g,
     const std::set<int> &ring1Nodes,
@@ -68,6 +75,12 @@ std::map<int, QString> computePeripheralNumberingGeneral(
     const Graph &g,
     const FusedRingSystemInput &input,
     const std::set<int> &substituentBearingNodes = {});
+
+RingSystemNameResult namePhase31BenzoFusion(
+    const Graph &g,
+    int mol,
+    const std::map<int, int> &indigoToGraphIdx,
+    int ringCount);
 
 namespace {
 
@@ -4502,6 +4515,386 @@ BicyclicEvalResult evaluateBicyclicSystem(const Graph& g, const std::set<int>& r
 // or a nitrogen-rooted "R" (a hydrazine shape, -NH-NH2) -- R must be
 // carbon-rooted, matching the guard already proven necessary for the
 // secondary case.
+
+RingSystemNameResult namePhase31BenzoFusion(
+    const Graph &g,
+    int mol,
+    const std::map<int, int> &indigoToGraphIdx,
+    int ringCount) {
+    // --- Phase 31: Benzo-fused Heterobicyclic Ring Systems (ringCount == 2) ---
+    if (ringCount == 2) {
+        int sssrIter = indigoIterateSSSR(mol);
+        if (sssrIter >= 0) {
+            std::vector<std::set<int>> sssrRings;
+            int subMol = 0;
+            while ((subMol = indigoNext(sssrIter)) != 0) {
+                std::set<int> rAtoms;
+                int ringAtomIter = indigoIterateAtoms(subMol);
+                if (ringAtomIter >= 0) {
+                    int ringAtomHandle = 0;
+                    while ((ringAtomHandle = indigoNext(ringAtomIter)) != 0) {
+                        int idx = indigoIndex(ringAtomHandle);
+                        rAtoms.insert(idx);
+                        indigoFree(ringAtomHandle);
+                    }
+                    indigoFree(ringAtomIter);
+                }
+                sssrRings.push_back(rAtoms);
+                indigoFree(subMol);
+            }
+            indigoFree(sssrIter);
+
+            if (sssrRings.size() == 2) {
+                std::set<int> ring1Nodes, ring2Nodes;
+                for (int idx : sssrRings[0]) {
+                    if (indigoToGraphIdx.count(idx)) ring1Nodes.insert(indigoToGraphIdx.at(idx));
+                }
+                for (int idx : sssrRings[1]) {
+                    if (indigoToGraphIdx.count(idx)) ring2Nodes.insert(indigoToGraphIdx.at(idx));
+                }
+
+                std::vector<int> sharedNodes;
+                for (int n : ring1Nodes) {
+                    if (ring2Nodes.count(n)) sharedNodes.push_back(n);
+                }
+
+                if (sharedNodes.size() == 2) {
+                    int bhA = sharedNodes[0];
+                    int bhB = sharedNodes[1];
+                    bool bhBonded = false;
+                    for (int nei : g.nodes[bhA].neighbors) {
+                        if (nei == bhB) { bhBonded = true; break; }
+                    }
+
+                    if (bhBonded && g.nodes[bhA].atomicNumber == 6 && g.nodes[bhB].atomicNumber == 6) {
+                        std::set<int> allSystemNodes = ring1Nodes;
+                        allSystemNodes.insert(ring2Nodes.begin(), ring2Nodes.end());
+
+                        auto isBenzoRing = [&](const std::set<int> &rNodes) -> bool {
+                            if (rNodes.size() != 6) return false;
+                            for (int n : rNodes) {
+                                if (g.nodes[n].atomicNumber != 6) return false;
+                            }
+                            for (const auto &gb : g.bonds) {
+                                if (rNodes.count(gb.u) && rNodes.count(gb.v)) {
+                                    if (gb.order != 4) return false;
+                                }
+                            }
+                            return true;
+                        };
+
+                        bool r1Benzo = isBenzoRing(ring1Nodes);
+                        bool r2Benzo = isBenzoRing(ring2Nodes);
+
+                        if (r1Benzo != r2Benzo) {
+                            // Fusion atoms bhA and bhB must NOT bear exocyclic substituents
+                            for (int nei : g.nodes[bhA].neighbors) {
+                                if (!allSystemNodes.count(nei)) return {false, "Fused ring systems other than naphthalene are not supported in this phase.", "", {}};
+                            }
+                            for (int nei : g.nodes[bhB].neighbors) {
+                                if (!allSystemNodes.count(nei)) return {false, "Fused ring systems other than naphthalene are not supported in this phase.", "", {}};
+                            }
+
+                            // Every other ring atom may have at most 1 exocyclic substituent
+                            for (int n : allSystemNodes) {
+                                int exocyclicCount = 0;
+                                for (int nei : g.nodes[n].neighbors) {
+                                    if (!allSystemNodes.count(nei)) exocyclicCount++;
+                                }
+                                if (exocyclicCount > 1) {
+                                    return {false, "Fused ring systems other than naphthalene are not supported in this phase.", "", {}};
+                                }
+                            }
+
+                            const std::set<int> &heteroNodes = r1Benzo ? ring2Nodes : ring1Nodes;
+                            int hSize = static_cast<int>(heteroNodes.size());
+
+                            if (hSize == 5 || hSize == 6) {
+                                std::vector<int> heteroCycle;
+                                int startNode = *heteroNodes.begin();
+                                int current = startNode;
+                                int previous = -1;
+                                for (int step = 0; step < hSize; ++step) {
+                                    heteroCycle.push_back(current);
+                                    int nextNode = -1;
+                                    for (int nei : g.nodes[current].neighbors) {
+                                        if (heteroNodes.count(nei) && nei != previous) {
+                                            nextNode = nei;
+                                            break;
+                                        }
+                                    }
+                                    if (nextNode == -1) break;
+                                    previous = current;
+                                    current = nextNode;
+                                }
+
+                                if (static_cast<int>(heteroCycle.size()) == hSize) {
+                                    std::vector<int> ringHeteroNodes;
+                                    for (int n : heteroNodes) {
+                                        if (g.nodes[n].atomicNumber != 6) {
+                                            ringHeteroNodes.push_back(n);
+                                        }
+                                    }
+
+                                    RingType hType;
+                                    QString dummyNameRoot, classErr;
+                                    if (classifyMonocyclicHeteroRing(g, ringHeteroNodes, hSize, heteroCycle, hType, dummyNameRoot, classErr)) {
+                                        auto getDistInCycle = [&](int uIdx, int vIdx) {
+                                            int diff = std::abs(uIdx - vIdx);
+                                            return std::min(diff, hSize - diff);
+                                        };
+
+                                        int idxA = -1, idxB = -1;
+                                        for (int i = 0; i < hSize; ++i) {
+                                            if (heteroCycle[i] == bhA) idxA = i;
+                                            if (heteroCycle[i] == bhB) idxB = i;
+                                        }
+
+                                        if (idxA != -1 && idxB != -1) {
+                                            QString resultName = "";
+
+                                            if (hType == RingType::FURAN || hType == RingType::THIOPHENE ||
+                                                hType == RingType::SELENOPHENE || hType == RingType::TELLUROPHENE ||
+                                                hType == RingType::PHOSPHININE ||
+                                                hType == RingType::PYRROLE || hType == RingType::PYRIDINE) {
+                                                if (ringHeteroNodes.size() == 1) {
+                                                    int hNode = ringHeteroNodes[0];
+                                                    int idxH = -1;
+                                                    for (int i = 0; i < hSize; ++i) {
+                                                        if (heteroCycle[i] == hNode) idxH = i;
+                                                    }
+                                                    if (idxH != -1) {
+                                                        int dA = getDistInCycle(idxH, idxA);
+                                                        int dB = getDistInCycle(idxH, idxB);
+                                                        int minDist = std::min(dA, dB);
+
+                                                        if (minDist == 1) {
+                                                            if (hType == RingType::FURAN) resultName = "benzofuran";
+                                                            else if (hType == RingType::THIOPHENE) resultName = "benzothiophene";
+                                                            else if (hType == RingType::SELENOPHENE) resultName = "benzoselenophene";
+                                                            else if (hType == RingType::TELLUROPHENE) resultName = "benzotellurophene";
+                                                            else if (hType == RingType::PHOSPHININE) resultName = "benzophosphinine";
+                                                            else if (hType == RingType::PYRROLE) resultName = "indole";
+                                                            else if (hType == RingType::PYRIDINE) resultName = "quinoline";
+                                                        } else if (minDist == 2) {
+                                                            if (hType == RingType::FURAN) resultName = "isobenzofuran";
+                                                            else if (hType == RingType::THIOPHENE) resultName = "isobenzothiophene";
+                                                            else if (hType == RingType::SELENOPHENE) resultName = "isobenzoselenophene";
+                                                            else if (hType == RingType::TELLUROPHENE) resultName = "isobenzotellurophene";
+                                                            else if (hType == RingType::PHOSPHININE) resultName = "isobenzophosphinine";
+                                                            else if (hType == RingType::PYRROLE) resultName = "isoindole";
+                                                            else if (hType == RingType::PYRIDINE) resultName = "isoquinoline";
+                                                        }
+                                                    }
+                                                }
+                                            } else if (hType == RingType::IMIDAZOLE) {
+                                                resultName = "benzimidazole";
+                                            } else if (hType == RingType::THIAZOLE) {
+                                                resultName = "[1,3]benzothiazole";
+                                            } else if (hType == RingType::OXAZOLE) {
+                                                resultName = "[1,3]benzoxazole";
+                                            } else if (hType == RingType::PYRIMIDINE) {
+                                                resultName = "quinazoline";
+                                            } else if (hType == RingType::PYRAZINE) {
+                                                resultName = "quinoxaline";
+                                            } else if (hType == RingType::PYRIDAZINE) {
+                                                if (ringHeteroNodes.size() == 2) {
+                                                    int h1 = ringHeteroNodes[0];
+                                                    int h2 = ringHeteroNodes[1];
+                                                    int idxH1 = -1, idxH2 = -1;
+                                                    for (int i = 0; i < hSize; ++i) {
+                                                        if (heteroCycle[i] == h1) idxH1 = i;
+                                                        if (heteroCycle[i] == h2) idxH2 = i;
+                                                    }
+                                                    if (idxH1 != -1 && idxH2 != -1) {
+                                                        int minDist = std::min({
+                                                            getDistInCycle(idxH1, idxA),
+                                                            getDistInCycle(idxH1, idxB),
+                                                            getDistInCycle(idxH2, idxA),
+                                                            getDistInCycle(idxH2, idxB)
+                                                        });
+                                                        if (minDist == 1) resultName = "cinnoline";
+                                                        else if (minDist == 2) resultName = "phthalazine";
+                                                    }
+                                                }
+                                            } else if (hType == RingType::ISOTHIAZOLE || hType == RingType::ISOXAZOLE) {
+                                                if (ringHeteroNodes.size() == 2) {
+                                                    int het1 = ringHeteroNodes[0];
+                                                    int het2 = ringHeteroNodes[1];
+                                                    int idxHet1 = -1, idxHet2 = -1;
+                                                    for (int i = 0; i < hSize; ++i) {
+                                                        if (heteroCycle[i] == het1) idxHet1 = i;
+                                                        if (heteroCycle[i] == het2) idxHet2 = i;
+                                                    }
+                                                    if (idxHet1 != -1 && idxHet2 != -1) {
+                                                        int hetChalcogen = -1, hetN = -1;
+                                                        int idxChalcogen = -1, idxN = -1;
+                                                        if (g.nodes[het1].atomicNumber == 7) {
+                                                            hetN = het1; idxN = idxHet1;
+                                                            hetChalcogen = het2; idxChalcogen = idxHet2;
+                                                        } else if (g.nodes[het2].atomicNumber == 7) {
+                                                            hetN = het2; idxN = idxHet2;
+                                                            hetChalcogen = het1; idxChalcogen = idxHet1;
+                                                        }
+                                                        if (hetN != -1 && hetChalcogen != -1 && idxN != -1 && idxChalcogen != -1) {
+                                                            int minDistN = std::min(getDistInCycle(idxN, idxA), getDistInCycle(idxN, idxB));
+                                                            int minDistChalcogen = std::min(getDistInCycle(idxChalcogen, idxA), getDistInCycle(idxChalcogen, idxB));
+                                                            if (minDistN < minDistChalcogen) {
+                                                                if (hType == RingType::ISOTHIAZOLE) resultName = "[2,1]benzothiazole";
+                                                                else if (hType == RingType::ISOXAZOLE) resultName = "[2,1]benzoxazole";
+                                                            } else {
+                                                                if (hType == RingType::ISOTHIAZOLE) resultName = "[1,2]benzothiazole";
+                                                                else if (hType == RingType::ISOXAZOLE) resultName = "[1,2]benzoxazole";
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            } else if (hType == RingType::GENERAL_HETEROCYCLE) {
+                                                if (isOxineAzineExcluded(g, ringHeteroNodes, hSize)) {
+                                                    return {false, "Fused ring systems other than naphthalene are not supported in this phase.", "", {}};
+                                                }
+                                                auto buildFromFusionAtom = [&](int fusionIdx, int otherFusionIdx) {
+                                                    int dir = ((fusionIdx + 1) % hSize == otherFusionIdx) ? -1 : 1;
+                                                    int startIdx = (fusionIdx + dir + hSize) % hSize;
+                                                    std::vector<int> cand(hSize);
+                                                    for (int i = 0; i < hSize; ++i) {
+                                                        cand[i] = heteroCycle[((startIdx + dir * i) % hSize + hSize) % hSize];
+                                                    }
+                                                    return cand;
+                                                };
+                                                std::vector<int> candFromA = buildFromFusionAtom(idxA, idxB);
+                                                std::vector<int> candFromB = buildFromFusionAtom(idxB, idxA);
+
+                                                auto heteroLocants = [&](const std::vector<int> &cand) {
+                                                    std::vector<int> locs;
+                                                    for (int i = 0; i < hSize; ++i) {
+                                                        if (g.nodes[cand[i]].atomicNumber != 6) locs.push_back(i + 1);
+                                                    }
+                                                    return locs;
+                                                };
+                                                std::vector<int> locsA = heteroLocants(candFromA);
+                                                std::vector<int> locsB = heteroLocants(candFromB);
+                                                const std::vector<int> &chosenCand = (locsA <= locsB) ? candFromA : candFromB;
+
+                                                std::map<int, QString> localLocantMap = computePeripheralNumbering(g, ring1Nodes, ring2Nodes, bhA, bhB);
+
+                                                if (ringHeteroNodes.size() == 2) {
+                                                    int zA0 = g.nodes[ringHeteroNodes[0]].atomicNumber;
+                                                    int zB0 = g.nodes[ringHeteroNodes[1]].atomicNumber;
+                                                    bool exactlyOneIsN = (zA0 == 7) != (zB0 == 7);
+                                                    if (exactlyOneIsN) {
+                                                        int nNode = (zA0 == 7) ? ringHeteroNodes[0] : ringHeteroNodes[1];
+                                                        int xNode = (zA0 == 7) ? ringHeteroNodes[1] : ringHeteroNodes[0];
+                                                        int xZ0 = g.nodes[xNode].atomicNumber;
+                                                        if (hwSeniorityRank(xZ0) < hwSeniorityRank(7)) {
+                                                            auto numericLocantPart = [](const QString &s) -> int {
+                                                                QString digits;
+                                                                for (QChar c : s) { if (c.isDigit()) digits += c; else break; }
+                                                                return digits.isEmpty() ? -1 : digits.toInt();
+                                                            };
+                                                            QString nLocStr = localLocantMap.count(nNode) ? localLocantMap[nNode] : QString();
+                                                            QString xLocStr = localLocantMap.count(xNode) ? localLocantMap[xNode] : QString();
+                                                            int nNum = numericLocantPart(nLocStr), xNum = numericLocantPart(xLocStr);
+                                                            if (nNum >= 0 && xNum >= 0 && nNum < xNum) {
+                                                                return {false, "Heteroatom seniority between nitrogen and a more senior chalcogen (O/S/Se/Te) in this fused ring could not be verified as correctly numbered; rejecting rather than risk an incorrectly ordered locant.", "", {}};
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                static const int citOrd[] = {8, 16, 34, 52, 7, 15, 33, 51, 83, 14, 32, 50, 82, 5};
+                                                static const int citOrdLen = 14;
+                                                std::map<int, std::vector<QString>> locStrsByZ;
+                                                std::vector<int> allZ;
+                                                bool allLocantsNumeric = true;
+                                                for (int i = 0; i < hSize; ++i) {
+                                                    int node = chosenCand[i];
+                                                    int zz = g.nodes[node].atomicNumber;
+                                                    if (zz != 6) {
+                                                        QString locStr = localLocantMap.count(node) ? localLocantMap[node] : QString();
+                                                        if (locStr.isEmpty() || locStr.endsWith("a") || locStr.endsWith("b")) {
+                                                            allLocantsNumeric = false;
+                                                        }
+                                                        locStrsByZ[zz].push_back(locStr);
+                                                        allZ.push_back(zz);
+                                                    }
+                                                }
+
+                                                if (allLocantsNumeric) {
+                                                    QStringList allLStrs;
+                                                    for (int k = 0; k < citOrdLen; ++k) {
+                                                        auto it2 = locStrsByZ.find(citOrd[k]);
+                                                        if (it2 != locStrsByZ.end()) for (const QString &l : it2->second) allLStrs.append(l);
+                                                    }
+                                                    QString locPfx = allLStrs.join(",") + "-";
+                                                    QString ePfxs;
+                                                    for (int k = 0; k < citOrdLen; ++k) {
+                                                        int zz = citOrd[k];
+                                                        auto it2 = locStrsByZ.find(zz);
+                                                        if (it2 == locStrsByZ.end()) continue;
+                                                        int cnt = static_cast<int>(it2->second.size());
+                                                        QString ap = hwAPrefix(zz);
+                                                        QString mp = multiPrefix(cnt);
+                                                        if (mp.endsWith('a') && isVowel(ap[0])) mp.chop(1);
+                                                        QString chunk = mp + ap;
+                                                        if (!ePfxs.isEmpty() && ePfxs.endsWith('a') && chunk.startsWith('a')) ePfxs.chop(1);
+                                                        ePfxs += chunk;
+                                                    }
+                                                    QString st = hwGeneralRingStem(hSize, allZ);
+                                                    if (!st.isEmpty()) {
+                                                        if (ePfxs.endsWith('a') && isVowel(st[0])) ePfxs.chop(1);
+                                                        QString bareStem = ePfxs + st;
+                                                        QString benzoPrefix = "benzo";
+                                                        if (!bareStem.isEmpty() && isVowel(bareStem[0])) benzoPrefix.chop(1);
+
+                                                        int indicatedH = findIndicatedHydrogenLocant(g, chosenCand);
+                                                        QString ihPfx;
+                                                        if (indicatedH > 0) {
+                                                            int ihNode = chosenCand[indicatedH - 1];
+                                                            QString ihLocStr = localLocantMap.count(ihNode) ? localLocantMap[ihNode] : QString();
+                                                            if (!ihLocStr.isEmpty() && !ihLocStr.endsWith("a") && !ihLocStr.endsWith("b")) {
+                                                                ihPfx = ihLocStr + "H-";
+                                                            }
+                                                        }
+                                                        resultName = ihPfx + locPfx + benzoPrefix + bareStem;
+                                                    }
+                                                }
+                                            }
+
+                                            if (!resultName.isEmpty()) {
+                                                std::vector<std::pair<int, int>> ringSubstituents;
+                                                for (int n : allSystemNodes) {
+                                                    for (int nei : g.nodes[n].neighbors) {
+                                                        if (!allSystemNodes.count(nei)) {
+                                                            ringSubstituents.push_back({n, nei});
+                                                        }
+                                                    }
+                                                }
+
+                                                std::set<int> substituentBearingNodes;
+                                                for (const auto &subPair : ringSubstituents) {
+                                                    substituentBearingNodes.insert(subPair.first);
+                                                }
+
+                                                std::map<int, QString> locantMap = computePeripheralNumbering(g, ring1Nodes, ring2Nodes, bhA, bhB, substituentBearingNodes);
+                                                if (locantMap.empty()) {
+                                                    return {false, "Fused ring systems other than naphthalene are not supported in this phase.", "", {}};
+                                                }
+                                                return {true, "", resultName, locantMap};
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return {false, "Phase 31: no match", "", {}};
+}
+
 IupacResult IupacNamer::generateName(int mol) {
     if (mol < 0) {
         return {false, "", "Invalid molecule handle."};
@@ -15803,527 +16196,144 @@ IupacResult IupacNamer::generateName(int mol) {
     }
 
     // --- Phase 31: Benzo-fused Heterobicyclic Ring Systems (ringCount == 2) ---
-    if (ringCount == 2) {
-        int sssrIter = indigoIterateSSSR(mol);
-        if (sssrIter >= 0) {
-            std::vector<std::set<int>> sssrRings;
-            int subMol = 0;
-            while ((subMol = indigoNext(sssrIter)) != 0) {
-                std::set<int> rAtoms;
-                int ringAtomIter = indigoIterateAtoms(subMol);
-                if (ringAtomIter >= 0) {
-                    int ringAtomHandle = 0;
-                    while ((ringAtomHandle = indigoNext(ringAtomIter)) != 0) {
-                        int idx = indigoIndex(ringAtomHandle);
-                        rAtoms.insert(idx);
-                        indigoFree(ringAtomHandle);
-                    }
-                    indigoFree(ringAtomIter);
-                }
-                sssrRings.push_back(rAtoms);
-                indigoFree(subMol);
-            }
-            indigoFree(sssrIter);
+    // The original inline block was a bare "if (ringCount == 2) { ... }"
+    // with no corresponding else: when nothing inside it matched (wrong
+    // ring count, or the ring-type dispatch found no case), execution
+    // simply fell through past its closing brace to Phase 32 onward. The
+    // extracted function's generic "Phase 31: no match" sentinel (its own
+    // final fallback return) represents that exact "didn't apply" case and
+    // must NOT hard-fail here -- only a SPECIFIC internal rejection (e.g.
+    // "Fused ring systems other than naphthalene are not supported in this
+    // phase.", a real early-return from within Phase 31's own matched
+    // dispatch) is a genuine hard failure, matching the original code's own
+    // behavior for those specific validation failures.
+    RingSystemNameResult p31 = namePhase31BenzoFusion(g, mol, indigoToGraphIdx, ringCount);
+    if (!p31.success && p31.error != "Phase 31: no match") {
+        return {false, "", p31.error};
+    }
+    if (p31.success) {
+        // Substituent-decoration tail: this logic was originally inline
+        // immediately after Phase 31's own resultName computation (now
+        // moved into namePhase31BenzoFusion above); adapted here to work
+        // off p31.baseName/p31.locantMap instead of locally-computed
+        // resultName/locantMap/ring1Nodes/ring2Nodes/bhA/bhB/allSystemNodes
+        // (those are no longer in scope -- they're local to the extracted
+        // function now).
+        QString resultName = p31.baseName;
+        const std::map<int, QString> &p31LocantMap = p31.locantMap;
+        std::set<int> allSystemNodes;
+        for (const auto &kv : p31LocantMap) allSystemNodes.insert(kv.first);
 
-            if (sssrRings.size() == 2) {
-                std::set<int> ring1Nodes, ring2Nodes;
-                for (int idx : sssrRings[0]) {
-                    if (indigoToGraphIdx.count(idx)) ring1Nodes.insert(indigoToGraphIdx[idx]);
-                }
-                for (int idx : sssrRings[1]) {
-                    if (indigoToGraphIdx.count(idx)) ring2Nodes.insert(indigoToGraphIdx[idx]);
-                }
-
-                std::vector<int> sharedNodes;
-                for (int n : ring1Nodes) {
-                    if (ring2Nodes.count(n)) sharedNodes.push_back(n);
-                }
-
-                if (sharedNodes.size() == 2) {
-                    int bhA = sharedNodes[0];
-                    int bhB = sharedNodes[1];
-                    bool bhBonded = false;
-                    for (int nei : g.nodes[bhA].neighbors) {
-                        if (nei == bhB) { bhBonded = true; break; }
-                    }
-
-                    if (bhBonded && g.nodes[bhA].atomicNumber == 6 && g.nodes[bhB].atomicNumber == 6) {
-                        std::set<int> allSystemNodes = ring1Nodes;
-                        allSystemNodes.insert(ring2Nodes.begin(), ring2Nodes.end());
-
-                        auto isBenzoRing = [&](const std::set<int> &rNodes) -> bool {
-                            if (rNodes.size() != 6) return false;
-                            for (int n : rNodes) {
-                                if (g.nodes[n].atomicNumber != 6) return false;
-                            }
-                            for (const auto &gb : g.bonds) {
-                                if (rNodes.count(gb.u) && rNodes.count(gb.v)) {
-                                    if (gb.order != 4) return false;
-                                }
-                            }
-                            return true;
-                        };
-
-                        bool r1Benzo = isBenzoRing(ring1Nodes);
-                        bool r2Benzo = isBenzoRing(ring2Nodes);
-
-                        if (r1Benzo != r2Benzo) {
-                            // Fusion atoms bhA and bhB must NOT bear exocyclic substituents
-                            for (int nei : g.nodes[bhA].neighbors) {
-                                if (!allSystemNodes.count(nei)) return {false, "", "Fused ring systems other than naphthalene are not supported in this phase."};
-                            }
-                            for (int nei : g.nodes[bhB].neighbors) {
-                                if (!allSystemNodes.count(nei)) return {false, "", "Fused ring systems other than naphthalene are not supported in this phase."};
-                            }
-
-                            // Every other ring atom may have at most 1 exocyclic substituent
-                            for (int n : allSystemNodes) {
-                                int exocyclicCount = 0;
-                                for (int nei : g.nodes[n].neighbors) {
-                                    if (!allSystemNodes.count(nei)) exocyclicCount++;
-                                }
-                                if (exocyclicCount > 1) {
-                                    return {false, "", "Fused ring systems other than naphthalene are not supported in this phase."};
-                                }
-                            }
-
-                            const std::set<int> &heteroNodes = r1Benzo ? ring2Nodes : ring1Nodes;
-                            int hSize = static_cast<int>(heteroNodes.size());
-
-                            if (hSize == 5 || hSize == 6) {
-                                std::vector<int> heteroCycle;
-                                int startNode = *heteroNodes.begin();
-                                int current = startNode;
-                                int previous = -1;
-                                for (int step = 0; step < hSize; ++step) {
-                                    heteroCycle.push_back(current);
-                                    int nextNode = -1;
-                                    for (int nei : g.nodes[current].neighbors) {
-                                        if (heteroNodes.count(nei) && nei != previous) {
-                                            nextNode = nei;
-                                            break;
-                                        }
-                                    }
-                                    if (nextNode == -1) break;
-                                    previous = current;
-                                    current = nextNode;
-                                }
-
-                                if (static_cast<int>(heteroCycle.size()) == hSize) {
-                                    std::vector<int> ringHeteroNodes;
-                                    for (int n : heteroNodes) {
-                                        if (g.nodes[n].atomicNumber != 6) {
-                                            ringHeteroNodes.push_back(n);
-                                        }
-                                    }
-
-                                    RingType hType;
-                                    QString dummyNameRoot, classErr;
-                                    if (classifyMonocyclicHeteroRing(g, ringHeteroNodes, hSize, heteroCycle, hType, dummyNameRoot, classErr)) {
-                                        auto getDistInCycle = [&](int uIdx, int vIdx) {
-                                            int diff = std::abs(uIdx - vIdx);
-                                            return std::min(diff, hSize - diff);
-                                        };
-
-                                        int idxA = -1, idxB = -1;
-                                        for (int i = 0; i < hSize; ++i) {
-                                            if (heteroCycle[i] == bhA) idxA = i;
-                                            if (heteroCycle[i] == bhB) idxB = i;
-                                        }
-
-                                        if (idxA != -1 && idxB != -1) {
-                                            QString resultName = "";
-
-                                            if (hType == RingType::FURAN || hType == RingType::THIOPHENE ||
-                                                hType == RingType::SELENOPHENE || hType == RingType::TELLUROPHENE ||
-                                                hType == RingType::PHOSPHININE ||
-                                                hType == RingType::PYRROLE || hType == RingType::PYRIDINE) {
-                                                // Note: AZEPINE/OXEPINE/THIEPINE/SELENEPINE/TELLUREPINE are
-                                                // deliberately excluded here -- this whole branch is gated
-                                                // to hSize == 5 || 6 above and these are 7-membered, so it
-                                                // is unreachable for them today. The hardcoded 2-ring names
-                                                // below ("dibenzo[c,e]oxepine" etc.) are real Blue Book PINs
-                                                // for a DIFFERENT, 3-ring topology, not this 2-ring one --
-                                                // leaving the 5 types out here keeps that gate from silently
-                                                // activating with a wrong name if this code is ever widened
-                                                // to hSize == 7.
-                                                if (ringHeteroNodes.size() == 1) {
-                                                    int hNode = ringHeteroNodes[0];
-                                                    int idxH = -1;
-                                                    for (int i = 0; i < hSize; ++i) {
-                                                        if (heteroCycle[i] == hNode) idxH = i;
-                                                    }
-                                                    if (idxH != -1) {
-                                                        int dA = getDistInCycle(idxH, idxA);
-                                                        int dB = getDistInCycle(idxH, idxB);
-                                                        int minDist = std::min(dA, dB);
-
-                                                        if (minDist == 1) {
-                                                            if (hType == RingType::FURAN) resultName = "benzofuran";
-                                                            else if (hType == RingType::THIOPHENE) resultName = "benzothiophene";
-                                                            else if (hType == RingType::SELENOPHENE) resultName = "benzoselenophene";
-                                                            else if (hType == RingType::TELLUROPHENE) resultName = "benzotellurophene";
-                                                            else if (hType == RingType::PHOSPHININE) resultName = "benzophosphinine";
-                                                            else if (hType == RingType::PYRROLE) resultName = "indole";
-                                                            else if (hType == RingType::PYRIDINE) resultName = "quinoline";
-                                                        } else if (minDist == 2) {
-                                                            if (hType == RingType::FURAN) resultName = "isobenzofuran";
-                                                            else if (hType == RingType::THIOPHENE) resultName = "isobenzothiophene";
-                                                            else if (hType == RingType::SELENOPHENE) resultName = "isobenzoselenophene";
-                                                            else if (hType == RingType::TELLUROPHENE) resultName = "isobenzotellurophene";
-                                                            else if (hType == RingType::PHOSPHININE) resultName = "isobenzophosphinine";
-                                                            else if (hType == RingType::PYRROLE) resultName = "isoindole";
-                                                            else if (hType == RingType::PYRIDINE) resultName = "isoquinoline";
-                                                        }
-                                                    }
-                                                }
-                                            } else if (hType == RingType::IMIDAZOLE) {
-                                                resultName = "benzimidazole";
-                                            } else if (hType == RingType::THIAZOLE) {
-                                                resultName = "[1,3]benzothiazole";
-                                            } else if (hType == RingType::OXAZOLE) {
-                                                resultName = "[1,3]benzoxazole";
-                                            } else if (hType == RingType::PYRIMIDINE) {
-                                                resultName = "quinazoline";
-                                            } else if (hType == RingType::PYRAZINE) {
-                                                resultName = "quinoxaline";
-                                            } else if (hType == RingType::PYRIDAZINE) {
-                                                if (ringHeteroNodes.size() == 2) {
-                                                    int h1 = ringHeteroNodes[0];
-                                                    int h2 = ringHeteroNodes[1];
-                                                    int idxH1 = -1, idxH2 = -1;
-                                                    for (int i = 0; i < hSize; ++i) {
-                                                        if (heteroCycle[i] == h1) idxH1 = i;
-                                                        if (heteroCycle[i] == h2) idxH2 = i;
-                                                    }
-                                                    if (idxH1 != -1 && idxH2 != -1) {
-                                                        int minDist = std::min({
-                                                            getDistInCycle(idxH1, idxA),
-                                                            getDistInCycle(idxH1, idxB),
-                                                            getDistInCycle(idxH2, idxA),
-                                                            getDistInCycle(idxH2, idxB)
-                                                        });
-                                                        if (minDist == 1) resultName = "cinnoline";
-                                                        else if (minDist == 2) resultName = "phthalazine";
-                                                    }
-                                                }
-                                            } else if (hType == RingType::ISOTHIAZOLE || hType == RingType::ISOXAZOLE) {
-                                                // Isothiazole (1,2-thiazole, S=1 N=2) and isoxazole (1,2-oxazole, O=1 N=2)
-                                                // have TWO distinct fusion geometries. Both heteroatoms are adjacent,
-                                                // so the ring is not symmetric with respect to fusion bonds (unlike
-                                                // 1,3-thiazole/oxazole). Blue Book P-25.3.2.1.2 deprecates plain
-                                                // "isothiazole"/"isoxazole" fusion-component names; instead use
-                                                // Hantzsch-Widman "1,2-thiazole"/"1,2-oxazole" with bracketed locants.
-                                                // The two geometries are distinguished by the order of the locants:
-                                                // which heteroatom is closer to the fusion atoms determines the
-                                                // citation order in the brackets (P-25.3.1.3, P-25.3.2.4(d)).
-                                                if (ringHeteroNodes.size() == 2) {
-                                                    int het1 = ringHeteroNodes[0];
-                                                    int het2 = ringHeteroNodes[1];
-                                                    int idxHet1 = -1, idxHet2 = -1;
-                                                    for (int i = 0; i < hSize; ++i) {
-                                                        if (heteroCycle[i] == het1) idxHet1 = i;
-                                                        if (heteroCycle[i] == het2) idxHet2 = i;
-                                                    }
-                                                    if (idxHet1 != -1 && idxHet2 != -1) {
-                                                        // Identify which heteroatom is the chalcogen (O/S) and which is N
-                                                        int hetChalcogen = -1, hetN = -1;
-                                                        int idxChalcogen = -1, idxN = -1;
-                                                        if (g.nodes[het1].atomicNumber == 7) {
-                                                            hetN = het1; idxN = idxHet1;
-                                                            hetChalcogen = het2; idxChalcogen = idxHet2;
-                                                        } else if (g.nodes[het2].atomicNumber == 7) {
-                                                            hetN = het2; idxN = idxHet2;
-                                                            hetChalcogen = het1; idxChalcogen = idxHet1;
-                                                        }
-                                                        if (hetN != -1 && hetChalcogen != -1 && idxN != -1 && idxChalcogen != -1) {
-                                                            int minDistN = std::min(getDistInCycle(idxN, idxA), getDistInCycle(idxN, idxB));
-                                                            int minDistChalcogen = std::min(getDistInCycle(idxChalcogen, idxA), getDistInCycle(idxChalcogen, idxB));
-                                                            // Verified against real test output: the initial
-                                                            // assignment here had this backwards (every one of
-                                                            // 4 independent test cases came out swapped, a clean
-                                                            // consistent sign-flip, not a logic error -- the
-                                                            // geometric distinction itself is sound, only which
-                                                            // bracket form it mapped to was inverted).
-                                                            if (minDistN < minDistChalcogen) {
-                                                                if (hType == RingType::ISOTHIAZOLE) resultName = "[2,1]benzothiazole";
-                                                                else if (hType == RingType::ISOXAZOLE) resultName = "[2,1]benzoxazole";
-                                                            } else {
-                                                                if (hType == RingType::ISOTHIAZOLE) resultName = "[1,2]benzothiazole";
-                                                                else if (hType == RingType::ISOXAZOLE) resultName = "[1,2]benzoxazole";
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            } else if (hType == RingType::GENERAL_HETEROCYCLE) {
-                                                if (isOxineAzineExcluded(g, ringHeteroNodes, hSize)) {
-                                                    return {false, "", "Fused ring systems other than naphthalene are not supported in this phase."};
-                                                }
-                                                // P-25.3.5: locant 1 is the heterocycle atom next to a
-                                                // fusion atom. There are exactly 2 such atoms (one next to
-                                                // bhA, one next to bhB) -- build both candidate numberings
-                                                // and pick the one giving the heteroatoms the lowest locant
-                                                // set (P-22.2.2.1.3), same tie-break the bare-ring builder
-                                                // already uses.
-                                                auto buildFromFusionAtom = [&](int fusionIdx, int otherFusionIdx) {
-                                                    int dir = ((fusionIdx + 1) % hSize == otherFusionIdx) ? -1 : 1;
-                                                    int startIdx = (fusionIdx + dir + hSize) % hSize;
-                                                    std::vector<int> cand(hSize);
-                                                    for (int i = 0; i < hSize; ++i) {
-                                                        cand[i] = heteroCycle[((startIdx + dir * i) % hSize + hSize) % hSize];
-                                                    }
-                                                    return cand;
-                                                };
-                                                std::vector<int> candFromA = buildFromFusionAtom(idxA, idxB);
-                                                std::vector<int> candFromB = buildFromFusionAtom(idxB, idxA);
-
-                                                auto heteroLocants = [&](const std::vector<int> &cand) {
-                                                    std::vector<int> locs;
-                                                    for (int i = 0; i < hSize; ++i) {
-                                                        if (g.nodes[cand[i]].atomicNumber != 6) locs.push_back(i + 1);
-                                                    }
-                                                    return locs;
-                                                };
-                                                std::vector<int> locsA = heteroLocants(candFromA);
-                                                std::vector<int> locsB = heteroLocants(candFromB);
-                                                const std::vector<int> &chosenCand = (locsA <= locsB) ? candFromA : candFromB;
-
-                                                // Build the heteroatom citation prefix and element-prefix
-                                                // string from the CHOSEN candidate, mirroring
-                                                // IupacNamer.cpp:1811-1844 exactly (same citOrd array, same
-                                                // multiplying-prefix elision rules) but using the FUSED
-                                                // system's own real peripheral locants (computed below) for
-                                                // each heteroatom instead of the candidate's own 0-based
-                                                // position.
-                                                std::map<int, QString> localLocantMap = computePeripheralNumbering(g, ring1Nodes, ring2Nodes, bhA, bhB);
-
-                                                // I4 fix (final whole-branch review): computePeripheralNumbering's own
-                                                // internal heteroatom rank (a local "rank = z + 10" fallback for any
-                                                // element it doesn't special-case) wrongly ranks Se/Te BELOW N --
-                                                // real HW order is O>S>Se>Te>N, so Se/Te should always outrank N and
-                                                // receive the lower locant. Rather than risk a deep fix to this
-                                                // widely-shared function this late in the fix wave, detect the one
-                                                // asymmetric case this branch can produce (exactly one N plus one
-                                                // other chalcogen senior to N) and verify the locants
-                                                // computePeripheralNumbering actually assigned agree with the real
-                                                // hwSeniorityRank order; reject cleanly rather than ship a wrong name.
-                                                if (ringHeteroNodes.size() == 2) {
-                                                    int zA0 = g.nodes[ringHeteroNodes[0]].atomicNumber;
-                                                    int zB0 = g.nodes[ringHeteroNodes[1]].atomicNumber;
-                                                    bool exactlyOneIsN = (zA0 == 7) != (zB0 == 7);
-                                                    if (exactlyOneIsN) {
-                                                        int nNode = (zA0 == 7) ? ringHeteroNodes[0] : ringHeteroNodes[1];
-                                                        int xNode = (zA0 == 7) ? ringHeteroNodes[1] : ringHeteroNodes[0];
-                                                        int xZ0 = g.nodes[xNode].atomicNumber;
-                                                        if (hwSeniorityRank(xZ0) < hwSeniorityRank(7)) {
-                                                            auto numericLocantPart = [](const QString &s) -> int {
-                                                                QString digits;
-                                                                for (QChar c : s) { if (c.isDigit()) digits += c; else break; }
-                                                                return digits.isEmpty() ? -1 : digits.toInt();
-                                                            };
-                                                            QString nLocStr = localLocantMap.count(nNode) ? localLocantMap[nNode] : QString();
-                                                            QString xLocStr = localLocantMap.count(xNode) ? localLocantMap[xNode] : QString();
-                                                            int nNum = numericLocantPart(nLocStr), xNum = numericLocantPart(xLocStr);
-                                                            if (nNum >= 0 && xNum >= 0 && nNum < xNum) {
-                                                                return {false, "", "Heteroatom seniority between nitrogen and a more senior chalcogen (O/S/Se/Te) in this fused ring could not be verified as correctly numbered; rejecting rather than risk an incorrectly ordered locant."};
-                                                            }
-                                                        }
-                                                    }
-                                                }
-
-                                                static const int citOrd[] = {8, 16, 34, 52, 7, 15, 33, 51, 83, 14, 32, 50, 82, 5};
-                                                static const int citOrdLen = 14;
-                                                std::map<int, std::vector<QString>> locStrsByZ;
-                                                std::vector<int> allZ;
-                                                bool allLocantsNumeric = true;
-                                                for (int i = 0; i < hSize; ++i) {
-                                                    int node = chosenCand[i];
-                                                    int zz = g.nodes[node].atomicNumber;
-                                                    if (zz != 6) {
-                                                        QString locStr = localLocantMap.count(node) ? localLocantMap[node] : QString();
-                                                        if (locStr.isEmpty() || locStr.endsWith("a") || locStr.endsWith("b")) {
-                                                            allLocantsNumeric = false;
-                                                        }
-                                                        locStrsByZ[zz].push_back(locStr);
-                                                        allZ.push_back(zz);
-                                                    }
-                                                }
-
-                                                if (allLocantsNumeric) {
-                                                    QStringList allLStrs;
-                                                    for (int k = 0; k < citOrdLen; ++k) {
-                                                        auto it2 = locStrsByZ.find(citOrd[k]);
-                                                        if (it2 != locStrsByZ.end()) for (const QString &l : it2->second) allLStrs.append(l);
-                                                    }
-                                                    QString locPfx = allLStrs.join(",") + "-";
-                                                    QString ePfxs;
-                                                    for (int k = 0; k < citOrdLen; ++k) {
-                                                        int zz = citOrd[k];
-                                                        auto it2 = locStrsByZ.find(zz);
-                                                        if (it2 == locStrsByZ.end()) continue;
-                                                        int cnt = static_cast<int>(it2->second.size());
-                                                        QString ap = hwAPrefix(zz);
-                                                        QString mp = multiPrefix(cnt);
-                                                        if (mp.endsWith('a') && isVowel(ap[0])) mp.chop(1);
-                                                        QString chunk = mp + ap;
-                                                        if (!ePfxs.isEmpty() && ePfxs.endsWith('a') && chunk.startsWith('a')) ePfxs.chop(1);
-                                                        ePfxs += chunk;
-                                                    }
-                                                    QString st = hwGeneralRingStem(hSize, allZ);
-                                                    if (!st.isEmpty()) {
-                                                        if (ePfxs.endsWith('a') && isVowel(st[0])) ePfxs.chop(1);
-                                                        QString bareStem = ePfxs + st; // e.g. "triazole"
-                                                        QString benzoPrefix = "benzo";
-                                                        if (!bareStem.isEmpty() && isVowel(bareStem[0])) benzoPrefix.chop(1);
-
-                                                        // P-14.7: indicated hydrogen, if this ring needs one,
-                                                        // cited using the chosen candidate's own node mapped
-                                                        // through the SAME real fused-locant map.
-                                                        int indicatedH = findIndicatedHydrogenLocant(g, chosenCand);
-                                                        QString ihPfx;
-                                                        if (indicatedH > 0) {
-                                                            int ihNode = chosenCand[indicatedH - 1];
-                                                            QString ihLocStr = localLocantMap.count(ihNode) ? localLocantMap[ihNode] : QString();
-                                                            if (!ihLocStr.isEmpty() && !ihLocStr.endsWith("a") && !ihLocStr.endsWith("b")) {
-                                                                ihPfx = ihLocStr + "H-";
-                                                            }
-                                                        }
-                                                        resultName = ihPfx + locPfx + benzoPrefix + bareStem;
-                                                    }
-                                                }
-                                            }
-
-                                            if (!resultName.isEmpty()) {
-                                                std::vector<std::pair<int, int>> ringSubstituents;
-                                                for (int n : allSystemNodes) {
-                                                    for (int nei : g.nodes[n].neighbors) {
-                                                        if (!allSystemNodes.count(nei)) {
-                                                            ringSubstituents.push_back({n, nei});
-                                                        }
-                                                    }
-                                                }
-
-                                                std::set<int> substituentBearingNodes;
-                                                for (const auto &subPair : ringSubstituents) {
-                                                    substituentBearingNodes.insert(subPair.first);
-                                                }
-
-                                                std::map<int, QString> locantMap = computePeripheralNumbering(g, ring1Nodes, ring2Nodes, bhA, bhB, substituentBearingNodes);
-                                                if (locantMap.empty()) {
-                                                    return {false, "", "Fused ring systems other than naphthalene are not supported in this phase."};
-                                                }
-
-                                                std::vector<std::pair<QString, int>> namedSubstituents;
-                                                for (const auto &subPair : ringSubstituents) {
-                                                    int rNode = subPair.first;
-                                                    int sNode = subPair.second;
-                                                    QString locStr = locantMap[rNode];
-                                                    bool okInt = false;
-                                                    int locVal = locStr.toInt(&okInt);
-                                                    if (!okInt || locStr.isEmpty() || locStr.endsWith("a") || locStr.endsWith("b")) {
-                                                        return {false, "", "Fused ring systems other than naphthalene are not supported in this phase."};
-                                                    }
-
-                                                    // Sulfur-rooted composite functional groups (sulfonamide
-                                                    // and siblings) are not plain acyclic subtrees -- handing
-                                                    // them to nameBranchGraph below walks S/O/O/N as if they
-                                                    // were an unrecognized carbon chain, producing a garbled
-                                                    // name instead of a clean rejection or the correct prefix.
-                                                    // Classify them first, mirroring the identical pattern
-                                                    // already proven at the other 3 duplicated ring-substituent
-                                                    // regions in this file (which use these same maps, already
-                                                    // populated earlier in generateName()).
-                                                    QString subName;
-                                                    if (carbonSulfonicAcid.count(rNode) && carbonSulfonicAcid[rNode] == sNode) {
-                                                        subName = "sulfo";
-                                                    } else if (carbonSulfonamide.count(rNode) && carbonSulfonamide[rNode] == sNode) {
-                                                        subName = "sulfamoyl";
-                                                    } else if (carbonSulfonylHalide.count(rNode) && carbonSulfonylHalide[rNode] == sNode) {
-                                                        subName = halogenPrefix(sulfonylHalideZ[rNode]) + "sulfonyl";
-                                                    } else if (carbonSulfinylHalide.count(rNode) && carbonSulfinylHalide[rNode] == sNode) {
-                                                        subName = halogenPrefix(sulfinylHalideZ[rNode]) + "sulfinyl";
-                                                    } else if (carbonSulfinicAcid.count(rNode) && carbonSulfinicAcid[rNode] == sNode) {
-                                                        subName = "sulfino";
-                                                    } else if (carbonSulfinamide.count(rNode) && carbonSulfinamide[rNode] == sNode) {
-                                                        subName = "sulfinamoyl";
-                                                    } else {
-                                                        subName = nameBranchGraph(g, sNode, rNode);
-                                                    }
-                                                    if (subName.isEmpty()) {
-                                                        return {false, "", "Unrecognized or unsupported substituent on ring."};
-                                                    }
-                                                    if (subName.startsWith("(") && subName.endsWith(")")) {
-                                                        QString inner = subName.mid(1, subName.length() - 2);
-                                                        // See the equivalent fix in the other duplicated
-                                                        // regions for why this strip must be conditional on
-                                                        // the inner name not starting with a locant digit.
-                                                        if (!inner.isEmpty() && !inner[0].isDigit()) {
-                                                            subName = inner;
-                                                        }
-                                                    }
-                                                    namedSubstituents.push_back({subName, locVal});
-                                                }
-
-                                                std::map<QString, std::vector<int>> prefixLocantsMap;
-                                                for (const auto &ns : namedSubstituents) {
-                                                    prefixLocantsMap[ns.first].push_back(ns.second);
-                                                }
-
-                                                struct PrefixGroup {
-                                                    QString baseName;
-                                                    QString formattedStr;
-                                                };
-                                                std::vector<PrefixGroup> pGroups;
-                                                for (auto it = prefixLocantsMap.begin(); it != prefixLocantsMap.end(); ++it) {
-                                                    QString pName = it->first;
-                                                    std::vector<int> locs = it->second;
-                                                    std::sort(locs.begin(), locs.end());
-
-                                                    QStringList locStrs;
-                                                    for (int l : locs) locStrs.append(QString::number(l));
-
-                                                    QString pStr = locStrs.join(",");
-                                                    if (locs.size() > 1) {
-                                                        pStr += "-" + multiPrefix(static_cast<int>(locs.size())) + pName;
-                                                    } else {
-                                                        pStr += "-" + pName;
-                                                    }
-
-                                                    PrefixGroup pg;
-                                                    pg.baseName = alphabetizationKey(pName);
-                                                    pg.formattedStr = pStr;
-                                                    pGroups.push_back(pg);
-                                                }
-
-                                                std::sort(pGroups.begin(), pGroups.end(), [](const PrefixGroup &a, const PrefixGroup &b) {
-                                                    return a.baseName.toLower() < b.baseName.toLower();
-                                                });
-
-                                                QString prefixPart;
-                                                if (!pGroups.empty()) {
-                                                    QStringList pStrs;
-                                                    for (const auto &pg : pGroups) pStrs.append(pg.formattedStr);
-                                                    prefixPart = pStrs.join("-");
-                                                }
-
-                                                // A locant-prefixed resultName (e.g. GENERAL_HETEROCYCLE's
-                                                // own "2,1,3-benzoxadiazole") needs a hyphen before it when
-                                                // a substituent prefix precedes it -- without this, the two
-                                                // locant runs concatenate into one illegible string (e.g.
-                                                // "5-chloro2,1,3-benzothiadiazole"). Named-type base names
-                                                // never start with a digit, so this was never needed before.
-                                                QString sep = (!prefixPart.isEmpty() && !resultName.isEmpty() && resultName[0].isDigit()) ? "-" : "";
-                                                return {true, prefixPart + sep + resultName, ""};
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+        std::vector<std::pair<int, int>> ringSubstituents;
+        for (int n : allSystemNodes) {
+            for (int nei : g.nodes[n].neighbors) {
+                if (!allSystemNodes.count(nei)) {
+                    ringSubstituents.push_back({n, nei});
                 }
             }
         }
+
+        std::vector<std::pair<QString, int>> namedSubstituents;
+        for (const auto &subPair : ringSubstituents) {
+            int rNode = subPair.first;
+            int sNode = subPair.second;
+            QString locStr = p31LocantMap.at(rNode);
+            bool okInt = false;
+            int locVal = locStr.toInt(&okInt);
+            if (!okInt || locStr.isEmpty() || locStr.endsWith("a") || locStr.endsWith("b")) {
+                return {false, "", "Fused ring systems other than naphthalene are not supported in this phase."};
+            }
+
+            // Sulfur-rooted composite functional groups (sulfonamide
+            // and siblings) are not plain acyclic subtrees -- handing
+            // them to nameBranchGraph below walks S/O/O/N as if they
+            // were an unrecognized carbon chain, producing a garbled
+            // name instead of a clean rejection or the correct prefix.
+            // Classify them first, mirroring the identical pattern
+            // already proven at the other 3 duplicated ring-substituent
+            // regions in this file (which use these same maps, already
+            // populated earlier in generateName()).
+            QString subName;
+            if (carbonSulfonicAcid.count(rNode) && carbonSulfonicAcid[rNode] == sNode) {
+                subName = "sulfo";
+            } else if (carbonSulfonamide.count(rNode) && carbonSulfonamide[rNode] == sNode) {
+                subName = "sulfamoyl";
+            } else if (carbonSulfonylHalide.count(rNode) && carbonSulfonylHalide[rNode] == sNode) {
+                subName = halogenPrefix(sulfonylHalideZ[rNode]) + "sulfonyl";
+            } else if (carbonSulfinylHalide.count(rNode) && carbonSulfinylHalide[rNode] == sNode) {
+                subName = halogenPrefix(sulfinylHalideZ[rNode]) + "sulfinyl";
+            } else if (carbonSulfinicAcid.count(rNode) && carbonSulfinicAcid[rNode] == sNode) {
+                subName = "sulfino";
+            } else if (carbonSulfinamide.count(rNode) && carbonSulfinamide[rNode] == sNode) {
+                subName = "sulfinamoyl";
+            } else {
+                subName = nameBranchGraph(g, sNode, rNode);
+            }
+            if (subName.isEmpty()) {
+                return {false, "", "Unrecognized or unsupported substituent on ring."};
+            }
+            if (subName.startsWith("(") && subName.endsWith(")")) {
+                QString inner = subName.mid(1, subName.length() - 2);
+                // See the equivalent fix in the other duplicated
+                // regions for why this strip must be conditional on
+                // the inner name not starting with a locant digit.
+                if (!inner.isEmpty() && !inner[0].isDigit()) {
+                    subName = inner;
+                }
+            }
+            namedSubstituents.push_back({subName, locVal});
+        }
+
+        std::map<QString, std::vector<int>> prefixLocantsMap;
+        for (const auto &ns : namedSubstituents) {
+            prefixLocantsMap[ns.first].push_back(ns.second);
+        }
+
+        struct PrefixGroup {
+            QString baseName;
+            QString formattedStr;
+        };
+        std::vector<PrefixGroup> pGroups;
+        for (auto it = prefixLocantsMap.begin(); it != prefixLocantsMap.end(); ++it) {
+            QString pName = it->first;
+            std::vector<int> locs = it->second;
+            std::sort(locs.begin(), locs.end());
+
+            QStringList locStrs;
+            for (int l : locs) locStrs.append(QString::number(l));
+
+            QString pStr = locStrs.join(",");
+            if (locs.size() > 1) {
+                pStr += "-" + multiPrefix(static_cast<int>(locs.size())) + pName;
+            } else {
+                pStr += "-" + pName;
+            }
+
+            PrefixGroup pg;
+            pg.baseName = alphabetizationKey(pName);
+            pg.formattedStr = pStr;
+            pGroups.push_back(pg);
+        }
+
+        std::sort(pGroups.begin(), pGroups.end(), [](const PrefixGroup &a, const PrefixGroup &b) {
+            return a.baseName.toLower() < b.baseName.toLower();
+        });
+
+        QString prefixPart;
+        if (!pGroups.empty()) {
+            QStringList pStrs;
+            for (const auto &pg : pGroups) pStrs.append(pg.formattedStr);
+            prefixPart = pStrs.join("-");
+        }
+
+        // A locant-prefixed resultName (e.g. GENERAL_HETEROCYCLE's
+        // own "2,1,3-benzoxadiazole") needs a hyphen before it when
+        // a substituent prefix precedes it -- without this, the two
+        // locant runs concatenate into one illegible string (e.g.
+        // "5-chloro2,1,3-benzothiadiazole"). Named-type base names
+        // never start with a digit, so this was never needed before.
+        QString sep = (!prefixPart.isEmpty() && !resultName.isEmpty() && resultName[0].isDigit()) ? "-" : "";
+        return {true, prefixPart + sep + resultName, ""};
     }
 
     // --- Phase 32: Purine (Imidazole + Pyrimidine Ortho-Fused Bicyclic System) (ringCount == 2) ---
