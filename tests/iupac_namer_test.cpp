@@ -1215,8 +1215,15 @@ int main() {
         {"c1ccccc1c2ccccc2", "biphenyl", false, ""},
         // Test 4: toluene ring attached to 1-methylcyclohexane (neither ring has exocyclic double bond to O/N/S, should reject)
         {"Cc1ccc(C2(C)CCCCC2)cc1", "", true, ""},
-        // Test 5: 4-chlorophenyl on cyclohexanone (extra ring has substituent, should reject)
-        {"O=C1CCCCC1c2ccc(Cl)cc2", "", true, ""},
+        // Test 5: 4-chlorophenyl on cyclohexanone. Originally written to confirm a
+        // rejection ("extra ring has substituent, should reject") reflecting the
+        // disjoint-ring handler's own, now-relaxed, overly-strict requirement that
+        // every non-parent ring be exactly plain (unsubstituted). This session's
+        // own work widened that handler to call nameRingAsSubstituent directly
+        // (trusting its own internal validity check) instead of pre-rejecting on
+        // any substituent -- updated to the real, now-correct success this
+        // produces. Structurally validated: 2 rings (6,6), 14 heavy atoms.
+        {"O=C1CCCCC1c2ccc(Cl)cc2", "2-(4-chlorophenyl)cyclohexan-1-one", false, ""},
         // Test 6: existing ring-substituent-on-chain-parent test (should still pass)
         {"OC(=O)CCC1CCC(C(=O)O)CC1", "3-(4-carboxycyclohexyl)propanoic acid", false, ""},
         // Test 7: existing plain naphthalene test (should still pass)

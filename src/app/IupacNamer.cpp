@@ -21262,7 +21262,7 @@ IupacResult IupacNamer::generateName(int mol) {
             }
 
             if (parentEligibleCount == 1) {
-                // Check if all other rings are plain 5- or 6-membered with no further substituents
+                // Relaxed plainness check: use nameRingAsSubstituent's internal validity for each extra ring
                 bool allOthersPlain = true;
                 std::set<int> parentSet = graphRings[parentRingIndex];
                 
@@ -21270,12 +21270,6 @@ IupacResult IupacNamer::generateName(int mol) {
                 for (size_t i = 0; i < graphRings.size(); ++i) {
                     if (i == parentRingIndex) continue;
                     const auto &extraRing = graphRings[i];
-                    
-                    // Check if this ring is 5 or 6 members
-                    if (extraRing.size() != 5 && extraRing.size() != 6) {
-                        allOthersPlain = false;
-                        break;
-                    }
                     
                     // Find attachment atom to parent
                     int attachExtra = -1, attachParent = -1;
@@ -21295,38 +21289,15 @@ IupacResult IupacNamer::generateName(int mol) {
                         break;
                     }
                     
-                    // Check if this ring is plain and unsubstituted
-                    bool extraPlain = true;
-                    for (int n : extraRing) {
-                        int nonHRingNeighbors = 0;
-                        for (size_t j = 0; j < g.nodes[n].neighbors.size(); ++j) {
-                            int nei = g.nodes[n].neighbors[j];
-                            if (!extraRing.count(nei) && g.nodes[nei].atomicNumber != 1) {
-                                nonHRingNeighbors++;
-                            }
-                        }
-                        if (n == attachExtra) {
-                            if (nonHRingNeighbors != 1) {
-                                extraPlain = false;
-                                break;
-                            }
-                        } else {
-                            if (nonHRingNeighbors != 0) {
-                                extraPlain = false;
-                                break;
-                            }
-                        }
-                    }
-                    
-                    if (!extraPlain) {
+                    // Relaxed check: call nameRingAsSubstituent directly
+                    QString subName = nameRingAsSubstituent(g, extraRing, attachExtra, attachParent, allSSSRRings, parentSet, {}, nullptr, {}, {}, nullptr, mol);
+                    if (subName.isEmpty()) {
                         allOthersPlain = false;
                         break;
                     }
                     
                     // Add to forced substituent names
-                    if (allOthersPlain) {
-                        phase2ForcedRingSubstituentNames[attachExtra] = nameRingAsSubstituent(g, extraRing, attachExtra, attachParent, allSSSRRings, parentSet, {}, nullptr, {}, {}, nullptr, mol);
-                    }
+                    phase2ForcedRingSubstituentNames[attachExtra] = subName;
                 }
                 
                 if (allOthersPlain) {
@@ -21420,67 +21391,23 @@ IupacResult IupacNamer::generateName(int mol) {
             if (attach1 != -1 && attach2 != -1) {
                 // Check if exactly one ring is parent-eligible
                 if (ring1Eligible && !ring2Eligible) {
-                    // Check if ring2 is a plain 5- or 6-membered ring with no further substituents
-                    if (ring2Nodes.size() == 5 || ring2Nodes.size() == 6) {
-                        bool ring2Plain = true;
-                        for (int n : ring2Nodes) {
-                            int nonHRingNeighbors = 0;
-                            for (size_t j = 0; j < g.nodes[n].neighbors.size(); ++j) {
-                                int nei = g.nodes[n].neighbors[j];
-                                if (!ring2Nodes.count(nei) && g.nodes[nei].atomicNumber != 1) {
-                                    nonHRingNeighbors++;
-                                }
-                            }
-                            // Each ring atom should have at most one non-H, non-ring neighbor (the attachment point)
-                            // and that should only be for the attachment atom
-                            if (n == attach2) {
-                                if (nonHRingNeighbors != 1) {
-                                    ring2Plain = false;
-                                    break;
-                                }
-                            } else {
-                                if (nonHRingNeighbors != 0) {
-                                    ring2Plain = false;
-                                    break;
-                                }
-                            }
-                        }
-                        if (ring2Plain) {
-                            phase2ForcedRingNodeSet = ring1Nodes;
-                            phase2ForcedRingSubstituentNames[attach1] = nameRingAsSubstituent(g, ring2Nodes, attach2, attach1, allSSSRRings, ring1Nodes, {}, nullptr, {}, {}, nullptr, mol);
-                            return namePhase2Monocyclic();
-                        }
+                    // Relaxed plainness check: use nameRingAsSubstituent's internal validity
+                    QString subName = nameRingAsSubstituent(g, ring2Nodes, attach2, attach1, allSSSRRings, ring1Nodes, {}, nullptr, {}, {}, nullptr, mol);
+                    if (!subName.isEmpty()) {
+                        phase2ForcedRingNodeSet = ring1Nodes;
+                        phase2ForcedRingSubstituentNames[attach1] = subName;
+                        return namePhase2Monocyclic();
                     }
+                    return {false, "", "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."};
                 } else if (ring2Eligible && !ring1Eligible) {
-                    // Check if ring1 is a plain 5- or 6-membered ring with no further substituents
-                    if (ring1Nodes.size() == 5 || ring1Nodes.size() == 6) {
-                        bool ring1Plain = true;
-                        for (int n : ring1Nodes) {
-                            int nonHRingNeighbors = 0;
-                            for (size_t j = 0; j < g.nodes[n].neighbors.size(); ++j) {
-                                int nei = g.nodes[n].neighbors[j];
-                                if (!ring1Nodes.count(nei) && g.nodes[nei].atomicNumber != 1) {
-                                    nonHRingNeighbors++;
-                                }
-                            }
-                            if (n == attach1) {
-                                if (nonHRingNeighbors != 1) {
-                                    ring1Plain = false;
-                                    break;
-                                }
-                            } else {
-                                if (nonHRingNeighbors != 0) {
-                                    ring1Plain = false;
-                                    break;
-                                }
-                            }
-                        }
-                        if (ring1Plain) {
-                            phase2ForcedRingNodeSet = ring2Nodes;
-                            phase2ForcedRingSubstituentNames[attach2] = nameRingAsSubstituent(g, ring1Nodes, attach1, attach2, allSSSRRings, ring2Nodes, {}, nullptr, {}, {}, nullptr, mol);
-                            return namePhase2Monocyclic();
-                        }
+                    // Relaxed plainness check: use nameRingAsSubstituent's internal validity
+                    QString subName = nameRingAsSubstituent(g, ring1Nodes, attach1, attach2, allSSSRRings, ring2Nodes, {}, nullptr, {}, {}, nullptr, mol);
+                    if (!subName.isEmpty()) {
+                        phase2ForcedRingNodeSet = ring2Nodes;
+                        phase2ForcedRingSubstituentNames[attach2] = subName;
+                        return namePhase2Monocyclic();
                     }
+                    return {false, "", "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."};
                 } else if (ring1Eligible && ring2Eligible) {
                     // Both rings are parent-eligible (both are heterocycles or have exocyclic double/triple to O/N/S)
                     // Use P-44.2.1 tie-break criteria to decide which is senior
