@@ -20746,7 +20746,136 @@ IupacResult IupacNamer::generateName(int mol) {
                                     for (int a : realComponentIndigo[0]) if (indigoToGraphIdx.count(a)) ring1G.insert(indigoToGraphIdx.at(a));
                                     for (int a : realComponentIndigo[1]) if (indigoToGraphIdx.count(a)) ring2G.insert(indigoToGraphIdx.at(a));
                                     IupacResult r = nameNaphthaleneFusion(ring1G, ring2G, extraSubs);
-                                    if (r.success) { mcSuccess = true; mcName = r.name; }
+                                    if (r.success) {
+                                        mcSuccess = true;
+                                        mcName = r.name;
+                                    } else {
+                                        // nameNaphthaleneFusion is all-carbon-only; a heterobicyclic
+                                        // real component (quinoline/indole/benzofuran-shaped) is the
+                                        // DOMINANT real-world shape of this gap per the FDA corpus
+                                        // sweep -- try namePhase31BenzoFusion instead. Unlike
+                                        // nameNaphthaleneFusion/nameLinearChainFusion/
+                                        // nameBranchingFusion, this mechanism's own existing
+                                        // ring-as-parent call site (elsewhere in this function,
+                                        // search for "Substituent-decoration tail") already builds
+                                        // substituent names generically via nameBranchGraph, which
+                                        // already detects and names a whole attached ring system
+                                        // (confirmed post this session's own Task 6 work) -- no
+                                        // extraSubs injection needed here, reuse that exact assembly
+                                        // logic directly instead.
+                                        RingSystemNameResult p31 = namePhase31BenzoFusion(g, mol, indigoToGraphIdx, 2, &realComponentIndigo);
+                                        if (p31.success) {
+                                            QString resultNameP31 = p31.baseName;
+                                            const std::map<int, QString> &p31LocantMap = p31.locantMap;
+                                            std::set<int> allSystemNodesP31;
+                                            for (const auto &kv : p31LocantMap) allSystemNodesP31.insert(kv.first);
+
+                                            std::vector<std::pair<int, int>> ringSubstituentsP31;
+                                            for (int n : allSystemNodesP31) {
+                                                for (int nei : g.nodes[n].neighbors) {
+                                                    if (!allSystemNodesP31.count(nei)) {
+                                                        ringSubstituentsP31.push_back({n, nei});
+                                                    }
+                                                }
+                                            }
+
+                                            std::vector<std::pair<QString, int>> namedSubstituentsP31;
+                                            bool p31SubOk = true;
+                                            for (const auto &subPair : ringSubstituentsP31) {
+                                                int rNode = subPair.first;
+                                                int sNode = subPair.second;
+                                                if (!p31LocantMap.count(rNode)) { p31SubOk = false; break; }
+                                                QString locStr = p31LocantMap.at(rNode);
+                                                bool okInt = false;
+                                                int locVal = locStr.toInt(&okInt);
+                                                if (!okInt || locStr.isEmpty() || locStr.endsWith("a") || locStr.endsWith("b")) { p31SubOk = false; break; }
+
+                                                QString subName;
+                                                if (carbonSulfonicAcid.count(rNode) && carbonSulfonicAcid[rNode] == sNode) {
+                                                    subName = "sulfo";
+                                                } else if (carbonSulfonamide.count(rNode) && carbonSulfonamide[rNode] == sNode) {
+                                                    subName = "sulfamoyl";
+                                                } else if (carbonSulfonylHalide.count(rNode) && carbonSulfonylHalide[rNode] == sNode) {
+                                                    subName = halogenPrefix(sulfonylHalideZ[rNode]) + "sulfonyl";
+                                                } else if (carbonSulfinylHalide.count(rNode) && carbonSulfinylHalide[rNode] == sNode) {
+                                                    subName = halogenPrefix(sulfinylHalideZ[rNode]) + "sulfinyl";
+                                                } else if (carbonSulfinicAcid.count(rNode) && carbonSulfinicAcid[rNode] == sNode) {
+                                                    subName = "sulfino";
+                                                } else if (carbonSulfinamide.count(rNode) && carbonSulfinamide[rNode] == sNode) {
+                                                    subName = "sulfinamoyl";
+                                                } else {
+                                                    // Unlike the original whole-molecule Phase 31
+                                                    // dispatch this logic was copied from (which
+                                                    // passes {} here -- a pre-existing limitation,
+                                                    // confirmed this never gets exercised by any
+                                                    // existing test), this call site KNOWS the
+                                                    // isolated ring(s) exist: pass them explicitly so
+                                                    // nameBranchGraph's own ring detection actually
+                                                    // finds sNode's ring instead of misreading it as
+                                                    // a plain alkyl chain (confirmed live: a phenyl
+                                                    // substituent was coming back as "hexyl" without
+                                                    // this fix).
+                                                    subName = nameBranchGraph(g, sNode, rNode, isolatedGraphRings, {}, {}, nullptr, mol);
+                                                }
+                                                if (subName.isEmpty()) { p31SubOk = false; break; }
+                                                if (subName.startsWith("(") && subName.endsWith(")")) {
+                                                    QString inner = subName.mid(1, subName.length() - 2);
+                                                    if (!inner.isEmpty() && !inner[0].isDigit()) {
+                                                        subName = inner;
+                                                    }
+                                                }
+                                                namedSubstituentsP31.push_back({subName, locVal});
+                                            }
+
+                                            if (p31SubOk) {
+                                                std::map<QString, std::vector<int>> prefixLocantsMapP31;
+                                                for (const auto &ns : namedSubstituentsP31) {
+                                                    prefixLocantsMapP31[ns.first].push_back(ns.second);
+                                                }
+
+                                                struct PrefixGroupP31 {
+                                                    QString baseName;
+                                                    QString formattedStr;
+                                                };
+                                                std::vector<PrefixGroupP31> pGroupsP31;
+                                                for (auto it = prefixLocantsMapP31.begin(); it != prefixLocantsMapP31.end(); ++it) {
+                                                    QString pName = it->first;
+                                                    std::vector<int> locs = it->second;
+                                                    std::sort(locs.begin(), locs.end());
+
+                                                    QStringList locStrs;
+                                                    for (int l : locs) locStrs.append(QString::number(l));
+
+                                                    QString pStr = locStrs.join(",");
+                                                    if (locs.size() > 1) {
+                                                        pStr += "-" + multiPrefix(static_cast<int>(locs.size())) + pName;
+                                                    } else {
+                                                        pStr += "-" + pName;
+                                                    }
+
+                                                    PrefixGroupP31 pg;
+                                                    pg.baseName = alphabetizationKey(pName);
+                                                    pg.formattedStr = pStr;
+                                                    pGroupsP31.push_back(pg);
+                                                }
+
+                                                std::sort(pGroupsP31.begin(), pGroupsP31.end(), [](const PrefixGroupP31 &a, const PrefixGroupP31 &b) {
+                                                    return a.baseName.toLower() < b.baseName.toLower();
+                                                });
+
+                                                QString prefixPartP31;
+                                                if (!pGroupsP31.empty()) {
+                                                    QStringList pStrs;
+                                                    for (const auto &pg : pGroupsP31) pStrs.append(pg.formattedStr);
+                                                    prefixPartP31 = pStrs.join("-");
+                                                }
+
+                                                QString sepP31 = (!prefixPartP31.isEmpty() && !resultNameP31.isEmpty() && resultNameP31[0].isDigit()) ? "-" : "";
+                                                mcSuccess = true;
+                                                mcName = prefixPartP31 + sepP31 + resultNameP31;
+                                            }
+                                        }
+                                    }
                                 } else if (realComponentSize >= 3) {
                                     // Mirror the existing ringCount>=3 dispatch's own
                                     // validFusion/ends/centers/hasBranching computation
