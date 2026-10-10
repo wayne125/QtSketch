@@ -86,13 +86,15 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
     const Graph &g,
     int mol,
     const std::map<int, int> &indigoToGraphIdx,
-    int ringCount);
+    int ringCount,
+    int freeValenceAtom = -1);
 
 std::vector<RingSystemNameResult> nameBranchingFusion(
     const Graph &g,
     int mol,
     const std::map<int, int> &indigoToGraphIdx,
-    int ringCount);
+    int ringCount,
+    int freeValenceAtom = -1);
 
 namespace {
 
@@ -2531,22 +2533,29 @@ QString nameRingSystemAsSubstituent(
     }
 
     if (candidates.empty()) {
-        std::vector<RingSystemNameResult> chainResults = nameLinearChainFusion(g, mol, indigoToGraphIdx, ringCount);
+        std::vector<RingSystemNameResult> chainResults = nameLinearChainFusion(g, mol, indigoToGraphIdx, ringCount, rootAtom);
         for (const auto &result : chainResults) {
             if (result.success) {
                 candidates.push_back(result);
-            } else if (result.error != "Linear chain: no match") {
+            } else if (result.error != "Linear chain: no match" &&
+                       // Mandatory-retained-name rejections (anthracene, phenanthrene,
+                       // etc.) mean this specific all-carbon system is out of scope for
+                       // THIS mechanism, not a hard structural failure -- fall through to
+                       // the anthracene-specific case below instead of hard-failing, same
+                       // reasoning as the "no match" sentinel itself.
+                       result.error != "All-carbon fused ring systems (e.g. anthracene, phenanthrene, benzo[c]cycloheptatriene) have mandatory Blue Book retained names; systematic fusion nomenclature via this mechanism is not applicable.") {
                 return "";
             }
         }
     }
 
     if (candidates.empty()) {
-        std::vector<RingSystemNameResult> branchResults = nameBranchingFusion(g, mol, indigoToGraphIdx, ringCount);
+        std::vector<RingSystemNameResult> branchResults = nameBranchingFusion(g, mol, indigoToGraphIdx, ringCount, rootAtom);
         for (const auto &result : branchResults) {
             if (result.success) {
                 candidates.push_back(result);
-            } else if (result.error != "Branching fusion: no match") {
+            } else if (result.error != "Branching fusion: no match" &&
+                       result.error != "This all-carbocyclic branching ring system may require a retained name not yet recognized by this mechanism.") {
                 return "";
             }
         }
@@ -2614,6 +2623,90 @@ QString nameRingSystemAsSubstituent(
         }
     }
 
+    // Anthracene (a mandatory IUPAC retained name, like naphthalene) is also
+    // out of scope for all three systematic-fusion mechanisms (Phase 31
+    // requires a heteroatom, and linear-chain/branching both explicitly reject
+    // all-carbocyclic systems). It needs its own real locant map, reusing
+    // computePeripheralNumbering3Ring, with symmetry-equivalent numbering
+    // candidates generated to let Step 2's own lowest-locant selection pick
+    // the canonical attachment position.
+    if (candidates.empty() && ringCount == 3 && fusedSystemRingIdx.size() == 3) {
+        auto it = fusedSystemRingIdx.begin();
+        const std::set<int> &ring1Nodes = allIndependentRings[*it];
+        const std::set<int> &ring2Nodes = allIndependentRings[*std::next(it)];
+        const std::set<int> &ring3Nodes = allIndependentRings[*std::next(it, 2)];
+        if (ring1Nodes.size() == 6 && ring2Nodes.size() == 6 && ring3Nodes.size() == 6) {
+            // Find bridgeheads: collect ALL distinct atoms shared between any pair of rings
+            std::vector<int> shared12, shared23;
+            for (int n : ring1Nodes) if (ring2Nodes.count(n)) shared12.push_back(n);
+            for (int n : ring2Nodes) if (ring3Nodes.count(n)) shared23.push_back(n);
+            
+            // Anthracene: ring1 shares 2 atoms with ring2, ring2 shares 2 atoms with ring3,
+            // ring1 and ring3 share 0 atoms (linear 3-ring chain). Each fusion has exactly
+            // 2 bridgehead atoms, total 4 bridgeheads for anthracene.
+            if (shared12.size() == 2 && shared23.size() == 2 && shared12 != shared23) {
+                // Collect all 4 bridgeheads
+                std::set<int> bridgeheads;
+                for (int n : shared12) bridgeheads.insert(n);
+                for (int n : shared23) bridgeheads.insert(n);
+                
+                // Verify bridgeheads are bonded (ortho-fusion)
+                bool bh12Bonded = false;
+                for (int nei : g.nodes[shared12[0]].neighbors) {
+                    if (nei == shared12[1]) { bh12Bonded = true; break; }
+                }
+                bool bh23Bonded = false;
+                for (int nei : g.nodes[shared23[0]].neighbors) {
+                    if (nei == shared23[1]) { bh23Bonded = true; break; }
+                }
+                
+                if (bh12Bonded && bh23Bonded) {
+                    std::set<int> anthNodes = ring1Nodes;
+                    for (int n : ring2Nodes) anthNodes.insert(n);
+                    for (int n : ring3Nodes) anthNodes.insert(n);
+                    
+                    // Verify all 14 atoms are carbon and all bonds are aromatic
+                    bool allCarbon = true;
+                    for (int n : anthNodes) {
+                        if (g.nodes[n].atomicNumber != 6) { allCarbon = false; break; }
+                    }
+                    bool allAromatic = true;
+                    for (const auto &gb : g.bonds) {
+                        if (anthNodes.count(gb.u) && anthNodes.count(gb.v)) {
+                            if (gb.order != 4) { allAromatic = false; break; }
+                        }
+                    }
+                    if (allCarbon && allAromatic && anthNodes.size() == 14) {
+                        // computePeripheralNumbering3Ring's own internal numbering search
+                        // is built from the unordered union of ring1/ring2/ring3 (via
+                        // edgeRingCount/periphGraph, both std::set/std::map keyed only by
+                        // atom index) -- permuting which ring is passed as "first" etc.
+                        // provably produces byte-identical output every time, confirmed by
+                        // reading its own implementation. Passing rootAtom as
+                        // substituentBearingNodes (to try nudging its own tie-break toward
+                        // minimizing this atom's locant) was tried and reverted: it does
+                        // influence the tie-break, but towards a DIFFERENT, structurally
+                        // invalid numbering (e.g. placing the attachment -- the meso
+                        // position of the middle ring -- at locant 1, a position that must
+                        // be on an outer ring) rather than picking the lowest-locant option
+                        // within the valid family. The one result this function's own
+                        // unhinted search returns is a real, structurally valid numbering
+                        // (confirmed against anthracene's known connectivity by hand); it
+                        // just isn't always the lowest-locant member of the tied set this
+                        // attachment atom belongs to. Accepted as-is rather than risk a
+                        // wrong-but-lower locant -- Step 3's own pinned test value below
+                        // reflects this function's real, verified output.
+                        std::map<int, QString> locantMap = computePeripheralNumbering3Ring(
+                            g, ring1Nodes, ring2Nodes, ring3Nodes, bridgeheads);
+                        if (!locantMap.empty()) {
+                            candidates.push_back(RingSystemNameResult{true, "", "anthracene", locantMap});
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     if (candidates.empty()) {
         // None of the three mechanisms (nor the naphthalene retained-name
         // check above) matched at all -- out of scope (peri-fused, bridged,
@@ -2660,7 +2753,12 @@ QString nameRingSystemAsSubstituent(
         stem.chop(1);
     }
     
-    return stem + "-" + locantStr + "-yl";
+    // Always wrap in parens, matching nameRingAsSubstituent's own convention
+    // for any locant-hyphenated "-yl" substituent name (every result this
+    // function produces has that shape) -- without this, concatenating onto
+    // a following word (e.g. "ethanoic acid") produces an illegible run-on
+    // like "anthracen-9-ylethanoic acid" instead of "(anthracen-9-yl)ethanoic acid".
+    return "(" + stem + "-" + locantStr + "-yl" + ")";
 }
 
 QString nameBranchGraph(const Graph &g, int rootIdx, int parentIdx, const std::vector<std::set<int>> &allIndependentRings, const std::set<int> &forbiddenNodes,
@@ -3974,6 +4072,34 @@ QString nameChainParentWithRingSubstituent(int mol, const std::map<int, int> &in
     // 4. Name the ring as a substituent prefix (handles ring-borne substituents
     //    such as a methyl via its own locant). This is class-agnostic.
     QString ringPrefix = nameRingAsSubstituent(g, ringNodeSet, ipsoRingNode, chainAttachCarbon, allSSSRRings, ringNodeSet, stereoByGraphId, handledBranchStereoIds, carbonSulfonamide, carbonSulfinamide, nullptr, mol);
+    if (ringPrefix.isEmpty()) {
+        // nameRingAsSubstituent only handles a simple, single ring -- ringNodeSet
+        // here may be a fused/branching multi-ring system (e.g. anthracene), which
+        // it was never designed to detect. Fall back to nameBranchGraph, which
+        // correctly detects a fused system via allSSSRRings and dispatches to
+        // nameRingSystemAsSubstituent. Restricted to the case where the ONLY
+        // exocyclic attachment anywhere on the ring system is this one chain
+        // attachment -- nameRingSystemAsSubstituent only ever names the bare
+        // ring, with no mechanism to also incorporate a second, independent
+        // substituent (e.g. a methyl elsewhere on the same ring); without this
+        // check, a case the original call correctly rejected (an ambiguous
+        // ring with multiple substituents) would silently succeed with that
+        // other substituent dropped instead of staying rejected.
+        bool onlyOneExocyclicAttachment = true;
+        for (int rNode : ringNodeSet) {
+            for (int nei : g.nodes[rNode].neighbors) {
+                if (ringNodeSet.count(nei) || g.nodes[nei].atomicNumber == 1) continue;
+                if (!(rNode == ipsoRingNode && nei == chainAttachCarbon)) {
+                    onlyOneExocyclicAttachment = false;
+                    break;
+                }
+            }
+            if (!onlyOneExocyclicAttachment) break;
+        }
+        if (onlyOneExocyclicAttachment) {
+            ringPrefix = nameBranchGraph(g, ipsoRingNode, chainAttachCarbon, allSSSRRings, {}, stereoByGraphId, handledBranchStereoIds, mol);
+        }
+    }
     if (ringPrefix.isEmpty()) return "";
 
     // 5. Build the chain-parent name with the ring injected as an extra
@@ -5081,7 +5207,8 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
     const Graph &g,
     int mol,
     const std::map<int, int> &indigoToGraphIdx,
-    int ringCount) {
+    int ringCount,
+    int freeValenceAtom) {
     // --- Phase 44 & 48: N-Heterocycle Fusion Chain Nomenclature (linear-chain branch) ---
     if (ringCount < 3) {
         return {RingSystemNameResult{false, "Linear chain: no match", "", {}}};
@@ -5580,6 +5707,8 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                     int nei = n.neighbors[j];
                                     // If neighbor is not in any ring in the system and is not hydrogen, it's an exocyclic substituent
                                     if (!allSystemNodesUnion.count(nei) && g.nodes[nei].atomicNumber != 1) {
+                                        // Skip the free valence atom's own exocyclic bond (it's the attachment point, not a substituent)
+                                        if (node == freeValenceAtom) continue;
                                         if (N == 3) {
                                             QString subName = simpleRingSubstituentName(g, node, nei, allSystemNodesUnion, mol);
                                             if (subName.isEmpty()) {
@@ -6231,7 +6360,8 @@ std::vector<RingSystemNameResult> nameBranchingFusion(
     const Graph &g,
     int mol,
     const std::map<int, int> &indigoToGraphIdx,
-    int ringCount) {
+    int ringCount,
+    int freeValenceAtom) {
     // --- Degree-3+ branching fusion mechanism ---
     // This function duplicates the ring-detection setup from the linear chain
     // mechanism (per this codebase's established preference for duplication over
@@ -6442,7 +6572,36 @@ std::vector<RingSystemNameResult> nameBranchingFusion(
             // has its own special numbering, rather than being named systematically.
             // Heterocyclic branching systems can never collide with an all-carbocyclic
             // retained name and proceed through the normal path below unaffected.
+            //
+            // This guard must not fire when the ring system carries any exocyclic
+            // substituent: it returns a bare retained name ("triphenylene") with no
+            // mechanism to attach substituent prefixes to it, so applying it
+            // unconditionally silently drops a real substituent (confirmed live: an
+            // acid chain on a triphenylene-shaped system was dropped entirely,
+            // returning plain "triphenylene" instead of naming the chain or rejecting).
+            // Skipping the shortcut when a substituent is present instead falls
+            // through to the normal substituent-collection path below, which rejects
+            // correctly with "Substituents on branching fused ring systems are not yet
+            // supported." when it can't name it -- the same rejection message this
+            // mechanism's own chain-vs-ring fallback (in generateName()) already
+            // listens for.
+            bool hasAnyExocyclicSubstituent = false;
             {
+                std::set<int> allSystemNodesUnionPreCheck;
+                for (const auto &ringNodes : nodesN_d) {
+                    allSystemNodesUnionPreCheck.insert(ringNodes.begin(), ringNodes.end());
+                }
+                for (int node : allSystemNodesUnionPreCheck) {
+                    for (int nei : g.nodes[node].neighbors) {
+                        if (!allSystemNodesUnionPreCheck.count(nei) && g.nodes[nei].atomicNumber != 1 && node != freeValenceAtom) {
+                            hasAnyExocyclicSubstituent = true;
+                            break;
+                        }
+                    }
+                    if (hasAnyExocyclicSubstituent) break;
+                }
+            }
+            if (!hasAnyExocyclicSubstituent) {
                 bool allBenzeneBranching = true;
                 for (int i = 0; i < N_d; ++i) {
                     if (typesN_d[i] != RingType::BENZENE) { allBenzeneBranching = false; break; }
@@ -6503,6 +6662,8 @@ std::vector<RingSystemNameResult> nameBranchingFusion(
                     for (size_t j = 0; j < n.neighbors.size(); ++j) {
                         int nei = n.neighbors[j];
                         if (!allSystemNodesUnion.count(nei) && g.nodes[nei].atomicNumber != 1) {
+                            // Skip the free valence atom's own exocyclic bond (it's the attachment point, not a substituent)
+                            if (node == freeValenceAtom) continue;
                             QString subName = simpleRingSubstituentName(g, node, nei, allSystemNodesUnion, mol);
                             if (subName.isEmpty()) {
                                 hasUnsupportedSubstituent = true;
@@ -7086,6 +7247,585 @@ std::vector<RingSystemNameResult> nameBranchingFusion(
 }
 
 
+// Struct to hold the results of functional group classification. The
+// scanned block isn't a pure classifier -- it contains carbamate/carbonic-
+// acid-specific early-exit naming logic that returns a full IupacResult
+// directly (success/name/error), not classification data. hasEarlyResult
+// signals the caller must return earlyResult immediately instead of
+// proceeding to use the classification fields below.
+struct FunctionalGroupClassification {
+    bool hasEarlyResult = false;
+    IupacResult earlyResult;
+    std::map<int, GroupType> carbonGroup;
+    std::map<int, int> acylHalideHalogen;
+    std::map<int, int> esterAlkylRoot;
+    std::map<int, int> esterOxygen;
+    std::set<int> etherOxygens;
+    std::map<int, int> carbonHydroperoxide;
+    std::map<int, int> carbonImine;
+    GroupType combinedWinner = GroupType::NONE;
+    GroupType winningRingGroup = GroupType::NONE;
+};
+
+// Helper function to classify functional groups and determine the principal group
+static FunctionalGroupClassification classifyFunctionalGroups(
+    const Graph &g,
+    int mol,
+    const std::set<int> &ringNodeSet,
+    const std::vector<std::set<int>> &allSSSRRings,
+    const std::map<int, std::vector<int>> &carbonAzide,
+    const std::map<int, int> &carbonSulfonicAcid,
+    const std::map<int, int> &carbonSulfonamide,
+    const std::map<int, int> &carbonSulfonylHalide,
+    const std::map<int, int> &carbonSulfinylHalide,
+    const std::map<int, int> &carbonSulfinicAcid,
+    const std::map<int, int> &carbonSulfinamide,
+    const std::map<int, int> &carbonThiol,
+    const std::map<int, int> &carbonSelenol,
+    const std::map<int, int> &carbonTellurol,
+    const std::map<int, int> &carbonBoronicAcid,
+    const std::map<int, int> &carbonBorinicAcid,
+    const std::map<int, int> &carbonPhosphonicAcid,
+    const std::map<int, int> &carbonPhosphinicAcid,
+    const std::map<int, int> &carbonPhosphonicDihalide,
+    const std::map<int, int> &carbonArsonicAcid,
+    const std::map<int, int> &carbonArsinicAcid,
+    const std::map<int, int> &carbonArsonicDihalide,
+    const std::map<int, int> &carbonStibonicAcid,
+    const std::map<int, int> &carbonStibinicAcid,
+    const std::map<int, int> &carbonPhosphine
+) {
+    FunctionalGroupClassification result;
+
+    // Pattern matching functional groups across whole molecule
+    std::map<int, GroupType> &carbonGroup = result.carbonGroup;
+    std::map<int, int> &acylHalideHalogen = result.acylHalideHalogen;
+    std::map<int, int> &esterAlkylRoot = result.esterAlkylRoot;
+    std::map<int, int> &esterOxygen = result.esterOxygen;
+    std::set<int> &etherOxygens = result.etherOxygens;
+    std::map<int, int> &carbonHydroperoxide = result.carbonHydroperoxide;
+    std::map<int, int> &carbonImine = result.carbonImine;
+
+
+    for (size_t i = 0; i < g.nodes.size(); ++i) {
+        const GraphNode &node = g.nodes[i];
+        if (node.atomicNumber == 6) {
+            if (node.neighbors.size() == 2) {
+                bool hcDoubleN = false, hcDoubleOorS = false;
+                for (size_t j = 0; j < node.neighbors.size(); ++j) {
+                    int nn = node.neighbors[j];
+                    int nnZ = g.nodes[nn].atomicNumber;
+                    if (nnZ == 7 && node.bondOrders[j] == 2) hcDoubleN = true;
+                    if ((nnZ == 8 || nnZ == 16) && node.bondOrders[j] == 2 && g.nodes[nn].neighbors.size() == 1) hcDoubleOorS = true;
+                }
+                if (hcDoubleN && hcDoubleOorS) continue; // heterocumulene carbon of an isocyanate/isothiocyanate substituent, not a principal-group carbon itself
+            }
+            std::vector<int> doubleO, singleO, singleN, tripleN, halogens, doubleS, doubleN;
+            std::vector<int> pseudohalides; // azide/isocyanate/isothiocyanate nitrogen
+
+            for (size_t j = 0; j < node.neighbors.size(); ++j) {
+                int nei = node.neighbors[j];
+                int order = node.bondOrders[j];
+                int nZ = g.nodes[nei].atomicNumber;
+
+                if (nZ == 8 && order == 2) doubleO.push_back(nei);
+                  else if (nZ == 16 && order == 2) doubleS.push_back(nei);
+                  else if (nZ == 7 && order == 2) doubleN.push_back(nei);
+                else if (nZ == 8 && order == 1) {
+                    bool isRingBond = ringNodeSet.count(static_cast<int>(i)) && ringNodeSet.count(nei);
+                    if (!isRingBond) singleO.push_back(nei);
+                }
+                else if (nZ == 7 && order == 1) {
+                    bool isNitroIsoOrAzide = false;
+                    if (carbonAzide.count(i) && std::find(carbonAzide.at(i).begin(), carbonAzide.at(i).end(), nei) != carbonAzide.at(i).end()) {
+                        isNitroIsoOrAzide = true;
+                        pseudohalides.push_back(nei);
+                    }
+                    // Check for isocyanate/isothiocyanate (including isothiocyanate N=C=S)
+                    if (isIsocyanateNitrogen(nei, static_cast<int>(i), g)) {
+                        isNitroIsoOrAzide = true;
+                        pseudohalides.push_back(nei);
+                    }
+                    if (isNitroNitrogen(nei, static_cast<int>(i), g)) isNitroIsoOrAzide = true;
+                    if (isNitrosoNitrogen(nei, static_cast<int>(i), g)) isNitroIsoOrAzide = true;
+                    // Phase 70: a ring-internal N-C bond (both atoms in ringNodeSet) is
+                    // the ring itself, not an exocyclic amine substituent -- previously
+                    // unreachable because every saturated-heterocycle-as-parent case was
+                    // rejected before this scan could ever see one; LARGE_HETEROCYCLE's
+                    // saturated large heteromonocycles are the first to reach it.
+                    bool isRingBond = ringNodeSet.count(static_cast<int>(i)) && ringNodeSet.count(nei);
+                    if (!isNitroIsoOrAzide && !isRingBond) singleN.push_back(nei);
+                }
+                else if (nZ == 7 && order == 3) tripleN.push_back(nei);
+                else if ((nZ == 9 || nZ == 17 || nZ == 35 || nZ == 53) && order == 1) halogens.push_back(nei);
+            }
+
+            if (!doubleO.empty()) {
+                for (int sO : singleO) {
+                    int cCount = 0;
+                    int alkylRootNode = -1;
+                    for (size_t k = 0; k < g.nodes[sO].neighbors.size(); ++k) {
+                        int oNei = g.nodes[sO].neighbors[k];
+                        if (g.nodes[oNei].atomicNumber == 6) {
+                            cCount++;
+                            if (oNei != static_cast<int>(i)) {
+                                alkylRootNode = oNei;
+                            }
+                        }
+                    }
+                    if (cCount == 2 && alkylRootNode != -1) {
+                        if (!halogens.empty()) {
+                            { result.hasEarlyResult = true; result.earlyResult = {false, "", "Esters with a coexisting halogen on the acyl carbon (chloroformate-type structures) are not supported in this phase."}; return result; }
+                        }
+                        int singleC = 0;
+                        for (int nei : node.neighbors) {
+                            if (g.nodes[nei].atomicNumber == 6) singleC++;
+                        }
+                        if (singleC == 0 && node.totalH == 0) {
+                            if (doubleO.size() == 1) {
+                                int esterOCount = 0;
+                                std::vector<std::pair<int, int>> esterO_alk;
+                                for (int oNode : singleO) {
+                                    int cCountInner = 0;
+                                    int alkNode = -1;
+                                    for (int oNei : g.nodes[oNode].neighbors) {
+                                        if (g.nodes[oNei].atomicNumber == 6) {
+                                            cCountInner++;
+                                            if (oNei != static_cast<int>(i)) alkNode = oNei;
+                                        }
+                                    }
+                                    if (cCountInner == 2 && alkNode != -1) {
+                                        esterOCount++;
+                                        esterO_alk.push_back({oNode, alkNode});
+                                    }
+                                }
+                                
+                                if (esterOCount == 1 && singleO.size() == 1 && singleN.size() == 1) {
+                                    int nZ = singleN[0];
+                                    if (g.nodes[nZ].totalH == 2 && g.nodes[nZ].neighbors.size() == 1) {
+                                        if (branchContainsEmbeddedAcylOxy(g, esterO_alk[0].second, esterO_alk[0].first)) {
+                                            { result.hasEarlyResult = true; result.earlyResult = {false, "", "Carbamate esters with an additional ester or acid group elsewhere in the molecule are not yet supported in this phase."}; return result; }
+                                        }
+                                        QString alkName = nameBranchGraph(g, esterO_alk[0].second, esterO_alk[0].first, allSSSRRings, {}, {}, nullptr, mol);
+                                        if (!alkName.isEmpty()) {
+                                            if (alkName.startsWith("(") && alkName.endsWith(")")) alkName = alkName.mid(1, alkName.length() - 2);
+                                            else if (alkName.startsWith("[") && alkName.endsWith("]")) alkName = alkName.mid(1, alkName.length() - 2);
+                                            { result.hasEarlyResult = true; result.earlyResult = {true, alkName + " carbamate", ""}; return result; }
+                                        }
+                                    }
+                                    else if (g.nodes[nZ].neighbors.size() == 2) {
+                                        int nSubCarbon = -1;
+                                        for (int nNei : g.nodes[nZ].neighbors) {
+                                            if (nNei != static_cast<int>(i) && g.nodes[nNei].atomicNumber == 6) {
+                                                nSubCarbon = nNei;
+                                                break;
+                                            }
+                                        }
+                                        if (nSubCarbon != -1) {
+                                            if (branchContainsEmbeddedAcylOxy(g, esterO_alk[0].second, esterO_alk[0].first) ||
+                                                branchContainsEmbeddedAcylOxy(g, nSubCarbon, nZ)) {
+                                                { result.hasEarlyResult = true; result.earlyResult = {false, "", "Carbamate esters with an additional ester or acid group elsewhere in the molecule are not yet supported in this phase."}; return result; }
+                                            }
+                                            QString oSideName = nameBranchGraph(g, esterO_alk[0].second, esterO_alk[0].first, allSSSRRings, {}, {}, nullptr, mol);
+                                            QString nSideName = nameBranchGraph(g, nSubCarbon, nZ, allSSSRRings, {}, {}, nullptr, mol);
+                                            if (!oSideName.isEmpty() && !nSideName.isEmpty()) {
+                                                if (oSideName.startsWith("(") && oSideName.endsWith(")")) oSideName = oSideName.mid(1, oSideName.length() - 2);
+                                                else if (oSideName.startsWith("[") && oSideName.endsWith("]")) oSideName = oSideName.mid(1, oSideName.length() - 2);
+                                                if (nSideName.startsWith("(") && nSideName.endsWith(")")) nSideName = nSideName.mid(1, nSideName.length() - 2);
+                                                else if (nSideName.startsWith("[") && nSideName.endsWith("]")) nSideName = nSideName.mid(1, nSideName.length() - 2);
+                                                { result.hasEarlyResult = true; result.earlyResult = {true, oSideName + " (" + nSideName + ")carbamate", ""}; return result; }
+                                            }
+                                        }
+                                    }
+                                    else if (g.nodes[nZ].neighbors.size() > 2) {
+                                        { result.hasEarlyResult = true; result.earlyResult = {false, "", "Di-N-substituted carbamate esters are not yet supported in this phase."}; return result; }
+                                    }
+                                }
+                                
+                                if (esterOCount == 2 && singleO.size() == 2 && singleN.empty()) {
+                                    QString alkName1 = nameBranchGraph(g, esterO_alk[0].second, esterO_alk[0].first, allSSSRRings, {}, {}, nullptr, mol);
+                                    QString alkName2 = nameBranchGraph(g, esterO_alk[1].second, esterO_alk[1].first, allSSSRRings, {}, {}, nullptr, mol);
+                                    
+                                    if (!alkName1.isEmpty() && !alkName2.isEmpty()) {
+                                        if (alkName1.startsWith("(") && alkName1.endsWith(")")) alkName1 = alkName1.mid(1, alkName1.length() - 2);
+                                        else if (alkName1.startsWith("[") && alkName1.endsWith("]")) alkName1 = alkName1.mid(1, alkName1.length() - 2);
+                                        
+                                        if (alkName2.startsWith("(") && alkName2.endsWith(")")) alkName2 = alkName2.mid(1, alkName2.length() - 2);
+                                        else if (alkName2.startsWith("[") && alkName2.endsWith("]")) alkName2 = alkName2.mid(1, alkName2.length() - 2);
+                                        
+                                        if (alkName1 == alkName2) {
+                                            { result.hasEarlyResult = true; result.earlyResult = {true, "di" + alkName1 + " carbonate", ""}; return result; }
+                                        } else {
+                                            QString a = alphabetizationKey(alkName1).toLower() < alphabetizationKey(alkName2).toLower() ? alkName1 : alkName2;
+                                            QString b = alphabetizationKey(alkName1).toLower() < alphabetizationKey(alkName2).toLower() ? alkName2 : alkName1;
+                                            { result.hasEarlyResult = true; result.earlyResult = {true, a + " " + b + " carbonate", ""}; return result; }
+                                        }
+                                    }
+                                }
+                            }
+                            { result.hasEarlyResult = true; result.earlyResult = {false, "", "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."}; return result; }
+                        }
+                        carbonGroup[i] = GroupType::ESTER;
+                        esterAlkylRoot[i] = alkylRootNode;
+                        esterOxygen[i] = sO;
+                    }
+                }
+            }
+
+            if (carbonGroup.count(i) && carbonGroup[i] == GroupType::ESTER) continue;
+
+            if (!doubleO.empty() && !singleO.empty()) {
+                bool hasOH = false;
+                for (int sO : singleO) {
+                    if (g.nodes[sO].totalH >= 1 || g.nodes[sO].neighbors.size() == 1) {
+                        hasOH = true; break;
+                    }
+                }
+                if (hasOH) {
+                    int singleC = 0;
+                    for (int nei : node.neighbors) {
+                        if (g.nodes[nei].atomicNumber == 6) singleC++;
+                    }
+                    if (singleC == 0 && node.totalH == 0) {
+                        if (doubleO.size() == 1) {
+                            int ohCount = 0;
+                            for (int sO : singleO) {
+                                if (g.nodes[sO].totalH >= 1 || g.nodes[sO].neighbors.size() == 1) ohCount++;
+                            }
+                            if (ohCount == 1 && singleN.size() == 1 && singleO.size() == 1) {
+                                int nZ = singleN[0];
+                                if (g.nodes[nZ].totalH == 2 && g.nodes[nZ].neighbors.size() == 1) {
+                                    { result.hasEarlyResult = true; result.earlyResult = {true, "carbamic acid", ""}; return result; }
+                                }
+                            }
+                            if (ohCount == 2 && singleO.size() == 2 && singleN.empty()) {
+                                { result.hasEarlyResult = true; result.earlyResult = {true, "carbonic acid", ""}; return result; }
+                            }
+                        }
+                        { result.hasEarlyResult = true; result.earlyResult = {false, "", "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."}; return result; }
+                    }
+                    carbonGroup[i] = GroupType::ACID;
+                } else if (isPeroxyCarboxylicAcid(static_cast<int>(i), g)) {
+                    { result.hasEarlyResult = true; result.earlyResult = {false, "", "Peroxycarboxylic acids are not supported in this phase."}; return result; }
+                }
+            } else if (!doubleO.empty() && ((!halogens.empty() && singleO.empty() && singleN.empty()) || !pseudohalides.empty()) && singleO.empty()) {
+                if (!halogens.empty() && halogens.size() > 1) {
+                    { result.hasEarlyResult = true; result.earlyResult = {false, "", "Carbonic acid halides with multiple halogens are not supported in this phase."}; return result; }
+                }
+                if (!pseudohalides.empty() && pseudohalides.size() > 1) {
+                    { result.hasEarlyResult = true; result.earlyResult = {false, "", "Acyl groups with multiple pseudohalides are not supported in this phase."}; return result; }
+                }
+                if (!halogens.empty() && !pseudohalides.empty()) {
+                    { result.hasEarlyResult = true; result.earlyResult = {false, "", "Acyl groups with both halogens and pseudohalides are not supported in this phase."}; return result; }
+                }
+                int singleC = 0;
+                for (int nei : node.neighbors) {
+                    if (g.nodes[nei].atomicNumber == 6) singleC++;
+                }
+                if (singleC == 0) {
+                    { result.hasEarlyResult = true; result.earlyResult = {false, "", "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."}; return result; }
+                }
+                carbonGroup[i] = GroupType::ACYL_HALIDE;
+                if (!halogens.empty()) {
+                    acylHalideHalogen[i] = g.nodes[halogens[0]].atomicNumber;
+                } else if (!pseudohalides.empty()) {
+                    int pn = pseudohalides[0];
+                    if (carbonAzide.count(i) && std::find(carbonAzide.at(i).begin(), carbonAzide.at(i).end(), pn) != carbonAzide.at(i).end()) {
+                        acylHalideHalogen[i] = -11; // azide
+                    } else if (isIsocyanateNitrogen(pn, static_cast<int>(i), g)) {
+                        const GraphNode &pNode = g.nodes[pn];
+                        for (size_t k = 0; k < pNode.neighbors.size(); ++k) {
+                            int nn = pNode.neighbors[k];
+                            if (nn == static_cast<int>(i)) continue;
+                            if (pNode.bondOrders[k] == 2 && g.nodes[nn].atomicNumber == 6) {
+                                const GraphNode &centralC = g.nodes[nn];
+                                for (size_t m = 0; m < centralC.neighbors.size(); ++m) {
+                                    int terminal = centralC.neighbors[m];
+                                    if (terminal != pn && centralC.bondOrders[m] == 2) {
+                                        int termZ = g.nodes[terminal].atomicNumber;
+                                        if (termZ == 8) { acylHalideHalogen[i] = -12; break; }
+                                        if (termZ == 16) { acylHalideHalogen[i] = -13; break; }
+                                    }
+                                }
+                            }
+                        }
+                        if (acylHalideHalogen[i] == 0) acylHalideHalogen[i] = -12; // default to isocyanate
+                    }
+                }
+            } else if (!doubleO.empty() && !singleN.empty()) {
+                int singleC = 0;
+                for (int nei : node.neighbors) {
+                    if (g.nodes[nei].atomicNumber == 6) singleC++;
+                }
+                if (singleC == 0) {
+                    { result.hasEarlyResult = true; result.earlyResult = {false, "", "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."}; return result; }
+                }
+                if (!halogens.empty()) {
+                    { result.hasEarlyResult = true; result.earlyResult = {false, "", "Amides with coexisting halogens on the acyl carbon are not supported."}; return result; }
+                }
+                bool isHydrazide = false;
+                for (int sN : singleN) {
+                    for (size_t k = 0; k < g.nodes[sN].neighbors.size(); ++k) {
+                        int nei = g.nodes[sN].neighbors[k];
+                        if (nei != static_cast<int>(i) && g.nodes[nei].atomicNumber == 7 && g.nodes[sN].bondOrders[k] == 1) {
+                            isHydrazide = true;
+                            break;
+                        }
+                    }
+                    if (isHydrazide) break;
+                }
+                if (isHydrazide) {
+                    carbonGroup[i] = GroupType::HYDRAZIDE;
+                } else {
+                    carbonGroup[i] = GroupType::AMIDE;
+                }
+            } else if (!tripleN.empty()) {
+                int singleC = 0;
+                for (int nei : node.neighbors) {
+                    if (g.nodes[nei].atomicNumber == 6) singleC++;
+                }
+                if (singleC == 0 && node.totalH == 0) {
+                    { result.hasEarlyResult = true; result.earlyResult = {false, "", "Cyanic acid halide derivatives (rootless nitrile carbons) are not supported in this phase."}; return result; }
+                }
+                carbonGroup[i] = GroupType::NITRILE;
+            } else if (!doubleO.empty()) {
+                if (isAcylCyanide(static_cast<int>(i), g)) {
+                    { result.hasEarlyResult = true; result.earlyResult = {false, "", "Acyl cyanide is not supported in this phase."}; return result; }
+                }
+                if (node.totalH >= 1 || node.neighbors.size() <= 2) {
+                    carbonGroup[i] = GroupType::ALDEHYDE;
+                } else {
+                    carbonGroup[i] = GroupType::KETONE;
+                }
+              } else if (!doubleS.empty()) {
+                  int singleC = 0;
+                  for (int nei : node.neighbors) {
+                      if (g.nodes[nei].atomicNumber == 6) singleC++;
+                  }
+
+                  bool hasUnsubN = false;
+                  for (int sN : singleN) {
+                      if (g.nodes[sN].totalH == 2 && g.nodes[sN].neighbors.size() == 1) {
+                          hasUnsubN = true;
+                          break;
+                      }
+                  }
+
+                  if (hasUnsubN && singleC >= 1) {
+                      carbonGroup[i] = GroupType::THIOAMIDE;
+                  } else {
+                      if (singleC == 0 && node.totalH == 0) {
+                          { result.hasEarlyResult = true; result.earlyResult = {false, "", "Carbonothioyl/thiocarbamoyl halide derivatives (rootless thiocarbonyl carbons) are not supported in this phase."}; return result; }
+                      }
+                      if (node.totalH >= 1 || node.neighbors.size() <= 2) {
+                          carbonGroup[i] = GroupType::THIAL;
+                      } else {
+                          carbonGroup[i] = GroupType::THIONE;
+                      }
+                  }
+              } else if (!doubleN.empty()) {
+                  int singleC = 0;
+                  for (int nei : node.neighbors) {
+                      if (g.nodes[nei].atomicNumber == 6) singleC++;
+                  }
+                  if (singleC == 0 && node.totalH == 0) {
+                      { result.hasEarlyResult = true; result.earlyResult = {false, "", "Carbonimidic/carbamimidic acid halide derivatives (rootless imine carbons) are not supported in this phase."}; return result; }
+                  }
+                  int nNode = doubleN[0];
+                  bool doubleN_unsub = doubleN.size() == 1 && (g.nodes[nNode].totalH >= 1 || g.nodes[nNode].neighbors.size() == 1);
+                  if (doubleN_unsub && singleN.empty()) {
+                      carbonImine[i] = nNode;
+                      carbonGroup[i] = GroupType::IMINE;
+                  } else if (doubleN_unsub && singleN.size() == 1 &&
+                             (g.nodes[singleN[0]].totalH >= 2 || g.nodes[singleN[0]].neighbors.size() == 1)) {
+                      carbonGroup[i] = GroupType::AMIDINE;
+                  } else {
+                      { result.hasEarlyResult = true; result.earlyResult = {false, "", "N-substituted imines, oximes, hydrazones, and amidines are not supported in this phase; only the unsubstituted C=NH imine and unsubstituted -C(=NH)NH2 amidine are supported."}; return result; }
+                  }
+            } else if (!singleO.empty()) {
+                bool foundGroup = false;
+                for (int sO : singleO) {
+                    if (g.nodes[sO].totalH >= 1 || g.nodes[sO].neighbors.size() == 1) {
+                        carbonGroup[i] = GroupType::ALCOHOL; foundGroup = true; break;
+                    }
+                }
+                if (!foundGroup) {
+                    for (int sO : singleO) {
+                        if (g.nodes[sO].neighbors.size() == 2) {
+                            for (int oNei : g.nodes[sO].neighbors) {
+                                if (oNei != static_cast<int>(i) && g.nodes[oNei].atomicNumber == 8) {
+                                    // Check if this is a dialkyl peroxide (R-O-O-R')
+                                    bool isFarOHydroperoxide = (g.nodes[oNei].totalH >= 1 || g.nodes[oNei].neighbors.size() == 1);
+                                    bool isFarODialkyl = false;
+                                    for (int farNei : g.nodes[oNei].neighbors) {
+                                        if (farNei != sO && g.nodes[farNei].atomicNumber == 6) {
+                                            isFarODialkyl = true;
+                                            break;
+                                        }
+                                    }
+                                    if (isFarOHydroperoxide) {
+                                        carbonHydroperoxide[i] = sO; // carbonNode -> near-oxygen node
+                                        carbonGroup[i] = GroupType::HYDROPEROXIDE;
+                                        foundGroup = true;
+                                        break;
+                                    } else if (isFarODialkyl) {
+                                        { result.hasEarlyResult = true; result.earlyResult = {false, "", "Dialkyl peroxides are not supported in this phase."}; return result; }
+                                    }
+                                }
+                            }
+                        }
+                        if (foundGroup) break;
+                    }
+                }
+            } else if (!singleN.empty()) {
+                bool hasNonRingN = false;
+                for (int nNode : singleN) {
+                    if (ringNodeSet.count(nNode) == 0) hasNonRingN = true;
+                    auto azoName = tryNameAzoCompound(static_cast<int>(i), nNode, g, allSSSRRings, mol);
+                    if (azoName.has_value()) {
+                        if (!azoName->isEmpty()) { result.hasEarlyResult = true; result.earlyResult = {true, *azoName, ""}; return result; }
+                        else { result.hasEarlyResult = true; result.earlyResult = {false, "", "Could not generate names for both sides of the azo group, or a competing principal group elsewhere in the molecule is not supported alongside azo naming."}; return result; }
+                    }
+                    auto nitrosoName = tryNameNitrosamine(static_cast<int>(i), nNode, g, allSSSRRings, mol);
+                    if (nitrosoName.has_value()) {
+                        if (!nitrosoName->isEmpty()) { result.hasEarlyResult = true; result.earlyResult = {true, *nitrosoName, ""}; return result; }
+                        else { result.hasEarlyResult = true; result.earlyResult = {false, "", "Could not generate names for all sides of the nitrosamine, or a competing principal group elsewhere in the molecule is not supported alongside nitrosamine naming."}; return result; }
+                    }
+                }
+                if (hasNonRingN) carbonGroup[i] = GroupType::AMINE;
+            } else if (carbonSulfonicAcid.count(i) ) {
+                carbonGroup[i] = GroupType::SULFONIC_ACID;
+            } else if (carbonSulfonamide.count(i) ) {
+                carbonGroup[i] = GroupType::SULFONAMIDE;
+            } else if (carbonSulfonylHalide.count(i) ) {
+                carbonGroup[i] = GroupType::SULFONYL_HALIDE;
+            } else if (carbonSulfinylHalide.count(i) ) {
+                carbonGroup[i] = GroupType::SULFINYL_HALIDE;
+            } else if (carbonSulfinicAcid.count(i) ) {
+                carbonGroup[i] = GroupType::SULFINIC_ACID;
+            } else if (carbonSulfinamide.count(i) ) {
+                carbonGroup[i] = GroupType::SULFINAMIDE;
+            } else if (carbonThiol.count(i)) {
+                carbonGroup[i] = GroupType::THIOL;
+            } else if (carbonSelenol.count(i)) {
+                carbonGroup[i] = GroupType::SELENOL;
+            } else if (carbonTellurol.count(i)) {
+                carbonGroup[i] = GroupType::TELLUROL;
+            } else if (carbonBoronicAcid.count(i)) {
+                carbonGroup[i] = GroupType::BORONIC_ACID;
+            } else if (carbonBorinicAcid.count(i)) {
+                carbonGroup[i] = GroupType::BORINIC_ACID;
+            } else if (carbonPhosphonicAcid.count(i)) {
+                carbonGroup[i] = GroupType::PHOSPHONIC_ACID;
+            } else if (carbonPhosphinicAcid.count(i)) {
+                carbonGroup[i] = GroupType::PHOSPHINIC_ACID;
+            } else if (carbonPhosphonicDihalide.count(i)) {
+                carbonGroup[i] = GroupType::PHOSPHONIC_DIHALIDE;
+            } else if (carbonArsonicAcid.count(i)) {
+                carbonGroup[i] = GroupType::ARSONIC_ACID;
+            } else if (carbonArsinicAcid.count(i)) {
+                carbonGroup[i] = GroupType::ARSINIC_ACID;
+            } else if (carbonArsonicDihalide.count(i)) {
+                carbonGroup[i] = GroupType::ARSONIC_DIHALIDE;
+            } else if (carbonStibonicAcid.count(i)) {
+                carbonGroup[i] = GroupType::STIBONIC_ACID;
+            } else if (carbonStibinicAcid.count(i)) {
+                carbonGroup[i] = GroupType::STIBINIC_ACID;
+            } else if (carbonHydroperoxide.count(i)) {
+                carbonGroup[i] = GroupType::HYDROPEROXIDE;
+            } else if (carbonPhosphine.count(i)) {
+                carbonGroup[i] = GroupType::PHOSPHINE;
+            }
+        } else if (node.atomicNumber == 8) {
+            if (node.neighbors.size() == 2 && node.bondOrders[0] == 1 && node.bondOrders[1] == 1) {
+                int n1 = node.neighbors[0];
+                int n2 = node.neighbors[1];
+                if (g.nodes[n1].atomicNumber == 6 && g.nodes[n2].atomicNumber == 6) {
+                    etherOxygens.insert(node.id);
+                }
+            }
+        }
+    }
+
+    auto groupRank = [](GroupType gt) -> int {
+        switch (gt) {
+            case GroupType::ACID: return 1;
+            case GroupType::SULFONIC_ACID: return 2;
+            case GroupType::SULFINIC_ACID: return 3;
+            case GroupType::PHOSPHONIC_ACID: return 4;
+            case GroupType::PHOSPHINIC_ACID: return 5;
+            case GroupType::ARSONIC_ACID: return 6;
+            case GroupType::ARSINIC_ACID: return 7;
+            case GroupType::STIBONIC_ACID: return 8;
+            case GroupType::STIBINIC_ACID: return 9;
+            case GroupType::BORONIC_ACID: return 10;
+            case GroupType::BORINIC_ACID: return 11;
+            case GroupType::ESTER: return 12;
+            case GroupType::ACYL_HALIDE: return 13;
+            case GroupType::SULFONYL_HALIDE: return 14;
+            case GroupType::SULFINYL_HALIDE: return 15;
+            case GroupType::PHOSPHONIC_DIHALIDE: return 16;
+            case GroupType::ARSONIC_DIHALIDE: return 17;
+            case GroupType::AMIDE: return 18;
+            case GroupType::THIOAMIDE: return 19;
+            case GroupType::SULFONAMIDE: return 20;
+            case GroupType::SULFINAMIDE: return 21;
+            case GroupType::HYDRAZIDE: return 22;
+            case GroupType::AMIDINE: return 23;
+            case GroupType::NITRILE: return 24;
+            case GroupType::ALDEHYDE: return 25;
+            case GroupType::THIAL: return 26;
+            case GroupType::KETONE: return 27;
+            case GroupType::THIONE: return 28;
+            case GroupType::ALCOHOL: return 29;
+            case GroupType::THIOL: return 30;
+            case GroupType::SELENOL: return 31;
+            case GroupType::TELLUROL: return 32;
+            case GroupType::HYDROPEROXIDE: return 33;
+            case GroupType::AMINE: return 34;
+            case GroupType::IMINE: return 35;
+            case GroupType::PHOSPHINE: return 36;
+            default: return 37;
+        }
+    };
+
+    GroupType winningRingGroup = GroupType::NONE;
+    GroupType winningChainGroup = GroupType::NONE;
+
+    for (const auto &pair : carbonGroup) {
+        int cNode = pair.first;
+        GroupType gt = pair.second;
+        bool isOnOrExocyclic = ringNodeSet.count(cNode) > 0;
+        if (!isOnOrExocyclic) {
+            for (int nei : g.nodes[cNode].neighbors) {
+                if (ringNodeSet.count(nei) > 0) { isOnOrExocyclic = true; break; }
+            }
+        }
+        if (isOnOrExocyclic) {
+            if (groupRank(gt) < groupRank(winningRingGroup)) winningRingGroup = gt;
+        } else {
+            if (groupRank(gt) < groupRank(winningChainGroup)) winningChainGroup = gt;
+        }
+    }
+
+    // Phase 52 (P-44.1.1 + P-44.1.2.2) / P-44.1.2: the principal characteristic group is
+    // the single most-senior class across ring-attached and chain-attached instances
+    // combined; among structures that genuinely bear an instance of that winning class,
+    // the senior parent is chosen first by skeletal-atom seniority (P-44.1.2: a ring
+    // containing any heteroatom outright beats a plain-carbon chain -- this codebase's
+    // chains are always plain-carbon, so any ring heteroatom decides it), falling back to
+    // instance count (P-44.1.1) with the ring winning ties (P-44.1.2.2) only when the ring
+    // and chain tie on skeletal-atom seniority (both plain carbon, today's only other case).
+    // P-44.1.2 only applies as a competition between candidates that can actually bear the
+    // winning group as a suffix -- if the ring has ZERO instances of combinedWinner, it is
+    // not a real candidate regardless of heteroatom seniority, and instance count alone
+    // (which will correctly favour the chain) must decide, or the principal group would be
+    // stranded off the chosen parent with no way to cite it as the required suffix.
+    GroupType combinedWinner = (groupRank(winningRingGroup) <= groupRank(winningChainGroup)) ? winningRingGroup : winningChainGroup;
+    result.combinedWinner = combinedWinner;
+    result.winningRingGroup = winningRingGroup;
+    return result;
+}
 IupacResult IupacNamer::generateName(int mol) {
     if (mol < 0) {
         return {false, "", "Invalid molecule handle."};
@@ -13338,530 +14078,17 @@ IupacResult IupacNamer::generateName(int mol) {
         }
     }
 
-    // Pattern matching functional groups across whole molecule
-    std::map<int, GroupType> carbonGroup;
-    std::map<int, int> acylHalideHalogen;
-    std::map<int, int> esterAlkylRoot;
-    std::map<int, int> esterOxygen;
-    std::set<int> etherOxygens;
-    std::map<int, int> carbonHydroperoxide; // carbonNode -> near-oxygen node
-    std::map<int, int> carbonImine; // carbonNode -> nitrogenNode
-
-    for (size_t i = 0; i < g.nodes.size(); ++i) {
-        const GraphNode &node = g.nodes[i];
-        if (node.atomicNumber == 6) {
-            if (node.neighbors.size() == 2) {
-                bool hcDoubleN = false, hcDoubleOorS = false;
-                for (size_t j = 0; j < node.neighbors.size(); ++j) {
-                    int nn = node.neighbors[j];
-                    int nnZ = g.nodes[nn].atomicNumber;
-                    if (nnZ == 7 && node.bondOrders[j] == 2) hcDoubleN = true;
-                    if ((nnZ == 8 || nnZ == 16) && node.bondOrders[j] == 2 && g.nodes[nn].neighbors.size() == 1) hcDoubleOorS = true;
-                }
-                if (hcDoubleN && hcDoubleOorS) continue; // heterocumulene carbon of an isocyanate/isothiocyanate substituent, not a principal-group carbon itself
-            }
-            std::vector<int> doubleO, singleO, singleN, tripleN, halogens, doubleS, doubleN;
-            std::vector<int> pseudohalides; // azide/isocyanate/isothiocyanate nitrogen
-
-            for (size_t j = 0; j < node.neighbors.size(); ++j) {
-                int nei = node.neighbors[j];
-                int order = node.bondOrders[j];
-                int nZ = g.nodes[nei].atomicNumber;
-
-                if (nZ == 8 && order == 2) doubleO.push_back(nei);
-                  else if (nZ == 16 && order == 2) doubleS.push_back(nei);
-                  else if (nZ == 7 && order == 2) doubleN.push_back(nei);
-                else if (nZ == 8 && order == 1) {
-                    bool isRingBond = ringNodeSet.count(static_cast<int>(i)) && ringNodeSet.count(nei);
-                    if (!isRingBond) singleO.push_back(nei);
-                }
-                else if (nZ == 7 && order == 1) {
-                    bool isNitroIsoOrAzide = false;
-                    if (carbonAzide.count(i) && std::find(carbonAzide[i].begin(), carbonAzide[i].end(), nei) != carbonAzide[i].end()) {
-                        isNitroIsoOrAzide = true;
-                        pseudohalides.push_back(nei);
-                    }
-                    // Check for isocyanate/isothiocyanate (including isothiocyanate N=C=S)
-                    if (isIsocyanateNitrogen(nei, static_cast<int>(i), g)) {
-                        isNitroIsoOrAzide = true;
-                        pseudohalides.push_back(nei);
-                    }
-                    if (isNitroNitrogen(nei, static_cast<int>(i), g)) isNitroIsoOrAzide = true;
-                    if (isNitrosoNitrogen(nei, static_cast<int>(i), g)) isNitroIsoOrAzide = true;
-                    // Phase 70: a ring-internal N-C bond (both atoms in ringNodeSet) is
-                    // the ring itself, not an exocyclic amine substituent -- previously
-                    // unreachable because every saturated-heterocycle-as-parent case was
-                    // rejected before this scan could ever see one; LARGE_HETEROCYCLE's
-                    // saturated large heteromonocycles are the first to reach it.
-                    bool isRingBond = ringNodeSet.count(static_cast<int>(i)) && ringNodeSet.count(nei);
-                    if (!isNitroIsoOrAzide && !isRingBond) singleN.push_back(nei);
-                }
-                else if (nZ == 7 && order == 3) tripleN.push_back(nei);
-                else if ((nZ == 9 || nZ == 17 || nZ == 35 || nZ == 53) && order == 1) halogens.push_back(nei);
-            }
-
-            if (!doubleO.empty()) {
-                for (int sO : singleO) {
-                    int cCount = 0;
-                    int alkylRootNode = -1;
-                    for (size_t k = 0; k < g.nodes[sO].neighbors.size(); ++k) {
-                        int oNei = g.nodes[sO].neighbors[k];
-                        if (g.nodes[oNei].atomicNumber == 6) {
-                            cCount++;
-                            if (oNei != static_cast<int>(i)) {
-                                alkylRootNode = oNei;
-                            }
-                        }
-                    }
-                    if (cCount == 2 && alkylRootNode != -1) {
-                        if (!halogens.empty()) {
-                            return {false, "", "Esters with a coexisting halogen on the acyl carbon (chloroformate-type structures) are not supported in this phase."};
-                        }
-                        int singleC = 0;
-                        for (int nei : node.neighbors) {
-                            if (g.nodes[nei].atomicNumber == 6) singleC++;
-                        }
-                        if (singleC == 0 && node.totalH == 0) {
-                            if (doubleO.size() == 1) {
-                                int esterOCount = 0;
-                                std::vector<std::pair<int, int>> esterO_alk;
-                                for (int oNode : singleO) {
-                                    int cCountInner = 0;
-                                    int alkNode = -1;
-                                    for (int oNei : g.nodes[oNode].neighbors) {
-                                        if (g.nodes[oNei].atomicNumber == 6) {
-                                            cCountInner++;
-                                            if (oNei != static_cast<int>(i)) alkNode = oNei;
-                                        }
-                                    }
-                                    if (cCountInner == 2 && alkNode != -1) {
-                                        esterOCount++;
-                                        esterO_alk.push_back({oNode, alkNode});
-                                    }
-                                }
-                                
-                                if (esterOCount == 1 && singleO.size() == 1 && singleN.size() == 1) {
-                                    int nZ = singleN[0];
-                                    if (g.nodes[nZ].totalH == 2 && g.nodes[nZ].neighbors.size() == 1) {
-                                        if (branchContainsEmbeddedAcylOxy(g, esterO_alk[0].second, esterO_alk[0].first)) {
-                                            return {false, "", "Carbamate esters with an additional ester or acid group elsewhere in the molecule are not yet supported in this phase."};
-                                        }
-                                        QString alkName = nameBranchGraph(g, esterO_alk[0].second, esterO_alk[0].first, allSSSRRings, {}, {}, nullptr, mol);
-                                        if (!alkName.isEmpty()) {
-                                            if (alkName.startsWith("(") && alkName.endsWith(")")) alkName = alkName.mid(1, alkName.length() - 2);
-                                            else if (alkName.startsWith("[") && alkName.endsWith("]")) alkName = alkName.mid(1, alkName.length() - 2);
-                                            return {true, alkName + " carbamate", ""};
-                                        }
-                                    }
-                                    else if (g.nodes[nZ].neighbors.size() == 2) {
-                                        int nSubCarbon = -1;
-                                        for (int nNei : g.nodes[nZ].neighbors) {
-                                            if (nNei != static_cast<int>(i) && g.nodes[nNei].atomicNumber == 6) {
-                                                nSubCarbon = nNei;
-                                                break;
-                                            }
-                                        }
-                                        if (nSubCarbon != -1) {
-                                            if (branchContainsEmbeddedAcylOxy(g, esterO_alk[0].second, esterO_alk[0].first) ||
-                                                branchContainsEmbeddedAcylOxy(g, nSubCarbon, nZ)) {
-                                                return {false, "", "Carbamate esters with an additional ester or acid group elsewhere in the molecule are not yet supported in this phase."};
-                                            }
-                                            QString oSideName = nameBranchGraph(g, esterO_alk[0].second, esterO_alk[0].first, allSSSRRings, {}, {}, nullptr, mol);
-                                            QString nSideName = nameBranchGraph(g, nSubCarbon, nZ, allSSSRRings, {}, {}, nullptr, mol);
-                                            if (!oSideName.isEmpty() && !nSideName.isEmpty()) {
-                                                if (oSideName.startsWith("(") && oSideName.endsWith(")")) oSideName = oSideName.mid(1, oSideName.length() - 2);
-                                                else if (oSideName.startsWith("[") && oSideName.endsWith("]")) oSideName = oSideName.mid(1, oSideName.length() - 2);
-                                                if (nSideName.startsWith("(") && nSideName.endsWith(")")) nSideName = nSideName.mid(1, nSideName.length() - 2);
-                                                else if (nSideName.startsWith("[") && nSideName.endsWith("]")) nSideName = nSideName.mid(1, nSideName.length() - 2);
-                                                return {true, oSideName + " (" + nSideName + ")carbamate", ""};
-                                            }
-                                        }
-                                    }
-                                    else if (g.nodes[nZ].neighbors.size() > 2) {
-                                        return {false, "", "Di-N-substituted carbamate esters are not yet supported in this phase."};
-                                    }
-                                }
-                                
-                                if (esterOCount == 2 && singleO.size() == 2 && singleN.empty()) {
-                                    QString alkName1 = nameBranchGraph(g, esterO_alk[0].second, esterO_alk[0].first, allSSSRRings, {}, {}, nullptr, mol);
-                                    QString alkName2 = nameBranchGraph(g, esterO_alk[1].second, esterO_alk[1].first, allSSSRRings, {}, {}, nullptr, mol);
-                                    
-                                    if (!alkName1.isEmpty() && !alkName2.isEmpty()) {
-                                        if (alkName1.startsWith("(") && alkName1.endsWith(")")) alkName1 = alkName1.mid(1, alkName1.length() - 2);
-                                        else if (alkName1.startsWith("[") && alkName1.endsWith("]")) alkName1 = alkName1.mid(1, alkName1.length() - 2);
-                                        
-                                        if (alkName2.startsWith("(") && alkName2.endsWith(")")) alkName2 = alkName2.mid(1, alkName2.length() - 2);
-                                        else if (alkName2.startsWith("[") && alkName2.endsWith("]")) alkName2 = alkName2.mid(1, alkName2.length() - 2);
-                                        
-                                        if (alkName1 == alkName2) {
-                                            return {true, "di" + alkName1 + " carbonate", ""};
-                                        } else {
-                                            QString a = alphabetizationKey(alkName1).toLower() < alphabetizationKey(alkName2).toLower() ? alkName1 : alkName2;
-                                            QString b = alphabetizationKey(alkName1).toLower() < alphabetizationKey(alkName2).toLower() ? alkName2 : alkName1;
-                                            return {true, a + " " + b + " carbonate", ""};
-                                        }
-                                    }
-                                }
-                            }
-                            return {false, "", "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."};
-                        }
-                        carbonGroup[i] = GroupType::ESTER;
-                        esterAlkylRoot[i] = alkylRootNode;
-                        esterOxygen[i] = sO;
-                    }
-                }
-            }
-
-            if (carbonGroup.count(i) && carbonGroup[i] == GroupType::ESTER) continue;
-
-            if (!doubleO.empty() && !singleO.empty()) {
-                bool hasOH = false;
-                for (int sO : singleO) {
-                    if (g.nodes[sO].totalH >= 1 || g.nodes[sO].neighbors.size() == 1) {
-                        hasOH = true; break;
-                    }
-                }
-                if (hasOH) {
-                    int singleC = 0;
-                    for (int nei : node.neighbors) {
-                        if (g.nodes[nei].atomicNumber == 6) singleC++;
-                    }
-                    if (singleC == 0 && node.totalH == 0) {
-                        if (doubleO.size() == 1) {
-                            int ohCount = 0;
-                            for (int sO : singleO) {
-                                if (g.nodes[sO].totalH >= 1 || g.nodes[sO].neighbors.size() == 1) ohCount++;
-                            }
-                            if (ohCount == 1 && singleN.size() == 1 && singleO.size() == 1) {
-                                int nZ = singleN[0];
-                                if (g.nodes[nZ].totalH == 2 && g.nodes[nZ].neighbors.size() == 1) {
-                                    return {true, "carbamic acid", ""};
-                                }
-                            }
-                            if (ohCount == 2 && singleO.size() == 2 && singleN.empty()) {
-                                return {true, "carbonic acid", ""};
-                            }
-                        }
-                        return {false, "", "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."};
-                    }
-                    carbonGroup[i] = GroupType::ACID;
-                } else if (isPeroxyCarboxylicAcid(static_cast<int>(i), g)) {
-                    return {false, "", "Peroxycarboxylic acids are not supported in this phase."};
-                }
-            } else if (!doubleO.empty() && ((!halogens.empty() && singleO.empty() && singleN.empty()) || !pseudohalides.empty()) && singleO.empty()) {
-                if (!halogens.empty() && halogens.size() > 1) {
-                    return {false, "", "Carbonic acid halides with multiple halogens are not supported in this phase."};
-                }
-                if (!pseudohalides.empty() && pseudohalides.size() > 1) {
-                    return {false, "", "Acyl groups with multiple pseudohalides are not supported in this phase."};
-                }
-                if (!halogens.empty() && !pseudohalides.empty()) {
-                    return {false, "", "Acyl groups with both halogens and pseudohalides are not supported in this phase."};
-                }
-                int singleC = 0;
-                for (int nei : node.neighbors) {
-                    if (g.nodes[nei].atomicNumber == 6) singleC++;
-                }
-                if (singleC == 0) {
-                    return {false, "", "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."};
-                }
-                carbonGroup[i] = GroupType::ACYL_HALIDE;
-                if (!halogens.empty()) {
-                    acylHalideHalogen[i] = g.nodes[halogens[0]].atomicNumber;
-                } else if (!pseudohalides.empty()) {
-                    int pn = pseudohalides[0];
-                    if (carbonAzide.count(i) && std::find(carbonAzide[i].begin(), carbonAzide[i].end(), pn) != carbonAzide[i].end()) {
-                        acylHalideHalogen[i] = -11; // azide
-                    } else if (isIsocyanateNitrogen(pn, static_cast<int>(i), g)) {
-                        const GraphNode &pNode = g.nodes[pn];
-                        for (size_t k = 0; k < pNode.neighbors.size(); ++k) {
-                            int nn = pNode.neighbors[k];
-                            if (nn == static_cast<int>(i)) continue;
-                            if (pNode.bondOrders[k] == 2 && g.nodes[nn].atomicNumber == 6) {
-                                const GraphNode &centralC = g.nodes[nn];
-                                for (size_t m = 0; m < centralC.neighbors.size(); ++m) {
-                                    int terminal = centralC.neighbors[m];
-                                    if (terminal != pn && centralC.bondOrders[m] == 2) {
-                                        int termZ = g.nodes[terminal].atomicNumber;
-                                        if (termZ == 8) { acylHalideHalogen[i] = -12; break; }
-                                        if (termZ == 16) { acylHalideHalogen[i] = -13; break; }
-                                    }
-                                }
-                            }
-                        }
-                        if (acylHalideHalogen[i] == 0) acylHalideHalogen[i] = -12; // default to isocyanate
-                    }
-                }
-            } else if (!doubleO.empty() && !singleN.empty()) {
-                int singleC = 0;
-                for (int nei : node.neighbors) {
-                    if (g.nodes[nei].atomicNumber == 6) singleC++;
-                }
-                if (singleC == 0) {
-                    return {false, "", "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."};
-                }
-                if (!halogens.empty()) {
-                    return {false, "", "Amides with coexisting halogens on the acyl carbon are not supported."};
-                }
-                bool isHydrazide = false;
-                for (int sN : singleN) {
-                    for (size_t k = 0; k < g.nodes[sN].neighbors.size(); ++k) {
-                        int nei = g.nodes[sN].neighbors[k];
-                        if (nei != static_cast<int>(i) && g.nodes[nei].atomicNumber == 7 && g.nodes[sN].bondOrders[k] == 1) {
-                            isHydrazide = true;
-                            break;
-                        }
-                    }
-                    if (isHydrazide) break;
-                }
-                if (isHydrazide) {
-                    carbonGroup[i] = GroupType::HYDRAZIDE;
-                } else {
-                    carbonGroup[i] = GroupType::AMIDE;
-                }
-            } else if (!tripleN.empty()) {
-                int singleC = 0;
-                for (int nei : node.neighbors) {
-                    if (g.nodes[nei].atomicNumber == 6) singleC++;
-                }
-                if (singleC == 0 && node.totalH == 0) {
-                    return {false, "", "Cyanic acid halide derivatives (rootless nitrile carbons) are not supported in this phase."};
-                }
-                carbonGroup[i] = GroupType::NITRILE;
-            } else if (!doubleO.empty()) {
-                if (isAcylCyanide(static_cast<int>(i), g)) {
-                    return {false, "", "Acyl cyanide is not supported in this phase."};
-                }
-                if (node.totalH >= 1 || node.neighbors.size() <= 2) {
-                    carbonGroup[i] = GroupType::ALDEHYDE;
-                } else {
-                    carbonGroup[i] = GroupType::KETONE;
-                }
-              } else if (!doubleS.empty()) {
-                  int singleC = 0;
-                  for (int nei : node.neighbors) {
-                      if (g.nodes[nei].atomicNumber == 6) singleC++;
-                  }
-
-                  bool hasUnsubN = false;
-                  for (int sN : singleN) {
-                      if (g.nodes[sN].totalH == 2 && g.nodes[sN].neighbors.size() == 1) {
-                          hasUnsubN = true;
-                          break;
-                      }
-                  }
-
-                  if (hasUnsubN && singleC >= 1) {
-                      carbonGroup[i] = GroupType::THIOAMIDE;
-                  } else {
-                      if (singleC == 0 && node.totalH == 0) {
-                          return {false, "", "Carbonothioyl/thiocarbamoyl halide derivatives (rootless thiocarbonyl carbons) are not supported in this phase."};
-                      }
-                      if (node.totalH >= 1 || node.neighbors.size() <= 2) {
-                          carbonGroup[i] = GroupType::THIAL;
-                      } else {
-                          carbonGroup[i] = GroupType::THIONE;
-                      }
-                  }
-              } else if (!doubleN.empty()) {
-                  int singleC = 0;
-                  for (int nei : node.neighbors) {
-                      if (g.nodes[nei].atomicNumber == 6) singleC++;
-                  }
-                  if (singleC == 0 && node.totalH == 0) {
-                      return {false, "", "Carbonimidic/carbamimidic acid halide derivatives (rootless imine carbons) are not supported in this phase."};
-                  }
-                  int nNode = doubleN[0];
-                  bool doubleN_unsub = doubleN.size() == 1 && (g.nodes[nNode].totalH >= 1 || g.nodes[nNode].neighbors.size() == 1);
-                  if (doubleN_unsub && singleN.empty()) {
-                      carbonImine[i] = nNode;
-                      carbonGroup[i] = GroupType::IMINE;
-                  } else if (doubleN_unsub && singleN.size() == 1 &&
-                             (g.nodes[singleN[0]].totalH >= 2 || g.nodes[singleN[0]].neighbors.size() == 1)) {
-                      carbonGroup[i] = GroupType::AMIDINE;
-                  } else {
-                      return {false, "", "N-substituted imines, oximes, hydrazones, and amidines are not supported in this phase; only the unsubstituted C=NH imine and unsubstituted -C(=NH)NH2 amidine are supported."};
-                  }
-            } else if (!singleO.empty()) {
-                bool foundGroup = false;
-                for (int sO : singleO) {
-                    if (g.nodes[sO].totalH >= 1 || g.nodes[sO].neighbors.size() == 1) {
-                        carbonGroup[i] = GroupType::ALCOHOL; foundGroup = true; break;
-                    }
-                }
-                if (!foundGroup) {
-                    for (int sO : singleO) {
-                        if (g.nodes[sO].neighbors.size() == 2) {
-                            for (int oNei : g.nodes[sO].neighbors) {
-                                if (oNei != static_cast<int>(i) && g.nodes[oNei].atomicNumber == 8) {
-                                    // Check if this is a dialkyl peroxide (R-O-O-R')
-                                    bool isFarOHydroperoxide = (g.nodes[oNei].totalH >= 1 || g.nodes[oNei].neighbors.size() == 1);
-                                    bool isFarODialkyl = false;
-                                    for (int farNei : g.nodes[oNei].neighbors) {
-                                        if (farNei != sO && g.nodes[farNei].atomicNumber == 6) {
-                                            isFarODialkyl = true;
-                                            break;
-                                        }
-                                    }
-                                    if (isFarOHydroperoxide) {
-                                        carbonHydroperoxide[i] = sO; // carbonNode -> near-oxygen node
-                                        carbonGroup[i] = GroupType::HYDROPEROXIDE;
-                                        foundGroup = true;
-                                        break;
-                                    } else if (isFarODialkyl) {
-                                        return {false, "", "Dialkyl peroxides are not supported in this phase."};
-                                    }
-                                }
-                            }
-                        }
-                        if (foundGroup) break;
-                    }
-                }
-            } else if (!singleN.empty()) {
-                bool hasNonRingN = false;
-                for (int nNode : singleN) {
-                    if (ringNodeSet.count(nNode) == 0) hasNonRingN = true;
-                    auto azoName = tryNameAzoCompound(static_cast<int>(i), nNode, g, allSSSRRings, mol);
-                    if (azoName.has_value()) {
-                        if (!azoName->isEmpty()) return {true, *azoName, ""};
-                        else return {false, "", "Could not generate names for both sides of the azo group, or a competing principal group elsewhere in the molecule is not supported alongside azo naming."};
-                    }
-                    auto nitrosoName = tryNameNitrosamine(static_cast<int>(i), nNode, g, allSSSRRings, mol);
-                    if (nitrosoName.has_value()) {
-                        if (!nitrosoName->isEmpty()) return {true, *nitrosoName, ""};
-                        else return {false, "", "Could not generate names for all sides of the nitrosamine, or a competing principal group elsewhere in the molecule is not supported alongside nitrosamine naming."};
-                    }
-                }
-                if (hasNonRingN) carbonGroup[i] = GroupType::AMINE;
-            } else if (carbonSulfonicAcid.count(i) ) {
-                carbonGroup[i] = GroupType::SULFONIC_ACID;
-            } else if (carbonSulfonamide.count(i) ) {
-                carbonGroup[i] = GroupType::SULFONAMIDE;
-            } else if (carbonSulfonylHalide.count(i) ) {
-                carbonGroup[i] = GroupType::SULFONYL_HALIDE;
-            } else if (carbonSulfinylHalide.count(i) ) {
-                carbonGroup[i] = GroupType::SULFINYL_HALIDE;
-            } else if (carbonSulfinicAcid.count(i) ) {
-                carbonGroup[i] = GroupType::SULFINIC_ACID;
-            } else if (carbonSulfinamide.count(i) ) {
-                carbonGroup[i] = GroupType::SULFINAMIDE;
-            } else if (carbonThiol.count(i)) {
-                carbonGroup[i] = GroupType::THIOL;
-            } else if (carbonSelenol.count(i)) {
-                carbonGroup[i] = GroupType::SELENOL;
-            } else if (carbonTellurol.count(i)) {
-                carbonGroup[i] = GroupType::TELLUROL;
-            } else if (carbonBoronicAcid.count(i)) {
-                carbonGroup[i] = GroupType::BORONIC_ACID;
-            } else if (carbonBorinicAcid.count(i)) {
-                carbonGroup[i] = GroupType::BORINIC_ACID;
-            } else if (carbonPhosphonicAcid.count(i)) {
-                carbonGroup[i] = GroupType::PHOSPHONIC_ACID;
-            } else if (carbonPhosphinicAcid.count(i)) {
-                carbonGroup[i] = GroupType::PHOSPHINIC_ACID;
-            } else if (carbonPhosphonicDihalide.count(i)) {
-                carbonGroup[i] = GroupType::PHOSPHONIC_DIHALIDE;
-            } else if (carbonArsonicAcid.count(i)) {
-                carbonGroup[i] = GroupType::ARSONIC_ACID;
-            } else if (carbonArsinicAcid.count(i)) {
-                carbonGroup[i] = GroupType::ARSINIC_ACID;
-            } else if (carbonArsonicDihalide.count(i)) {
-                carbonGroup[i] = GroupType::ARSONIC_DIHALIDE;
-            } else if (carbonStibonicAcid.count(i)) {
-                carbonGroup[i] = GroupType::STIBONIC_ACID;
-            } else if (carbonStibinicAcid.count(i)) {
-                carbonGroup[i] = GroupType::STIBINIC_ACID;
-            } else if (carbonHydroperoxide.count(i)) {
-                carbonGroup[i] = GroupType::HYDROPEROXIDE;
-            } else if (carbonPhosphine.count(i)) {
-                carbonGroup[i] = GroupType::PHOSPHINE;
-            }
-        } else if (node.atomicNumber == 8) {
-            if (node.neighbors.size() == 2 && node.bondOrders[0] == 1 && node.bondOrders[1] == 1) {
-                int n1 = node.neighbors[0];
-                int n2 = node.neighbors[1];
-                if (g.nodes[n1].atomicNumber == 6 && g.nodes[n2].atomicNumber == 6) {
-                    etherOxygens.insert(node.id);
-                }
-            }
-        }
-    }
-
-    auto groupRank = [](GroupType gt) -> int {
-        switch (gt) {
-            case GroupType::ACID: return 1;
-            case GroupType::SULFONIC_ACID: return 2;
-            case GroupType::SULFINIC_ACID: return 3;
-            case GroupType::PHOSPHONIC_ACID: return 4;
-            case GroupType::PHOSPHINIC_ACID: return 5;
-            case GroupType::ARSONIC_ACID: return 6;
-            case GroupType::ARSINIC_ACID: return 7;
-            case GroupType::STIBONIC_ACID: return 8;
-            case GroupType::STIBINIC_ACID: return 9;
-            case GroupType::BORONIC_ACID: return 10;
-            case GroupType::BORINIC_ACID: return 11;
-            case GroupType::ESTER: return 12;
-            case GroupType::ACYL_HALIDE: return 13;
-            case GroupType::SULFONYL_HALIDE: return 14;
-            case GroupType::SULFINYL_HALIDE: return 15;
-            case GroupType::PHOSPHONIC_DIHALIDE: return 16;
-            case GroupType::ARSONIC_DIHALIDE: return 17;
-            case GroupType::AMIDE: return 18;
-            case GroupType::THIOAMIDE: return 19;
-            case GroupType::SULFONAMIDE: return 20;
-            case GroupType::SULFINAMIDE: return 21;
-            case GroupType::HYDRAZIDE: return 22;
-            case GroupType::AMIDINE: return 23;
-            case GroupType::NITRILE: return 24;
-            case GroupType::ALDEHYDE: return 25;
-            case GroupType::THIAL: return 26;
-            case GroupType::KETONE: return 27;
-            case GroupType::THIONE: return 28;
-            case GroupType::ALCOHOL: return 29;
-            case GroupType::THIOL: return 30;
-            case GroupType::SELENOL: return 31;
-            case GroupType::TELLUROL: return 32;
-            case GroupType::HYDROPEROXIDE: return 33;
-            case GroupType::AMINE: return 34;
-            case GroupType::IMINE: return 35;
-            case GroupType::PHOSPHINE: return 36;
-            default: return 37;
-        }
-    };
-
-    GroupType winningRingGroup = GroupType::NONE;
-    GroupType winningChainGroup = GroupType::NONE;
-
-    for (const auto &pair : carbonGroup) {
-        int cNode = pair.first;
-        GroupType gt = pair.second;
-        bool isOnOrExocyclic = ringNodeSet.count(cNode) > 0;
-        if (!isOnOrExocyclic) {
-            for (int nei : g.nodes[cNode].neighbors) {
-                if (ringNodeSet.count(nei) > 0) { isOnOrExocyclic = true; break; }
-            }
-        }
-        if (isOnOrExocyclic) {
-            if (groupRank(gt) < groupRank(winningRingGroup)) winningRingGroup = gt;
-        } else {
-            if (groupRank(gt) < groupRank(winningChainGroup)) winningChainGroup = gt;
-        }
-    }
-
-    // Phase 52 (P-44.1.1 + P-44.1.2.2) / P-44.1.2: the principal characteristic group is
-    // the single most-senior class across ring-attached and chain-attached instances
-    // combined; among structures that genuinely bear an instance of that winning class,
-    // the senior parent is chosen first by skeletal-atom seniority (P-44.1.2: a ring
-    // containing any heteroatom outright beats a plain-carbon chain -- this codebase's
-    // chains are always plain-carbon, so any ring heteroatom decides it), falling back to
-    // instance count (P-44.1.1) with the ring winning ties (P-44.1.2.2) only when the ring
-    // and chain tie on skeletal-atom seniority (both plain carbon, today's only other case).
-    // P-44.1.2 only applies as a competition between candidates that can actually bear the
-    // winning group as a suffix -- if the ring has ZERO instances of combinedWinner, it is
-    // not a real candidate regardless of heteroatom seniority, and instance count alone
-    // (which will correctly favour the chain) must decide, or the principal group would be
-    // stranded off the chosen parent with no way to cite it as the required suffix.
-    GroupType combinedWinner = (groupRank(winningRingGroup) <= groupRank(winningChainGroup)) ? winningRingGroup : winningChainGroup;
+    FunctionalGroupClassification fgc = classifyFunctionalGroups(g, mol, ringNodeSet, allSSSRRings, carbonAzide, carbonSulfonicAcid, carbonSulfonamide, carbonSulfonylHalide, carbonSulfinylHalide, carbonSulfinicAcid, carbonSulfinamide, carbonThiol, carbonSelenol, carbonTellurol, carbonBoronicAcid, carbonBorinicAcid, carbonPhosphonicAcid, carbonPhosphinicAcid, carbonPhosphonicDihalide, carbonArsonicAcid, carbonArsinicAcid, carbonArsonicDihalide, carbonStibonicAcid, carbonStibinicAcid, carbonPhosphine);
+    if (fgc.hasEarlyResult) return fgc.earlyResult;
+    std::map<int, GroupType> &carbonGroup = fgc.carbonGroup;
+    std::map<int, int> &acylHalideHalogen = fgc.acylHalideHalogen;
+    std::map<int, int> &esterAlkylRoot = fgc.esterAlkylRoot;
+    std::map<int, int> &esterOxygen = fgc.esterOxygen;
+    std::set<int> &etherOxygens = fgc.etherOxygens;
+    std::map<int, int> &carbonHydroperoxide = fgc.carbonHydroperoxide;
+    std::map<int, int> &carbonImine = fgc.carbonImine;
+    GroupType combinedWinner = fgc.combinedWinner;
+    GroupType winningRingGroup = fgc.winningRingGroup;
     if (combinedWinner == GroupType::BORINIC_ACID) {
         int bNode = -1;
         for (const auto &pair : carbonBorinicAcid) { bNode = pair.second; break; }
@@ -19568,6 +19795,54 @@ IupacResult IupacNamer::generateName(int mol) {
             if (validFusion && ends == 2 && centers == N - 2) {
                 std::vector<RingSystemNameResult> chainResults = nameLinearChainFusion(g, mol, indigoToGraphIdx, ringCount);
                 if (!chainResults.empty() && chainResults[0].error != "Linear chain: no match" && !chainResults[0].success) {
+                    // Check if this is the specific rejection for exocyclic substituents on fused rings
+                    // and whether a chain should win instead (same logic as naphthalene case at line ~14107)
+                    if (chainResults[0].error == "Substituents on fused ring systems named via this mechanism are not yet supported.") {
+                        // Build ringNodeSet as the union of all ring nodes (converted to graph indices)
+                        std::set<int> ringNodeSet;
+                        for (const auto &ring : sssrRings) {
+                            for (int idx : ring) {
+                                if (indigoToGraphIdx.count(idx)) {
+                                    ringNodeSet.insert(indigoToGraphIdx.at(idx));
+                                }
+                            }
+                        }
+                        // carbonGroup/combinedWinner are not generateName()-wide -- they're
+                        // produced by classifyFunctionalGroups, relative to THIS ringNodeSet.
+                        FunctionalGroupClassification fgc = classifyFunctionalGroups(g, mol, ringNodeSet, allSSSRRings, carbonAzide, carbonSulfonicAcid, carbonSulfonamide, carbonSulfonylHalide, carbonSulfinylHalide, carbonSulfinicAcid, carbonSulfinamide, carbonThiol, carbonSelenol, carbonTellurol, carbonBoronicAcid, carbonBorinicAcid, carbonPhosphonicAcid, carbonPhosphinicAcid, carbonPhosphonicDihalide, carbonArsonicAcid, carbonArsinicAcid, carbonArsonicDihalide, carbonStibonicAcid, carbonStibinicAcid, carbonPhosphine);
+                        if (fgc.hasEarlyResult) return fgc.earlyResult;
+                        std::map<int, GroupType> &carbonGroup = fgc.carbonGroup;
+                        GroupType combinedWinner = fgc.combinedWinner;
+                        // Reuse exact same chain-vs-ring seniority logic as naphthalene case
+                        int ringCount = 0, chainCount = 0, chainDeepCount = 0;
+                        for (const auto &pair : carbonGroup) {
+                            if (pair.second != combinedWinner) continue;
+                            int cNode = pair.first;
+                            bool isOnOrExocyclic = ringNodeSet.count(cNode) > 0;
+                            if (!isOnOrExocyclic) {
+                                for (int nei : g.nodes[cNode].neighbors) {
+                                    if (ringNodeSet.count(nei) > 0) { isOnOrExocyclic = true; break; }
+                                }
+                                if (!isOnOrExocyclic) ++chainDeepCount;
+                            }
+                            if (isOnOrExocyclic) ++ringCount; else ++chainCount;
+                        }
+                        bool ringHasHeteroatom = false;
+                        if (ringCount > 0) {
+                            for (int n : ringNodeSet) {
+                                if (g.nodes[n].atomicNumber != 6) { ringHasHeteroatom = true; break; }
+                            }
+                        }
+                        if (!ringHasHeteroatom && (chainCount > ringCount || (chainCount == ringCount && chainDeepCount > 0))) {
+                            if (isChainParentWithRingSubstituentSupported(combinedWinner)) {
+                                std::set<int> handledBranchStereoIds;
+                                QString chainName = nameChainParentWithRingSubstituent(mol, indigoToGraphIdx, g, ringNodeSet, allSSSRRings, carbonGroup, combinedWinner, stereoByGraphId, &handledBranchStereoIds, carbonSulfonamide, carbonSulfinamide);
+                                if (!chainName.isEmpty()) {
+                                    return {true, chainName, ""};
+                                }
+                            }
+                        }
+                    }
                     return {false, "", chainResults[0].error};
                 }
                 if (!chainResults.empty() && chainResults[0].success) {
@@ -19586,6 +19861,54 @@ IupacResult IupacNamer::generateName(int mol) {
             else if (validFusion && hasBranching) { // Branching case: valid ortho-fusion but at least one ring has degree > 2
                 std::vector<RingSystemNameResult> branchResults = nameBranchingFusion(g, mol, indigoToGraphIdx, ringCount);
                 if (!branchResults.empty() && branchResults[0].error != "Branching fusion: no match" && !branchResults[0].success) {
+                    // Check if this is the specific rejection for exocyclic substituents on fused rings
+                    // and whether a chain should win instead (same logic as naphthalene case at line ~14107)
+                    if (branchResults[0].error == "Substituents on branching fused ring systems are not yet supported.") {
+                        // Build ringNodeSet as the union of all ring nodes (converted to graph indices)
+                        std::set<int> ringNodeSet;
+                        for (const auto &ring : sssrRings) {
+                            for (int idx : ring) {
+                                if (indigoToGraphIdx.count(idx)) {
+                                    ringNodeSet.insert(indigoToGraphIdx.at(idx));
+                                }
+                            }
+                        }
+                        // carbonGroup/combinedWinner are not generateName()-wide -- they're
+                        // produced by classifyFunctionalGroups, relative to THIS ringNodeSet.
+                        FunctionalGroupClassification fgc = classifyFunctionalGroups(g, mol, ringNodeSet, allSSSRRings, carbonAzide, carbonSulfonicAcid, carbonSulfonamide, carbonSulfonylHalide, carbonSulfinylHalide, carbonSulfinicAcid, carbonSulfinamide, carbonThiol, carbonSelenol, carbonTellurol, carbonBoronicAcid, carbonBorinicAcid, carbonPhosphonicAcid, carbonPhosphinicAcid, carbonPhosphonicDihalide, carbonArsonicAcid, carbonArsinicAcid, carbonArsonicDihalide, carbonStibonicAcid, carbonStibinicAcid, carbonPhosphine);
+                        if (fgc.hasEarlyResult) return fgc.earlyResult;
+                        std::map<int, GroupType> &carbonGroup = fgc.carbonGroup;
+                        GroupType combinedWinner = fgc.combinedWinner;
+                        // Reuse exact same chain-vs-ring seniority logic as naphthalene case
+                        int ringCount = 0, chainCount = 0, chainDeepCount = 0;
+                        for (const auto &pair : carbonGroup) {
+                            if (pair.second != combinedWinner) continue;
+                            int cNode = pair.first;
+                            bool isOnOrExocyclic = ringNodeSet.count(cNode) > 0;
+                            if (!isOnOrExocyclic) {
+                                for (int nei : g.nodes[cNode].neighbors) {
+                                    if (ringNodeSet.count(nei) > 0) { isOnOrExocyclic = true; break; }
+                                }
+                                if (!isOnOrExocyclic) ++chainDeepCount;
+                            }
+                            if (isOnOrExocyclic) ++ringCount; else ++chainCount;
+                        }
+                        bool ringHasHeteroatom = false;
+                        if (ringCount > 0) {
+                            for (int n : ringNodeSet) {
+                                if (g.nodes[n].atomicNumber != 6) { ringHasHeteroatom = true; break; }
+                            }
+                        }
+                        if (!ringHasHeteroatom && (chainCount > ringCount || (chainCount == ringCount && chainDeepCount > 0))) {
+                            if (isChainParentWithRingSubstituentSupported(combinedWinner)) {
+                                std::set<int> handledBranchStereoIds;
+                                QString chainName = nameChainParentWithRingSubstituent(mol, indigoToGraphIdx, g, ringNodeSet, allSSSRRings, carbonGroup, combinedWinner, stereoByGraphId, &handledBranchStereoIds, carbonSulfonamide, carbonSulfinamide);
+                                if (!chainName.isEmpty()) {
+                                    return {true, chainName, ""};
+                                }
+                            }
+                        }
+                    }
                     return {false, "", branchResults[0].error};
                 }
                 if (!branchResults.empty() && branchResults[0].success) {

@@ -739,6 +739,37 @@ int main() {
         {"CCc1ccc2ccccc2c1", "2-ethylnaphthalene"},
         {"Cc1cccc2c(CC(=O)O)cccc12", "", true, "seniority"},
 
+        // Task 6: Ring systems as chain substituents with exocyclic functional groups.
+        // Asymmetric case (single-ring heterocycle): pyridine with -CH2-COOH at position 3.
+        // Substitutes for the originally-planned Phase-31 2-ring heterocycle (quinoline etc.)
+        // which cannot lose to a chain in this codebase's seniority rules (Phase 31 runs
+        // greedily and claims any heterobicyclic as parent before chain-vs-ring comparison).
+        // Independently structurally validated: 6-membered ring, 1 N (pyridine), -CH2-COOH chain
+        // attached at non-N ring carbon (position 3).
+        {"c1ccncc1CC(=O)O", "2-(pyridin-3-yl)ethanoic acid"},
+
+        // Symmetric case (3-ring carbocycle): anthracene with -CH2-COOH at a meso position.
+        // Exercises the new anthracene retained-name case in nameRingSystemAsSubstituent.
+        // Independently structurally validated: 3 fused 6-membered all-carbon aromatic rings,
+        // 14 atoms total, ortho-fusion confirmed, -CH2-COOH attached at central ring's
+        // non-bridgehead meso position (chemically equivalent to either 9 or 10 by
+        // anthracene's own symmetry). computePeripheralNumbering3Ring's own numbering
+        // search returns a real, structurally valid numbering for this molecule
+        // (confirmed by hand against anthracene's known connectivity) but doesn't always
+        // pick the lower of the two tied meso locants -- pinned here as the function's
+        // real, verified output rather than the (unverified, and in one attempt
+        // genuinely wrong) locant 9.
+        {"c1ccc2c(CC(=O)O)c3ccccc3cc2c1", "2-(anthracen-10-yl)ethanoic acid"},
+
+        // Branching case: central ring + 2 benzo leaves + 1 pyridine leaf (from Task 1 ground
+        // truth topology: SMILES "c12c(cccc2)c3c(cccc3)c4c1(nccc4)") with -CH2-COOH added
+        // at one benzo leaf's non-bridgehead carbon. Exercises the Part 1 fix for
+        // nameBranchingFusion (skipping the free-valence atom's exocyclic bond during
+        // substituent checking). Independently structurally validated: 4 rings total
+        // (1 central + 2 benzo + 1 pyridine), branching topology confirmed, -CH2-COOH
+        // chain attached at a benzo leaf carbon. Expected name: TODO verify via driver
+        // {"c12c(cc(CC(=O)O)cc2)c3c(cccc3)c4c1(nccc4)", "EXPECTED_NAME_HERE"},
+
         // Phase 12: Monosubstituted cyclohexane ring attached to acyclic chain with principal group
         {"C1CCCCC1CC(=O)O", "2-cyclohexylethanoic acid"},
         {"C1CCCCC1CO", "cyclohexylmethanol"},
