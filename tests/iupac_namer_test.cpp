@@ -825,6 +825,35 @@ int main() {
         // Structurally validated: 3 rings (6,6,6), 18 heavy atoms (16 C + Cl + Br).
         {"c1ccc2cc(-c3ccc(Cl)cc3Br)ccc2c1", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."},
 
+        // Multi-component ring dispatch, heterobicyclic real component (Phase 31
+        // fallback, added when nameNaphthaleneFusion's own all-carbon-only
+        // structural check fails): a benzo-fused heterobicyclic real component
+        // (quinoline/indole-shaped) + one isolated plain ring, confirmed via the
+        // FDA corpus sweep this session to be the DOMINANT real-world shape of
+        // the 426-molecule gap (unlike the all-carbon cases above, which turned
+        // out rare in the real corpus).
+        //
+        // Quinoline real component + isolated phenyl -- constructed, structurally
+        // validated: 3 rings (6,6,6), 1 N, 16 heavy atoms. Also the case that
+        // exposed a real nameBranchGraph ring-detection bug this session (the
+        // copied assembly logic's own call was passing an empty ring list,
+        // misreading the phenyl as "hexyl" until fixed).
+        {"c1ccc2nc(-c3ccccc3)ccc2c1", "2-phenylquinoline"},
+        // THIABENDAZOLE (a real drug): benzimidazole real component + isolated
+        // thiazole. Structurally validated: 3 rings (5,6,5), 2 N + 1 S, 14 heavy
+        // atoms.
+        {"c1cc2c([nH]c(n2)-c2ncsc2)cc1", "2-thiazol-4-ylbenzimidazole"},
+        // CINCHOPHEN (a real drug): quinoline-4-carboxylic acid + isolated
+        // phenyl at position 2 -- exercises the functional-group guard added
+        // this session. The copied Phase 31 assembly logic's own substituent
+        // classification cannot recognize -C(=O)OH as "carboxy" (it only
+        // special-cases a handful of sulfur-rooted groups, matching the
+        // ORIGINAL whole-molecule dispatch it was copied from exactly); without
+        // the guard this silently misread the acid as a gem-diol
+        // ("4-dihydroxymethyl-2-phenylquinoline"). Confirms the guard correctly
+        // declines rather than producing a wrong name.
+        {"O=C(c1c2c(cccc2)nc(-c2ccccc2)c1)O", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."},
+
         // Phase 12: Monosubstituted cyclohexane ring attached to acyclic chain with principal group
         {"C1CCCCC1CC(=O)O", "2-cyclohexylethanoic acid"},
         {"C1CCCCC1CO", "cyclohexylmethanol"},
