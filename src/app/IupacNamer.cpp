@@ -2181,7 +2181,7 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                         if (!alkylName.isEmpty()) subName = wrapCompoundSuffix(alkylName, "telluronyl");
                     }
                 } else if (nZ == 6) {
-                    int dblO = 0, dblS = 0, dblN = 0, sglO_OH = 0, sglN_NH2 = 0;
+                    int dblO = 0, dblS = 0, dblN = 0, sglO_OH = 0, sglN_NH2 = 0, tripleN = 0;
                     int halogenZ = -1, alkNode = -1, esterO = -1;
                     std::vector<int> halogens;
                     for (size_t k = 0; k < g.nodes[nei].neighbors.size(); ++k) {
@@ -2192,6 +2192,7 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                         if (z == 8 && ord == 2) dblO++;
                         else if (z == 16 && ord == 2) dblS++;
                         else if (z == 7 && ord == 2) dblN++;
+                        else if (z == 7 && ord == 3) tripleN++;
                         else if (z == 7 && ord == 1 && g.nodes[nn].totalH >= 2) sglN_NH2++;
                         else if (z == 8 && ord == 1) {
                             if (g.nodes[nn].totalH >= 1 || g.nodes[nn].neighbors.size() == 1) sglO_OH++;
@@ -2204,7 +2205,17 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                         }
                         else if (ord == 1 && (z == 9 || z == 17 || z == 35 || z == 53)) halogens.push_back(nn);
                     }
-                    if (g.nodes[nei].neighbors.size() == 3 && dblO == 1 && sglO_OH == 1) {
+                    // Nitrile carbon: exactly 2 neighbors (the ring attachment and the
+                    // triple-bonded N) -- missing from this dispatch meant it fell to the
+                    // generic nameBranchGraph fallback below, which has no "cyano" prefix
+                    // concept at all and misread the triple bond as if walking a plain
+                    // chain, producing the nonsense "aminomethyl" (confirmed live via
+                    // FEBUXOSTAT's own 3-cyanophenyl substituent, newly reachable once this
+                    // session's disjoint-ring-handler relaxation let nameRingAsSubstituent
+                    // be called on a ring that has its own further substituents).
+                    if (g.nodes[nei].neighbors.size() == 2 && tripleN == 1) {
+                        subName = "cyano";
+                    } else if (g.nodes[nei].neighbors.size() == 3 && dblO == 1 && sglO_OH == 1) {
                         subName = "carboxy";
                     } else if (g.nodes[nei].neighbors.size() == 3 && dblO == 1 && halogens.size() == 1) {
                         subName = halogenPrefix(g.nodes[halogens[0]].atomicNumber) + "carbonyl";
