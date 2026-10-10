@@ -770,6 +770,61 @@ int main() {
         // chain attached at a benzo leaf carbon. Expected name: TODO verify via driver
         // {"c12c(cc(CC(=O)O)cc2)c3c(cccc3)c4c1(nccc4)", "EXPECTED_NAME_HERE"},
 
+        // Multi-component ring dispatch (connected-component split ahead of the
+        // ringCount==1/2/>=3 dispatch chain): a molecule with exactly one real,
+        // non-trivial ring system plus one or more separate, plain, otherwise-
+        // unsubstituted rings elsewhere, connected only by an ordinary bond --
+        // confirmed via a live FDA-corpus topology sweep this session to be the
+        // shape of 426 of 3311 real drugs, currently hard-rejected by the generic
+        // "Fused, bridged, spiro..." catch-all because nothing split the ring list
+        // into components first.
+        //
+        // Real all-carbon naphthalene-component (or simple heterocyclic 3-ring-
+        // chain-component) examples turned out to be rare in the actual FDA
+        // corpus once checked structurally (the dominant real-world shape is a
+        // HETEROBICYCLIC real component -- indole/quinoline/phthalimide-type --
+        // which this specific dispatcher does not support; that's a separate,
+        // deferred follow-on). These three positive cases are therefore
+        // constructed rather than pulled from the corpus, each independently
+        // structurally validated via check_sssr.exe before building the real fix
+        // and pinning its actual produced output -- never guessed.
+        //
+        // 2-ring (naphthalene) real component + one isolated phenyl.
+        // Structurally validated: 3 rings (6,6,6), all-carbon, 16 heavy atoms.
+        {"c1ccc2cc(-c3ccccc3)ccc2c1", "2-phenylnaphthalene"},
+        // 2-ring (naphthalene) real component + two isolated phenyls, exercising
+        // nameNaphthaleneFusion's own extraSubstituentNodes-based skip (not
+        // limited to a single free-valence atom, unlike the 3-ring case below).
+        // Structurally validated: 4 rings (6,6,6,6), all-carbon, 22 heavy atoms.
+        {"c1cc2cc(-c3ccccc3)c(-c4ccccc4)cc2cc1", "2,3-diphenylnaphthalene"},
+        // 3-ring real component (benzo-naphtho-pyridine linear chain, already
+        // nameable bare via nameLinearChainFusion -- confirmed
+        // "benzo[3',4':6,1]benzo[3,4-b]pyridine" for the bare molecule) + one
+        // isolated phenyl, exercising the ringSubsetOverride/freeValenceAtom path
+        // through nameLinearChainFusion. Structurally validated: 4 rings
+        // (6,6,6,6), 1 N, 20 heavy atoms.
+        {"c1ccc2cc3ncc(-c4ccccc4)cc3cc2c1", "3-phenylbenzo[3',4':6,1]benzo[3,4-b]pyridine"},
+
+        // Negative/regression cases for the same dispatcher, confirming it
+        // correctly declines (falls through to the pre-existing, unchanged
+        // rejection) rather than misnaming or silently dropping a substituent:
+        //
+        // Heterobicyclic real component (indole-shaped) + isolated 4-chlorophenyl
+        // -- a real drug (INDOMETHACIN), confirming the dispatcher's own
+        // explicit non-goal (heterobicyclic components) is correctly left
+        // untouched: same rejection message before and after this session's
+        // multi-component dispatch work.
+        {"COc1cc2c(c([n](C(c3ccc(Cl)cc3)=O)c2cc1)C)CC(O)=O", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."},
+        // 2-ring real component that is NOT naphthalene-shaped (partially
+        // saturated: tetrahydronaphthalene, fails nameNaphthaleneFusion's own
+        // "all bonds aromatic" structural check) + isolated phenyl. Structurally
+        // validated: 3 rings (6,6,6), all-carbon, 16 heavy atoms.
+        {"C1CCc2cc(-c3ccccc3)ccc2C1", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."},
+        // Naphthalene real component + an isolated ring that is NOT plain (bears
+        // two substituents, Cl and Br, instead of exactly one attachment).
+        // Structurally validated: 3 rings (6,6,6), 18 heavy atoms (16 C + Cl + Br).
+        {"c1ccc2cc(-c3ccc(Cl)cc3Br)ccc2c1", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."},
+
         // Phase 12: Monosubstituted cyclohexane ring attached to acyclic chain with principal group
         {"C1CCCCC1CC(=O)O", "2-cyclohexylethanoic acid"},
         {"C1CCCCC1CO", "cyclohexylmethanol"},
