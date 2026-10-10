@@ -88,7 +88,8 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
     const std::map<int, int> &indigoToGraphIdx,
     int ringCount,
     int freeValenceAtom = -1,
-    const std::vector<std::set<int>> *ringSubsetOverride = nullptr);
+    const std::vector<std::set<int>> *ringSubsetOverride = nullptr,
+    const std::vector<std::pair<int, QString>> &extraSubstituents = {});
 
 std::vector<RingSystemNameResult> nameBranchingFusion(
     const Graph &g,
@@ -96,7 +97,8 @@ std::vector<RingSystemNameResult> nameBranchingFusion(
     const std::map<int, int> &indigoToGraphIdx,
     int ringCount,
     int freeValenceAtom = -1,
-    const std::vector<std::set<int>> *ringSubsetOverride = nullptr);
+    const std::vector<std::set<int>> *ringSubsetOverride = nullptr,
+    const std::vector<std::pair<int, QString>> &extraSubstituents = {});
 
 namespace {
 
@@ -5211,7 +5213,8 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
     const std::map<int, int> &indigoToGraphIdx,
     int ringCount,
     int freeValenceAtom,
-    const std::vector<std::set<int>> *ringSubsetOverride) {
+    const std::vector<std::set<int>> *ringSubsetOverride,
+    const std::vector<std::pair<int, QString>> &extraSubstituents) {
     // --- Phase 44 & 48: N-Heterocycle Fusion Chain Nomenclature (linear-chain branch) ---
     if (ringCount < 3) {
         return {RingSystemNameResult{false, "Linear chain: no match", "", {}}};
@@ -6153,7 +6156,15 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
 
                         if (scoreInit) {
                             QString resultName = bestScore.finalName;
-                            
+
+                            // Inject any caller-supplied extra substituents (e.g. a whole
+                            // separate ring system attached elsewhere in the molecule, named
+                            // by the caller since this mechanism's own substituent scan only
+                            // handles simple non-ring substituents) -- only consumed when
+                            // N==3 below, matching this mechanism's own existing substituent-
+                            // locant support; callers must not use this for N!=3.
+                            for (const auto &es : extraSubstituents) collectedSubstituents.push_back(es);
+
                             // Handle substituents for N==3: build prefix string
                             if (N == 3 && !collectedSubstituents.empty()) {
                                 // Compute bridgeheads the same way as the indicated-hydrogen code
@@ -6382,7 +6393,8 @@ std::vector<RingSystemNameResult> nameBranchingFusion(
     const std::map<int, int> &indigoToGraphIdx,
     int ringCount,
     int freeValenceAtom,
-    const std::vector<std::set<int>> *ringSubsetOverride) {
+    const std::vector<std::set<int>> *ringSubsetOverride,
+    const std::vector<std::pair<int, QString>> &extraSubstituents) {
     // --- Degree-3+ branching fusion mechanism ---
     // This function duplicates the ring-detection setup from the linear chain
     // mechanism (per this codebase's established preference for duplication over
@@ -7172,7 +7184,15 @@ std::vector<RingSystemNameResult> nameBranchingFusion(
             
             // Join all parts
             QString resultName = nameParts.join("");
-            
+
+            // Inject any caller-supplied extra substituents (e.g. a whole separate
+            // ring system attached elsewhere in the molecule, named by the caller
+            // since this mechanism's own substituent scan only handles simple
+            // non-ring substituents) -- unlike the linear-chain sibling, this
+            // mechanism's own computePeripheralNumberingGeneral is not restricted
+            // to any specific N, so this is safe regardless of ring count.
+            for (const auto &es : extraSubstituents) collectedSubstituents.push_back(es);
+
             // Handle substituents for branching case: build prefix string
             if (!collectedSubstituents.empty()) {
                 // Build bridgehead set: any atom that is a member of 2+ rings
@@ -15382,7 +15402,7 @@ IupacResult IupacNamer::generateName(int mol) {
     return {true, fullName, ""};
     };
 
-    auto nameNaphthaleneFusion = [&](const std::set<int> &ring1Nodes, const std::set<int> &ring2Nodes) -> IupacResult {
+    auto nameNaphthaleneFusion = [&](const std::set<int> &ring1Nodes, const std::set<int> &ring2Nodes, const std::vector<std::pair<int, QString>> &extraSubstituents = {}) -> IupacResult {
         // 1. Both rings must be size 6
         if (ring1Nodes.size() != 6 || ring2Nodes.size() != 6) {
             return {false, "", "Fused ring systems other than naphthalene are not supported in this phase."};
@@ -15636,6 +15656,9 @@ IupacResult IupacNamer::generateName(int mol) {
 
         std::vector<NaphthaleneSignature> signatures;
 
+        std::set<int> extraSubstituentNodes;
+        for (const auto &es : extraSubstituents) extraSubstituentNodes.insert(es.first);
+
         for (const auto &lMap : candidateMaps) {
             NaphthaleneSignature sig;
             sig.locantMap = lMap;
@@ -15659,6 +15682,7 @@ IupacResult IupacNamer::generateName(int mol) {
                 int locant = pair.second;
                 bool isPrincipalRNode = (principalCarbons.count(rNode) > 0);
 
+                if (extraSubstituentNodes.count(rNode)) continue;
                 for (size_t j = 0; j < g.nodes[rNode].neighbors.size(); ++j) {
                     int nei = g.nodes[rNode].neighbors[j];
                     int order = g.nodes[rNode].bondOrders[j];
@@ -15954,6 +15978,16 @@ IupacResult IupacNamer::generateName(int mol) {
                     } else {
                         return {false, "", "Unrecognized or unsupported substituent on ring."};
                     }
+                }
+            }
+            // Inject the extra (ring) substituents the same way nameAcidChainFrom
+            // does: bypass the paren-stripping above; the locant is this candidate
+            // map's own locant for the atom the extra substituent attaches to.
+            for (const auto &es : extraSubstituents) {
+                auto esIt = lMap.find(es.first);
+                if (esIt != lMap.end()) {
+                    sig.substituentLocants.push_back(esIt->second);
+                    sig.namedSubstituents.push_back({es.second, esIt->second});
                 }
             }
             std::sort(sig.substituentLocants.begin(), sig.substituentLocants.end());
