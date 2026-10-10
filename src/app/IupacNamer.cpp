@@ -20763,7 +20763,68 @@ IupacResult IupacNamer::generateName(int mol) {
                                         // (confirmed post this session's own Task 6 work) -- no
                                         // extraSubs injection needed here, reuse that exact assembly
                                         // logic directly instead.
-                                        RingSystemNameResult p31 = namePhase31BenzoFusion(g, mol, indigoToGraphIdx, 2, &realComponentIndigo);
+                                        //
+                                        // Guard: this copied assembly logic's own substituent
+                                        // classification only recognizes a handful of special-cased
+                                        // functional groups (sulfonic/sulfonamide/sulfonyl-halide/
+                                        // sulfinyl-halide/sulfinic/sulfinamide, matching the ORIGINAL
+                                        // whole-molecule Phase 31 dispatch it was copied from
+                                        // exactly) -- anything else, including an acid/ester/amide/
+                                        // ketone/imine carbon, falls to its own generic
+                                        // nameBranchGraph walk, which cannot recognize a double bond
+                                        // to O/N/S as a functional group at all (confirmed live:
+                                        // CINCHOPHEN's own -C(=O)OH came back as "dihydroxymethyl",
+                                        // silently misreading the acid as a gem-diol). The ORIGINAL
+                                        // dispatch never hits this case in practice because
+                                        // chain-vs-ring seniority intercepts an acid-bearing ring
+                                        // before Phase 31 is ever reached for it -- this dispatcher
+                                        // calls namePhase31BenzoFusion directly, bypassing that
+                                        // protection. Rather than build full classifyFunctionalGroups
+                                        // integration into this copied logic under time pressure,
+                                        // detect the specific failure class (any OTHER exocyclic
+                                        // bond -- not the isolated ring's own known attachment --
+                                        // with a double-or-higher-order bond to O/N/S) and skip this
+                                        // path entirely when found, falling through to the existing,
+                                        // safe rejection. A real component with its own functional
+                                        // group plus an isolated-ring substituent remains a
+                                        // documented, deferred follow-on.
+                                        bool realComponentHasFunctionalGroup = false;
+                                        for (int n : realComponentGraphUnion) {
+                                            if (attachNodesSeen.count(n)) continue;
+                                            for (size_t j = 0; j < g.nodes[n].neighbors.size(); ++j) {
+                                                int nei = g.nodes[n].neighbors[j];
+                                                int order = g.nodes[n].bondOrders[j];
+                                                int nz = g.nodes[nei].atomicNumber;
+                                                if (realComponentGraphUnion.count(nei)) continue;
+                                                // 1 hop: ring atom itself double-bonded to O/N/S
+                                                // (e.g. a ring ketone).
+                                                if (order >= 2 && (nz == 7 || nz == 8 || nz == 16)) {
+                                                    realComponentHasFunctionalGroup = true;
+                                                    break;
+                                                }
+                                                // 2 hops: the ring atom's own exocyclic neighbor
+                                                // itself carries a double bond to O/N/S -- the
+                                                // common shape for acid/ester/amide/nitrile/imine
+                                                // functional groups one bond removed from the ring
+                                                // (confirmed live via CINCHOPHEN's own -C(=O)OH,
+                                                // one hop beyond what the check above alone finds).
+                                                for (size_t k = 0; k < g.nodes[nei].neighbors.size(); ++k) {
+                                                    int nei2 = g.nodes[nei].neighbors[k];
+                                                    int order2 = g.nodes[nei].bondOrders[k];
+                                                    int nz2 = g.nodes[nei2].atomicNumber;
+                                                    if (order2 >= 2 && (nz2 == 7 || nz2 == 8 || nz2 == 16)) {
+                                                        realComponentHasFunctionalGroup = true;
+                                                        break;
+                                                    }
+                                                }
+                                                if (realComponentHasFunctionalGroup) break;
+                                            }
+                                            if (realComponentHasFunctionalGroup) break;
+                                        }
+
+                                        RingSystemNameResult p31 = realComponentHasFunctionalGroup
+                                            ? RingSystemNameResult{false, "Phase 31: no match", "", {}}
+                                            : namePhase31BenzoFusion(g, mol, indigoToGraphIdx, 2, &realComponentIndigo);
                                         if (p31.success) {
                                             QString resultNameP31 = p31.baseName;
                                             const std::map<int, QString> &p31LocantMap = p31.locantMap;
