@@ -80,7 +80,8 @@ RingSystemNameResult namePhase31BenzoFusion(
     const Graph &g,
     int mol,
     const std::map<int, int> &indigoToGraphIdx,
-    int ringCount);
+    int ringCount,
+    const std::vector<std::set<int>> *ringSubsetOverride = nullptr);
 
 std::vector<RingSystemNameResult> nameLinearChainFusion(
     const Graph &g,
@@ -4832,29 +4833,35 @@ RingSystemNameResult namePhase31BenzoFusion(
     const Graph &g,
     int mol,
     const std::map<int, int> &indigoToGraphIdx,
-    int ringCount) {
+    int ringCount,
+    const std::vector<std::set<int>> *ringSubsetOverride) {
     // --- Phase 31: Benzo-fused Heterobicyclic Ring Systems (ringCount == 2) ---
     if (ringCount == 2) {
-        int sssrIter = indigoIterateSSSR(mol);
-        if (sssrIter >= 0) {
-            std::vector<std::set<int>> sssrRings;
-            int subMol = 0;
-            while ((subMol = indigoNext(sssrIter)) != 0) {
-                std::set<int> rAtoms;
-                int ringAtomIter = indigoIterateAtoms(subMol);
-                if (ringAtomIter >= 0) {
-                    int ringAtomHandle = 0;
-                    while ((ringAtomHandle = indigoNext(ringAtomIter)) != 0) {
-                        int idx = indigoIndex(ringAtomHandle);
-                        rAtoms.insert(idx);
-                        indigoFree(ringAtomHandle);
+        std::vector<std::set<int>> sssrRings;
+        if (ringSubsetOverride) {
+            sssrRings = *ringSubsetOverride;
+        } else {
+            int sssrIter = indigoIterateSSSR(mol);
+            if (sssrIter >= 0) {
+                int subMol = 0;
+                while ((subMol = indigoNext(sssrIter)) != 0) {
+                    std::set<int> rAtoms;
+                    int ringAtomIter = indigoIterateAtoms(subMol);
+                    if (ringAtomIter >= 0) {
+                        int ringAtomHandle = 0;
+                        while ((ringAtomHandle = indigoNext(ringAtomIter)) != 0) {
+                            int idx = indigoIndex(ringAtomHandle);
+                            rAtoms.insert(idx);
+                            indigoFree(ringAtomHandle);
+                        }
+                        indigoFree(ringAtomIter);
                     }
-                    indigoFree(ringAtomIter);
+                    sssrRings.push_back(rAtoms);
+                    indigoFree(subMol);
                 }
-                sssrRings.push_back(rAtoms);
-                indigoFree(subMol);
+                indigoFree(sssrIter);
             }
-            indigoFree(sssrIter);
+        }
 
             if (sssrRings.size() == 2) {
                 std::set<int> ring1Nodes, ring2Nodes;
@@ -5202,7 +5209,6 @@ RingSystemNameResult namePhase31BenzoFusion(
                     }
                 }
             }
-        }
     }
     return {false, "Phase 31: no match", "", {}};
 }
