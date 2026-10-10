@@ -1224,6 +1224,20 @@ int main() {
         // any substituent -- updated to the real, now-correct success this
         // produces. Structurally validated: 2 rings (6,6), 14 heavy atoms.
         {"O=C1CCCCC1c2ccc(Cl)cc2", "2-(4-chlorophenyl)cyclohexan-1-one", false, ""},
+        // PYRIMETHAMINE (a real drug): disjoint pyrimidine real-parent + isolated
+        // 4-chlorophenyl, the latter bearing no further substituent of its own but
+        // confirmed via the FDA corpus sweep as a genuine new success from the
+        // same disjoint-ring relaxation above. Structurally validated: 2 rings
+        // (6,6), 17 heavy atoms.
+        {"CCc1c(-c2ccc(Cl)cc2)c(N)nc(N)n1", "5-(4-chlorophenyl)-6-ethylpyrimidine-2,4-diamine", false, ""},
+        // FEBUXOSTAT (a real drug): disjoint thiazole real-parent + isolated
+        // phenyl that itself bears TWO further substituents (an isobutoxy group
+        // and a nitrile) -- exercises both the relaxation (the isolated ring is
+        // not remotely plain) and the "cyano" prefix fix added this session (the
+        // nitrile substituent was previously misnamed "aminomethyl", confirmed
+        // live via this exact molecule). Structurally validated: 2 rings (6,5),
+        // 22 heavy atoms.
+        {"Cc1c(C(O)=O)sc(-c2cc(C#N)c(OCC(C)C)cc2)n1", "4-methyl-2-{4-[(2-methylpropyl)oxy]-3-cyanophenyl}thiazole-5-carboxylic acid", false, ""},
         // Test 6: existing ring-substituent-on-chain-parent test (should still pass)
         {"OC(=O)CCC1CCC(C(=O)O)CC1", "3-(4-carboxycyclohexyl)propanoic acid", false, ""},
         // Test 7: existing plain naphthalene test (should still pass)
