@@ -20583,6 +20583,231 @@ IupacResult IupacNamer::generateName(int mol) {
     }
 
 
+
+    // --- Multi-component ring dispatch: a molecule with exactly one real,
+    // non-trivial ring system (a 2-ring fused pair, or an N-ring ortho-fused
+    // chain/branch) plus one or more separate, plain, otherwise-unsubstituted
+    // single rings elsewhere in the molecule -- e.g. a fused bicyclic linked
+    // by an ordinary bond to an isolated phenyl. Confirmed via a live
+    // FDA-corpus topology sweep this session: ~426 real drugs have this
+    // shape, currently hard-rejected by the generic "Fused, bridged,
+    // spiro..." catch-all further below because none of Phase 2/3/44/48
+    // split the molecule's ring list into connected components first.
+    //
+    // Any failure at any point below falls through to the existing,
+    // unchanged dispatch chain -- this block never hard-rejects on its own.
+    {
+        int sssrIterMC = indigoIterateSSSR(mol);
+        std::vector<std::set<int>> allRingsIndigo;
+        if (sssrIterMC >= 0) {
+            int subMolMC = 0;
+            while ((subMolMC = indigoNext(sssrIterMC)) != 0) {
+                std::set<int> rAtoms;
+                int ringAtomIterMC = indigoIterateAtoms(subMolMC);
+                if (ringAtomIterMC >= 0) {
+                    int ringAtomHandleMC = 0;
+                    while ((ringAtomHandleMC = indigoNext(ringAtomIterMC)) != 0) {
+                        rAtoms.insert(indigoIndex(ringAtomHandleMC));
+                        indigoFree(ringAtomHandleMC);
+                    }
+                    indigoFree(ringAtomIterMC);
+                }
+                allRingsIndigo.push_back(rAtoms);
+                indigoFree(subMolMC);
+            }
+            indigoFree(sssrIterMC);
+        }
+
+        int nRingsMC = static_cast<int>(allRingsIndigo.size());
+        if (nRingsMC >= 2) {
+            std::vector<int> parentMC(nRingsMC);
+            for (int i = 0; i < nRingsMC; ++i) parentMC[i] = i;
+            auto findMC = [&](int x) -> int {
+                while (parentMC[x] != x) x = parentMC[x];
+                return x;
+            };
+            for (int i = 0; i < nRingsMC; ++i) {
+                for (int j = i + 1; j < nRingsMC; ++j) {
+                    bool shareAtom = false;
+                    for (int a : allRingsIndigo[i]) {
+                        if (allRingsIndigo[j].count(a)) { shareAtom = true; break; }
+                    }
+                    if (shareAtom) {
+                        int ri = findMC(i), rj = findMC(j);
+                        if (ri != rj) parentMC[ri] = rj;
+                    }
+                }
+            }
+            std::map<int, std::vector<int>> componentsMC;
+            for (int i = 0; i < nRingsMC; ++i) componentsMC[findMC(i)].push_back(i);
+
+            int realComponentRoot = -1;
+            int realComponentCount = 0;
+            for (const auto &kv : componentsMC) {
+                if (kv.second.size() > 1) {
+                    realComponentCount++;
+                    realComponentRoot = kv.first;
+                }
+            }
+
+            if (realComponentCount == 1) {
+                bool shapeOk = true;
+                std::vector<int> isolatedRingIndices;
+                for (const auto &kv : componentsMC) {
+                    if (kv.first == realComponentRoot) continue;
+                    if (kv.second.size() != 1) { shapeOk = false; break; }
+                    isolatedRingIndices.push_back(kv.second[0]);
+                }
+
+                if (shapeOk && !isolatedRingIndices.empty()) {
+                    std::vector<std::set<int>> realComponentIndigo;
+                    std::set<int> realComponentGraphUnion;
+                    for (int ri : componentsMC[realComponentRoot]) {
+                        realComponentIndigo.push_back(allRingsIndigo[ri]);
+                        for (int a : allRingsIndigo[ri]) {
+                            if (indigoToGraphIdx.count(a)) realComponentGraphUnion.insert(indigoToGraphIdx.at(a));
+                        }
+                    }
+                    int realComponentSize = static_cast<int>(realComponentIndigo.size());
+
+                    // realComponentSize==2 (nameNaphthaleneFusion) supports any number of
+                    // isolated rings via its own extraSubstituentNodes-based skip; the 3+
+                    // ring mechanisms (nameLinearChainFusion/nameBranchingFusion) only have
+                    // a single-atom freeValenceAtom skip in their own substituent scans, so
+                    // restrict those to exactly one isolated ring for now.
+                    bool countOk = (realComponentSize == 2) || (isolatedRingIndices.size() == 1);
+
+                    bool allIsolatedPlain = true;
+                    std::vector<std::pair<int,int>> isolatedAttachPairs; // (attachOnReal, attachOnIsolated), graph-index
+                    std::vector<std::set<int>> isolatedGraphRings;
+                    if (countOk) {
+                        for (int ri : isolatedRingIndices) {
+                            std::set<int> isoGraph;
+                            for (int a : allRingsIndigo[ri]) {
+                                if (indigoToGraphIdx.count(a)) isoGraph.insert(indigoToGraphIdx.at(a));
+                            }
+                            if (isoGraph.size() != 5 && isoGraph.size() != 6) { allIsolatedPlain = false; break; }
+
+                            int attachIso = -1, attachReal = -1;
+                            for (int n : isoGraph) {
+                                for (int nei : g.nodes[n].neighbors) {
+                                    if (realComponentGraphUnion.count(nei)) { attachIso = n; attachReal = nei; break; }
+                                }
+                                if (attachIso != -1) break;
+                            }
+                            if (attachIso == -1) { allIsolatedPlain = false; break; }
+
+                            bool isoPlain = true;
+                            for (int n : isoGraph) {
+                                int nonHRingNeighbors = 0;
+                                for (int nei : g.nodes[n].neighbors) {
+                                    if (!isoGraph.count(nei) && g.nodes[nei].atomicNumber != 1) nonHRingNeighbors++;
+                                }
+                                if (n == attachIso) { if (nonHRingNeighbors != 1) { isoPlain = false; break; } }
+                                else { if (nonHRingNeighbors != 0) { isoPlain = false; break; } }
+                            }
+                            if (!isoPlain) { allIsolatedPlain = false; break; }
+
+                            isolatedAttachPairs.push_back({attachReal, attachIso});
+                            isolatedGraphRings.push_back(isoGraph);
+                        }
+                    }
+
+                    if (countOk && allIsolatedPlain) {
+                        std::set<int> attachNodesSeen;
+                        bool attachOk = true;
+                        for (const auto &p : isolatedAttachPairs) {
+                            if (!attachNodesSeen.insert(p.first).second) { attachOk = false; break; }
+                        }
+
+                        if (attachOk) {
+                            std::vector<std::pair<int, QString>> extraSubs;
+                            bool namesOk = true;
+                            for (size_t k = 0; k < isolatedAttachPairs.size(); ++k) {
+                                int attachReal = isolatedAttachPairs[k].first;
+                                int attachIso = isolatedAttachPairs[k].second;
+                                QString subName = nameRingAsSubstituent(g, isolatedGraphRings[k], attachIso, attachReal, allSSSRRings, realComponentGraphUnion, {}, nullptr, {}, {}, nullptr, mol);
+                                if (subName.isEmpty()) { namesOk = false; break; }
+                                extraSubs.push_back({attachReal, subName});
+                            }
+
+                            if (namesOk) {
+                                bool mcSuccess = false;
+                                QString mcName;
+
+                                if (realComponentSize == 2) {
+                                    std::set<int> ring1G, ring2G;
+                                    for (int a : realComponentIndigo[0]) if (indigoToGraphIdx.count(a)) ring1G.insert(indigoToGraphIdx.at(a));
+                                    for (int a : realComponentIndigo[1]) if (indigoToGraphIdx.count(a)) ring2G.insert(indigoToGraphIdx.at(a));
+                                    IupacResult r = nameNaphthaleneFusion(ring1G, ring2G, extraSubs);
+                                    if (r.success) { mcSuccess = true; mcName = r.name; }
+                                } else if (realComponentSize >= 3) {
+                                    // Mirror the existing ringCount>=3 dispatch's own
+                                    // validFusion/ends/centers/hasBranching computation
+                                    // (confirmed around the Phase 44/48 block elsewhere in
+                                    // this function), scoped to just this component's own
+                                    // rings instead of the whole molecule's ring list.
+                                    int NC = realComponentSize;
+                                    std::vector<std::vector<int>> sharedC(NC, std::vector<int>(NC, 0));
+                                    for (int i = 0; i < NC; ++i) {
+                                        for (int j = i + 1; j < NC; ++j) {
+                                            int cnt = 0;
+                                            for (int a : realComponentIndigo[i]) {
+                                                if (realComponentIndigo[j].count(a)) cnt++;
+                                            }
+                                            sharedC[i][j] = sharedC[j][i] = cnt;
+                                        }
+                                    }
+                                    std::vector<int> degreeC(NC, 0);
+                                    bool validFusionC = true;
+                                    for (int i = 0; i < NC; ++i) {
+                                        for (int j = 0; j < NC; ++j) {
+                                            if (sharedC[i][j] == 2) degreeC[i]++;
+                                            else if (sharedC[i][j] != 0) validFusionC = false;
+                                        }
+                                    }
+                                    int endsC = 0, centersC = 0;
+                                    bool hasBranchingC = false;
+                                    for (int i = 0; i < NC; ++i) {
+                                        if (degreeC[i] == 1) endsC++;
+                                        else if (degreeC[i] == 2) centersC++;
+                                        else if (degreeC[i] > 2) hasBranchingC = true;
+                                    }
+
+                                    int freeValAtom = attachNodesSeen.empty() ? -1 : *attachNodesSeen.begin();
+
+                                    if (validFusionC && endsC == 2 && centersC == NC - 2 && NC == 3) {
+                                        // nameLinearChainFusion's own substituent-locant
+                                        // support (computePeripheralNumbering3Ring) is
+                                        // N==3-only; only call it with extraSubs for that case.
+                                        auto chainRes = nameLinearChainFusion(g, mol, indigoToGraphIdx, NC, freeValAtom, &realComponentIndigo, extraSubs);
+                                        if (!chainRes.empty() && chainRes[0].success) {
+                                            mcSuccess = true;
+                                            mcName = chainRes[0].baseName;
+                                        }
+                                    } else if (validFusionC && hasBranchingC) {
+                                        auto branchRes = nameBranchingFusion(g, mol, indigoToGraphIdx, NC, freeValAtom, &realComponentIndigo, extraSubs);
+                                        if (!branchRes.empty() && branchRes[0].success) {
+                                            mcSuccess = true;
+                                            mcName = branchRes[0].baseName;
+                                        }
+                                    }
+                                    // validFusionC && endsC==2 && centersC==NC-2 but NC!=3: no
+                                    // existing substituent-locant mechanism supports this --
+                                    // correctly fall through unchanged (not attempted above).
+                                }
+
+                                if (mcSuccess) {
+                                    return {true, mcName, ""};
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
 // --- Phase 44 & 48: N-Heterocycle Fusion Chain Nomenclature ---
     if (ringCount >= 3) {
         int sssrIter = indigoIterateSSSR(mol);
