@@ -19792,9 +19792,28 @@ IupacResult IupacNamer::generateName(int mol) {
                 else if (degree[i] > 2) hasBranching = true;
             }
 
+            // ends==2 && centers==N-2 is a necessary but not sufficient condition for
+            // nameLinearChainFusion to actually recognize the system (e.g. a non-6-membered
+            // central ring, such as the 7-membered ring in imipramine-type dibenzazepines,
+            // still satisfies this structural shape but nameLinearChainFusion legitimately
+            // returns its own "no match" sentinel for it) -- confirmed live via the FDA
+            // corpus sweep: these molecules used to fall through to a later, correct generic
+            // rejection ("Fused, bridged, spiro, or multiple ring systems are not supported
+            // in Phase 2."), but every path through this block unconditionally returned,
+            // including the "no match" case, which the pre-existing fallthrough comment
+            // incorrectly assumed could never be reached. Only treat this block as owning
+            // the molecule (and therefore guaranteed to return) when nameLinearChainFusion
+            // didn't say "no match"; otherwise fall out of this whole if/else-if chain
+            // and let the later, generic checks run, matching the original pre-extraction
+            // behavior.
+            bool linearChainApplies = false;
+            std::vector<RingSystemNameResult> chainResults;
             if (validFusion && ends == 2 && centers == N - 2) {
-                std::vector<RingSystemNameResult> chainResults = nameLinearChainFusion(g, mol, indigoToGraphIdx, ringCount);
-                if (!chainResults.empty() && chainResults[0].error != "Linear chain: no match" && !chainResults[0].success) {
+                chainResults = nameLinearChainFusion(g, mol, indigoToGraphIdx, ringCount);
+                linearChainApplies = !chainResults.empty() && chainResults[0].error != "Linear chain: no match";
+            }
+            if (linearChainApplies) {
+                if (!chainResults[0].success) {
                     // Check if this is the specific rejection for exocyclic substituents on fused rings
                     // and whether a chain should win instead (same logic as naphthalene case at line ~14107)
                     if (chainResults[0].error == "Substituents on fused ring systems named via this mechanism are not yet supported.") {
@@ -19845,22 +19864,24 @@ IupacResult IupacNamer::generateName(int mol) {
                     }
                     return {false, "", chainResults[0].error};
                 }
-                if (!chainResults.empty() && chainResults[0].success) {
-                    // The extracted function already bakes any exocyclic
-                    // substituents, indicated-hydrogen prefixes, and the
-                    // acridine/carbazole/fluorene/all-carbocyclic special
-                    // cases directly into baseName -- unlike Phase 31, this
-                    // mechanism never separated base-naming from decoration,
-                    // so there is no separate tail step needed here.
-                    return {true, chainResults[0].baseName, ""};
-                }
-                // Both success and "no match" are handled above; reaching
-                // here means a logic error in nameLinearChainFusion itself.
-                return {false, "", "Linear chain: unexpected fallthrough"};
+                // linearChainApplies guarantees chainResults[0] exists and isn't
+                // "no match"; the only remaining case is success.
+                return {true, chainResults[0].baseName, ""};
             }
-            else if (validFusion && hasBranching) { // Branching case: valid ortho-fusion but at least one ring has degree > 2
-                std::vector<RingSystemNameResult> branchResults = nameBranchingFusion(g, mol, indigoToGraphIdx, ringCount);
-                if (!branchResults.empty() && branchResults[0].error != "Branching fusion: no match" && !branchResults[0].success) {
+            // Same "no match is not a hard failure" fix as the linear-chain case above
+            // (see its own comment) -- a molecule with a branching ring can legitimately
+            // fail nameBranchingFusion's own structural checks (e.g. a ring type it
+            // doesn't recognize) while still satisfying hasBranching; falling through to
+            // the later generic checks instead of hard-rejecting matches the original
+            // pre-extraction behavior, confirmed via the FDA corpus sweep.
+            bool branchingApplies = false;
+            std::vector<RingSystemNameResult> branchResults;
+            if (validFusion && hasBranching) {
+                branchResults = nameBranchingFusion(g, mol, indigoToGraphIdx, ringCount);
+                branchingApplies = !branchResults.empty() && branchResults[0].error != "Branching fusion: no match";
+            }
+            if (branchingApplies) { // Branching case: valid ortho-fusion but at least one ring has degree > 2
+                if (!branchResults[0].success) {
                     // Check if this is the specific rejection for exocyclic substituents on fused rings
                     // and whether a chain should win instead (same logic as naphthalene case at line ~14107)
                     if (branchResults[0].error == "Substituents on branching fused ring systems are not yet supported.") {
@@ -19911,16 +19932,9 @@ IupacResult IupacNamer::generateName(int mol) {
                     }
                     return {false, "", branchResults[0].error};
                 }
-                if (!branchResults.empty() && branchResults[0].success) {
-                    // The extracted function already bakes any exocyclic
-                    // substituents, indicated-hydrogen prefixes, and the
-                    // branching-specific special cases directly into baseName --
-                    // so there is no separate tail step needed here.
-                    return {true, branchResults[0].baseName, ""};
-                }
-                // Both success and "no match" are handled above; reaching
-                // here means a logic error in nameBranchingFusion itself.
-                return {false, "", "Branching fusion: unexpected fallthrough"};
+                // branchingApplies guarantees branchResults[0] exists and isn't
+                // "no match"; the only remaining case is success.
+                return {true, branchResults[0].baseName, ""};
             }
         } else {
             // allDisjoint == true: handle disjoint rings
