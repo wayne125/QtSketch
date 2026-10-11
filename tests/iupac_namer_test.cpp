@@ -1336,6 +1336,28 @@ int main() {
         {"c1ccccc1[N+](C)(C)C", "", true, "Charged atoms are not supported"}, // aryl substituent
         {"[NH3+]CCCCCC[NH3+]", "", true, "Charged atoms are not supported"}, // hexane-1,6-diammonium - multi-charged, out of scope
         {"[NH3+]CCCCN", "", true, "Charged atoms are not supported"}, // pentane-1,5-diamine with one N protonated - neutral name ends in diamine
+        // TICKET-03 AGY-T1: bare inorganic ion / simple charge-separated-but-net-neutral lookup
+        {"[I-]", "iodide"},
+        {"[F-]", "fluoride"},
+        {"[Cl-]", "chloride"},
+        {"[18F-]", "[18F]fluoride"},
+        {"[123I-]", "[123I]iodide"},
+        {"[131I-]", "[131I]iodide"},
+        {"[O-2]", "oxide"},
+        {"[Mg+2]", "magnesium(2+)"},
+        {"[82Rb+]", "[82Rb]rubidium(1+)"},
+        {"[89Sr+2]", "[89Sr]strontium(2+)"},
+        {"O=N[O-]", "nitrite"},
+        {"O=P(O)([O-])[O-]", "hydrogen phosphate"},
+        {"O=P(O)(O)[O-]", "dihydrogen phosphate"},
+        {"O=[32P](O)([O-])[O-]", "[32P]hydrogen phosphate"},
+        {"O=S([O-])([O-])=O", "sulfate"},
+        {"[O-][Cl+3]([O-])([O-])[O-]", "perchlorate"},
+        {"[O-]Cl", "hypochlorite"},
+        {"O=S(=S)([O-])[O-]", "thiosulfate"},
+        {"O=P(F)([O-])[O-]", "monofluorophosphate"},
+        {"[N-]=[N+]=O", "nitrous oxide"}, // net-neutral charge-separated resonance form
+        {"O=[As][As+]([O-])=O", "arsenic trioxide"}, // net-neutral charge-separated resonance form
         // Group 2 metal carboxylate salts
         {"[Ca].CC(=O)O.CC(=O)O", "calcium diethanoate"},
         {"[Mg].CC(=O)O.CC(=O)O", "magnesium diethanoate"},

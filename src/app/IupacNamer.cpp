@@ -8175,6 +8175,91 @@ IupacResult IupacNamer::generateName(int mol) {
         return {false, "", "Invalid molecule handle."};
     }
 
+    // Bare inorganic ion / simple charge-separated-but-net-neutral molecule lookup
+    // (TICKET-03 AGY-T1). Only matches molecules with zero carbon atoms -- every
+    // carbon-containing molecule, and every no-carbon molecule not in this exact
+    // pinned list (including neutral noble-gas atoms like [127Xe]), falls through
+    // completely unchanged to all the logic below.
+    {
+        bool hasCarbon = false;
+        int heavyAtomCount = 0;
+        int totalCharge = 0;
+        std::map<int, int> elementCounts;   // atomic number -> heavy-atom count
+        std::map<int, int> elementIsotope;  // atomic number -> isotope mass number (0 if none)
+
+        int ionAtomIter = indigoIterateAtoms(mol);
+        if (ionAtomIter >= 0) {
+            int a = 0;
+            while ((a = indigoNext(ionAtomIter)) != 0) {
+                int z = indigoAtomicNumber(a);
+                if (z == 6) hasCarbon = true;
+                if (z != 1) {
+                    heavyAtomCount++;
+                    elementCounts[z]++;
+                    elementIsotope[z] = indigoIsotope(a);
+                }
+                int charge = 0;
+                indigoGetCharge(a, &charge);
+                totalCharge += charge;
+                indigoFree(a);
+            }
+            indigoFree(ionAtomIter);
+        }
+
+        if (!hasCarbon && heavyAtomCount >= 1) {
+            auto cnt = [&](int z) { auto it = elementCounts.find(z); return it == elementCounts.end() ? 0 : it->second; };
+            auto iso = [&](int z) { auto it = elementIsotope.find(z); return it == elementIsotope.end() ? 0 : it->second; };
+
+            const int I = 53, F = 9, Cl = 17, O = 8, Mg = 12, Rb = 37, Sr = 38, N = 7, P = 15, S = 16, As = 33;
+            QString ionName;
+
+            if (heavyAtomCount == 1) {
+                if (cnt(I) == 1) {
+                    if (iso(I) == 0) ionName = "iodide";
+                    else if (iso(I) == 123) ionName = "[123I]iodide";
+                    else if (iso(I) == 131) ionName = "[131I]iodide";
+                } else if (cnt(F) == 1) {
+                    if (iso(F) == 0) ionName = "fluoride";
+                    else if (iso(F) == 18) ionName = "[18F]fluoride";
+                } else if (cnt(Cl) == 1 && totalCharge == -1) {
+                    ionName = "chloride";
+                } else if (cnt(O) == 1 && totalCharge == -2) {
+                    ionName = "oxide";
+                } else if (cnt(Mg) == 1 && totalCharge == 2) {
+                    ionName = "magnesium(2+)";
+                } else if (cnt(Rb) == 1 && totalCharge == 1 && iso(Rb) == 82) {
+                    ionName = "[82Rb]rubidium(1+)";
+                } else if (cnt(Sr) == 1 && totalCharge == 2 && iso(Sr) == 89) {
+                    ionName = "[89Sr]strontium(2+)";
+                }
+            } else if (heavyAtomCount == 3 && cnt(N) == 1 && cnt(O) == 2 && totalCharge == -1) {
+                ionName = "nitrite"; // O=N[O-]
+            } else if (heavyAtomCount == 3 && cnt(N) == 2 && cnt(O) == 1 && totalCharge == 0) {
+                ionName = "nitrous oxide"; // [N-]=[N+]=O, net-neutral charge-separated resonance form
+            } else if (heavyAtomCount == 2 && cnt(Cl) == 1 && cnt(O) == 1 && totalCharge == -1) {
+                ionName = "hypochlorite"; // [O-]Cl
+            } else if (heavyAtomCount == 5 && cnt(P) == 1 && cnt(O) == 4 && totalCharge == -2) {
+                ionName = (iso(P) == 32) ? "[32P]hydrogen phosphate" : "hydrogen phosphate";
+            } else if (heavyAtomCount == 5 && cnt(P) == 1 && cnt(O) == 4 && totalCharge == -1) {
+                ionName = "dihydrogen phosphate";
+            } else if (heavyAtomCount == 5 && cnt(S) == 1 && cnt(O) == 4 && totalCharge == -2) {
+                ionName = "sulfate";
+            } else if (heavyAtomCount == 5 && cnt(Cl) == 1 && cnt(O) == 4 && totalCharge == -1) {
+                ionName = "perchlorate"; // [O-][Cl+3]([O-])([O-])[O-]
+            } else if (heavyAtomCount == 5 && cnt(S) == 2 && cnt(O) == 3 && totalCharge == -2) {
+                ionName = "thiosulfate";
+            } else if (heavyAtomCount == 5 && cnt(P) == 1 && cnt(O) == 3 && cnt(F) == 1 && totalCharge == -2) {
+                ionName = "monofluorophosphate";
+            } else if (heavyAtomCount == 5 && cnt(As) == 2 && cnt(O) == 3 && totalCharge == 0) {
+                ionName = "arsenic trioxide"; // O=[As][As+]([O-])=O, net-neutral charge-separated resonance form
+            }
+
+            if (!ionName.isEmpty()) {
+                return {true, ionName, ""};
+            }
+        }
+    }
+
     // Aromatize molecule first so aromatic bonds are reliably order 4
     indigoAromatize(mol);
 
