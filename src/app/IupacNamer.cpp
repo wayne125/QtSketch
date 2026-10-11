@@ -10064,6 +10064,265 @@ IupacResult IupacNamer::generateName(int mol) {
         }
     }
 
+    // Standalone pyridinium cation naming: single-component molecule with exactly one N(+1) charge
+    // on a quaternized pyridine ring nitrogen bearing exactly one simple substituent,
+    // with exactly one ring total (no fused systems). P-82.2.2: a pyridinium cation
+    // R-Py(+)-R' where the ring nitrogen carries a single substituent R is named as
+    // R-pyridin-1-ium (with R cited in alphabetical order relative to any other ring
+    // substituents the recursive call may return). Only handles the monocyclic case.
+    if (numComponents == 1) {
+        int chargedAtomCountPY = 0;
+        int chargedNitrogenAtomPY = -1;
+        int chargedNitrogenIdxPY = -1;
+        bool hasRadicalPY = false;
+        bool hasIsotopePY = false;
+
+        int atomIterPY = indigoIterateAtoms(mol);
+        if (atomIterPY >= 0) {
+            int atomHandlePY = 0;
+            while ((atomHandlePY = indigoNext(atomIterPY)) != 0) {
+                int rad = 0;
+                if (indigoGetRadicalElectrons(atomHandlePY, &rad) == 1 && rad > 0) {
+                    hasRadicalPY = true;
+                }
+
+                int iso = indigoIsotope(atomHandlePY);
+                if (iso > 0) {
+                    hasIsotopePY = true;
+                }
+
+                int charge = 0;
+                indigoGetCharge(atomHandlePY, &charge);
+                if (charge != 0) {
+                    chargedAtomCountPY++;
+                    int z = indigoAtomicNumber(atomHandlePY);
+                    if (z == 7 && charge == 1 && chargedNitrogenAtomPY == -1) {
+                        chargedNitrogenAtomPY = atomHandlePY;
+                        chargedNitrogenIdxPY = indigoIndex(atomHandlePY);
+                        continue;
+                    }
+                }
+
+                indigoFree(atomHandlePY);
+            }
+            indigoFree(atomIterPY);
+        }
+
+        if (chargedAtomCountPY == 1 && chargedNitrogenAtomPY != -1 && !hasRadicalPY && !hasIsotopePY
+            && indigoCountSSSR(mol) == 1) {
+            {
+                bool nInSixMemberAromaticRing = false;
+                int sssrIterPY = indigoIterateSSSR(mol);
+                if (sssrIterPY >= 0) {
+                    int ringMolPY = 0;
+                    while ((ringMolPY = indigoNext(sssrIterPY)) != 0) {
+                        int ringAtomIterPY = indigoIterateAtoms(ringMolPY);
+                        if (ringAtomIterPY >= 0) {
+                            std::set<int> ringIndices;
+                            int ringAtomHandle = 0;
+                            while ((ringAtomHandle = indigoNext(ringAtomIterPY)) != 0) {
+                                ringIndices.insert(indigoIndex(ringAtomHandle));
+                                indigoFree(ringAtomHandle);
+                            }
+                            indigoFree(ringAtomIterPY);
+
+                            if (ringIndices.size() == 6 && ringIndices.count(chargedNitrogenIdxPY) > 0) {
+                                bool allAromatic = true;
+                                for (int idx : ringIndices) {
+                                    int a = indigoGetAtom(mol, idx);
+                                    if (a >= 0) {
+                                        int neiIterRing = indigoIterateNeighbors(a);
+                                        if (neiIterRing >= 0) {
+                                            int ringNei = 0;
+                                            while ((ringNei = indigoNext(neiIterRing)) != 0) {
+                                                int nIdx = indigoIndex(ringNei);
+                                                if (ringIndices.count(nIdx) > 0) {
+                                                    int bHandle = indigoBond(ringNei);
+                                                    if (bHandle >= 0) {
+                                                        int order = indigoBondOrder(bHandle);
+                                                        indigoFree(bHandle);
+                                                        if (order != 4) {
+                                                            allAromatic = false;
+                                                        }
+                                                    }
+                                                }
+                                                indigoFree(ringNei);
+                                            }
+                                            indigoFree(neiIterRing);
+                                        }
+                                        indigoFree(a);
+                                    }
+                                }
+                                if (allAromatic) {
+                                    nInSixMemberAromaticRing = true;
+                                }
+                            }
+                        }
+                        indigoFree(ringMolPY);
+                    }
+                    indigoFree(sssrIterPY);
+                }
+
+                if (nInSixMemberAromaticRing) {
+                    int ringNeighborCountPY = 0;
+                    int substituentAtomPY = -1;
+                    int substituentIdxPY = -1;
+
+                    int nNeiIterPY = indigoIterateNeighbors(chargedNitrogenAtomPY);
+                    if (nNeiIterPY >= 0) {
+                        int nNeiPY = 0;
+                        while ((nNeiPY = indigoNext(nNeiIterPY)) != 0) {
+                            int nIdxPY = indigoIndex(nNeiPY);
+                            int bondHandlePY = indigoBond(nNeiPY);
+                            int orderPY = 4;
+                            if (bondHandlePY >= 0) {
+                                orderPY = indigoBondOrder(bondHandlePY);
+                                indigoFree(bondHandlePY);
+                            }
+
+                            bool neighborInRing = false;
+                            int sssrCheckIter = indigoIterateSSSR(mol);
+                            if (sssrCheckIter >= 0) {
+                                int ringMolCheck = 0;
+                                while ((ringMolCheck = indigoNext(sssrCheckIter)) != 0) {
+                                    int ringAtomIterCheck = indigoIterateAtoms(ringMolCheck);
+                                    if (ringAtomIterCheck >= 0) {
+                                        std::set<int> ringCheckIndices;
+                                        int ringAtomHandleCheck = 0;
+                                        while ((ringAtomHandleCheck = indigoNext(ringAtomIterCheck)) != 0) {
+                                            ringCheckIndices.insert(indigoIndex(ringAtomHandleCheck));
+                                            indigoFree(ringAtomHandleCheck);
+                                        }
+                                        indigoFree(ringAtomIterCheck);
+
+                                        if (ringCheckIndices.size() == 6 && 
+                                            ringCheckIndices.count(chargedNitrogenIdxPY) > 0 &&
+                                            ringCheckIndices.count(nIdxPY) > 0) {
+                                            neighborInRing = true;
+                                        }
+                                    }
+                                    indigoFree(ringMolCheck);
+                                }
+                                indigoFree(sssrCheckIter);
+                            }
+
+                            if (neighborInRing && orderPY == 4) {
+                                ringNeighborCountPY++;
+                            } else if (!neighborInRing && orderPY == 1) {
+                                bool inAnyRing = false;
+                                int sssrSubIter = indigoIterateSSSR(mol);
+                                if (sssrSubIter >= 0) {
+                                    int ringMolSub = 0;
+                                    while ((ringMolSub = indigoNext(sssrSubIter)) != 0) {
+                                        int ringAtomIterSub = indigoIterateAtoms(ringMolSub);
+                                        if (ringAtomIterSub >= 0) {
+                                            int ringAtomHandleSub = 0;
+                                            while ((ringAtomHandleSub = indigoNext(ringAtomIterSub)) != 0) {
+                                                if (indigoIndex(ringAtomHandleSub) == nIdxPY) {
+                                                    inAnyRing = true;
+                                                }
+                                                indigoFree(ringAtomHandleSub);
+                                            }
+                                            indigoFree(ringAtomIterSub);
+                                        }
+                                        indigoFree(ringMolSub);
+                                    }
+                                    indigoFree(sssrSubIter);
+                                }
+
+                                if (!inAnyRing) {
+                                    substituentAtomPY = nNeiPY;
+                                    substituentIdxPY = nIdxPY;
+                                    continue;
+                                }
+                            }
+
+                            indigoFree(nNeiPY);
+                        }
+                        indigoFree(nNeiIterPY);
+                    }
+
+                    if (ringNeighborCountPY == 2 && substituentAtomPY != -1) {
+                        QString substituentPrefix = "";
+                        int subZ = indigoAtomicNumber(substituentAtomPY);
+                        bool substituentOk = false;
+
+                        if (subZ == 6) {
+                            int subNeighborCount = 0;
+                            int subNeiIter = indigoIterateNeighbors(substituentAtomPY);
+                            if (subNeiIter >= 0) {
+                                int subNei = 0;
+                                while ((subNei = indigoNext(subNeiIter)) != 0) {
+                                    subNeighborCount++;
+                                    indigoFree(subNei);
+                                }
+                                indigoFree(subNeiIter);
+                            }
+                            if (subNeighborCount == 1) {
+                                int implicitH = indigoCountImplicitHydrogens(substituentAtomPY);
+                                if (implicitH == 3) { substituentPrefix = "methyl"; substituentOk = true; }
+                                else if (implicitH == 2) { substituentPrefix = "ethyl"; substituentOk = true; }
+                                else if (implicitH == 1) { substituentPrefix = "propyl"; substituentOk = true; }
+                                else if (implicitH == 0) { substituentPrefix = "butyl"; substituentOk = true; }
+                            }
+                        } else {
+                            substituentPrefix = halogenPrefix(subZ);
+                            if (!substituentPrefix.isEmpty()) {
+                                substituentOk = true;
+                            }
+                        }
+
+                        // Note: on every path below that does NOT return early, control falls
+                        // through to the single unconditional cleanup after this whole
+                        // "if (ringNeighborCountPY == 2 ...)" block -- substituentAtomPY and
+                        // chargedNitrogenAtomPY are freed exactly once there, never inside these
+                        // nested branches, to avoid the double-free/dangling-else bugs that were
+                        // here before this block was rewritten.
+                        if (substituentOk) {
+                            int clonedPY = indigoClone(mol);
+                            if (clonedPY >= 0) {
+                                int subToRemoveInClone = indigoGetAtom(clonedPY, substituentIdxPY);
+                                if (subToRemoveInClone >= 0) {
+                                    int subIndexInClone = indigoIndex(subToRemoveInClone);
+                                    indigoFree(subToRemoveInClone);
+                                    indigoRemoveAtoms(clonedPY, 1, &subIndexInClone);
+
+                                    int nInClone = indigoGetAtom(clonedPY, chargedNitrogenIdxPY);
+                                    if (nInClone >= 0) {
+                                        indigoSetCharge(nInClone, 0);
+                                        indigoFree(nInClone);
+
+                                        indigoAromatize(clonedPY);
+
+                                        IupacResult parentResPY = generateName(clonedPY);
+
+                                        if (parentResPY.success && parentResPY.name == "pyridine") {
+                                            indigoFree(clonedPY);
+                                            indigoFree(substituentAtomPY);
+                                            indigoFree(chargedNitrogenAtomPY);
+                                            return {true, "1-" + substituentPrefix + "pyridin-1-ium", ""};
+                                        }
+                                        // Parent didn't come back as plain "pyridine" (either the
+                                        // ring has another substituent elsewhere, or naming failed)
+                                        // -- fall through to the shared cleanup rather than
+                                        // guessing locant citation order for the multi-substituent
+                                        // case.
+                                    }
+                                }
+                                indigoFree(clonedPY);
+                            }
+                        }
+                    }
+
+                    if (substituentAtomPY != -1) indigoFree(substituentAtomPY);
+                }
+            }
+            indigoFree(chargedNitrogenAtomPY);
+        } else {
+            if (chargedNitrogenAtomPY != -1) indigoFree(chargedNitrogenAtomPY);
+        }
+    }
+
     // Standalone symmetric quaternary ammonium cation naming: single-component molecule
     // with exactly one N(+1) charge on a quaternary ammonium (R4N+, all 4 R groups identical
     // unbranched alkyl chains of length 1-4). Blue Book P-73.1.2.1: tetramethylammonium is

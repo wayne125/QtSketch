@@ -1370,6 +1370,21 @@ int main() {
         // benzhydryl (diphenylmethyl) substituent as a 13-carbon acyclic chain ("tridecane"). Fixed by
         // rejecting any branch that touches a ring, which correctly falls back to nameBranchGraph.
         {"CSC(c1ccccc1)c1ccccc1", "(diphenylmethyl)sulfanylmethane"},
+        // TICKET-03 AGY-T5: standalone pyridinium cation naming (monocyclic only; clone,
+        // remove the N-substituent atom, neutralize the ring N, recurse for the parent
+        // ring name, cite the substituent + "pyridin-1-ium"). Mechanism drafted by vibe
+        // (Mistral), then fixed directly -- the draft had a dangling-else past valid C++
+        // grammar and a double-free on the cloned molecule handle; both caught by actually
+        // building it, not by trusting the draft's own "done" report.
+        {"C[n+]1ccccc1", "1-methylpyridin-1-ium"}, // N-methylpyridinium
+        // Fallthrough cases - should still reject: both real corpus examples have another
+        // substituent elsewhere on the ring (oxime / carbamate ester), so the recursive
+        // parent-naming call doesn't come back as plain "pyridine" -- correctly conservative
+        // per this block's explicit scope (citing a second substituent alongside the N-locant
+        // needs the engine's existing amine-style alphabetization/citation-order logic, not
+        // guessed at here).
+        {"C[n+]1c(C=NO)cccc1", "", true, "Charged atoms are not supported"}, // PRALIDOXIME
+        {"CN(C(Oc1c[n+](C)ccc1)=O)C", "", true, "Charged atoms are not supported"}, // PYRIDOSTIGMINE
         // Fallthrough cases - should still reject (not yet supported for other reasons)
         {"COc1c(OC)c(C[S+](c2[nH]c3c(cccc3)n2)[O-])ncc1", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported"}, // PANTOPRAZOLE - fused benzimidazole
         {"CN1C(CCN2c3c(ccc(c3)[S+]([O-])C)Sc3c2cccc3)CCCC1", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported"}, // MESORIDAZINE - fused phenothiazine
