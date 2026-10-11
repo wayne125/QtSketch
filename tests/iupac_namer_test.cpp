@@ -1363,6 +1363,19 @@ int main() {
         {"O=S(=S)([O-])[O-]", "thiosulfate"},
         {"O=P(F)([O-])[O-]", "monofluorophosphate"},
         {"[N-]=[N+]=O", "nitrous oxide"}, // net-neutral charge-separated resonance form
+        {"C[S+]([O-])C", "methanesulfinylmethane"}, // dimethyl sulfoxide
+        {"NC(C[S+](C(c1ccccc1)c1ccccc1)[O-])=O", "2-(diphenylmethyl)sulfinylethanamide"}, // MODAFINIL
+        // Regression guard for a real pre-existing bug this uncovered: nameAcyclicChainParentWithSubstituents
+        // used to walk straight into a branch's aromatic ring (no ring guard at all), miscounting a
+        // benzhydryl (diphenylmethyl) substituent as a 13-carbon acyclic chain ("tridecane"). Fixed by
+        // rejecting any branch that touches a ring, which correctly falls back to nameBranchGraph.
+        {"CSC(c1ccccc1)c1ccccc1", "(diphenylmethyl)sulfanylmethane"},
+        // Fallthrough cases - should still reject (not yet supported for other reasons)
+        {"COc1c(OC)c(C[S+](c2[nH]c3c(cccc3)n2)[O-])ncc1", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported"}, // PANTOPRAZOLE - fused benzimidazole
+        {"CN1C(CCN2c3c(ccc(c3)[S+]([O-])C)Sc3c2cccc3)CCCC1", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported"}, // MESORIDAZINE - fused phenothiazine
+        {"O=C1N(c2ccccc2)N(c2ccccc2)C(=O)C1CC[S+](c1ccccc1)[O-]", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported"}, // SULFINPYRAZONE - pyrazolone ring
+        {"CC1/C(=C/c2ccc([S+]([O-])C)cc2)/c2c(cc(cc2)F)C=1CC(O)=O", "", true, "E/Z descriptors on substituent branches are not supported"}, // SULINDAC
+        {"CCC(C(OCOC(C1N2[C@@H]([C@H](C2=O)[C@H](O)C)SC=1S[C@@H]1C[S+]([O-])CC1)=O)=O)CC", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported"}, // SULOPENEM ETZADROXIL
         {"O=[As][As+]([O-])=O", "arsenic trioxide"}, // net-neutral charge-separated resonance form
         // Group 2 metal carboxylate salts
         {"[Ca].CC(=O)O.CC(=O)O", "calcium diethanoate"},

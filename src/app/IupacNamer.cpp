@@ -3737,6 +3737,32 @@ QString nameAcyclicChainParentWithSubstituents(
         if (startCarbon < 0 || startCarbon >= static_cast<int>(g.nodes.size())) return "";
         if (g.nodes[startCarbon].atomicNumber != 6) return "";
 
+        // This function names genuinely acyclic chains only. Reject outright (return "")
+        // if the reachable branch touches any ring/aromatic atom at all -- e.g. a
+        // benzhydryl branch's phenyl rings -- rather than silently exploring partway into
+        // a ring and producing a nonsense chain length. The caller (nameRingAsSubstituent
+        // et al.) already falls back to the correct, ring-aware nameBranchGraph whenever
+        // this function returns "".
+        {
+            std::vector<bool> reachVisited(g.nodes.size(), false);
+            std::vector<int> stack = {startCarbon};
+            reachVisited[startCarbon] = true;
+            while (!stack.empty()) {
+                int curr = stack.back();
+                stack.pop_back();
+                for (size_t k = 0; k < g.nodes[curr].neighbors.size(); ++k) {
+                    if (g.nodes[curr].bondOrders[k] == 4) return "";
+                }
+                for (size_t k = 0; k < g.nodes[curr].neighbors.size(); ++k) {
+                    int nei = g.nodes[curr].neighbors[k];
+                    if (g.nodes[nei].atomicNumber == 6 && !excludeNodes.count(nei) && !reachVisited[nei]) {
+                        reachVisited[nei] = true;
+                        stack.push_back(nei);
+                    }
+                }
+            }
+        }
+
         std::vector<int> currentPath = {startCarbon};
         std::vector<bool> visited(g.nodes.size(), false);
         visited[startCarbon] = true;
@@ -8173,6 +8199,96 @@ static FunctionalGroupClassification classifyFunctionalGroups(
 IupacResult IupacNamer::generateName(int mol) {
     if (mol < 0) {
         return {false, "", "Invalid molecule handle."};
+    }
+
+    // Normalize charge-separated sulfoxide resonance forms (R2S(+1)-O(-1), single S-O
+    // bond) into the equivalent, already-supported plain neutral sulfoxide (R2S=O,
+    // double S-O bond). Sulfoxide naming (`sulfoxideSulfurs`, further down this file)
+    // already handles the double-bond form; the FDA corpus simply encodes some
+    // sulfoxides with the charge-separated SMILES instead (TICKET-03 AGY-T4). This is a
+    // structural rewrite of the same molecule, not a hypothetical/cloned alternative --
+    // mutates mol directly, same as the existing indigoAromatize(mol) call just below.
+    {
+        std::vector<int> sulfoxideSulfurAtomsToFix;
+        int sNormIter = indigoIterateAtoms(mol);
+        if (sNormIter >= 0) {
+            int sNormAtom = 0;
+            while ((sNormAtom = indigoNext(sNormIter)) != 0) {
+                int z = indigoAtomicNumber(sNormAtom);
+                int charge = 0;
+                indigoGetCharge(sNormAtom, &charge);
+                if (z == 16 && charge == 1) {
+                    int oNegSglNeighbor = -1;
+                    int otherNeighborCount = 0;
+                    bool otherNeighborsOk = true;
+                    int sNeiIter = indigoIterateNeighbors(sNormAtom);
+                    if (sNeiIter >= 0) {
+                        int sNei = 0;
+                        while ((sNei = indigoNext(sNeiIter)) != 0) {
+                            int nZ = indigoAtomicNumber(sNei);
+                            int nCharge = 0;
+                            indigoGetCharge(sNei, &nCharge);
+                            int bondHandle = indigoBond(sNei);
+                            int order = indigoBondOrder(bondHandle);
+                            indigoFree(bondHandle);
+                            if (nZ == 8 && nCharge == -1 && order == 1 && oNegSglNeighbor == -1) {
+                                // Confirm this O(-1) is terminal (no neighbors besides this S)
+                                int oOwnNeiCount = 0;
+                                int oNeiIter = indigoIterateNeighbors(sNei);
+                                if (oNeiIter >= 0) {
+                                    int oNei = 0;
+                                    while ((oNei = indigoNext(oNeiIter)) != 0) { oOwnNeiCount++; indigoFree(oNei); }
+                                    indigoFree(oNeiIter);
+                                }
+                                if (oOwnNeiCount == 1) oNegSglNeighbor = indigoIndex(sNei);
+                                else otherNeighborsOk = false;
+                            } else if (nCharge != 0) {
+                                otherNeighborsOk = false;
+                            } else {
+                                otherNeighborCount++;
+                            }
+                            indigoFree(sNei);
+                        }
+                        indigoFree(sNeiIter);
+                    }
+                    if (oNegSglNeighbor != -1 && otherNeighborsOk && otherNeighborCount == 2) {
+                        sulfoxideSulfurAtomsToFix.push_back(indigoIndex(sNormAtom));
+                    }
+                }
+                indigoFree(sNormAtom);
+            }
+            indigoFree(sNormIter);
+        }
+        for (int sIdx : sulfoxideSulfurAtomsToFix) {
+            int sAtom = indigoGetAtom(mol, sIdx);
+            if (sAtom < 0) continue;
+            int targetO = -1;
+            int fixNeiIter = indigoIterateNeighbors(sAtom);
+            if (fixNeiIter >= 0) {
+                int fixNei = 0;
+                while ((fixNei = indigoNext(fixNeiIter)) != 0) {
+                    int nZ = indigoAtomicNumber(fixNei);
+                    int nCharge = 0;
+                    indigoGetCharge(fixNei, &nCharge);
+                    if (nZ == 8 && nCharge == -1 && targetO == -1) {
+                        targetO = fixNei;
+                        continue;
+                    }
+                    indigoFree(fixNei);
+                }
+                indigoFree(fixNeiIter);
+            }
+            if (targetO != -1) {
+                int bondHandle = indigoBond(targetO);
+                if (bondHandle >= 0) {
+                    indigoSetBondOrder(bondHandle, 2);
+                }
+                indigoSetCharge(targetO, 0);
+                indigoFree(targetO);
+            }
+            indigoSetCharge(sAtom, 0);
+            indigoFree(sAtom);
+        }
     }
 
     // Bare inorganic ion / simple charge-separated-but-net-neutral molecule lookup
