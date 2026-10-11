@@ -1317,8 +1317,14 @@ int main() {
         {"c1ccccc1[O-]", "phenoxide(1-)"},
         // Fallthrough cases for out-of-scope anions - should still reject
         {"CO[O-]", "", true, "Charged atoms are not supported"}, // peroxide anion - O bonded to O, not C
-        {"[O-]C(=O)C(=O)[O-]", "", true, "Charged atoms are not supported"}, // oxalate dianion - out of scope, must fall through cleanly
+        {"[O-]C(=O)C(=O)[O-]", "ethanedioate(2-)"}, // oxalate dianion - now in scope (TICKET-03 T6: N identical carboxylate anions)
         {"[O-]CCO", "", true, "Charged atoms are not supported"}, // diol monoanion - neutral name ends in diol, excluded from generic transform
+        // EDETATE DISODIUM (EDTA dianion, TICKET-03 T6 real-corpus probe): both O(-1) atoms
+        // verify as carboxylate-shaped and get neutralized together correctly, but the
+        // recursive call to name the fully-neutral EDTA parent hits an unrelated, pre-existing
+        // gap in N,N'-disubstituted-diamine chain naming -- correctly falls through, not a
+        // T6 regression.
+        {"O=C(CN(CC(O)=O)CCN(CC(O)=O)CC([O-])=O)[O-]", "", true, "Branched, ring, or unsaturated chains on N-substituted diamines are not supported"},
         // Standalone ammonium cation tests
         {"[NH3+]C", "methanaminium"}, // protonated methanamine
         {"[NH3+]CC", "ethanaminium"}, // protonated ethanamine
