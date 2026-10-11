@@ -324,6 +324,55 @@ int main() {
         // substituent on an acyclic acid chain.
         {"OC(=O)CCCCC1CCSS1", "5-(1,2-dithiolan-3-yl)pentanoic acid"},
 
+        // Generalization to every remaining monocyclic ring size (3,4,7,8,
+        // 9,10 -- not just the 5/6 retained names above), reusing the same
+        // general Hantzsch-Widman machinery this file already had working
+        // for AROMATIC rings of these sizes (GENERAL_HETEROCYCLE), now with
+        // its own saturated stems (hwGeneralRingStem's own saturated
+        // branch) fixed to cover 3/4/5 too, not just the pre-existing 7-10.
+        // Single heteroatom, sizes 3/4 (no dedicated retained RingType):
+        {"C1CN1", "aziridine"},
+        {"C1CO1", "oxirane"},
+        {"C1CS1", "thiirane"},
+        {"C1CCN1", "azetidine"},
+        {"C1CCO1", "oxetane"},
+        {"C1CCS1", "thietane"},
+        // Two heteroatoms, sizes 3/4/7/8/9/10 (the general fallback added
+        // alongside the dedicated 5/6 retained types above):
+        {"C1NN1", "1,2-diaziridine"},
+        {"C1ON1", "1,2-oxaziridine"},
+        {"C1COO1", "1,2-dioxetane"},
+        {"C1CCCNCN1", "1,3-diazepane"},
+        {"C1CCCCNCN1", "1,3-diazocane"},
+        {"C1CCCCCCNN1", "1,2-diazonane"},
+        {"C1CCCOCO1", "1,3-dioxepane"},
+        // A five-membered mixed O/S pair the dedicated branches above don't
+        // cover (no retained name, so it falls to the same general
+        // fallback): 1,3-oxathiolane, the ring found in lamivudine/
+        // emtricitabine.
+        {"C1OCCS1", "1,3-oxathiolane"},
+
+        // The SAME general Hantzsch-Widman machinery, but as a SUBSTITUENT
+        // rather than a parent ring -- this exposed two real, separate,
+        // pre-existing bugs while wiring it up (see the "ringSize < 3 ||
+        // ringSize > 10" and "ringInternalDegree != 2" comments in
+        // nameRingAsSubstituent for the full explanation): a hardcoded
+        // ring-size-5-or-6-only gate was silently rejecting EVERY
+        // substituent ring outside that range -- plain carbocycles
+        // included, not just these new heterocycle sizes -- and a missing
+        // ring-internal-degree check let a fused bicyclic union (e.g.
+        // naphthalene's own 10-atom perimeter) slip through as if it were
+        // a fake simple 10-membered monocycle once that gate widened to 10.
+        {"OCC1CC1", "cyclopropylmethanol"},
+        {"OCC1CCCCCC1", "cycloheptylmethanol"},
+        {"OCC1CCCCCN1", "(azepan-2-yl)methanol"},
+        {"OC(=O)CC1CCCCCN1", "2-(azepan-2-yl)ethanoic acid"},
+        {"OCC1CO1", "(oxiran-2-yl)methanol"},
+        {"OCC1CCN1", "(azetidin-2-yl)methanol"},
+        // (The naphthalene-perimeter-as-fake-monocycle regression this work
+        // exposed is already guarded by the existing "seniority" test
+        // further down -- same SMILES, pinned before this session started.)
+
         // Multi-component ring dispatch, true spiro real component whose
         // own ring nitrogen carries a chain ending in an N-aryl-piperazine
         // (piperazine itself an isolated ring, attached transitively -- not
@@ -335,6 +384,27 @@ int main() {
         // Structurally validated: 4 rings total (2 spiro + piperazine +
         // pyrimidine, all disjoint from each other except the spiro pair).
         {"O=C1N(CCCCN2CCN(c3ncccn3)CC2)C(=O)CC2(CCCC2)C1", "8-(4-[4-(pyrimidin-2-yl)piperazin-1-yl]butyl)-8-azaspiro[4.5]decane-7,9-dione"},
+
+        // Regression guard for a real, confirmed STACK-OVERFLOW CRASH found
+        // via an FDA-corpus sweep on PRAZOSIN itself: the Phase 31
+        // connected-component dispatcher's own isolated-ring substituent
+        // naming passed only that dispatch level's own isolatedGraphRings
+        // (just the piperazine ring) as nameBranchGraph's ring list,
+        // instead of the whole molecule's allSSSRRings. When piperazine's
+        // own substituent is ITSELF a ring one level deeper (here, a
+        // furan-2-carbonyl group), nameBranchGraph had no way to recognize
+        // that nested ring, misread its ring oxygen as a plain ether atom,
+        // and infinitely recursed hunting for a next "alkyl neighbor"
+        // around the ring's own atoms. Fixed by passing allSSSRRings
+        // there instead. Separately exposed (not crashed, but silently
+        // wrong) a second bug this same case: nameBranchGraph's own
+        // generic oxygen handling didn't check bond order, so a
+        // double-bonded carbonyl oxygen reached through this exact
+        // fallback came back as "hydroxy" instead of "oxo" -- fixed by
+        // checking for a double bond back to parentIdx first. Structurally
+        // validated: 4 rings (quinazoline's 2 + piperazine + furan), 20
+        // heavy atoms.
+        {"c1ccc2c(nc(nc2N)N2CCN(C(c3occc3)=O)CC2)c1", "2-[4-(furan-2-yloxomethyl)piperazin-1-yl]-4-aminoquinazoline"},
 
         // Regression guard for a real bug found in the same real-drug validation pass: the
         // monocyclic ring-parent carboxamide/carboxylic-acid suffix construction unconditionally
@@ -1341,8 +1411,13 @@ int main() {
         {"n1ccccc1c2cccn2", "2-pyrrol-2-ylpyridine", false, ""},
         // Test 11: Pyridine (6 atoms, 1 N) + imidazole (5 atoms, 2 N)
         // Both eligible. Pyridine wins by criterion (e) (6 > 5 skeletal atoms).
-        // Real output: "2-(1,4-diazole-2-yl)pyridine" - pyridine as parent, imidazole derivative as substituent
-        {"n1ccccc1c2ncnc2", "2-(1,4-diazole-2-yl)pyridine", false, ""},
+        // Pyridine as parent, imidazole derivative as substituent. The
+        // GENERAL_HETEROCYCLE substituent stem now drops its own trailing
+        // "e" before the "-yl" suffix attaches (matching every other stem
+        // in this same stem-assignment chain, e.g. "imidazol-2-yl" not
+        // "imidazole-2-yl") -- this test's own prior expected value had
+        // pinned that missing chop as if it were correct.
+        {"n1ccccc1c2ncnc2", "2-(1,4-diazol-2-yl)pyridine", false, ""},
         // Test 12: genuine tie - two pyridines connected by single bond
         // Both have: heterocycle (a, tied), has N (b, tied), skeletal atoms (e, tied: 6=6),
         // heteroatom count (f, tied: 1=1), heteroatom distribution (g, tied: both have 1 N at same rank)
@@ -4447,15 +4522,18 @@ int main() {
     }
 
     {
-        // Saturated 3-membered ring with N (aziridine): C1CN1
+        // Saturated 3-membered ring with N (aziridine): C1CN1. Saturated
+        // general heterocycles of sizes 3/4 are now supported (the same
+        // generalization that already covered 7-10), so this must now
+        // succeed instead of reject.
         int m_sat3 = indigoLoadMoleculeFromString("C1CN1");
         IupacResult r_sat3 = IupacNamer::generateName(m_sat3);
         indigoFree(m_sat3);
-        if (!r_sat3.success && r_sat3.error.contains("Saturated or partially unsaturated")) {
-            std::cout << "[PASS] Phase 55 rejection: saturated 3-membered N ring (aziridine) -> " << r_sat3.error.toStdString() << "\n";
+        if (r_sat3.success && r_sat3.name == "aziridine") {
+            std::cout << "[PASS] aziridine -> " << r_sat3.name.toStdString() << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] Phase 55 rejection: saturated 3-membered N ring should reject with saturated message, got success=" << r_sat3.success << " name='" << r_sat3.name.toStdString() << "' err='" << r_sat3.error.toStdString() << "'\n";
+            std::cout << "[FAIL] aziridine -> got success=" << r_sat3.success << " name='" << r_sat3.name.toStdString() << "' err='" << r_sat3.error.toStdString() << "'\n";
             failed++;
         }
     }

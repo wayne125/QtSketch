@@ -817,20 +817,35 @@ static QString hwSixMemberStem(const std::vector<int> &heteroAtomicNumbers) {
 }
 
 // P-22.2.2.1.5.1 / Table 2.5: General Hantzsch-Widman stem selection for ring sizes 3-10.
-// Returns the unsaturated (mancude) stem for the given ring size and heteroatom composition.
-// Verified against Blue Book Table 2.5 and specific PIN examples:
-//   size 3: "irine" if ALL heteroatoms are nitrogen (z==7), else "irene"
-//   size 4: "ete" (always)
-//   size 5: "ole" (always)
-//   size 6: delegates to hwSixMemberStem (ine/inine by least-senior element)
-//   size 7: "epine" (always)
-//   size 8: "ocine" (always)
-//   size 9: "onine" (always)
-//   size 10: "ecine" (always)
+// Returns the mancude (unsaturated) or saturated stem for the given ring size and
+// heteroatom composition, per the caller's own `saturated` flag. Verified against
+// Blue Book Table 2.5 and specific PIN examples:
+//   size 3: unsaturated "irine" (all-N) / "irene" (otherwise); saturated "iridine"
+//           (any N present, e.g. aziridine/oxaziridine) / "irane" (no N, e.g.
+//           oxirane/thiirane)
+//   size 4: unsaturated "ete" (always); saturated "etidine" (any N present, e.g.
+//           azetidine) / "etane" (no N, e.g. oxetane/thietane)
+//   size 5: unsaturated "ole" (always); saturated "olidine" (any N present, e.g.
+//           pyrrolidine/oxazolidine) / "olane" (no N, e.g. dioxolane/dithiolane)
+//   size 6: delegates to hwSixMemberStem (ine/inine by least-senior element) for
+//           the unsaturated form; the saturated form is left to this file's own
+//           retained-name RingTypes (piperidine, piperazine, morpholine, dioxane,
+//           ...) rather than a systematic fallback here, since the exact
+//           systematic saturated 6-ring suffix spelling for an UNretained
+//           combination is not yet confirmed against a PIN example.
+//   size 7: "epine" / saturated "epane" (azepine/azepane)
+//   size 8: "ocine" / saturated "ocane" (diazocine/azocane)
+//   size 9: "onine" / saturated "onane" (dioxonine/azonane)
+//   size 10: "ecine" / saturated "ecane" (diazecine/azecane)
 // For any other size, returns empty string (caller must guard against this).
 static QString hwGeneralRingStem(int ringSize, const std::vector<int> &heteroAtomicNumbers, bool saturated = false) {
+    bool anyN = false;
+    for (int z : heteroAtomicNumbers) {
+        if (z == 7) { anyN = true; break; }
+    }
     switch (ringSize) {
         case 3: {
+            if (saturated) return anyN ? "iridine" : "irane";
             // P-22.2.2.1.5.1: stem 'irine' is used in place of 'irene' for rings ONLY containing
             // nitrogen heteroatoms. Mixed composition (e.g. O+N) still uses '-irene'.
             if (heteroAtomicNumbers.empty()) return "irene"; // safety: no heteroatoms -> default
@@ -839,9 +854,9 @@ static QString hwGeneralRingStem(int ringSize, const std::vector<int> &heteroAto
             }
             return "irine";
         }
-        case 4: return "ete";   // Confirmed by PINs: oxete, azete
-        case 5: return "ole";   // 5-ring always "ole"
-        case 6: return hwSixMemberStem(heteroAtomicNumbers); // delegate to existing logic
+        case 4: return saturated ? (anyN ? "etidine" : "etane") : "ete";   // Confirmed by PINs: oxete, azete, azetidine, oxetane
+        case 5: return saturated ? (anyN ? "olidine" : "olane") : "ole";   // 5-ring always "ole" unsaturated
+        case 6: return hwSixMemberStem(heteroAtomicNumbers); // delegate to existing logic (see note above re: saturated)
         case 7: return saturated ? "epane" : "epine"; // Confirmed by PINs: azepine, azepane
         case 8: return saturated ? "ocane" : "ocine"; // Confirmed by PIN: diazocine, azocane
         case 9: return saturated ? "onane" : "onine"; // Confirmed by PIN: dioxonine, azonane
@@ -862,7 +877,7 @@ static QString hwGeneralRingStem(int ringSize, const std::vector<int> &heteroAto
 // the bare-ring path). Does not add an indicated-hydrogen prefix --
 // callers that need one handle it separately, matching every other
 // RingType's own getBaseNameShared/getFusionPrefixShared contract.
-static QString buildGeneralHeterocycleName(const Graph &g, const std::vector<int> &cand, int ringSize) {
+static QString buildGeneralHeterocycleName(const Graph &g, const std::vector<int> &cand, int ringSize, bool saturated = false) {
     static const int citOrd[] = {8, 16, 34, 52, 7, 15, 33, 51, 83, 14, 32, 50, 82, 5};
     static const int citOrdLen = 14;
     std::map<int, std::vector<int>> locsByZ;
@@ -892,7 +907,7 @@ static QString buildGeneralHeterocycleName(const Graph &g, const std::vector<int
         if (!ePfxs.isEmpty() && ePfxs.endsWith('a') && chunk.startsWith('a')) ePfxs.chop(1);
         ePfxs += chunk;
     }
-    QString st = hwGeneralRingStem(ringSize, allZ);
+    QString st = hwGeneralRingStem(ringSize, allZ, saturated);
     if (st.isEmpty()) return QString();
     if (ePfxs.endsWith('a') && isVowel(st[0])) ePfxs.chop(1);
     return locPfx + ePfxs + st;
@@ -1424,7 +1439,14 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
                 outType = RingType::TETRAHYDROFURAN; outNameRoot = "tetrahydrofuran"; return true;
             } else if (ringSize == 5 && hZ == 16) {
                 outType = RingType::TETRAHYDROTHIOPHENE; outNameRoot = "tetrahydrothiophene"; return true;
-            } else if (ringSize >= 7 && ringSize <= 10) {
+            } else if ((ringSize >= 3 && ringSize <= 4) || (ringSize >= 7 && ringSize <= 10)) {
+                // Sizes 3/4 (aziridine/oxirane/thiirane, azetidine/oxetane/
+                // thietane) have no dedicated retained-name RingType here --
+                // route through the same general Hantzsch-Widman machinery
+                // already proven correct for sizes 7-10 (azepane, azocane,
+                // ...); hwGeneralRingStem's own saturated branch for sizes
+                // 3-5 produces the right "-iridine"/"-irane",
+                // "-etidine"/"-etane" endings.
                 if (tryGeneralHeterocycle(g, ringHeteroNodes, ringSize, outNameRoot)) {
                     outType = RingType::GENERAL_HETEROCYCLE; return true;
                 }
@@ -1492,6 +1514,28 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
                         outNameRoot = locantPrefix + (isOO ? "dioxane" : "dithiane");
                         return true;
                     }
+                }
+            }
+
+            // Fallback for every other two-heteroatom case this file has no
+            // dedicated retained-name RingType for: sizes 3/4/7/8/9/10 for
+            // any element pair (diaziridine, oxaziridine, dioxetane,
+            // diazepane, dioxepane, ...), plus a five-membered pair the
+            // explicit branches above don't cover, e.g. a mixed O/S pair
+            // (1,3-oxathiolane, a real ring found in lamivudine/
+            // emtricitabine). hwGeneralRingStem's own saturated branch
+            // covers sizes 3-5 and 7-10 correctly; size 6 is excluded here
+            // because its systematic saturated-form suffix spelling for an
+            // UNretained combination (e.g. 1,2-/1,3-relationship pairs, or
+            // an O/S pair) is not yet confirmed against a PIN example, so a
+            // six-membered pair/relationship the branches above don't cover
+            // (hexahydropyridazine, hexahydropyrimidine, 1,4-oxathiane)
+            // remains a documented, separate follow-on. Reuses the same
+            // general Hantzsch-Widman machinery as the single-heteroatom
+            // fallback just above.
+            if ((ringSize >= 3 && ringSize <= 5) || (ringSize >= 7 && ringSize <= 10)) {
+                if (tryGeneralHeterocycle(g, ringHeteroNodes, ringSize, outNameRoot)) {
+                    outType = RingType::GENERAL_HETEROCYCLE; return true;
                 }
             }
         }
@@ -1846,7 +1890,18 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
     std::set<int> combinedForbidden = forbiddenNodes;
     for (int n : ringNodes) combinedForbidden.insert(n);
     int ringSize = static_cast<int>(ringNodes.size());
-    if (ringSize != 5 && ringSize != 6) return "";
+    // Originally hardcoded to exactly 5 or 6 -- a leftover from when only
+    // PIPERIDINE/PYRROLIDINE/THF/THT/BENZENE/CYCLOALKANE were supported as
+    // substituents. Every mechanism downstream of this point (ringCycle
+    // construction, the GENERAL_HETEROCYCLE candidate search, the generic
+    // CYCLOALKANE/CYCLOALKENE stem fallback) is already ring-size-agnostic,
+    // so this one check alone was silently rejecting EVERY substituent ring
+    // outside 5/6 -- plain cyclopropyl/cycloheptyl carbocycles included,
+    // not just the new heterocycle sizes this session added. Widen to this
+    // file's own Hantzsch-Widman range (tryGeneralHeterocycle, P-22.2.2.1.1)
+    // rather than removing the check entirely, since ring sizes 11+ use a
+    // different naming convention (LARGE_HETEROCYCLE) not addressed here.
+    if (ringSize < 3 || ringSize > 10) return "";
 
     std::set<int> thioetherSulfurs, sulfoxideSulfurs, sulfoneSulfurs;
     std::set<int> selenoetherSeleniums, selenoxideSeleniums, selenoneSeleniums;
@@ -1902,6 +1957,29 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
     }
 
     if (static_cast<int>(ringCycle.size()) != ringSize) return "";
+
+    // The greedy walk above only confirms a simple cycle of the RIGHT
+    // LENGTH exists among ringNodes -- it does not confirm ringNodes IS
+    // one. A fused/bridged union (e.g. naphthalene's 10-atom perimeter,
+    // whose two bridgehead atoms each have 3 ring-internal neighbors: the
+    // other bridgehead plus one perimeter neighbor each) can still trace
+    // out a spurious 10-atom "cycle" if the walk simply never happens to
+    // take the extra fusion bond, silently misnaming a genuinely bicyclic
+    // ring set as if it were a plain monocyclic one (confirmed live: this
+    // widened to ringSize 10 once sizes 7-10 were opened up to
+    // substituents here, exposing a naphthalenyl-acetic-acid molecule as
+    // "6-methylcyclodec-1-yl", a structurally wrong 10-membered monocycle).
+    // Reject anything that isn't a genuine simple monocycle: every atom
+    // must have EXACTLY 2 ring-internal neighbors (the same
+    // "ringInternalDegree != 2" check already used by this file's own
+    // LARGE_HETEROCYCLE 11-20 classification for the identical reason).
+    for (int n : ringNodes) {
+        int ringInternalDegree = 0;
+        for (int nei : g.nodes[n].neighbors) {
+            if (ringNodes.count(nei)) ringInternalDegree++;
+        }
+        if (ringInternalDegree != 2) return "";
+    }
 
     std::vector<int> ringHeteroNodes;
     for (int idx : ringNodes) {
@@ -2107,6 +2185,17 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
 
     std::vector<CandidateScore> validScores;
 
+    // A fully saturated GENERAL_HETEROCYCLE ring (every ring-internal bond
+    // order 1) uses the saturated Hantzsch-Widman stem directly (e.g.
+    // "azepane", "1,3-dioxepane") and has no single distinguished sp3
+    // "indicated hydrogen" position to cite -- every ring atom already is
+    // one. The indicated-hydrogen logic below only applies to a mancude
+    // (max-unsaturated) ring with exactly one sp3 position.
+    bool ringFullySaturatedSub = true;
+    for (const auto &gb : g.bonds) {
+        if (ringNodes.count(gb.u) && ringNodes.count(gb.v) && gb.order != 1) { ringFullySaturatedSub = false; break; }
+    }
+
     for (const auto &cand : ringCandidates) {
         std::map<int, int> locantMap;
         for (int i = 0; i < ringSize; ++i) {
@@ -2122,21 +2211,34 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
 
         // For GENERAL_HETEROCYCLE, build the HW name from this candidate's ring chain
         if (rType == RingType::GENERAL_HETEROCYCLE) {
-            QString bareName = buildGeneralHeterocycleName(g, cand, ringSize);
+            QString bareName = buildGeneralHeterocycleName(g, cand, ringSize, ringFullySaturatedSub);
 
-            // P-14.7.1: Check for indicated hydrogen (saturated ring position)
-            std::vector<int> indicatedHLocants = findIndicatedHydrogenLocants(g, cand);
-            if (!indicatedHLocants.empty()) {
-                // Build indicated hydrogen prefix: each locant gets its own trailing "H", comma-separated
-                QStringList hParts;
-                for (int locant : indicatedHLocants) {
-                    hParts.append(QString("%1H").arg(locant));
+            if (ringFullySaturatedSub) {
+                // A single heteroatom in a saturated monocycle is always at
+                // position 1 by construction (every candidate here is
+                // seeded from it) -- citing "1-" is as redundant as it
+                // would be for "piperidin-4-yl" (never "1-piperidin-4-yl"),
+                // matching the identical suppression generateName's own
+                // parent-ring path already applies for this exact case.
+                if (ringHeteroNodes.size() == 1 && bareName.startsWith("1-")) {
+                    bareName = bareName.mid(2);
                 }
-                QString hPrefix = hParts.join(",") + "-";
-                cs.hwNameRoot = hPrefix + bareName;
-            } else {
-                // No indicated hydrogen needed
                 cs.hwNameRoot = bareName;
+            } else {
+                // P-14.7.1: Check for indicated hydrogen (saturated ring position)
+                std::vector<int> indicatedHLocants = findIndicatedHydrogenLocants(g, cand);
+                if (!indicatedHLocants.empty()) {
+                    // Build indicated hydrogen prefix: each locant gets its own trailing "H", comma-separated
+                    QStringList hParts;
+                    for (int locant : indicatedHLocants) {
+                        hParts.append(QString("%1H").arg(locant));
+                    }
+                    QString hPrefix = hParts.join(",") + "-";
+                    cs.hwNameRoot = hPrefix + bareName;
+                } else {
+                    // No indicated hydrogen needed
+                    cs.hwNameRoot = bareName;
+                }
             }
         }
 
@@ -2600,7 +2702,14 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
         else if (rType == RingType::THIEPINE) stem = "thiepin";
         else if (rType == RingType::SELENEPINE) stem = "selenepin";
         else if (rType == RingType::TELLUREPINE) stem = "tellurepin";
-        else if (rType == RingType::GENERAL_HETEROCYCLE) stem = best.hwNameRoot;
+        else if (rType == RingType::GENERAL_HETEROCYCLE) {
+            // Every Hantzsch-Widman stem this file produces ends in "e"
+            // (irene/irine, ete, ole, ine/inine, epine/epane, ocine/ocane,
+            // onine/onane, ecine/ecane) -- drop it the same way every other
+            // stem in this chain already does, so "-yl" attaches correctly.
+            stem = best.hwNameRoot;
+            if (stem.endsWith('e')) stem.chop(1);
+        }
         else stem = parentNameRoot;
 
         if (!prefixPart.isEmpty() && !stem.isEmpty() && stem[0].isDigit()) {
@@ -2960,6 +3069,23 @@ QString nameBranchGraph(const Graph &g, int rootIdx, int parentIdx, const std::v
     }
 
     if (rZ == 8) {
+        // A double bond back to parentIdx means this O is a carbonyl
+        // oxygen (a ring/chain carbon's own exocyclic =O), not an ether or
+        // hydroxyl -- the correct substituent name is "oxo", matching the
+        // identical nZ==8/order==2 convention already used everywhere else
+        // in this file (nameRingAsSubstituent's own substituent scan,
+        // generateName's ring-substituent loop, ...). Without this check,
+        // the alkylNei search below finds nothing (a double-bonded O's
+        // only neighbor already IS parentIdx) and falls through to
+        // "hydroxy", silently misnaming any ketone/aldehyde/acyl
+        // substituent reached through this generic fallback (confirmed
+        // live: PRAZOSIN's own 2-furoyl group on piperazine came back as
+        // "furan-2-ylhydroxymethyl" instead of "furan-2-carbonyl").
+        for (size_t k = 0; k < g.nodes[rootIdx].neighbors.size(); ++k) {
+            if (g.nodes[rootIdx].neighbors[k] == parentIdx && g.nodes[rootIdx].bondOrders[k] == 2) {
+                return "oxo";
+            }
+        }
         int alkylNei = -1;
         for (int nei : g.nodes[rootIdx].neighbors) {
             if (nei != parentIdx && !forbiddenNodes.count(nei)) { alkylNei = nei; break; }
@@ -21091,14 +21217,29 @@ IupacResult IupacNamer::generateName(int mol) {
                                                     // dispatch this logic was copied from (which
                                                     // passes {} here -- a pre-existing limitation,
                                                     // confirmed this never gets exercised by any
-                                                    // existing test), this call site KNOWS the
-                                                    // isolated ring(s) exist: pass them explicitly so
-                                                    // nameBranchGraph's own ring detection actually
-                                                    // finds sNode's ring instead of misreading it as
-                                                    // a plain alkyl chain (confirmed live: a phenyl
-                                                    // substituent was coming back as "hexyl" without
-                                                    // this fix).
-                                                    subName = nameBranchGraph(g, sNode, rNode, isolatedGraphRings, {}, {}, nullptr, mol);
+                                                    // existing test), this call site KNOWS rings
+                                                    // exist nearby, so nameBranchGraph's own ring
+                                                    // detection needs a real list to work at all
+                                                    // (confirmed live: a phenyl substituent was
+                                                    // coming back as "hexyl" without one). Passing
+                                                    // only isolatedGraphRings (this dispatch level's
+                                                    // own directly-isolated rings) instead of the
+                                                    // whole molecule's allSSSRRings caused a second,
+                                                    // more severe bug: when sNode's own ring (e.g.
+                                                    // piperazine) carries a FURTHER substituent that
+                                                    // is itself a ring one level deeper (e.g. a
+                                                    // furanoyl group's furan), nameBranchGraph has no
+                                                    // way to recognize that nested ring at all, misreads
+                                                    // its ring oxygen as a plain ether oxygen, and
+                                                    // since the chain-walk's own per-substituent
+                                                    // recursive calls always pass {} for
+                                                    // forbiddenNodes, the "find the next alkyl
+                                                    // neighbor" search bounces forever around the
+                                                    // ring's own atoms with no memory of where it
+                                                    // already visited -- a real, confirmed infinite
+                                                    // recursion (stack overflow) on PRAZOSIN's own
+                                                    // 4-(furan-2-carbonyl)piperazin-1-yl substituent.
+                                                    subName = nameBranchGraph(g, sNode, rNode, allSSSRRings, {}, {}, nullptr, mol);
                                                 }
                                                 if (subName.isEmpty()) { p31SubOk = false; break; }
                                                 if (subName.startsWith("(") && subName.endsWith(")")) {
