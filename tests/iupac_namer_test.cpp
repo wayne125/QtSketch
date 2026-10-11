@@ -309,6 +309,21 @@ int main() {
         {"O=C1OCCN1c1ccccc1", "3-phenyloxazolidin-2-one"},
         {"O=C1CSC(=O)N1", "thiazolidine-2,4-dione"},
 
+        // Same-element pairs (O/O, S/S): unlike every type above, there is
+        // no single fixed ring relationship to bake in -- 1,2-, 1,3-, and
+        // 1,4-dioxane/dithiane/dioxolane/dithiolane are all real, distinct
+        // compounds, so the observed separation is cited explicitly in the
+        // name itself (computed per-molecule, not a fixed constant).
+        {"O1CCOCC1", "1,4-dioxane"},
+        {"S1CCSCC1", "1,4-dithiane"},
+        {"O1CCOC1", "1,3-dioxolane"},
+        {"S1CCSC1", "1,3-dithiolane"},
+        {"C1CCSS1", "1,2-dithiolane"},
+        {"CC1(C)OCCO1", "2,2-dimethyl-1,3-dioxolane"},
+        // Lipoic acid: real-drug validation of the 1,2-dithiolane ring as a
+        // substituent on an acyclic acid chain.
+        {"OC(=O)CCCCC1CCSS1", "5-(1,2-dithiolan-3-yl)pentanoic acid"},
+
         // Multi-component ring dispatch, true spiro real component whose
         // own ring nitrogen carries a chain ending in an N-aryl-piperazine
         // (piperazine itself an isolated ring, attached transitively -- not

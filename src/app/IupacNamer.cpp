@@ -1137,7 +1137,7 @@ bool tryGeneralHeterocycle(const Graph &g, const std::vector<int> &ringHeteroNod
     return true;
 }
 
-enum class RingType { BENZENE, FURAN, THIOPHENE, SELENOPHENE, TELLUROPHENE, PYRROLE, PYRIDINE, PHOSPHININE, CYCLOALKANE, CYCLOALKENE, IMIDAZOLE, PYRIMIDINE, PYRAZOLE, OXAZOLE, ISOXAZOLE, THIAZOLE, ISOTHIAZOLE, SELENAZOLE, ISOSELENAZOLE, PYRIDAZINE, PYRAZINE, PIPERIDINE, PYRROLIDINE, PIPERAZINE, MORPHOLINE, THIOMORPHOLINE, IMIDAZOLIDINE, OXAZOLIDINE, ISOXAZOLIDINE, THIAZOLIDINE, ISOTHIAZOLIDINE, PYRAZOLIDINE, TETRAHYDROFURAN, TETRAHYDROTHIOPHENE, CYCLOPENTADIENE, CYCLOHEPTATRIENE, AZEPINE, OXEPINE, THIEPINE, SELENEPINE, TELLUREPINE, GENERAL_HETEROCYCLE, LARGE_HETEROCYCLE };
+enum class RingType { BENZENE, FURAN, THIOPHENE, SELENOPHENE, TELLUROPHENE, PYRROLE, PYRIDINE, PHOSPHININE, CYCLOALKANE, CYCLOALKENE, IMIDAZOLE, PYRIMIDINE, PYRAZOLE, OXAZOLE, ISOXAZOLE, THIAZOLE, ISOTHIAZOLE, SELENAZOLE, ISOSELENAZOLE, PYRIDAZINE, PYRAZINE, PIPERIDINE, PYRROLIDINE, PIPERAZINE, MORPHOLINE, THIOMORPHOLINE, IMIDAZOLIDINE, OXAZOLIDINE, ISOXAZOLIDINE, THIAZOLIDINE, ISOTHIAZOLIDINE, PYRAZOLIDINE, DIOXOLANE, DITHIOLANE, DIOXANE, DITHIANE, TETRAHYDROFURAN, TETRAHYDROTHIOPHENE, CYCLOPENTADIENE, CYCLOHEPTATRIENE, AZEPINE, OXEPINE, THIEPINE, SELENEPINE, TELLUREPINE, GENERAL_HETEROCYCLE, LARGE_HETEROCYCLE };
 
 QString getFusionPrefixShared(RingType t) {
     if (t == RingType::BENZENE) return "benzo";
@@ -1434,9 +1434,9 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
         // analogue of an already-supported AROMATIC type, at the exact same
         // heteroatom-pair ring relationship that type requires (1,2 for the
         // pyrazole-type family, 1,3 for the imidazole-type family, 1,4 for
-        // the pyrazine-type family). Only N/N, O/N, and S/N pairs are
-        // handled -- O/O, S/S, and any six-membered 1,2-/1,3-relationship
-        // pair (e.g. hexahydropyridazine, hexahydropyrimidine) remain a
+        // the pyrazine-type family). N/N, O/N, and S/N pairs are handled
+        // this way; any six-membered 1,2-/1,3-relationship N/N/O/N/S/N pair
+        // (e.g. hexahydropyridazine, hexahydropyrimidine) remains a
         // documented, separate follow-on.
         if (allowSaturated && allSingleInRing && ringHeteroNodes.size() == 2) {
             int z0 = g.nodes[ringHeteroNodes[0]].atomicNumber;
@@ -1444,7 +1444,9 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
             bool isNN = (z0 == 7 && z1 == 7);
             bool isON = (z0 == 8 && z1 == 7) || (z0 == 7 && z1 == 8);
             bool isSN = (z0 == 16 && z1 == 7) || (z0 == 7 && z1 == 16);
-            if (isNN || isON || isSN) {
+            bool isOO = (z0 == 8 && z1 == 8);
+            bool isSS = (z0 == 16 && z1 == 16);
+            if (isNN || isON || isSN || isOO || isSS) {
                 int idx0 = -1, idx1 = -1;
                 for (int i = 0; i < ringSize; ++i) {
                     if (ringCycle[i] == ringHeteroNodes[0]) idx0 = i;
@@ -1467,6 +1469,29 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
                     if (isNN) { outType = RingType::PIPERAZINE; outNameRoot = "piperazine"; return true; }
                     if (isON) { outType = RingType::MORPHOLINE; outNameRoot = "morpholine"; return true; }
                     if (isSN) { outType = RingType::THIOMORPHOLINE; outNameRoot = "thiomorpholine"; return true; }
+                }
+
+                // A same-element pair (O/O, S/S) has no single fixed
+                // relationship the way piperazine/morpholine do -- 1,2-,
+                // 1,3-, and 1,4-dioxane/dithiane/dioxolane/dithiolane are
+                // all real, distinct compounds (lipoic acid's own
+                // 1,2-dithiolane and the 1,3-dioxolane acetal/ketal
+                // protecting group among them), so the OBSERVED separation
+                // becomes part of the citable name itself, baked in here
+                // (sep is a structural fact of this exact ring, already
+                // reduced to its own lowest-locants-compliant form via the
+                // min() above, so it never needs re-deriving downstream).
+                if (isOO || isSS) {
+                    QString locantPrefix = QString("1,%1-").arg(sep + 1);
+                    if (ringSize == 5) {
+                        outType = isOO ? RingType::DIOXOLANE : RingType::DITHIOLANE;
+                        outNameRoot = locantPrefix + (isOO ? "dioxolane" : "dithiolane");
+                        return true;
+                    } else if (ringSize == 6) {
+                        outType = isOO ? RingType::DIOXANE : RingType::DITHIANE;
+                        outNameRoot = locantPrefix + (isOO ? "dioxane" : "dithiane");
+                        return true;
+                    }
                 }
             }
         }
@@ -1994,6 +2019,33 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
             if (fwd[reqOtherIdx] == otherNode) ringCandidates.push_back(fwd);
             if (bwd[reqOtherIdx] == otherNode) ringCandidates.push_back(bwd);
         }
+    } else if (rType == RingType::DIOXOLANE || rType == RingType::DITHIOLANE || rType == RingType::DIOXANE || rType == RingType::DITHIANE) {
+        // Same-element pair (O/O, S/S): unlike every branch above, there is
+        // no fixed required relationship to filter candidates against --
+        // the ring's own observed separation (already reduced to its
+        // lowest-locants-compliant form in classifyMonocyclicHeteroRing,
+        // and baked into outNameRoot/parentNameRoot there) is itself the
+        // requirement. Re-derive it here identically and seed from both
+        // heteroatoms (symmetric, like every other same-element branch).
+        int n1 = ringHeteroNodes[0], n2 = ringHeteroNodes[1];
+        int idx1 = -1, idx2 = -1;
+        for (int i = 0; i < ringSize; ++i) {
+            if (ringCycle[i] == n1) idx1 = i;
+            if (ringCycle[i] == n2) idx2 = i;
+        }
+        int dist = std::abs(idx1 - idx2);
+        int sep = std::min(dist, ringSize - dist);
+        for (int seed : {n1, n2}) {
+            int otherNode = (seed == n1) ? n2 : n1;
+            int idx = (seed == n1) ? idx1 : idx2;
+            std::vector<int> fwd(ringSize), bwd(ringSize);
+            for (int i = 0; i < ringSize; ++i) {
+                fwd[i] = ringCycle[(idx + i) % ringSize];
+                bwd[i] = ringCycle[(idx - i + ringSize) % ringSize];
+            }
+            if (fwd[sep] == otherNode) ringCandidates.push_back(fwd);
+            if (bwd[sep] == otherNode) ringCandidates.push_back(bwd);
+        }
     } else if (rType == RingType::OXAZOLE || rType == RingType::ISOXAZOLE || rType == RingType::THIAZOLE || rType == RingType::ISOTHIAZOLE) {
         int hOS = -1, hN = -1;
         int z0 = g.nodes[ringHeteroNodes[0]].atomicNumber;
@@ -2519,6 +2571,16 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
         else if (rType == RingType::PYRAZOLIDINE) stem = "pyrazolidin";
         else if (rType == RingType::ISOXAZOLIDINE) stem = "isoxazolidin";
         else if (rType == RingType::ISOTHIAZOLIDINE) stem = "isothiazolidin";
+        else if (rType == RingType::DIOXOLANE || rType == RingType::DITHIOLANE ||
+                 rType == RingType::DIOXANE || rType == RingType::DITHIANE) {
+            // parentNameRoot already carries the observed locant prefix
+            // baked in by classifyMonocyclicHeteroRing (e.g. "1,3-dioxolane")
+            // since there's no single fixed relationship to hardcode here --
+            // just drop the trailing "e" the same way every other stem here
+            // already does, so "-2-yl" attaches correctly.
+            stem = parentNameRoot;
+            stem.chop(1);
+        }
         else if (rType == RingType::FURAN) stem = "furan";
         else if (rType == RingType::THIOPHENE) stem = "thiophen";
         else if (rType == RingType::PYRROLE) stem = "pyrrol";
@@ -14568,6 +14630,33 @@ IupacResult IupacNamer::generateName(int mol) {
             if (fwd[reqOtherIdx] == otherNode) ringCandidates.push_back(fwd);
             if (bwd[reqOtherIdx] == otherNode) ringCandidates.push_back(bwd);
         }
+    } else if (rType == RingType::DIOXOLANE || rType == RingType::DITHIOLANE || rType == RingType::DIOXANE || rType == RingType::DITHIANE) {
+        // Same-element pair (O/O, S/S): unlike every branch above, there is
+        // no fixed required relationship to filter candidates against --
+        // the ring's own observed separation (already reduced to its
+        // lowest-locants-compliant form in classifyMonocyclicHeteroRing,
+        // and baked into outNameRoot/parentNameRoot there) is itself the
+        // requirement. Re-derive it here identically and seed from both
+        // heteroatoms (symmetric, like every other same-element branch).
+        int n1 = ringHeteroNodes[0], n2 = ringHeteroNodes[1];
+        int idx1 = -1, idx2 = -1;
+        for (int i = 0; i < ringSize; ++i) {
+            if (ringCycle[i] == n1) idx1 = i;
+            if (ringCycle[i] == n2) idx2 = i;
+        }
+        int dist = std::abs(idx1 - idx2);
+        int sep = std::min(dist, ringSize - dist);
+        for (int seed : {n1, n2}) {
+            int otherNode = (seed == n1) ? n2 : n1;
+            int idx = (seed == n1) ? idx1 : idx2;
+            std::vector<int> fwd(ringSize), bwd(ringSize);
+            for (int i = 0; i < ringSize; ++i) {
+                fwd[i] = ringCycle[(idx + i) % ringSize];
+                bwd[i] = ringCycle[(idx - i + ringSize) % ringSize];
+            }
+            if (fwd[sep] == otherNode) ringCandidates.push_back(fwd);
+            if (bwd[sep] == otherNode) ringCandidates.push_back(bwd);
+        }
     } else if (rType == RingType::OXAZOLE || rType == RingType::ISOXAZOLE || rType == RingType::THIAZOLE || rType == RingType::ISOTHIAZOLE) {
         int hOS = -1, hN = -1;
         int z0 = g.nodes[ringHeteroNodes[0]].atomicNumber;
@@ -15345,6 +15434,8 @@ IupacResult IupacNamer::generateName(int mol) {
             rType == RingType::MORPHOLINE || rType == RingType::THIOMORPHOLINE ||
             rType == RingType::IMIDAZOLIDINE || rType == RingType::OXAZOLIDINE || rType == RingType::THIAZOLIDINE ||
             rType == RingType::PYRAZOLIDINE || rType == RingType::ISOXAZOLIDINE || rType == RingType::ISOTHIAZOLIDINE ||
+            rType == RingType::DIOXOLANE || rType == RingType::DITHIOLANE ||
+            rType == RingType::DIOXANE || rType == RingType::DITHIANE ||
             rType == RingType::TETRAHYDROFURAN || rType == RingType::TETRAHYDROTHIOPHENE ||
             rType == RingType::CYCLOPENTADIENE || rType == RingType::CYCLOHEPTATRIENE ||
             rType == RingType::AZEPINE || rType == RingType::OXEPINE ||
