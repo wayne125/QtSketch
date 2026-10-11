@@ -1352,6 +1352,12 @@ int main() {
         {"O=P(O)(O)[O-]", "dihydrogen phosphate"},
         {"O=[32P](O)([O-])[O-]", "[32P]hydrogen phosphate"},
         {"O=S([O-])([O-])=O", "sulfate"},
+        // TICKET-03 AGY-T3: standalone N-oxide naming (clone, remove the oxide oxygen,
+        // neutralize the nitrogen, recurse for the parent name, append " N-oxide")
+        {"C[N+](C)(C)[O-]", "N,N-dimethylmethanamine N-oxide"}, // trimethylamine N-oxide
+        // Fallthrough cases - should still reject (not yet supported for other reasons)
+        {"CNC1C[N+]([O-])=C(c2ccccc2)c2c(ccc(c2)Cl)N=1", "", true, "Charged atoms are not supported"}, // CHLORDIAZEPOXIDE - parent benzodiazepine is a fused ring system, not yet supported regardless of the N-oxide
+        {"O=C(c1cnccc1)NCCO[N+]([O-])=O", "", true, "Charged atoms are not supported"}, // NICORANDIL - nitro group (has a second, double-bonded O), correctly excluded from N-oxide matching
         {"[O-][Cl+3]([O-])([O-])[O-]", "perchlorate"},
         {"[O-]Cl", "hypochlorite"},
         {"O=S(=S)([O-])[O-]", "thiosulfate"},

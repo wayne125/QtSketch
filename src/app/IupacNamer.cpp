@@ -9756,6 +9756,198 @@ IupacResult IupacNamer::generateName(int mol) {
         }
     }
 
+    // Standalone N-oxide naming: single-component molecule with exactly two charged atoms,
+    // one N(+1) and one O(-1) that are directly bonded by a single bond, with the O(-1)
+    // being terminal (no other neighbors). This represents the charge-separated resonance
+    // form of an N-oxide (R3N=O written as R3N(+)-O(-)).
+    // P-62.3.1 / P-65.3.1.3: named as parent amine/heterocycle + " N-oxide" suffix.
+    if (numComponents == 1) {
+        int chargedAtomCountNO = 0;
+        int chargedNitrogenAtomNO = -1;
+        int chargedOxygenAtomNO = -1;
+        bool hasRadicalNO = false;
+        bool hasIsotopeNO = false;
+
+        // First pass: count charged atoms, check for radicals/isotopes,
+        // and capture handles for N(+1) and O(-1)
+        int atomIterNO = indigoIterateAtoms(mol);
+        if (atomIterNO >= 0) {
+            int atomHandleNO = 0;
+            while ((atomHandleNO = indigoNext(atomIterNO)) != 0) {
+                int rad = 0;
+                if (indigoGetRadicalElectrons(atomHandleNO, &rad) == 1 && rad > 0) {
+                    hasRadicalNO = true;
+                }
+
+                int iso = indigoIsotope(atomHandleNO);
+                if (iso > 0) {
+                    hasIsotopeNO = true;
+                }
+
+                int charge = 0;
+                indigoGetCharge(atomHandleNO, &charge);
+                if (charge != 0) {
+                    chargedAtomCountNO++;
+                    int z = indigoAtomicNumber(atomHandleNO);
+                    if (z == 7 && charge == 1 && chargedNitrogenAtomNO == -1) {
+                        chargedNitrogenAtomNO = atomHandleNO;
+                        continue; // Don't free - kept for later use
+                    } else if (z == 8 && charge == -1 && chargedOxygenAtomNO == -1) {
+                        chargedOxygenAtomNO = atomHandleNO;
+                        continue; // Don't free - kept for later use
+                    }
+                }
+
+                indigoFree(atomHandleNO);
+            }
+            indigoFree(atomIterNO);
+        }
+
+        // Must have exactly two charged atoms: N(+1) and O(-1), no radicals/isotopes
+        if (chargedAtomCountNO == 2 && chargedNitrogenAtomNO != -1 && chargedOxygenAtomNO != -1 &&
+            !hasRadicalNO && !hasIsotopeNO) {
+
+            // Verify the O(-1) is directly bonded to the N(+1) by a single bond
+            // and is terminal (no neighbors other than that nitrogen)
+            bool oxygenIsTerminalNeighborOfN = false;
+            int oxygenNeighborCount = 0;
+            int bondOrderNO_bond = 0;
+
+            int neiIterNO = indigoIterateNeighbors(chargedOxygenAtomNO);
+            if (neiIterNO >= 0) {
+                int neiNO = 0;
+                while ((neiNO = indigoNext(neiIterNO)) != 0) {
+                    oxygenNeighborCount++;
+                    int neiZ = indigoAtomicNumber(neiNO);
+                    int neiCharge = 0;
+                    indigoGetCharge(neiNO, &neiCharge);
+                    if (neiZ == 7 && neiCharge == 1) {
+                        // This neighbor is the N(+1); check bond order
+                        int bHandle = indigoBond(neiNO);
+                        if (bHandle >= 0) {
+                            bondOrderNO_bond = indigoBondOrder(bHandle);
+                            indigoFree(bHandle);
+                        }
+                    }
+                    indigoFree(neiNO);
+                }
+                indigoFree(neiIterNO);
+            }
+
+            // Terminal O(-1): exactly one neighbor, and that neighbor is N(+1), bonded by single bond
+            if (oxygenNeighborCount == 1 && bondOrderNO_bond == 1) {
+                oxygenIsTerminalNeighborOfN = true;
+            }
+
+            // Exclude nitro groups (R-N(+)(=O)(-O(-))): a nitro group's charged nitrogen has
+            // an ADDITIONAL double-bonded oxygen neighbor alongside the terminal O(-). A true
+            // amine/imine N-oxide's nitrogen never has a second oxygen, double-bonded or not.
+            if (oxygenIsTerminalNeighborOfN) {
+                int nNeiIterNO = indigoIterateNeighbors(chargedNitrogenAtomNO);
+                if (nNeiIterNO >= 0) {
+                    int nNeiNO = 0;
+                    while ((nNeiNO = indigoNext(nNeiIterNO)) != 0) {
+                        int nNeiZ = indigoAtomicNumber(nNeiNO);
+                        int nNeiCharge = 0;
+                        indigoGetCharge(nNeiNO, &nNeiCharge);
+                        if (nNeiZ == 8 && nNeiCharge == 0) {
+                            int nBondHandle = indigoBond(nNeiNO);
+                            if (nBondHandle >= 0) {
+                                int nOrder = indigoBondOrder(nBondHandle);
+                                indigoFree(nBondHandle);
+                                if (nOrder == 2) {
+                                    oxygenIsTerminalNeighborOfN = false; // nitro group, not an N-oxide
+                                }
+                            }
+                        }
+                        indigoFree(nNeiNO);
+                    }
+                    indigoFree(nNeiIterNO);
+                }
+            }
+
+            if (oxygenIsTerminalNeighborOfN) {
+                // Clone the molecule to neutralize both charges
+                int clonedNO = indigoClone(mol);
+                if (clonedNO < 0) {
+                    indigoFree(chargedNitrogenAtomNO);
+                    indigoFree(chargedOxygenAtomNO);
+                    // Fall through to existing charge rejection
+                } else {
+                    // Find N(+1) and O(-1) in the cloned molecule
+                    int clonedAtomIterNO = indigoIterateAtoms(clonedNO);
+                    if (clonedAtomIterNO < 0) {
+                        indigoFree(chargedNitrogenAtomNO);
+                        indigoFree(chargedOxygenAtomNO);
+                        indigoFree(clonedNO);
+                        // Fall through
+                    } else {
+                        int targetNitrogenNO = -1;
+                        int targetOxygenNO = -1;
+                        int clonedHandleNO = 0;
+                        while ((clonedHandleNO = indigoNext(clonedAtomIterNO)) != 0) {
+                            int cChargeNO = 0;
+                            indigoGetCharge(clonedHandleNO, &cChargeNO);
+                            int cZNO = indigoAtomicNumber(clonedHandleNO);
+                            if (cChargeNO == 1 && cZNO == 7 && targetNitrogenNO == -1) {
+                                targetNitrogenNO = clonedHandleNO;
+                                continue; // Don't free
+                            } else if (cChargeNO == -1 && cZNO == 8 && targetOxygenNO == -1) {
+                                targetOxygenNO = clonedHandleNO;
+                                continue; // Don't free
+                            }
+                            indigoFree(clonedHandleNO);
+                        }
+                        indigoFree(clonedAtomIterNO);
+
+                        indigoFree(chargedNitrogenAtomNO);
+                        indigoFree(chargedOxygenAtomNO);
+
+                        if (targetNitrogenNO == -1 || targetOxygenNO == -1) {
+                            // Safety: couldn't locate atoms in clone - fall through
+                            if (targetNitrogenNO != -1) indigoFree(targetNitrogenNO);
+                            if (targetOxygenNO != -1) indigoFree(targetOxygenNO);
+                            indigoFree(clonedNO);
+                        } else {
+                            // Remove the oxide oxygen entirely (not just neutralize its charge --
+                            // the N(+1)-O(-1) pair's nitrogen keeps all its real bonds; simply
+                            // zeroing both formal charges would leave a neutral nitrogen with an
+                            // extra bond and invalid valence). Then neutralize the nitrogen, which
+                            // now has exactly the parent amine/imine's own correct valence.
+                            int oxygenIndexNO = indigoIndex(targetOxygenNO);
+                            indigoFree(targetOxygenNO);
+                            indigoRemoveAtoms(clonedNO, 1, &oxygenIndexNO);
+                            indigoSetCharge(targetNitrogenNO, 0);
+                            indigoFree(targetNitrogenNO);
+
+                            // Re-aromatize the cloned molecule
+                            indigoAromatize(clonedNO);
+
+                            // Recursively name the neutral parent structure
+                            IupacResult parentResNO = generateName(clonedNO);
+                            indigoFree(clonedNO);
+
+                            if (parentResNO.success) {
+                                // Append " N-oxide" suffix to the parent name
+                                QString noxideName = parentResNO.name + " N-oxide";
+                                return {true, noxideName, ""};
+                            }
+                            // Recursive call failed - fall through to existing charge rejection
+                        }
+                    }
+                }
+            } else {
+                // O(-1) is not a terminal single-bonded neighbor of N(+1) - free and fall through
+                indigoFree(chargedNitrogenAtomNO);
+                indigoFree(chargedOxygenAtomNO);
+            }
+        } else {
+            // Condition not met - free any handles that were captured
+            if (chargedNitrogenAtomNO != -1) indigoFree(chargedNitrogenAtomNO);
+            if (chargedOxygenAtomNO != -1) indigoFree(chargedOxygenAtomNO);
+        }
+    }
+
     // Standalone symmetric quaternary ammonium cation naming: single-component molecule
     // with exactly one N(+1) charge on a quaternary ammonium (R4N+, all 4 R groups identical
     // unbranched alkyl chains of length 1-4). Blue Book P-73.1.2.1: tetramethylammonium is
