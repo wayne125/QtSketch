@@ -20963,6 +20963,103 @@ IupacResult IupacNamer::generateName(int mol) {
                                             }
                                         }
                                     }
+                                    if (!mcSuccess) {
+                                        // Neither nameNaphthaleneFusion (all-carbon, 2 shared atoms)
+                                        // nor namePhase31BenzoFusion (heterobicyclic, 2 shared atoms)
+                                        // matched -- try spiro (exactly 1 shared atom) instead,
+                                        // confirmed via the FDA corpus sweep's own topology
+                                        // classification as a distinct, real shape within this gap
+                                        // (sub-project 4, true bridged/spiro ring systems).
+                                        SpiroNumberingResult spiroResult = computeSpiroNumbering(g, ring1G, ring2G, attachNodesSeen);
+                                        if (spiroResult.success) {
+                                            std::set<int> spiroSystemNodes;
+                                            for (const auto &kv : spiroResult.locantMap) spiroSystemNodes.insert(kv.first);
+
+                                            // MVP scope: only handle a bare spiro ring system (no
+                                            // principal-group suffix, no substituent directly on the
+                                            // spiro ring itself beyond the known isolated-ring
+                                            // attachment(s)) -- a spiro ring with its own functional
+                                            // group or further substituent is a documented, deferred
+                                            // follow-on (the same kind of narrowing this session's
+                                            // own sub-project 1 applied to its own "real component has
+                                            // its own functional group" case). Confirm this by
+                                            // checking every exocyclic bond from the spiro system: it
+                                            // must be either hydrogen or one of the already-known
+                                            // isolated-ring attachment atoms.
+                                            bool spiroIsBare = true;
+                                            for (int n : spiroSystemNodes) {
+                                                for (size_t j = 0; j < g.nodes[n].neighbors.size(); ++j) {
+                                                    int nei = g.nodes[n].neighbors[j];
+                                                    if (spiroSystemNodes.count(nei)) continue;
+                                                    if (g.nodes[nei].atomicNumber == 1) continue;
+                                                    if (!attachNodesSeen.count(n)) { spiroIsBare = false; break; }
+                                                }
+                                                if (!spiroIsBare) break;
+                                            }
+
+                                            if (spiroIsBare) {
+                                                // Build the substituent prefix string from extraSubs
+                                                // (the isolated ring(s)' own precomputed names),
+                                                // reusing the exact alphabetize-and-join pattern
+                                                // already used twice above in this same function (the
+                                                // nameNaphthaleneFusion and namePhase31BenzoFusion
+                                                // paths).
+                                                std::map<QString, std::vector<int>> prefixLocantsMapSpiro;
+                                                bool spiroLocantsOk = true;
+                                                for (const auto &es : extraSubs) {
+                                                    auto it = spiroResult.locantMap.find(es.first);
+                                                    if (it == spiroResult.locantMap.end()) { spiroLocantsOk = false; break; }
+                                                    bool okInt = false;
+                                                    int locVal = it->second.toInt(&okInt);
+                                                    if (!okInt) { spiroLocantsOk = false; break; }
+                                                    prefixLocantsMapSpiro[es.second].push_back(locVal);
+                                                }
+
+                                                if (spiroLocantsOk) {
+                                                    struct PrefixGroupSpiro {
+                                                        QString baseName;
+                                                        QString formattedStr;
+                                                    };
+                                                    std::vector<PrefixGroupSpiro> pGroupsSpiro;
+                                                    for (auto it = prefixLocantsMapSpiro.begin(); it != prefixLocantsMapSpiro.end(); ++it) {
+                                                        QString pName = it->first;
+                                                        std::vector<int> locs = it->second;
+                                                        std::sort(locs.begin(), locs.end());
+
+                                                        QStringList locStrs;
+                                                        for (int l : locs) locStrs.append(QString::number(l));
+
+                                                        QString pStr = locStrs.join(",");
+                                                        if (locs.size() > 1) {
+                                                            pStr += "-" + multiPrefix(static_cast<int>(locs.size())) + pName;
+                                                        } else {
+                                                            pStr += "-" + pName;
+                                                        }
+
+                                                        PrefixGroupSpiro pg;
+                                                        pg.baseName = alphabetizationKey(pName);
+                                                        pg.formattedStr = pStr;
+                                                        pGroupsSpiro.push_back(pg);
+                                                    }
+
+                                                    std::sort(pGroupsSpiro.begin(), pGroupsSpiro.end(), [](const PrefixGroupSpiro &a, const PrefixGroupSpiro &b) {
+                                                        return a.baseName.toLower() < b.baseName.toLower();
+                                                    });
+
+                                                    QString prefixPartSpiro;
+                                                    if (!pGroupsSpiro.empty()) {
+                                                        QStringList pStrs;
+                                                        for (const auto &pg : pGroupsSpiro) pStrs.append(pg.formattedStr);
+                                                        prefixPartSpiro = pStrs.join("-");
+                                                    }
+
+                                                    mcSuccess = true;
+                                                    QString sepSpiro = (!prefixPartSpiro.isEmpty() && !spiroResult.baseStemName.isEmpty() && spiroResult.baseStemName[0].isDigit()) ? "-" : "";
+                                                    mcName = prefixPartSpiro + sepSpiro + spiroResult.baseStemName;
+                                                }
+                                            }
+                                        }
+                                    }
                                 } else if (realComponentSize >= 3) {
                                     // Mirror the existing ringCount>=3 dispatch's own
                                     // validFusion/ends/centers/hasBranching computation
