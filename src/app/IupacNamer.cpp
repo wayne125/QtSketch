@@ -20702,23 +20702,59 @@ IupacResult IupacNamer::generateName(int mol) {
                     }
                     int realComponentSize = static_cast<int>(realComponentIndigo.size());
 
+                    // An "isolated" ring is only processed here if it has a DIRECT bond to
+                    // the real component. A ring that is instead bonded only to ANOTHER
+                    // isolated ring (a substituent chain of two or more rings -- e.g. a
+                    // piperazine directly on the real component, itself bearing a
+                    // pyrimidine on its own other nitrogen, confirmed live as a real,
+                    // previously-mishandled case this session) is deliberately skipped
+                    // here, not treated as a failure: nameRingAsSubstituent, when called
+                    // on the directly-attached ring (the piperazine), already recurses
+                    // into naming whatever is attached to IT (the pyrimidine) via its own
+                    // generic nameBranchGraph fallback -- trying to also name the
+                    // transitively-attached ring separately here would double-handle it.
+                    std::vector<int> directIsolatedRingIndices;
+                    for (int ri : isolatedRingIndices) {
+                        bool hasDirectBond = false;
+                        for (int a : allRingsIndigo[ri]) {
+                            if (!indigoToGraphIdx.count(a)) continue;
+                            int n = indigoToGraphIdx.at(a);
+                            for (int nei : g.nodes[n].neighbors) {
+                                if (realComponentGraphUnion.count(nei)) { hasDirectBond = true; break; }
+                            }
+                            if (hasDirectBond) break;
+                        }
+                        if (hasDirectBond) directIsolatedRingIndices.push_back(ri);
+                    }
+
                     // realComponentSize==2 (nameNaphthaleneFusion) supports any number of
                     // isolated rings via its own extraSubstituentNodes-based skip; the 3+
                     // ring mechanisms (nameLinearChainFusion/nameBranchingFusion) only have
                     // a single-atom freeValenceAtom skip in their own substituent scans, so
-                    // restrict those to exactly one isolated ring for now.
-                    bool countOk = (realComponentSize == 2) || (isolatedRingIndices.size() == 1);
+                    // restrict those to exactly one DIRECTLY-attached isolated ring for now
+                    // (a transitively-attached ring further out doesn't need its own slot
+                    // on the real component, so it doesn't count against this limit).
+                    bool countOk = (realComponentSize == 2) || (directIsolatedRingIndices.size() == 1);
 
+                    // Relaxed check (matching this session's own sub-project 3 fix to the
+                    // other two disjoint-ring handlers elsewhere in this file): don't
+                    // pre-require each isolated ring to be exactly "plain" (5-or-6-membered,
+                    // zero substituents beyond the one attachment) before even trying to
+                    // name it -- nameRingAsSubstituent already correctly handles a ring
+                    // that has its own further substituents (including another whole ring),
+                    // confirmed by sub-project 3's own real-drug test cases. Only still
+                    // require finding a real attachment point to the real component; trust
+                    // nameRingAsSubstituent's own internal validity (empty return =
+                    // failure) for everything else.
                     bool allIsolatedPlain = true;
                     std::vector<std::pair<int,int>> isolatedAttachPairs; // (attachOnReal, attachOnIsolated), graph-index
                     std::vector<std::set<int>> isolatedGraphRings;
                     if (countOk) {
-                        for (int ri : isolatedRingIndices) {
+                        for (int ri : directIsolatedRingIndices) {
                             std::set<int> isoGraph;
                             for (int a : allRingsIndigo[ri]) {
                                 if (indigoToGraphIdx.count(a)) isoGraph.insert(indigoToGraphIdx.at(a));
                             }
-                            if (isoGraph.size() != 5 && isoGraph.size() != 6) { allIsolatedPlain = false; break; }
 
                             int attachIso = -1, attachReal = -1;
                             for (int n : isoGraph) {
@@ -20728,17 +20764,6 @@ IupacResult IupacNamer::generateName(int mol) {
                                 if (attachIso != -1) break;
                             }
                             if (attachIso == -1) { allIsolatedPlain = false; break; }
-
-                            bool isoPlain = true;
-                            for (int n : isoGraph) {
-                                int nonHRingNeighbors = 0;
-                                for (int nei : g.nodes[n].neighbors) {
-                                    if (!isoGraph.count(nei) && g.nodes[nei].atomicNumber != 1) nonHRingNeighbors++;
-                                }
-                                if (n == attachIso) { if (nonHRingNeighbors != 1) { isoPlain = false; break; } }
-                                else { if (nonHRingNeighbors != 0) { isoPlain = false; break; } }
-                            }
-                            if (!isoPlain) { allIsolatedPlain = false; break; }
 
                             isolatedAttachPairs.push_back({attachReal, attachIso});
                             isolatedGraphRings.push_back(isoGraph);
@@ -20975,87 +21000,166 @@ IupacResult IupacNamer::generateName(int mol) {
                                             std::set<int> spiroSystemNodes;
                                             for (const auto &kv : spiroResult.locantMap) spiroSystemNodes.insert(kv.first);
 
-                                            // MVP scope: only handle a bare spiro ring system (no
-                                            // principal-group suffix, no substituent directly on the
-                                            // spiro ring itself beyond the known isolated-ring
-                                            // attachment(s)) -- a spiro ring with its own functional
-                                            // group or further substituent is a documented, deferred
-                                            // follow-on (the same kind of narrowing this session's
-                                            // own sub-project 1 applied to its own "real component has
-                                            // its own functional group" case). Confirm this by
-                                            // checking every exocyclic bond from the spiro system: it
-                                            // must be either hydrogen or one of the already-known
-                                            // isolated-ring attachment atoms.
-                                            bool spiroIsBare = true;
-                                            for (int n : spiroSystemNodes) {
-                                                for (size_t j = 0; j < g.nodes[n].neighbors.size(); ++j) {
-                                                    int nei = g.nodes[n].neighbors[j];
-                                                    if (spiroSystemNodes.count(nei)) continue;
-                                                    if (g.nodes[nei].atomicNumber == 1) continue;
-                                                    if (!attachNodesSeen.count(n)) { spiroIsBare = false; break; }
-                                                }
-                                                if (!spiroIsBare) break;
-                                            }
+                                            // Classify functional groups scoped to the spiro ring
+                                            // system's own atoms (classifyFunctionalGroups itself
+                                            // still scans the whole molecule internally, but its own
+                                            // winningRingGroup field only reflects groups that are
+                                            // on-or-exocyclic to ringNodeSet -- passed here as
+                                            // spiroSystemNodes -- mirroring the exact pattern already
+                                            // used by nameNaphthaleneFusion/namePhase31BenzoFusion).
+                                            FunctionalGroupClassification fgcSpiro = classifyFunctionalGroups(g, mol, spiroSystemNodes, allSSSRRings, carbonAzide, carbonSulfonicAcid, carbonSulfonamide, carbonSulfonylHalide, carbonSulfinylHalide, carbonSulfinicAcid, carbonSulfinamide, carbonThiol, carbonSelenol, carbonTellurol, carbonBoronicAcid, carbonBorinicAcid, carbonPhosphonicAcid, carbonPhosphinicAcid, carbonPhosphonicDihalide, carbonArsonicAcid, carbonArsinicAcid, carbonArsonicDihalide, carbonStibonicAcid, carbonStibinicAcid, carbonPhosphine);
 
-                                            if (spiroIsBare) {
-                                                // Build the substituent prefix string from extraSubs
-                                                // (the isolated ring(s)' own precomputed names),
-                                                // reusing the exact alphabetize-and-join pattern
-                                                // already used twice above in this same function (the
-                                                // nameNaphthaleneFusion and namePhase31BenzoFusion
-                                                // paths).
-                                                std::map<QString, std::vector<int>> prefixLocantsMapSpiro;
-                                                bool spiroLocantsOk = true;
-                                                for (const auto &es : extraSubs) {
-                                                    auto it = spiroResult.locantMap.find(es.first);
-                                                    if (it == spiroResult.locantMap.end()) { spiroLocantsOk = false; break; }
-                                                    bool okInt = false;
-                                                    int locVal = it->second.toInt(&okInt);
-                                                    if (!okInt) { spiroLocantsOk = false; break; }
-                                                    prefixLocantsMapSpiro[es.second].push_back(locVal);
-                                                }
+                                            if (!fgcSpiro.hasEarlyResult) {
+                                                GroupType winningType = fgcSpiro.winningRingGroup;
+                                                // MVP scope: only these principal-group suffix types are
+                                                // supported (confirmed live: a ring-embedded imide's own
+                                                // two carbonyls, with the nitrogen already accounted for
+                                                // by the aza-replacement prefix, classify as KETONE here,
+                                                // not AMIDE -- classifyFunctionalGroups' own amide
+                                                // detection looks for an EXOCYCLIC nitrogen relationship,
+                                                // which a ring-internal nitrogen doesn't satisfy; Blue
+                                                // Book itself names such rings with a plain "-one"/"-dione"
+                                                // suffix, matching this classification exactly). Any
+                                                // other winning type (ACID, ESTER, etc.) is a documented,
+                                                // deferred follow-on -- fall through unchanged rather than
+                                                // risk a wrong suffix.
+                                                bool suffixTypeSupported = (winningType == GroupType::NONE || winningType == GroupType::KETONE ||
+                                                                             winningType == GroupType::ALCOHOL || winningType == GroupType::AMINE);
 
-                                                if (spiroLocantsOk) {
-                                                    struct PrefixGroupSpiro {
-                                                        QString baseName;
-                                                        QString formattedStr;
-                                                    };
-                                                    std::vector<PrefixGroupSpiro> pGroupsSpiro;
-                                                    for (auto it = prefixLocantsMapSpiro.begin(); it != prefixLocantsMapSpiro.end(); ++it) {
-                                                        QString pName = it->first;
-                                                        std::vector<int> locs = it->second;
-                                                        std::sort(locs.begin(), locs.end());
+                                                if (suffixTypeSupported) {
+                                                    std::set<int> principalCarbons;
+                                                    if (winningType != GroupType::NONE) {
+                                                        for (const auto &pair : fgcSpiro.carbonGroup) {
+                                                            if (pair.second == winningType && spiroSystemNodes.count(pair.first)) principalCarbons.insert(pair.first);
+                                                        }
+                                                    }
 
+                                                    std::vector<int> pLocants;
+                                                    bool suffixOk = true;
+                                                    for (int pc : principalCarbons) {
+                                                        auto it = spiroResult.locantMap.find(pc);
+                                                        if (it == spiroResult.locantMap.end()) { suffixOk = false; break; }
+                                                        bool okIntP = false;
+                                                        int lv = it->second.toInt(&okIntP);
+                                                        if (!okIntP) { suffixOk = false; break; }
+                                                        pLocants.push_back(lv);
+                                                    }
+                                                    std::sort(pLocants.begin(), pLocants.end());
+
+                                                    QString suffixSpiro;
+                                                    if (suffixOk && winningType != GroupType::NONE && !pLocants.empty()) {
+                                                        int pCount = static_cast<int>(pLocants.size());
+                                                        QString bareSuffix;
+                                                        if (winningType == GroupType::KETONE) bareSuffix = (pCount == 1) ? "one" : "dione";
+                                                        else if (winningType == GroupType::ALCOHOL) bareSuffix = (pCount == 1) ? "ol" : "diol";
+                                                        else if (winningType == GroupType::AMINE) bareSuffix = (pCount == 1) ? "amine" : "diamine";
                                                         QStringList locStrs;
-                                                        for (int l : locs) locStrs.append(QString::number(l));
+                                                        for (int l : pLocants) locStrs.append(QString::number(l));
+                                                        suffixSpiro = "-" + locStrs.join(",") + "-" + bareSuffix;
+                                                    }
 
-                                                        QString pStr = locStrs.join(",");
-                                                        if (locs.size() > 1) {
-                                                            pStr += "-" + multiPrefix(static_cast<int>(locs.size())) + pName;
-                                                        } else {
-                                                            pStr += "-" + pName;
+                                                    if (suffixOk) {
+                                                        // Generic substituent scan: every exocyclic bond from
+                                                        // the spiro ring system that is NOT one of the known
+                                                        // isolated-ring attachments (already in extraSubs) and
+                                                        // NOT the winning group's own defining double bond
+                                                        // (e.g. a ketone's own C=O) gets named via
+                                                        // nameBranchGraph directly -- the same generic fallback
+                                                        // already used by the nameNaphthaleneFusion/
+                                                        // namePhase31BenzoFusion paths above. This naturally
+                                                        // handles a chain-plus-ring composite substituent
+                                                        // (confirmed live: a ring nitrogen's own bond to a
+                                                        // butyl-piperazinyl-pyrimidinyl chain) without this
+                                                        // dispatcher needing to understand that chain's own
+                                                        // structure at all. allSSSRRings (the whole molecule's
+                                                        // own ring list, not {}) is passed as
+                                                        // nameBranchGraph's own allIndependentRings parameter so
+                                                        // it can correctly detect any ring further down the
+                                                        // chain (confirmed necessary this session: passing {}
+                                                        // here caused a real ring-detection failure elsewhere).
+                                                        std::vector<std::pair<QString, int>> allNamedSubsSpiro;
+                                                        bool scanOk = true;
+                                                        for (int n : spiroSystemNodes) {
+                                                            auto locIt = spiroResult.locantMap.find(n);
+                                                            if (locIt == spiroResult.locantMap.end()) continue;
+                                                            bool okIntN = false;
+                                                            int locN = locIt->second.toInt(&okIntN);
+                                                            if (!okIntN) { scanOk = false; break; }
+                                                            for (size_t j = 0; j < g.nodes[n].neighbors.size(); ++j) {
+                                                                int nei = g.nodes[n].neighbors[j];
+                                                                int order = g.nodes[n].bondOrders[j];
+                                                                if (spiroSystemNodes.count(nei)) continue;
+                                                                if (g.nodes[nei].atomicNumber == 1) continue;
+                                                                if (attachNodesSeen.count(n)) continue;
+                                                                if (principalCarbons.count(n) && order >= 2) continue;
+
+                                                                QString subName = nameBranchGraph(g, nei, n, allSSSRRings, spiroSystemNodes, {}, nullptr, mol);
+                                                                if (subName.isEmpty()) { scanOk = false; break; }
+                                                                allNamedSubsSpiro.push_back({subName, locN});
+                                                            }
+                                                            if (!scanOk) break;
                                                         }
 
-                                                        PrefixGroupSpiro pg;
-                                                        pg.baseName = alphabetizationKey(pName);
-                                                        pg.formattedStr = pStr;
-                                                        pGroupsSpiro.push_back(pg);
+                                                        if (scanOk) {
+                                                            for (const auto &es : extraSubs) {
+                                                                auto it = spiroResult.locantMap.find(es.first);
+                                                                if (it == spiroResult.locantMap.end()) { scanOk = false; break; }
+                                                                bool okInt = false;
+                                                                int locVal = it->second.toInt(&okInt);
+                                                                if (!okInt) { scanOk = false; break; }
+                                                                allNamedSubsSpiro.push_back({es.second, locVal});
+                                                            }
+                                                        }
+
+                                                        if (scanOk) {
+                                                            // Build the substituent prefix string, reusing the
+                                                            // exact alphabetize-and-join pattern already used
+                                                            // twice above in this same function.
+                                                            std::map<QString, std::vector<int>> prefixLocantsMapSpiro;
+                                                            for (const auto &ns : allNamedSubsSpiro) prefixLocantsMapSpiro[ns.first].push_back(ns.second);
+
+                                                            struct PrefixGroupSpiro {
+                                                                QString baseName;
+                                                                QString formattedStr;
+                                                            };
+                                                            std::vector<PrefixGroupSpiro> pGroupsSpiro;
+                                                            for (auto it = prefixLocantsMapSpiro.begin(); it != prefixLocantsMapSpiro.end(); ++it) {
+                                                                QString pName = it->first;
+                                                                std::vector<int> locs = it->second;
+                                                                std::sort(locs.begin(), locs.end());
+
+                                                                QStringList locStrs;
+                                                                for (int l : locs) locStrs.append(QString::number(l));
+
+                                                                QString pStr = locStrs.join(",");
+                                                                if (locs.size() > 1) {
+                                                                    pStr += "-" + multiPrefix(static_cast<int>(locs.size())) + pName;
+                                                                } else {
+                                                                    pStr += "-" + pName;
+                                                                }
+
+                                                                PrefixGroupSpiro pg;
+                                                                pg.baseName = alphabetizationKey(pName);
+                                                                pg.formattedStr = pStr;
+                                                                pGroupsSpiro.push_back(pg);
+                                                            }
+
+                                                            std::sort(pGroupsSpiro.begin(), pGroupsSpiro.end(), [](const PrefixGroupSpiro &a, const PrefixGroupSpiro &b) {
+                                                                return a.baseName.toLower() < b.baseName.toLower();
+                                                            });
+
+                                                            QString prefixPartSpiro;
+                                                            if (!pGroupsSpiro.empty()) {
+                                                                QStringList pStrs;
+                                                                for (const auto &pg : pGroupsSpiro) pStrs.append(pg.formattedStr);
+                                                                prefixPartSpiro = pStrs.join("-");
+                                                            }
+
+                                                            mcSuccess = true;
+                                                            QString sepSpiro = (!prefixPartSpiro.isEmpty() && !spiroResult.baseStemName.isEmpty() && spiroResult.baseStemName[0].isDigit()) ? "-" : "";
+                                                            mcName = prefixPartSpiro + sepSpiro + spiroResult.baseStemName + suffixSpiro;
+                                                        }
                                                     }
-
-                                                    std::sort(pGroupsSpiro.begin(), pGroupsSpiro.end(), [](const PrefixGroupSpiro &a, const PrefixGroupSpiro &b) {
-                                                        return a.baseName.toLower() < b.baseName.toLower();
-                                                    });
-
-                                                    QString prefixPartSpiro;
-                                                    if (!pGroupsSpiro.empty()) {
-                                                        QStringList pStrs;
-                                                        for (const auto &pg : pGroupsSpiro) pStrs.append(pg.formattedStr);
-                                                        prefixPartSpiro = pStrs.join("-");
-                                                    }
-
-                                                    mcSuccess = true;
-                                                    QString sepSpiro = (!prefixPartSpiro.isEmpty() && !spiroResult.baseStemName.isEmpty() && spiroResult.baseStemName[0].isDigit()) ? "-" : "";
-                                                    mcName = prefixPartSpiro + sepSpiro + spiroResult.baseStemName;
                                                 }
                                             }
                                         }

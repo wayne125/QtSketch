@@ -820,10 +820,18 @@ int main() {
         // "all bonds aromatic" structural check) + isolated phenyl. Structurally
         // validated: 3 rings (6,6,6), all-carbon, 16 heavy atoms.
         {"C1CCc2cc(-c3ccccc3)ccc2C1", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."},
-        // Naphthalene real component + an isolated ring that is NOT plain (bears
-        // two substituents, Cl and Br, instead of exactly one attachment).
-        // Structurally validated: 3 rings (6,6,6), 18 heavy atoms (16 C + Cl + Br).
-        {"c1ccc2cc(-c3ccc(Cl)cc3Br)ccc2c1", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."},
+        // Naphthalene real component + an isolated ring bearing two substituents
+        // (Cl and Br) instead of exactly one attachment. Originally written to
+        // confirm a rejection reflecting the connected-component dispatcher's own
+        // now-relaxed requirement that every isolated ring be exactly plain --
+        // this session's own later work (extending the same relaxation sub-
+        // project 3 applied to the other two disjoint-ring handlers to this
+        // dispatcher's own isolated-ring check too) made nameRingAsSubstituent
+        // responsible for validity instead of a pre-check, and it already
+        // handles two simple halogen substituents correctly. Updated to the
+        // real, now-correct success. Structurally validated: 3 rings (6,6,6),
+        // 18 heavy atoms (16 C + Cl + Br).
+        {"c1ccc2cc(-c3ccc(Cl)cc3Br)ccc2c1", "2-(2-bromo-4-chlorophenyl)naphthalene", false, ""},
 
         // Multi-component ring dispatch, heterobicyclic real component (Phase 31
         // fallback, added when nameNaphthaleneFusion's own all-carbon-only
@@ -853,6 +861,19 @@ int main() {
         // ("4-dihydroxymethyl-2-phenylquinoline"). Confirms the guard correctly
         // declines rather than producing a wrong name.
         {"O=C(c1c2c(cccc2)nc(-c2ccccc2)c1)O", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."},
+
+        // Multi-component ring dispatch, true spiro real component (exactly 1
+        // shared atom, Blue Book P-24.2.1) + a directly-attached isolated ring
+        // substituent. Spiro core is a dione-bearing 6-ring spiro-fused to a
+        // plain cyclopentane, with the dione's own ring nitrogen carrying a
+        // phenyl substituent directly (not through a chain) -- exercises the
+        // suffix (functional-group classification restricted to {NONE, KETONE,
+        // ALCOHOL, AMINE}) and own-ring-substituent extension to the bare-spiro
+        // MVP. The nitrogen's own aza-replacement locant (8) and the two
+        // carbonyls' own locants (7, 9) both come from computeSpiroNumbering's
+        // own numbering, independently verified via a direct driver run (not
+        // guessed). Structurally validated: 3 rings (6,5,6), 18 heavy atoms.
+        {"O=C1N(c3ccccc3)C(=O)CC2(CCCC2)C1", "8-phenyl-8-azaspiro[4.5]decane-7,9-dione"},
 
         // Phase 12: Monosubstituted cyclohexane ring attached to acyclic chain with principal group
         {"C1CCCCC1CC(=O)O", "2-cyclohexylethanoic acid"},
