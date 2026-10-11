@@ -284,6 +284,31 @@ int main() {
         {"N1CCNCC1", "piperazine"},
         {"c1ccccc1N2CCNCC2", "1-phenylpiperazine"},
 
+        // Generalization of the same saturated two-heteroatom classification
+        // to every other N/N, O/N, and S/N pair at the same ring-relationship
+        // their own aromatic counterparts already require (1,4 for the
+        // pyrazine-type six-membered family, 1,3 for the imidazole-type and
+        // 1,2 for the pyrazole-type five-membered families). A mixed pair
+        // (O/N, S/N) must put the more senior heteroatom at locant 1 (O > S
+        // > N) regardless of which atom the SMILES happens to list first --
+        // confirmed by both morpholine cases below (O always 1, N always 4).
+        {"O1CCNCC1", "morpholine"},
+        {"c1ccccc1N2CCOCC2", "4-phenylmorpholine"},
+        {"CC1CNCCO1", "2-methylmorpholine"},
+        {"S1CCNCC1", "thiomorpholine"},
+        {"CN1CCSCC1", "4-methylthiomorpholine"},
+        {"C1CNCN1", "imidazolidine"},
+        {"C1CNCO1", "oxazolidine"},
+        {"C1CNCS1", "thiazolidine"},
+        {"C1CCNN1", "pyrazolidine"},
+        {"C1CCON1", "isoxazolidine"},
+        {"C1CCSN1", "isothiazolidine"},
+        // Real drug scaffolds exercising substituents/suffixes on the new
+        // types: linezolid's own 3-aryl-oxazolidin-2-one core, and the
+        // glitazone family's thiazolidine-2,4-dione.
+        {"O=C1OCCN1c1ccccc1", "3-phenyloxazolidin-2-one"},
+        {"O=C1CSC(=O)N1", "thiazolidine-2,4-dione"},
+
         // Multi-component ring dispatch, true spiro real component whose
         // own ring nitrogen carries a chain ending in an N-aryl-piperazine
         // (piperazine itself an isolated ring, attached transitively -- not

@@ -1137,7 +1137,7 @@ bool tryGeneralHeterocycle(const Graph &g, const std::vector<int> &ringHeteroNod
     return true;
 }
 
-enum class RingType { BENZENE, FURAN, THIOPHENE, SELENOPHENE, TELLUROPHENE, PYRROLE, PYRIDINE, PHOSPHININE, CYCLOALKANE, CYCLOALKENE, IMIDAZOLE, PYRIMIDINE, PYRAZOLE, OXAZOLE, ISOXAZOLE, THIAZOLE, ISOTHIAZOLE, SELENAZOLE, ISOSELENAZOLE, PYRIDAZINE, PYRAZINE, PIPERIDINE, PYRROLIDINE, PIPERAZINE, TETRAHYDROFURAN, TETRAHYDROTHIOPHENE, CYCLOPENTADIENE, CYCLOHEPTATRIENE, AZEPINE, OXEPINE, THIEPINE, SELENEPINE, TELLUREPINE, GENERAL_HETEROCYCLE, LARGE_HETEROCYCLE };
+enum class RingType { BENZENE, FURAN, THIOPHENE, SELENOPHENE, TELLUROPHENE, PYRROLE, PYRIDINE, PHOSPHININE, CYCLOALKANE, CYCLOALKENE, IMIDAZOLE, PYRIMIDINE, PYRAZOLE, OXAZOLE, ISOXAZOLE, THIAZOLE, ISOTHIAZOLE, SELENAZOLE, ISOSELENAZOLE, PYRIDAZINE, PYRAZINE, PIPERIDINE, PYRROLIDINE, PIPERAZINE, MORPHOLINE, THIOMORPHOLINE, IMIDAZOLIDINE, OXAZOLIDINE, ISOXAZOLIDINE, THIAZOLIDINE, ISOTHIAZOLIDINE, PYRAZOLIDINE, TETRAHYDROFURAN, TETRAHYDROTHIOPHENE, CYCLOPENTADIENE, CYCLOHEPTATRIENE, AZEPINE, OXEPINE, THIEPINE, SELENEPINE, TELLUREPINE, GENERAL_HETEROCYCLE, LARGE_HETEROCYCLE };
 
 QString getFusionPrefixShared(RingType t) {
     if (t == RingType::BENZENE) return "benzo";
@@ -1430,23 +1430,44 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
                 }
             }
         }
-        // Saturated 1,4-diazinane (piperazine): the saturated analogue of
-        // PYRAZINE, same 1,4 ring relationship between its two nitrogens --
-        // only this specific two-nitrogen, 6-membered, 1,4 case is handled
-        // (any other saturated two-heteroatom monocycle, e.g. 1,2- or
-        // 1,3-relationship, or a non-nitrogen second heteroatom such as
-        // morpholine's O, remains a documented, separate follow-on).
-        if (allowSaturated && allSingleInRing && ringSize == 6 && ringHeteroNodes.size() == 2 &&
-            g.nodes[ringHeteroNodes[0]].atomicNumber == 7 && g.nodes[ringHeteroNodes[1]].atomicNumber == 7) {
-            int idx0 = -1, idx1 = -1;
-            for (int i = 0; i < ringSize; ++i) {
-                if (ringCycle[i] == ringHeteroNodes[0]) idx0 = i;
-                if (ringCycle[i] == ringHeteroNodes[1]) idx1 = i;
-            }
-            int dist = std::abs(idx0 - idx1);
-            int sep = std::min(dist, ringSize - dist);
-            if (sep == 3) {
-                outType = RingType::PIPERAZINE; outNameRoot = "piperazine"; return true;
+        // Saturated two-heteroatom monocyclic rings: each one the saturated
+        // analogue of an already-supported AROMATIC type, at the exact same
+        // heteroatom-pair ring relationship that type requires (1,2 for the
+        // pyrazole-type family, 1,3 for the imidazole-type family, 1,4 for
+        // the pyrazine-type family). Only N/N, O/N, and S/N pairs are
+        // handled -- O/O, S/S, and any six-membered 1,2-/1,3-relationship
+        // pair (e.g. hexahydropyridazine, hexahydropyrimidine) remain a
+        // documented, separate follow-on.
+        if (allowSaturated && allSingleInRing && ringHeteroNodes.size() == 2) {
+            int z0 = g.nodes[ringHeteroNodes[0]].atomicNumber;
+            int z1 = g.nodes[ringHeteroNodes[1]].atomicNumber;
+            bool isNN = (z0 == 7 && z1 == 7);
+            bool isON = (z0 == 8 && z1 == 7) || (z0 == 7 && z1 == 8);
+            bool isSN = (z0 == 16 && z1 == 7) || (z0 == 7 && z1 == 16);
+            if (isNN || isON || isSN) {
+                int idx0 = -1, idx1 = -1;
+                for (int i = 0; i < ringSize; ++i) {
+                    if (ringCycle[i] == ringHeteroNodes[0]) idx0 = i;
+                    if (ringCycle[i] == ringHeteroNodes[1]) idx1 = i;
+                }
+                int dist = std::abs(idx0 - idx1);
+                int sep = std::min(dist, ringSize - dist);
+
+                if (ringSize == 5) {
+                    if (sep == 1) { // 1,2-relationship (pyrazole-type family)
+                        if (isNN) { outType = RingType::PYRAZOLIDINE; outNameRoot = "pyrazolidine"; return true; }
+                        if (isON) { outType = RingType::ISOXAZOLIDINE; outNameRoot = "isoxazolidine"; return true; }
+                        if (isSN) { outType = RingType::ISOTHIAZOLIDINE; outNameRoot = "isothiazolidine"; return true; }
+                    } else if (sep == 2) { // 1,3-relationship (imidazole-type family)
+                        if (isNN) { outType = RingType::IMIDAZOLIDINE; outNameRoot = "imidazolidine"; return true; }
+                        if (isON) { outType = RingType::OXAZOLIDINE; outNameRoot = "oxazolidine"; return true; }
+                        if (isSN) { outType = RingType::THIAZOLIDINE; outNameRoot = "thiazolidine"; return true; }
+                    }
+                } else if (ringSize == 6 && sep == 3) { // 1,4-relationship (pyrazine-type family)
+                    if (isNN) { outType = RingType::PIPERAZINE; outNameRoot = "piperazine"; return true; }
+                    if (isON) { outType = RingType::MORPHOLINE; outNameRoot = "morpholine"; return true; }
+                    if (isSN) { outType = RingType::THIOMORPHOLINE; outNameRoot = "thiomorpholine"; return true; }
+                }
             }
         }
         // P-22.2.2: 7-membered single-heteroatom rings (AZEPINE, OXEPINE, THIEPINE, SELENEPINE, TELLUREPINE)
@@ -1933,29 +1954,46 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
         int reqOtherIdx = (rType == RingType::IMIDAZOLE) ? 2 : 1;
         if (fwd[reqOtherIdx] == hN) ringCandidates.push_back(fwd);
         if (bwd[reqOtherIdx] == hN) ringCandidates.push_back(bwd);
-    } else if (rType == RingType::PYRIMIDINE || rType == RingType::PYRIDAZINE || rType == RingType::PYRAZINE || rType == RingType::PIPERAZINE) {
+    } else if (rType == RingType::PYRIMIDINE || rType == RingType::PYRIDAZINE || rType == RingType::PYRAZINE ||
+               rType == RingType::PIPERAZINE || rType == RingType::MORPHOLINE || rType == RingType::THIOMORPHOLINE ||
+               rType == RingType::IMIDAZOLIDINE || rType == RingType::OXAZOLIDINE || rType == RingType::THIAZOLIDINE ||
+               rType == RingType::PYRAZOLIDINE || rType == RingType::ISOXAZOLIDINE || rType == RingType::ISOTHIAZOLIDINE) {
         int n1 = ringHeteroNodes[0], n2 = ringHeteroNodes[1];
-        int idx1 = -1, idx2 = -1;
-        for (int i = 0; i < ringSize; ++i) {
-            if (ringCycle[i] == n1) idx1 = i;
-            if (ringCycle[i] == n2) idx2 = i;
-        }
-        int reqOtherIdx = (rType == RingType::PYRIDAZINE) ? 1 : ((rType == RingType::PYRIMIDINE) ? 2 : 3);
-        std::vector<int> fwd1(ringSize), bwd1(ringSize);
-        for (int i = 0; i < ringSize; ++i) {
-            fwd1[i] = ringCycle[(idx1 + i) % ringSize];
-            bwd1[i] = ringCycle[(idx1 - i + ringSize) % ringSize];
-        }
-        if (fwd1[reqOtherIdx] == n2) ringCandidates.push_back(fwd1);
-        if (bwd1[reqOtherIdx] == n2) ringCandidates.push_back(bwd1);
+        int reqOtherIdx = (rType == RingType::PYRIDAZINE || rType == RingType::PYRAZOLIDINE ||
+                           rType == RingType::ISOXAZOLIDINE || rType == RingType::ISOTHIAZOLIDINE) ? 1 :
+                          (rType == RingType::PYRIMIDINE || rType == RingType::IMIDAZOLIDINE ||
+                           rType == RingType::OXAZOLIDINE || rType == RingType::THIAZOLIDINE) ? 2 : 3;
 
-        std::vector<int> fwd2(ringSize), bwd2(ringSize);
-        for (int i = 0; i < ringSize; ++i) {
-            fwd2[i] = ringCycle[(idx2 + i) % ringSize];
-            bwd2[i] = ringCycle[(idx2 - i + ringSize) % ringSize];
+        // A mixed-element pair (O/N or S/N, e.g. morpholine/oxazolidine) must
+        // seed numbering ONLY from the more senior heteroatom (O > S > N,
+        // the same seniority already used for the "oxa" before "aza"
+        // heteroatom-replacement citation order elsewhere in this file) --
+        // seeding from the junior one too would let the downstream
+        // lowest-substituent-locant tie-break below silently override
+        // heteroatom seniority. A same-element pair (N/N) has no such
+        // ordering to violate, so both heteroatoms may seed, matching this
+        // branch's own original PYRIMIDINE/PYRIDAZINE/PYRAZINE behavior.
+        std::vector<int> seeds;
+        if (g.nodes[n1].atomicNumber == g.nodes[n2].atomicNumber) {
+            seeds = {n1, n2};
+        } else {
+            seeds = {(hwSeniorityRank(g.nodes[n1].atomicNumber) < hwSeniorityRank(g.nodes[n2].atomicNumber)) ? n1 : n2};
         }
-        if (fwd2[reqOtherIdx] == n1) ringCandidates.push_back(fwd2);
-        if (bwd2[reqOtherIdx] == n1) ringCandidates.push_back(bwd2);
+
+        for (int seed : seeds) {
+            int otherNode = (seed == n1) ? n2 : n1;
+            int idx = -1;
+            for (int i = 0; i < ringSize; ++i) {
+                if (ringCycle[i] == seed) { idx = i; break; }
+            }
+            std::vector<int> fwd(ringSize), bwd(ringSize);
+            for (int i = 0; i < ringSize; ++i) {
+                fwd[i] = ringCycle[(idx + i) % ringSize];
+                bwd[i] = ringCycle[(idx - i + ringSize) % ringSize];
+            }
+            if (fwd[reqOtherIdx] == otherNode) ringCandidates.push_back(fwd);
+            if (bwd[reqOtherIdx] == otherNode) ringCandidates.push_back(bwd);
+        }
     } else if (rType == RingType::OXAZOLE || rType == RingType::ISOXAZOLE || rType == RingType::THIAZOLE || rType == RingType::ISOTHIAZOLE) {
         int hOS = -1, hN = -1;
         int z0 = g.nodes[ringHeteroNodes[0]].atomicNumber;
@@ -2473,6 +2511,14 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
         else if (rType == RingType::PIPERIDINE) stem = "piperidin";
         else if (rType == RingType::PYRROLIDINE) stem = "pyrrolidin";
         else if (rType == RingType::PIPERAZINE) stem = "piperazin";
+        else if (rType == RingType::MORPHOLINE) stem = "morpholin";
+        else if (rType == RingType::THIOMORPHOLINE) stem = "thiomorpholin";
+        else if (rType == RingType::IMIDAZOLIDINE) stem = "imidazolidin";
+        else if (rType == RingType::OXAZOLIDINE) stem = "oxazolidin";
+        else if (rType == RingType::THIAZOLIDINE) stem = "thiazolidin";
+        else if (rType == RingType::PYRAZOLIDINE) stem = "pyrazolidin";
+        else if (rType == RingType::ISOXAZOLIDINE) stem = "isoxazolidin";
+        else if (rType == RingType::ISOTHIAZOLIDINE) stem = "isothiazolidin";
         else if (rType == RingType::FURAN) stem = "furan";
         else if (rType == RingType::THIOPHENE) stem = "thiophen";
         else if (rType == RingType::PYRROLE) stem = "pyrrol";
@@ -14487,30 +14533,41 @@ IupacResult IupacNamer::generateName(int mol) {
         int reqOtherIdx = (rType == RingType::IMIDAZOLE) ? 2 : 1;
         if (fwd[reqOtherIdx] == hN) ringCandidates.push_back(fwd);
         if (bwd[reqOtherIdx] == hN) ringCandidates.push_back(bwd);
-    } else if (rType == RingType::PYRIMIDINE || rType == RingType::PYRIDAZINE || rType == RingType::PYRAZINE || rType == RingType::PIPERAZINE) {
+    } else if (rType == RingType::PYRIMIDINE || rType == RingType::PYRIDAZINE || rType == RingType::PYRAZINE ||
+               rType == RingType::PIPERAZINE || rType == RingType::MORPHOLINE || rType == RingType::THIOMORPHOLINE ||
+               rType == RingType::IMIDAZOLIDINE || rType == RingType::OXAZOLIDINE || rType == RingType::THIAZOLIDINE ||
+               rType == RingType::PYRAZOLIDINE || rType == RingType::ISOXAZOLIDINE || rType == RingType::ISOTHIAZOLIDINE) {
         int n1 = ringHeteroNodes[0];
         int n2 = ringHeteroNodes[1];
-        int idx1 = -1, idx2 = -1;
-        for (int i = 0; i < ringSize; ++i) {
-            if (ringCycle[i] == n1) idx1 = i;
-            if (ringCycle[i] == n2) idx2 = i;
-        }
-        int reqOtherIdx = (rType == RingType::PYRIDAZINE) ? 1 : ((rType == RingType::PYRIMIDINE) ? 2 : 3);
-        std::vector<int> fwd1(ringSize), bwd1(ringSize);
-        for (int i = 0; i < ringSize; ++i) {
-            fwd1[i] = ringCycle[(idx1 + i) % ringSize];
-            bwd1[i] = ringCycle[(idx1 - i + ringSize) % ringSize];
-        }
-        if (fwd1[reqOtherIdx] == n2) ringCandidates.push_back(fwd1);
-        if (bwd1[reqOtherIdx] == n2) ringCandidates.push_back(bwd1);
+        int reqOtherIdx = (rType == RingType::PYRIDAZINE || rType == RingType::PYRAZOLIDINE ||
+                           rType == RingType::ISOXAZOLIDINE || rType == RingType::ISOTHIAZOLIDINE) ? 1 :
+                          (rType == RingType::PYRIMIDINE || rType == RingType::IMIDAZOLIDINE ||
+                           rType == RingType::OXAZOLIDINE || rType == RingType::THIAZOLIDINE) ? 2 : 3;
 
-        std::vector<int> fwd2(ringSize), bwd2(ringSize);
-        for (int i = 0; i < ringSize; ++i) {
-            fwd2[i] = ringCycle[(idx2 + i) % ringSize];
-            bwd2[i] = ringCycle[(idx2 - i + ringSize) % ringSize];
+        // Same seniority-seeding rationale as the identical branch in
+        // nameRingAsSubstituent (search for "must seed numbering ONLY from
+        // the more senior heteroatom" for the full explanation).
+        std::vector<int> seeds;
+        if (g.nodes[n1].atomicNumber == g.nodes[n2].atomicNumber) {
+            seeds = {n1, n2};
+        } else {
+            seeds = {(hwSeniorityRank(g.nodes[n1].atomicNumber) < hwSeniorityRank(g.nodes[n2].atomicNumber)) ? n1 : n2};
         }
-        if (fwd2[reqOtherIdx] == n1) ringCandidates.push_back(fwd2);
-        if (bwd2[reqOtherIdx] == n1) ringCandidates.push_back(bwd2);
+
+        for (int seed : seeds) {
+            int otherNode = (seed == n1) ? n2 : n1;
+            int idx = -1;
+            for (int i = 0; i < ringSize; ++i) {
+                if (ringCycle[i] == seed) { idx = i; break; }
+            }
+            std::vector<int> fwd(ringSize), bwd(ringSize);
+            for (int i = 0; i < ringSize; ++i) {
+                fwd[i] = ringCycle[(idx + i) % ringSize];
+                bwd[i] = ringCycle[(idx - i + ringSize) % ringSize];
+            }
+            if (fwd[reqOtherIdx] == otherNode) ringCandidates.push_back(fwd);
+            if (bwd[reqOtherIdx] == otherNode) ringCandidates.push_back(bwd);
+        }
     } else if (rType == RingType::OXAZOLE || rType == RingType::ISOXAZOLE || rType == RingType::THIAZOLE || rType == RingType::ISOTHIAZOLE) {
         int hOS = -1, hN = -1;
         int z0 = g.nodes[ringHeteroNodes[0]].atomicNumber;
@@ -15285,6 +15342,9 @@ IupacResult IupacNamer::generateName(int mol) {
             rType == RingType::PHOSPHININE || rType == RingType::SELENAZOLE ||
             rType == RingType::ISOSELENAZOLE || rType == RingType::LARGE_HETEROCYCLE ||
             rType == RingType::PYRROLIDINE || rType == RingType::PIPERIDINE || rType == RingType::PIPERAZINE ||
+            rType == RingType::MORPHOLINE || rType == RingType::THIOMORPHOLINE ||
+            rType == RingType::IMIDAZOLIDINE || rType == RingType::OXAZOLIDINE || rType == RingType::THIAZOLIDINE ||
+            rType == RingType::PYRAZOLIDINE || rType == RingType::ISOXAZOLIDINE || rType == RingType::ISOTHIAZOLIDINE ||
             rType == RingType::TETRAHYDROFURAN || rType == RingType::TETRAHYDROTHIOPHENE ||
             rType == RingType::CYCLOPENTADIENE || rType == RingType::CYCLOHEPTATRIENE ||
             rType == RingType::AZEPINE || rType == RingType::OXEPINE ||
