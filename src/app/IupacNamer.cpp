@@ -7,6 +7,7 @@
 #include <vector>
 #include <string>
 #include <algorithm>
+#include <iterator>
 #include <map>
 #include <set>
 #include <sstream>
@@ -74,6 +75,20 @@ std::map<int, QString> computePeripheralNumberingForMol(int mol);
 std::map<int, QString> computePeripheralNumberingGeneral(
     const Graph &g,
     const FusedRingSystemInput &input,
+    const std::set<int> &substituentBearingNodes = {});
+
+struct SpiroNumberingResult {
+    bool success;
+    QString error;
+    std::map<int, QString> locantMap;
+    QString baseStemName;
+    int spiroAtom;
+};
+
+SpiroNumberingResult computeSpiroNumbering(
+    const Graph &g,
+    const std::set<int> &ring1Nodes,
+    const std::set<int> &ring2Nodes,
     const std::set<int> &substituentBearingNodes = {});
 
 RingSystemNameResult namePhase31BenzoFusion(
@@ -22111,6 +22126,452 @@ std::map<int, QString> computePeripheralNumberingGeneral(
         });
 
     return bestIt->locantMap;
+}
+
+// ============================================================================
+// Spiro ring system numbering (Blue Book P-24.2.1)
+// ============================================================================
+SpiroNumberingResult computeSpiroNumbering(
+    const Graph &g,
+    const std::set<int> &ring1Nodes,
+    const std::set<int> &ring2Nodes,
+    const std::set<int> &substituentBearingNodes) {
+    SpiroNumberingResult result;
+    result.success = false;
+    result.error = "";
+    result.spiroAtom = -1;
+
+    // Find the spiro atom (intersection of the two rings)
+    std::set<int> intersection;
+    std::set_intersection(ring1Nodes.begin(), ring1Nodes.end(),
+                          ring2Nodes.begin(), ring2Nodes.end(),
+                          std::inserter(intersection, intersection.begin()));
+
+    if (intersection.size() != 1) {
+        result.error = "Spiro ring size or sharing not supported.";
+        return result;
+    }
+
+    int spiroAtom = *intersection.begin();
+    result.spiroAtom = spiroAtom;
+
+    // Check ring sizes (3 to 8 atoms each, inclusive)
+    int ring1Size = static_cast<int>(ring1Nodes.size());
+    int ring2Size = static_cast<int>(ring2Nodes.size());
+
+    if (ring1Size < 3 || ring1Size > 8 || ring2Size < 3 || ring2Size > 8) {
+        result.error = "Spiro ring size or sharing not supported.";
+        return result;
+    }
+
+    // Check for unsaturation in either ring (double or triple bonds between two atoms both in the same ring)
+    auto hasUnsaturationInRing = [&](const std::set<int> &ring) -> bool {
+        for (int u : ring) {
+            const GraphNode &node = g.nodes[u];
+            for (size_t i = 0; i < node.neighbors.size(); ++i) {
+                int v = node.neighbors[i];
+                int order = node.bondOrders[i];
+                // Check if this is a double or triple bond
+                if (order >= 2) {
+                    // Check if v is also in this ring
+                    if (ring.count(v)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    };
+
+    if (hasUnsaturationInRing(ring1Nodes) || hasUnsaturationInRing(ring2Nodes)) {
+        result.error = "Spiro ring system contains unsaturation.";
+        return result;
+    }
+
+    // Check for invalid heteroatoms (only N, O, S allowed in rings)
+    auto hasInvalidHeteroatom = [&](const std::set<int> &ring) -> bool {
+        for (int u : ring) {
+            int z = g.nodes[u].atomicNumber;
+            if (z != 6 && z != 7 && z != 8 && z != 16) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    if (hasInvalidHeteroatom(ring1Nodes) || hasInvalidHeteroatom(ring2Nodes)) {
+        result.error = "Spiro ring system contains unsupported heteroatoms.";
+        return result;
+    }
+
+    // Calculate non-spiro atom counts: a = ring size - 1
+    int a = ring1Size - 1;  // non-spiro atoms in ring1
+    int b = ring2Size - 1;  // non-spiro atoms in ring2
+
+    // Order so a <= b (smaller ring first)
+    const std::set<int> *smallerRing = &ring1Nodes;
+    const std::set<int> *largerRing = &ring2Nodes;
+    if (a > b) {
+        std::swap(a, b);
+        smallerRing = &ring2Nodes;
+        largerRing = &ring1Nodes;
+    }
+
+    // Get the two neighbors of the spiro atom in the smaller ring
+    std::vector<int> smallerRingNeighbors;
+    for (int nei : g.nodes[spiroAtom].neighbors) {
+        if (smallerRing->count(nei)) {
+            smallerRingNeighbors.push_back(nei);
+        }
+    }
+
+    if (smallerRingNeighbors.size() != 2) {
+        result.error = "Spiro atom does not have exactly 2 neighbors in smaller ring.";
+        return result;
+    }
+
+    // Get the two neighbors of the spiro atom in the larger ring
+    std::vector<int> largerRingNeighbors;
+    for (int nei : g.nodes[spiroAtom].neighbors) {
+        if (largerRing->count(nei)) {
+            largerRingNeighbors.push_back(nei);
+        }
+    }
+
+    if (largerRingNeighbors.size() != 2) {
+        result.error = "Spiro atom does not have exactly 2 neighbors in larger ring.";
+        return result;
+    }
+
+    // Build a cycle for the smaller ring (excluding spiro atom)
+    // We need to be able to traverse the ring in both directions
+    auto buildRingCycle = [&](const std::set<int> &ring, int start, int exclude) -> std::vector<int> {
+        std::vector<int> cycle;
+        cycle.push_back(start);
+        int prev = exclude;
+        int curr = start;
+        while (cycle.size() < ring.size() - 1) {  // -1 because we exclude the spiro atom
+            int next = -1;
+            for (int nei : g.nodes[curr].neighbors) {
+                if (ring.count(nei) && nei != prev && nei != exclude) {
+                    next = nei;
+                    break;
+                }
+            }
+            if (next == -1) break;
+            cycle.push_back(next);
+            prev = curr;
+            curr = next;
+        }
+        return cycle;
+    };
+
+    // Build a cycle for the larger ring (excluding spiro atom)
+    auto buildFullRingCycle = [&](const std::set<int> &ring) -> std::vector<int> {
+        std::vector<int> cycle;
+        // Start from any non-spiro atom
+        int start = -1;
+        for (int atom : ring) {
+            if (atom != spiroAtom) {
+                start = atom;
+                break;
+            }
+        }
+        if (start == -1) return cycle;
+
+        cycle.push_back(start);
+        int prev = spiroAtom;  // We came from the spiro atom
+        int curr = start;
+        while (cycle.size() < ring.size() - 1) {  // Build the path excluding spiro atom
+            int next = -1;
+            for (int nei : g.nodes[curr].neighbors) {
+                if (ring.count(nei) && nei != prev && nei != spiroAtom) {
+                    next = nei;
+                    break;
+                }
+            }
+            if (next == -1) break;
+            cycle.push_back(next);
+            prev = curr;
+            curr = next;
+        }
+        return cycle;
+    };
+
+    // Try both starting directions in the smaller ring and both directions in the larger ring
+    struct Candidate {
+        std::map<int, QString> locantMap;
+        std::vector<int> heteroatomLocants;
+        std::vector<std::pair<int, int>> heteroatomSeniorityAtLocants;  // (locant, rank)
+        std::vector<int> substituentLocants;
+        int candidateIndex;
+    };
+
+    std::vector<Candidate> candidates;
+    int candIdx = 0;
+
+    // Try both starting atoms in the smaller ring
+    for (int startSmall : smallerRingNeighbors) {
+        // Build smaller ring cycle from startSmall, going both directions
+        // Direction 1: from startSmall, next is the other neighbor of spiro
+        // Direction 2: from startSmall, next is NOT the other neighbor
+
+        // Get the two neighbors of startSmall in the smaller ring (excluding spiro)
+        std::vector<int> startSmallNeighbors;
+        for (int nei : g.nodes[startSmall].neighbors) {
+            if (smallerRing->count(nei) && nei != spiroAtom) {
+                startSmallNeighbors.push_back(nei);
+            }
+        }
+
+        if (startSmallNeighbors.size() != 1) {
+            // In a ring, each non-spiro atom should have exactly 2 neighbors in the ring
+            // But we're excluding spiro, so we should have 1 neighbor
+            // If the ring has only 3 atoms (2 non-spiro), each non-spiro has only 1 non-spiro neighbor
+            // This is correct
+        }
+
+        // For each direction, build the cycle
+        for (int dir = 0; dir < 2; ++dir) {
+            int firstNeighbor = -1;
+            if (startSmallNeighbors.size() >= 1) {
+                firstNeighbor = startSmallNeighbors[dir % startSmallNeighbors.size()];
+            } else {
+                // Only 2 atoms in ring (spiro + startSmall) - shouldn't happen for ring size >= 3
+                continue;
+            }
+
+            // Build smaller ring cycle in this direction
+            std::vector<int> smallCycle;
+            smallCycle.push_back(startSmall);
+            int prev = spiroAtom;
+            int curr = startSmall;
+            while (smallCycle.size() < a) {  // a = non-spiro atoms in smaller ring
+                int next = -1;
+                for (int nei : g.nodes[curr].neighbors) {
+                    if (smallerRing->count(nei) && nei != prev && nei != spiroAtom) {
+                        next = nei;
+                        break;
+                    }
+                }
+                if (next == -1) break;
+                smallCycle.push_back(next);
+                prev = curr;
+                curr = next;
+            }
+
+            if (smallCycle.size() != static_cast<size_t>(a)) {
+                continue;  // Failed to build full cycle
+            }
+
+            // Now build the larger ring cycle starting from each of its two neighbors
+            for (int startLarge : largerRingNeighbors) {
+                // Build larger ring cycle
+                std::vector<int> largeCycle;
+                largeCycle.push_back(startLarge);
+                prev = spiroAtom;
+                curr = startLarge;
+                while (largeCycle.size() < static_cast<size_t>(b)) {
+                    int next = -1;
+                    for (int nei : g.nodes[curr].neighbors) {
+                        if (largerRing->count(nei) && nei != prev && nei != spiroAtom) {
+                            next = nei;
+                            break;
+                        }
+                    }
+                    if (next == -1) break;
+                    largeCycle.push_back(next);
+                    prev = curr;
+                    curr = next;
+                }
+
+                if (largeCycle.size() != static_cast<size_t>(b)) {
+                    continue;  // Failed to build full cycle
+                }
+
+                // Build the candidate numbering
+                Candidate cand;
+                cand.candidateIndex = candIdx++;
+
+                // Number the smaller ring: 1, 2, ..., a
+                for (size_t i = 0; i < smallCycle.size(); ++i) {
+                    cand.locantMap[smallCycle[i]] = QString::number(static_cast<int>(i) + 1);
+                }
+
+                // Spiro atom gets locant a+1
+                cand.locantMap[spiroAtom] = QString::number(a + 1);
+
+                // Number the larger ring: a+2, a+3, ..., a+b+1
+                for (size_t i = 0; i < largeCycle.size(); ++i) {
+                    cand.locantMap[largeCycle[i]] = QString::number(a + 2 + static_cast<int>(i));
+                }
+
+                // Collect heteroatom information for tie-breaking
+                for (int node : *smallerRing) {
+                    int z = g.nodes[node].atomicNumber;
+                    if (z != 6) {  // Not carbon
+                        auto it = cand.locantMap.find(node);
+                        if (it != cand.locantMap.end()) {
+                            bool ok;
+                            int loc = it->second.toInt(&ok);
+                            if (ok) {
+                                int rank = 99;
+                                if (z == 8) rank = 0;      // O
+                                else if (z == 16) rank = 1; // S
+                                else if (z == 7) rank = 2; // N
+
+                                cand.heteroatomLocants.push_back(loc);
+                                cand.heteroatomSeniorityAtLocants.push_back({loc, rank});
+                            }
+                        }
+                    }
+                }
+                for (int node : *largerRing) {
+                    int z = g.nodes[node].atomicNumber;
+                    if (z != 6) {  // Not carbon
+                        auto it = cand.locantMap.find(node);
+                        if (it != cand.locantMap.end()) {
+                            bool ok;
+                            int loc = it->second.toInt(&ok);
+                            if (ok) {
+                                int rank = 99;
+                                if (z == 8) rank = 0;      // O
+                                else if (z == 16) rank = 1; // S
+                                else if (z == 7) rank = 2; // N
+
+                                cand.heteroatomLocants.push_back(loc);
+                                cand.heteroatomSeniorityAtLocants.push_back({loc, rank});
+                            }
+                        }
+                    }
+                }
+
+                // Collect substituent-bearing node locants for tie-breaking
+                for (int node : substituentBearingNodes) {
+                    auto it = cand.locantMap.find(node);
+                    if (it != cand.locantMap.end()) {
+                        bool ok;
+                        int loc = it->second.toInt(&ok);
+                        if (ok) {
+                            cand.substituentLocants.push_back(loc);
+                        }
+                    }
+                }
+
+                // Sort for comparison
+                std::sort(cand.heteroatomLocants.begin(), cand.heteroatomLocants.end());
+                std::sort(cand.heteroatomSeniorityAtLocants.begin(), cand.heteroatomSeniorityAtLocants.end());
+                std::sort(cand.substituentLocants.begin(), cand.substituentLocants.end());
+
+                candidates.push_back(cand);
+            }
+        }
+    }
+
+    if (candidates.empty()) {
+        result.error = "Failed to generate valid spiro numbering candidates.";
+        return result;
+    }
+
+    // Pick the best candidate using tie-breaking rules
+    auto bestIt = std::min_element(candidates.begin(), candidates.end(),
+        [](const Candidate &a, const Candidate &b) {
+            if (a.heteroatomLocants != b.heteroatomLocants)
+                return a.heteroatomLocants < b.heteroatomLocants;
+            if (a.heteroatomSeniorityAtLocants != b.heteroatomSeniorityAtLocants)
+                return a.heteroatomSeniorityAtLocants < b.heteroatomSeniorityAtLocants;
+            if (a.substituentLocants != b.substituentLocants)
+                return a.substituentLocants < b.substituentLocants;
+            return a.candidateIndex < b.candidateIndex;
+        });
+
+    result.locantMap = bestIt->locantMap;
+
+    // Build the base stem name
+    // First, collect all heteroatoms and their locants from the final locantMap
+    // We need to group by heteroatom type (O, S, N) with seniority: O < S < N
+
+    // Collect all heteroatoms with their locants
+    std::vector<std::pair<int, int>> allHeteroatoms;  // (locant, rank)
+    for (const auto &entry : result.locantMap) {
+        int node = entry.first;
+        int z = g.nodes[node].atomicNumber;
+        if (z != 6) {  // Not carbon
+            bool ok;
+            int loc = entry.second.toInt(&ok);
+            if (ok) {
+                int rank = 99;
+                if (z == 8) rank = 0;      // O
+                else if (z == 16) rank = 1; // S
+                else if (z == 7) rank = 2;  // N
+                allHeteroatoms.push_back({loc, rank});
+            }
+        }
+    }
+
+    // Sort by seniority (rank) first, then by locant
+    std::sort(allHeteroatoms.begin(), allHeteroatoms.end(),
+        [](const std::pair<int, int> &a, const std::pair<int, int> &b) {
+            if (a.second != b.second) return a.second < b.second;
+            return a.first < b.first;
+        });
+
+    // Group by rank and build prefix strings. Each group (one heteroatom type)
+    // becomes its own "<locants>-<multiplier><prefix>" string; groups are then
+    // joined with "-" so multiple different heteroatom types (e.g. an O group
+    // followed by an N group) are correctly hyphen-separated in the final name
+    // (e.g. "2-oxa-7-aza..." not "2-oxa7-aza...", a real bug found and fixed
+    // during review this session -- the original per-group emission appended
+    // each group's own leading locant directly onto the previous group's own
+    // prefix text with no separator at all).
+    QStringList namePrefixGroups;
+    if (!allHeteroatoms.empty()) {
+        int currentRank = allHeteroatoms[0].second;
+        std::vector<int> currentLocants;
+        currentLocants.push_back(allHeteroatoms[0].first);
+
+        auto emitGroup = [&](int rank, const std::vector<int> &locants) {
+            QString prefixStr;
+            if (rank == 0) prefixStr = "oxa";
+            else if (rank == 1) prefixStr = "thia";
+            else if (rank == 2) prefixStr = "aza";
+            if (prefixStr.isEmpty()) return;
+
+            QString locStr;
+            for (size_t j = 0; j < locants.size(); ++j) {
+                if (j > 0) locStr += ",";
+                locStr += QString::number(locants[j]);
+            }
+            QString group = locStr + "-";
+            if (locants.size() > 1) group += multiPrefix(static_cast<int>(locants.size()));
+            group += prefixStr;
+            namePrefixGroups.append(group);
+        };
+
+        for (size_t i = 1; i < allHeteroatoms.size(); ++i) {
+            if (allHeteroatoms[i].second == currentRank) {
+                currentLocants.push_back(allHeteroatoms[i].first);
+            } else {
+                emitGroup(currentRank, currentLocants);
+                currentRank = allHeteroatoms[i].second;
+                currentLocants.clear();
+                currentLocants.push_back(allHeteroatoms[i].first);
+            }
+        }
+        emitGroup(currentRank, currentLocants);
+    }
+    QString namePrefix = namePrefixGroups.join("-");
+
+    // Base name: spiro[a.b] + chainRoot(totalAtoms) + "ane"
+    // a and b are already ordered so a <= b
+    int totalAtoms = a + b + 1;  // a + b non-spiro + 1 spiro atom
+    QString rootStr = chainRoot(totalAtoms);
+
+    result.baseStemName = namePrefix + "spiro[" + QString::number(a) + "." + 
+                         QString::number(b) + "]" + rootStr + "ane";
+
+    result.success = true;
+    return result;
 }
 
 
