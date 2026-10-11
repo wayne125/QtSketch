@@ -1137,7 +1137,7 @@ bool tryGeneralHeterocycle(const Graph &g, const std::vector<int> &ringHeteroNod
     return true;
 }
 
-enum class RingType { BENZENE, FURAN, THIOPHENE, SELENOPHENE, TELLUROPHENE, PYRROLE, PYRIDINE, PHOSPHININE, CYCLOALKANE, CYCLOALKENE, IMIDAZOLE, PYRIMIDINE, PYRAZOLE, OXAZOLE, ISOXAZOLE, THIAZOLE, ISOTHIAZOLE, SELENAZOLE, ISOSELENAZOLE, PYRIDAZINE, PYRAZINE, PIPERIDINE, PYRROLIDINE, TETRAHYDROFURAN, TETRAHYDROTHIOPHENE, CYCLOPENTADIENE, CYCLOHEPTATRIENE, AZEPINE, OXEPINE, THIEPINE, SELENEPINE, TELLUREPINE, GENERAL_HETEROCYCLE, LARGE_HETEROCYCLE };
+enum class RingType { BENZENE, FURAN, THIOPHENE, SELENOPHENE, TELLUROPHENE, PYRROLE, PYRIDINE, PHOSPHININE, CYCLOALKANE, CYCLOALKENE, IMIDAZOLE, PYRIMIDINE, PYRAZOLE, OXAZOLE, ISOXAZOLE, THIAZOLE, ISOTHIAZOLE, SELENAZOLE, ISOSELENAZOLE, PYRIDAZINE, PYRAZINE, PIPERIDINE, PYRROLIDINE, PIPERAZINE, TETRAHYDROFURAN, TETRAHYDROTHIOPHENE, CYCLOPENTADIENE, CYCLOHEPTATRIENE, AZEPINE, OXEPINE, THIEPINE, SELENEPINE, TELLUREPINE, GENERAL_HETEROCYCLE, LARGE_HETEROCYCLE };
 
 QString getFusionPrefixShared(RingType t) {
     if (t == RingType::BENZENE) return "benzo";
@@ -1428,6 +1428,25 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
                 if (tryGeneralHeterocycle(g, ringHeteroNodes, ringSize, outNameRoot)) {
                     outType = RingType::GENERAL_HETEROCYCLE; return true;
                 }
+            }
+        }
+        // Saturated 1,4-diazinane (piperazine): the saturated analogue of
+        // PYRAZINE, same 1,4 ring relationship between its two nitrogens --
+        // only this specific two-nitrogen, 6-membered, 1,4 case is handled
+        // (any other saturated two-heteroatom monocycle, e.g. 1,2- or
+        // 1,3-relationship, or a non-nitrogen second heteroatom such as
+        // morpholine's O, remains a documented, separate follow-on).
+        if (allowSaturated && allSingleInRing && ringSize == 6 && ringHeteroNodes.size() == 2 &&
+            g.nodes[ringHeteroNodes[0]].atomicNumber == 7 && g.nodes[ringHeteroNodes[1]].atomicNumber == 7) {
+            int idx0 = -1, idx1 = -1;
+            for (int i = 0; i < ringSize; ++i) {
+                if (ringCycle[i] == ringHeteroNodes[0]) idx0 = i;
+                if (ringCycle[i] == ringHeteroNodes[1]) idx1 = i;
+            }
+            int dist = std::abs(idx0 - idx1);
+            int sep = std::min(dist, ringSize - dist);
+            if (sep == 3) {
+                outType = RingType::PIPERAZINE; outNameRoot = "piperazine"; return true;
             }
         }
         // P-22.2.2: 7-membered single-heteroatom rings (AZEPINE, OXEPINE, THIEPINE, SELENEPINE, TELLUREPINE)
@@ -1914,7 +1933,7 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
         int reqOtherIdx = (rType == RingType::IMIDAZOLE) ? 2 : 1;
         if (fwd[reqOtherIdx] == hN) ringCandidates.push_back(fwd);
         if (bwd[reqOtherIdx] == hN) ringCandidates.push_back(bwd);
-    } else if (rType == RingType::PYRIMIDINE || rType == RingType::PYRIDAZINE || rType == RingType::PYRAZINE) {
+    } else if (rType == RingType::PYRIMIDINE || rType == RingType::PYRIDAZINE || rType == RingType::PYRAZINE || rType == RingType::PIPERAZINE) {
         int n1 = ringHeteroNodes[0], n2 = ringHeteroNodes[1];
         int idx1 = -1, idx2 = -1;
         for (int i = 0; i < ringSize; ++i) {
@@ -2453,6 +2472,7 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
         if (rType == RingType::PYRIDINE) stem = "pyridin";
         else if (rType == RingType::PIPERIDINE) stem = "piperidin";
         else if (rType == RingType::PYRROLIDINE) stem = "pyrrolidin";
+        else if (rType == RingType::PIPERAZINE) stem = "piperazin";
         else if (rType == RingType::FURAN) stem = "furan";
         else if (rType == RingType::THIOPHENE) stem = "thiophen";
         else if (rType == RingType::PYRROLE) stem = "pyrrol";
@@ -14467,7 +14487,7 @@ IupacResult IupacNamer::generateName(int mol) {
         int reqOtherIdx = (rType == RingType::IMIDAZOLE) ? 2 : 1;
         if (fwd[reqOtherIdx] == hN) ringCandidates.push_back(fwd);
         if (bwd[reqOtherIdx] == hN) ringCandidates.push_back(bwd);
-    } else if (rType == RingType::PYRIMIDINE || rType == RingType::PYRIDAZINE || rType == RingType::PYRAZINE) {
+    } else if (rType == RingType::PYRIMIDINE || rType == RingType::PYRIDAZINE || rType == RingType::PYRAZINE || rType == RingType::PIPERAZINE) {
         int n1 = ringHeteroNodes[0];
         int n2 = ringHeteroNodes[1];
         int idx1 = -1, idx2 = -1;
@@ -15264,7 +15284,7 @@ IupacResult IupacNamer::generateName(int mol) {
             rType == RingType::SELENOPHENE || rType == RingType::TELLUROPHENE ||
             rType == RingType::PHOSPHININE || rType == RingType::SELENAZOLE ||
             rType == RingType::ISOSELENAZOLE || rType == RingType::LARGE_HETEROCYCLE ||
-            rType == RingType::PYRROLIDINE || rType == RingType::PIPERIDINE ||
+            rType == RingType::PYRROLIDINE || rType == RingType::PIPERIDINE || rType == RingType::PIPERAZINE ||
             rType == RingType::TETRAHYDROFURAN || rType == RingType::TETRAHYDROTHIOPHENE ||
             rType == RingType::CYCLOPENTADIENE || rType == RingType::CYCLOHEPTATRIENE ||
             rType == RingType::AZEPINE || rType == RingType::OXEPINE ||

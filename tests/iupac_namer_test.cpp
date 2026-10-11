@@ -275,6 +275,27 @@ int main() {
         {"CN1CCC(CC1)N(CC2=CC=CS2)C3=CC=CC=C3", "1-methyl-N-phenyl-N-(thiophen-2-ylmethyl)piperidin-4-amine"},
         {"CN(C)C1CCNCC1", "N,N-dimethylpiperidin-4-amine"},
 
+        // Saturated 1,4-diazinane (piperazine): the saturated analogue of
+        // PYRAZINE, added as a new RingType/classification case (the only
+        // prior saturated monocyclic heterocycles supported were
+        // single-heteroatom: PIPERIDINE/PYRROLIDINE/THF/THT). Plain parent
+        // ring, then as a substituent with its own other nitrogen bearing a
+        // further substituent (the common N-aryl-piperazine drug pattern).
+        {"N1CCNCC1", "piperazine"},
+        {"c1ccccc1N2CCNCC2", "1-phenylpiperazine"},
+
+        // Multi-component ring dispatch, true spiro real component whose
+        // own ring nitrogen carries a chain ending in an N-aryl-piperazine
+        // (piperazine itself an isolated ring, attached transitively -- not
+        // directly -- to the spiro ring, with a further isolated pyrimidine
+        // ring transitively attached beyond THAT). Exercises the generic
+        // nameBranchGraph substituent scan walking straight through a
+        // multi-ring chain tail. This is buspirone's own spiro-dione
+        // fragment; actual driver output pinned rather than guessed.
+        // Structurally validated: 4 rings total (2 spiro + piperazine +
+        // pyrimidine, all disjoint from each other except the spiro pair).
+        {"O=C1N(CCCCN2CCN(c3ncccn3)CC2)C(=O)CC2(CCCC2)C1", "8-(4-[4-(pyrimidin-2-yl)piperazin-1-yl]butyl)-8-azaspiro[4.5]decane-7,9-dione"},
+
         // Regression guard for a real bug found in the same real-drug validation pass: the
         // monocyclic ring-parent carboxamide/carboxylic-acid suffix construction unconditionally
         // omitted the principal-group locant whenever there was exactly one principal group,
