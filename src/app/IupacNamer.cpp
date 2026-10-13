@@ -10416,41 +10416,47 @@ IupacResult IupacNamer::generateName(int mol) {
             
             // Must have exactly 4 carbon neighbors and zero H (quaternary)
             if (carbonNeighbors.size() == 4 && hCount == 0 && totalValence == 4) {
-                // Now check each carbon branch is a simple unbranched alkyl chain of length 1-4
+                // Trace each of the 4 branches INDEPENDENTLY (unlike a single shared
+                // "allValid" flag that aborts the whole set on the first failure -- that
+                // would make the 3-identical-plus-1-different case below unreachable
+                // whenever the 4th/different branch isn't itself a simple alkyl chain,
+                // e.g. choline/carbachol/acetylcholine's hydroxyethyl/acyloxyethyl branch).
+                // chainLengths[i] == -1 means branch i is not a simple unbranched 1-4
+                // carbon chain (branching, heteroatom, ring, charge, or length > 4).
                 std::vector<int> chainLengths;
-                bool allValid = true;
-                
+
                 // Also need the charged nitrogen's indigo index for comparison
                 int chargedNitrogenIdx = indigoIndex(chargedNitrogenAtomQ);
-                
+
                 for (size_t ci = 0; ci < carbonNeighbors.size(); ci++) {
                     int carbonNbr = carbonNeighbors[ci];
                     int length = 1; // Count the first carbon
                     int current = carbonNbr;
                     int prevIdx = chargedNitrogenIdx;
-                    
+                    bool thisBranchValid = true;
+
                     // Trace the chain outward
                     while (true) {
                         int nextCount = 0;
                         int nextAtom = 0;
                         bool validChain = true;
-                        
+
                         int neiIterTrace = indigoIterateNeighbors(current);
                         if (neiIterTrace >= 0) {
                             int traceNei = 0;
                             while ((traceNei = indigoNext(neiIterTrace)) != 0) {
                                 int traceIdx = indigoIndex(traceNei);
-                                
+
                                 // Skip the atom we came from
                                 if (traceIdx == prevIdx) {
                                     indigoFree(traceNei);
                                     continue;
                                 }
-                                
+
                                 int nZ = indigoAtomicNumber(traceNei);
                                 int nCharge = 0;
                                 indigoGetCharge(traceNei, &nCharge);
-                                
+
                                 // Check for branching, heteroatoms, or rings
                                 if (nZ != 6 || nCharge != 0) {
                                     validChain = false;
@@ -10469,15 +10475,15 @@ IupacResult IupacNamer::generateName(int mol) {
                             }
                             indigoFree(neiIterTrace);
                         }
-                        
+
                         if (!validChain) {
                             if (nextAtom != 0) {
                                 indigoFree(nextAtom);
                             }
-                            allValid = false;
+                            thisBranchValid = false;
                             break;
                         }
-                        
+
                         if (nextCount == 0) {
                             // Terminal carbon - chain ends here
                             if (nextAtom != 0) {
@@ -10496,10 +10502,10 @@ IupacResult IupacNamer::generateName(int mol) {
                             }
                             current = nextAtom;
                             nextAtom = 0; // Reset for next iteration
-                            
+
                             // Check chain length limit
                             if (length > 4) {
-                                allValid = false;
+                                thisBranchValid = false;
                                 break;
                             }
                         } else {
@@ -10507,45 +10513,223 @@ IupacResult IupacNamer::generateName(int mol) {
                             if (nextAtom != 0) {
                                 indigoFree(nextAtom);
                             }
-                            allValid = false;
+                            thisBranchValid = false;
                             break;
                         }
                     }
-                    
-                    if (!allValid) {
-                        // Free the current atom if we still have it
-                        if (current != carbonNbr) {
-                            indigoFree(current);
-                        }
-                        break;
-                    }
-                    
-                    // Free the current atom if we moved past the first carbon
+
+                    // Free the current atom if we moved past the first carbon, on every path
                     if (current != carbonNbr) {
                         indigoFree(current);
                     }
-                    
-                    chainLengths.push_back(length);
+
+                    chainLengths.push_back(thisBranchValid ? length : -1);
                 }
-                
-                // Check all chains are identical and within valid range
-                if (allValid && chainLengths.size() == 4) {
-                    bool allSame = true;
-                    for (size_t i = 1; i < chainLengths.size(); i++) {
+
+                // Check all 4 chains are identical and within valid range
+                if (chainLengths.size() == 4) {
+                    bool allSame = (chainLengths[0] != -1);
+                    for (size_t i = 1; i < chainLengths.size() && allSame; i++) {
                         if (chainLengths[i] != chainLengths[0]) {
                             allSame = false;
-                            break;
                         }
                     }
-                    
+
                     if (allSame) {
                         commonChainLength = chainLengths[0];
                         if (commonChainLength >= 1 && commonChainLength <= 4) {
                             isSymmetricQuaternary = true;
                         }
+                    } else {
+                        // Check for exactly 3 identical simple chains + 1 different 4th branch
+                        // (the 4th can be anything -- a different-length simple chain, or not a
+                        // simple chain at all, e.g. choline-type hydroxyethyl/acyloxyethyl).
+                        std::map<int, int> lengthCounts;
+                        for (int len : chainLengths) {
+                            if (len != -1) lengthCounts[len]++;
+                        }
+                        int commonLength3 = -1;
+                        for (const auto &lc : lengthCounts) {
+                            if (lc.second == 3) commonLength3 = lc.first;
+                        }
+
+                        if (commonLength3 >= 1 && commonLength3 <= 4) {
+                            int oddIndex = -1;
+                            int diffCount = 0;
+                            for (size_t i = 0; i < chainLengths.size(); i++) {
+                                if (chainLengths[i] != commonLength3) {
+                                    oddIndex = static_cast<int>(i);
+                                    diffCount++;
+                                }
+                            }
+
+                            if (diffCount == 1 && oddIndex >= 0) {
+                                // Pick any ONE of the 3 common (non-odd) branches to remove,
+                                // leaving (2 common + 1 odd) attached to N. Recursing on that
+                                // lets the engine's own already-proven tertiary-amine seniority
+                                // rule decide which of those 3 becomes the parent chain -- this
+                                // is the SAME shape already proven by "N,N-dimethylethanamine"
+                                // (2 identical + 1 different), so no hardcoded assumption about
+                                // which side (the common trio or the odd branch) is senior is
+                                // needed here. We then just need to account for the ONE common
+                                // branch we removed before recursing, by bumping its prefix's
+                                // multiplying count by one in whatever the recursion returns.
+                                int removeIndex = -1;
+                                for (size_t i = 0; i < chainLengths.size(); i++) {
+                                    if (static_cast<int>(i) != oddIndex) {
+                                        removeIndex = static_cast<int>(i);
+                                        break;
+                                    }
+                                }
+
+                                if (removeIndex >= 0) {
+                                    QString alkylPrefix;
+                                    switch (commonLength3) {
+                                        case 1: alkylPrefix = "methyl"; break;
+                                        case 2: alkylPrefix = "ethyl"; break;
+                                        case 3: alkylPrefix = "propyl"; break;
+                                        case 4: alkylPrefix = "butyl"; break;
+                                    }
+
+                                    // Re-trace the branch being removed to collect ALL of its
+                                    // atom indices (not just its root) -- removing only the root
+                                    // atom of a length>1 branch (ethyl/propyl/butyl) would leave
+                                    // the rest of that branch as a disconnected orphan fragment.
+                                    std::vector<int> removeBranchIndices;
+                                    {
+                                        int rCarbon = carbonNeighbors[removeIndex];
+                                        int rCurrentHandle = rCarbon; // handle; rCarbon itself is owned
+                                                                       // by carbonNeighbors, never freed here
+                                        int rPrevIdx = chargedNitrogenIdx;
+                                        removeBranchIndices.push_back(indigoIndex(rCurrentHandle));
+                                        for (int step = 1; step < commonLength3; step++) {
+                                            int rNeiIter = indigoIterateNeighbors(rCurrentHandle);
+                                            int rNextHandle = -1;
+                                            if (rNeiIter >= 0) {
+                                                int rNei = 0;
+                                                while ((rNei = indigoNext(rNeiIter)) != 0) {
+                                                    int rIdx = indigoIndex(rNei);
+                                                    if (rNextHandle == -1 && rIdx != rPrevIdx &&
+                                                        indigoAtomicNumber(rNei) == 6) {
+                                                        rNextHandle = rNei;
+                                                        continue; // keep this handle alive, free later
+                                                    }
+                                                    indigoFree(rNei);
+                                                }
+                                                indigoFree(rNeiIter);
+                                            }
+                                            if (rNextHandle == -1) break;
+                                            removeBranchIndices.push_back(indigoIndex(rNextHandle));
+                                            rPrevIdx = indigoIndex(rCurrentHandle);
+                                            if (rCurrentHandle != rCarbon) {
+                                                indigoFree(rCurrentHandle);
+                                            }
+                                            rCurrentHandle = rNextHandle;
+                                        }
+                                        if (rCurrentHandle != rCarbon) {
+                                            indigoFree(rCurrentHandle);
+                                        }
+                                    }
+
+                                    int clonedMol = indigoClone(mol);
+                                    if (clonedMol >= 0) {
+                                        // Map original indices to the clone's own atom handles,
+                                        // collecting the clone-local indices to remove.
+                                        std::vector<int> removeIndicesInClone;
+                                        for (int origIdx : removeBranchIndices) {
+                                            int inClone = indigoGetAtom(clonedMol, origIdx);
+                                            if (inClone >= 0) {
+                                                removeIndicesInClone.push_back(indigoIndex(inClone));
+                                                indigoFree(inClone);
+                                            }
+                                        }
+
+                                        if (removeIndicesInClone.size() == removeBranchIndices.size() &&
+                                            !removeIndicesInClone.empty()) {
+                                            indigoRemoveAtoms(clonedMol, static_cast<int>(removeIndicesInClone.size()),
+                                                              removeIndicesInClone.data());
+
+                                            if (indigoCountComponents(clonedMol) == 1) {
+                                                int nInClone = -1;
+                                                int atomIterClone = indigoIterateAtoms(clonedMol);
+                                                if (atomIterClone >= 0) {
+                                                    int aHandle = 0;
+                                                    while ((aHandle = indigoNext(atomIterClone)) != 0) {
+                                                        int aCharge = 0;
+                                                        indigoGetCharge(aHandle, &aCharge);
+                                                        int aZ = indigoAtomicNumber(aHandle);
+                                                        if (aCharge == 1 && aZ == 7 && nInClone == -1) {
+                                                            nInClone = aHandle;
+                                                            continue;
+                                                        }
+                                                        indigoFree(aHandle);
+                                                    }
+                                                    indigoFree(atomIterClone);
+                                                }
+
+                                                if (nInClone != -1) {
+                                                    indigoSetCharge(nInClone, 0);
+                                                    indigoFree(nInClone);
+                                                    indigoAromatize(clonedMol);
+
+                                                    IupacResult tertiaryRes = generateName(clonedMol);
+                                                    indigoFree(clonedMol);
+
+                                                    if (tertiaryRes.success) {
+                                                        QString finalName = tertiaryRes.name;
+                                                        QString diToken = "N,N-di" + alkylPrefix;
+                                                        QString monoToken = "N-" + alkylPrefix;
+
+                                                        bool bumped = false;
+                                                        int diPos = finalName.indexOf(diToken);
+                                                        if (diPos != -1) {
+                                                            finalName.replace(diPos, diToken.length(),
+                                                                              "N,N,N-tri" + alkylPrefix);
+                                                            bumped = true;
+                                                        } else {
+                                                            int monoPos = finalName.indexOf(monoToken);
+                                                            if (monoPos != -1) {
+                                                                finalName.replace(monoPos, monoToken.length(), diToken);
+                                                                bumped = true;
+                                                            }
+                                                        }
+
+                                                        // Match the exact same elision this file's existing
+                                                        // protonated-amine cation block already uses (both
+                                                        // "amine" and the retained name "aniline" end in a
+                                                        // silent "e" that just gets chopped before "ium").
+                                                        if (bumped && (finalName.endsWith("amine") || finalName.endsWith("aniline"))) {
+                                                            finalName.chop(1);
+                                                            finalName += "ium";
+
+                                                            for (int cn : carbonNeighbors) {
+                                                                indigoFree(cn);
+                                                            }
+                                                            indigoFree(chargedNitrogenAtomQ);
+                                                            return {true, finalName, ""};
+                                                        }
+                                                        // Unexpected shape (shouldn't happen given the
+                                                        // enumeration above) -- fall through, do not guess.
+                                                    }
+                                                    // tertiaryRes failed or didn't bump - fall through
+                                                } else {
+                                                    indigoFree(clonedMol);
+                                                }
+                                            } else {
+                                                // Removal left more than one component - not a case
+                                                // this mechanism handles - fall through.
+                                                indigoFree(clonedMol);
+                                            }
+                                        } else {
+                                            indigoFree(clonedMol);
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
-                
+
                 // Free all carbon neighbor handles
                 for (int cn : carbonNeighbors) {
                     indigoFree(cn);

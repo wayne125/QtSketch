@@ -1336,10 +1336,33 @@ int main() {
         {"CC[N+](CC)(CC)CC", "N,N,N-triethylethanaminium"}, // tetraethylammonium
         {"CCC[N+](CCC)(CCC)CCC", "N,N,N-tripropylpropan-1-aminium"}, // tetrapropylammonium
         {"CCCC[N+](CCCC)(CCCC)CCCC", "N,N,N-tributylbutan-1-aminium"}, // tetrabutylammonium
+        // TICKET-03 T7: quaternary ammonium with exactly 3 identical simple alkyl branches
+        // (methyl/ethyl/propyl/butyl) + 1 different 4th branch. The removed common branch is
+        // re-added by recursing on the OTHER 3 real substituents and bumping whichever of them
+        // is senior's prefix count -- this lets the engine's own already-proven tertiary-amine
+        // seniority rule decide the parent (reusing the same machinery proven by
+        // "N,N-dimethylethanamine"), rather than assuming the common trio is always parent.
+        {"C[N+](C)(C)CC", "N,N,N-trimethylethanaminium"}, // trimethylethylammonium - ethyl (senior) becomes parent
+        // NEOSTIGMINE's own quaternary center is this exact shape (3 methyl + aryl directly on N).
+        {"c1ccccc1[N+](C)(C)C", "N,N,N-trimethylanilinium"}, // trimethylanilinium
+        // CHOLINE/CARBACHOL/ACETYLCHOLINE/BETAINE (the real corpus's dominant T7 pattern: 3 methyl
+        // + 1 branch bearing a HIGHER-SENIORITY group -- alcohol/carbamate ester/ester/carboxylic
+        // acid) all correctly still fall through: the clone-neutralize-recurse trick names the
+        // reduced molecule by ordinary NEUTRAL seniority rules (e.g. choline's reduced form is
+        // "2-dimethylaminoethanol", alcohol outranking amine -- "dimethylamino" never appears as
+        // an "N,N-di<prefix>"/"N-<prefix>" token to bump), but the real quaternary CATION needs
+        // the charged nitrogen to be forced as principal group regardless of competing groups
+        // (P-73.1) -- a materially different mechanism, not attempted here.
+        {"C[N+](CCO)(C)C", "", true, "Charged atoms are not supported"}, // choline
+        {"C[N+](CCOC(=O)N)(C)C", "", true, "Charged atoms are not supported"}, // carbachol
+        {"CC(OCC[N+](C)(C)C)=O", "", true, "Charged atoms are not supported"}, // acetylcholine
+        {"C[N+](CC(O)=O)(C)C", "", true, "Charged atoms are not supported"}, // betaine
+        // GALLAMINE's center falls through for a different, unrelated pre-existing gap: the odd
+        // branch's own naming hits "Branched, ring, or unsaturated chains on N-substituted amines
+        // are not supported" (an aryl ring reached via an ether chain), not this mechanism's fault.
+        {"CC[N+](CCOc1c(OCC[N+](CC)(CC)CC)c(OCC[N+](CC)(CC)CC)ccc1)(CC)CC", "", true, "Charged atoms are not supported"},
         // Fallthrough cases for out-of-scope quaternary cations - should still reject
-        {"C[N+](C)(C)CC", "", true, "Charged atoms are not supported"}, // trimethylethylammonium - non-identical substituents
         {"C[N+](C)(C)C(C)C", "", true, "Charged atoms are not supported"}, // one branch is isopropyl
-        {"c1ccccc1[N+](C)(C)C", "", true, "Charged atoms are not supported"}, // aryl substituent
         {"[NH3+]CCCCCC[NH3+]", "", true, "Charged atoms are not supported"}, // hexane-1,6-diammonium - multi-charged, out of scope
         {"[NH3+]CCCCN", "", true, "Charged atoms are not supported"}, // pentane-1,5-diamine with one N protonated - neutral name ends in diamine
         // TICKET-03 AGY-T1: bare inorganic ion / simple charge-separated-but-net-neutral lookup
