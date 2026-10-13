@@ -11014,6 +11014,167 @@ IupacResult IupacNamer::generateName(int mol) {
                                 }
                             }
                         }
+
+                        // Sibling case to the 3-identical check above: exactly 2 identical
+                        // simple chains + 2 OTHER branches (which may be anything, including
+                        // two more mutually different branches -- e.g. EDROPHONIUM-shaped
+                        // 2 methyl + 1 ethyl + 1 aryl). Pick one of the pair to remove, leaving
+                        // (1 surviving pair member + the other 2 branches) attached to N, and
+                        // recurse exactly as above -- the general tertiary-amine machinery
+                        // decides seniority/parent among those 3 branches on its own, same
+                        // proof as the 3-identical case. The one removed pair member then only
+                        // needs a SINGLE bump ("N-<prefix>" -> "N,N-di<prefix>"), never a "tri"
+                        // bump, since the pair contributes at most 2 total. If the surviving
+                        // pair member itself becomes the recursion's chosen PARENT chain (so
+                        // the removed one's prefix doesn't appear as a lone "N-<prefix>" token
+                        // anywhere to bump), this falls through rather than guessing where to
+                        // splice a brand-new prefix into an unknown alphabetized citation.
+                        int commonLength2 = -1;
+                        for (const auto &lc : lengthCounts) {
+                            if (lc.second == 2) commonLength2 = lc.first;
+                        }
+
+                        if (commonLength2 >= 1 && commonLength2 <= 4) {
+                            std::vector<int> pairIndices;
+                            for (size_t i = 0; i < chainLengths.size(); i++) {
+                                if (chainLengths[i] == commonLength2) pairIndices.push_back(static_cast<int>(i));
+                            }
+
+                            if (pairIndices.size() == 2) {
+                                int removeIndex2 = pairIndices[0];
+                                QString alkylPrefix2;
+                                switch (commonLength2) {
+                                    case 1: alkylPrefix2 = "methyl"; break;
+                                    case 2: alkylPrefix2 = "ethyl"; break;
+                                    case 3: alkylPrefix2 = "propyl"; break;
+                                    case 4: alkylPrefix2 = "butyl"; break;
+                                }
+
+                                std::vector<int> removeBranchIndices2;
+                                {
+                                    int rCarbon = carbonNeighbors[removeIndex2];
+                                    int rCurrentHandle = rCarbon;
+                                    int rPrevIdx = chargedNitrogenIdx;
+                                    removeBranchIndices2.push_back(indigoIndex(rCurrentHandle));
+                                    for (int step = 1; step < commonLength2; step++) {
+                                        int rNeiIter = indigoIterateNeighbors(rCurrentHandle);
+                                        int rNextHandle = -1;
+                                        if (rNeiIter >= 0) {
+                                            int rNei = 0;
+                                            while ((rNei = indigoNext(rNeiIter)) != 0) {
+                                                int rIdx = indigoIndex(rNei);
+                                                if (rNextHandle == -1 && rIdx != rPrevIdx &&
+                                                    indigoAtomicNumber(rNei) == 6) {
+                                                    rNextHandle = rNei;
+                                                    continue;
+                                                }
+                                                indigoFree(rNei);
+                                            }
+                                            indigoFree(rNeiIter);
+                                        }
+                                        if (rNextHandle == -1) break;
+                                        removeBranchIndices2.push_back(indigoIndex(rNextHandle));
+                                        rPrevIdx = indigoIndex(rCurrentHandle);
+                                        if (rCurrentHandle != rCarbon) {
+                                            indigoFree(rCurrentHandle);
+                                        }
+                                        rCurrentHandle = rNextHandle;
+                                    }
+                                    if (rCurrentHandle != rCarbon) {
+                                        indigoFree(rCurrentHandle);
+                                    }
+                                }
+
+                                int clonedMol2 = indigoClone(mol);
+                                if (clonedMol2 >= 0) {
+                                    std::vector<int> removeIndicesInClone2;
+                                    for (int origIdx : removeBranchIndices2) {
+                                        int inClone = indigoGetAtom(clonedMol2, origIdx);
+                                        if (inClone >= 0) {
+                                            removeIndicesInClone2.push_back(indigoIndex(inClone));
+                                            indigoFree(inClone);
+                                        }
+                                    }
+
+                                    if (removeIndicesInClone2.size() == removeBranchIndices2.size() &&
+                                        !removeIndicesInClone2.empty()) {
+                                        indigoRemoveAtoms(clonedMol2, static_cast<int>(removeIndicesInClone2.size()),
+                                                          removeIndicesInClone2.data());
+
+                                        if (indigoCountComponents(clonedMol2) == 1) {
+                                            int nInClone2 = -1;
+                                            int atomIterClone2 = indigoIterateAtoms(clonedMol2);
+                                            if (atomIterClone2 >= 0) {
+                                                int aHandle2 = 0;
+                                                while ((aHandle2 = indigoNext(atomIterClone2)) != 0) {
+                                                    int aCharge2 = 0;
+                                                    indigoGetCharge(aHandle2, &aCharge2);
+                                                    int aZ2 = indigoAtomicNumber(aHandle2);
+                                                    if (aCharge2 == 1 && aZ2 == 7 && nInClone2 == -1) {
+                                                        nInClone2 = aHandle2;
+                                                        continue;
+                                                    }
+                                                    indigoFree(aHandle2);
+                                                }
+                                                indigoFree(atomIterClone2);
+                                            }
+
+                                            if (nInClone2 != -1) {
+                                                indigoSetCharge(nInClone2, 0);
+                                                indigoFree(nInClone2);
+                                                indigoAromatize(clonedMol2);
+
+                                                IupacResult tertiaryRes2 = generateName(clonedMol2);
+                                                indigoFree(clonedMol2);
+
+                                                if (tertiaryRes2.success) {
+                                                    QString finalName2 = tertiaryRes2.name;
+                                                    QString monoToken2 = "N-" + alkylPrefix2;
+                                                    QString diToken2 = "N,N-di" + alkylPrefix2;
+
+                                                    // Only a single bump is valid here: the surviving
+                                                    // pair member can appear as a lone "N-<prefix>"
+                                                    // token at most once (it's one of only 3 branches
+                                                    // fed into the recursion). If "N,N-di<prefix>"
+                                                    // already appears, that would mean BOTH pair
+                                                    // members ended up as prefixes somehow, which
+                                                    // can't happen here (we removed one) -- treat
+                                                    // that as an unexpected shape and fall through.
+                                                    int monoPos2 = finalName2.indexOf(monoToken2);
+                                                    bool bumped2 = false;
+                                                    if (monoPos2 != -1 && finalName2.indexOf(diToken2) == -1) {
+                                                        finalName2.replace(monoPos2, monoToken2.length(), diToken2);
+                                                        bumped2 = true;
+                                                    }
+
+                                                    if (bumped2 && (finalName2.endsWith("amine") || finalName2.endsWith("aniline"))) {
+                                                        finalName2.chop(1);
+                                                        finalName2 += "ium";
+
+                                                        for (int cn : carbonNeighbors) {
+                                                            indigoFree(cn);
+                                                        }
+                                                        indigoFree(chargedNitrogenAtomQ);
+                                                        return {true, finalName2, ""};
+                                                    }
+                                                    // Unexpected shape, or the surviving pair member
+                                                    // became the parent chain itself (so its prefix
+                                                    // never appears to bump) -- fall through rather
+                                                    // than guess where to splice a new prefix in.
+                                                }
+                                                // tertiaryRes2 failed - fall through
+                                            } else {
+                                                indigoFree(clonedMol2);
+                                            }
+                                        } else {
+                                            indigoFree(clonedMol2);
+                                        }
+                                    } else {
+                                        indigoFree(clonedMol2);
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 

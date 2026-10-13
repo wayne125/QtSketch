@@ -1373,6 +1373,17 @@ int main() {
         {"C[N+]1CCCCC1", "", true, "Charged atoms are not supported"}, // 1-methylpiperidinium
         {"C[N+]1CCCC1", "", true, "Charged atoms are not supported"}, // 1-methylpyrrolidinium
         {"CC[N+]1(C)CCCCC1", "", true, "Charged atoms are not supported"}, // genuinely quaternary (2 substituents: ethyl+methyl) - out of scope, must still reject
+        // TICKET-03 T7 "2 identical + 2 other" (sibling to the 3-identical case): remove one
+        // of the identical pair, recurse on the remaining 3 real branches, bump whichever
+        // prefix the recursion assigns the surviving pair member by one. Verified correct
+        // against two synthetic cases (plain aryl parent, plain alkyl parent).
+        {"CC[N+](CCC)(C)C", "N-ethyl-N,N-dimethylpropan-1-aminium"}, // 2 methyl+1 ethyl+1 propyl, all-alkyl
+        {"CC[N+](c1ccccc1)(C)C", "N-ethyl-N,N-dimethylanilinium"}, // 2 methyl+1 ethyl+1 phenyl, aryl parent
+        // EDROPHONIUM is this exact shape (2 methyl + 1 ethyl + 1 aryl) but the aryl ring also
+        // carries a phenol -OH, the same competing-higher-seniority-group situation already
+        // documented above for CHOLINE/CARBACHOL/ACETYLCHOLINE/BETAINE -- correctly falls
+        // through, not a bug in this mechanism.
+        {"CC[N+](c1cc(O)ccc1)(C)C", "", true, "Charged atoms are not supported"},
         // Fallthrough cases for out-of-scope quaternary cations - should still reject
         {"C[N+](C)(C)C(C)C", "", true, "Charged atoms are not supported"}, // one branch is isopropyl
         {"[NH3+]CCCCCC[NH3+]", "", true, "Charged atoms are not supported"}, // hexane-1,6-diammonium - multi-charged, out of scope
