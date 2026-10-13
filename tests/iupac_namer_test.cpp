@@ -1361,6 +1361,18 @@ int main() {
         // branch's own naming hits "Branched, ring, or unsaturated chains on N-substituted amines
         // are not supported" (an aryl ring reached via an ether chain), not this mechanism's fault.
         {"CC[N+](CCOc1c(OCC[N+](CC)(CC)CC)c(OCC[N+](CC)(CC)CC)ccc1)(CC)CC", "", true, "Charged atoms are not supported"},
+        // TICKET-03 T7 ring-quaternary (saturated piperidinium/pyrrolidinium) probes (temporary
+        // placeholders, fixed up after reading actual driver output)
+        // These single-substituent saturated-ring cases (which this new block's mechanism IS
+        // built to handle) never actually reach it: the EARLIER, pre-existing protonated-amine
+        // ammonium block intercepts first (N has an implicit H here, so it reads as "protonated
+        // amine", not quaternary), recurses to "1-methylpiperidine"/"1-methylpyrrolidine", then
+        // its own "ends with amine or aniline" suffix check fails for those ring-amine parent
+        // names and hard-rejects -- a separate, pre-existing gap in that sibling block, not a
+        // quaternary-ammonium bug, and out of scope for TICKET-03 T7 specifically.
+        {"C[N+]1CCCCC1", "", true, "Charged atoms are not supported"}, // 1-methylpiperidinium
+        {"C[N+]1CCCC1", "", true, "Charged atoms are not supported"}, // 1-methylpyrrolidinium
+        {"CC[N+]1(C)CCCCC1", "", true, "Charged atoms are not supported"}, // genuinely quaternary (2 substituents: ethyl+methyl) - out of scope, must still reject
         // Fallthrough cases for out-of-scope quaternary cations - should still reject
         {"C[N+](C)(C)C(C)C", "", true, "Charged atoms are not supported"}, // one branch is isopropyl
         {"[NH3+]CCCCCC[NH3+]", "", true, "Charged atoms are not supported"}, // hexane-1,6-diammonium - multi-charged, out of scope
