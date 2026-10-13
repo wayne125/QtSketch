@@ -4,6 +4,12 @@ project(sketchQmlDesktop LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Only the shipped app target (sketch) and its molecule_model library get -O2 below.
+# Test executables are left at the default (no optimization flags, since CMAKE_BUILD_TYPE
+# is intentionally left unset here) so the edit-build-test loop used constantly during
+# development stays as fast as possible -- -O2 on a file the size of IupacNamer.cpp would
+# add real seconds to every single-file rebuild for no benefit to a test binary.
+
 find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Concurrent)
 qt_standard_project_setup(REQUIRES 6.6)
 qt_policy(SET QTP0004 OLD)
@@ -150,6 +156,21 @@ qt_add_qml_module(sketch
 target_link_libraries(sketch PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Concurrent molecule_model
 )
 
+# Shipped-binary runtime perf: -O2, scoped to only this target (test executables stay
+# unoptimized for fast rebuilds -- see note above CheckIPOSupported). LTO was tried here
+# too (INTERPROCEDURAL_OPTIMIZATION) but this MinGW toolchain's ar.exe can't handle the
+# LTO plugin objects ("COFF object format mismatch" / "plugin needed to handle lto
+# object") -- dropped rather than fight the toolchain for a "cheap win" task.
+target_compile_options(sketch PRIVATE -O2)
+
+target_precompile_headers(sketch PRIVATE
+    <QtCore/QtCore>
+    <QtGui/QtGui>
+    <QtQml/QtQml>
+    <QtQuick/QtQuick>
+    <QtConcurrent/QtConcurrent>
+)
+
 
 # Indigo C++ integration
 target_include_directories(sketch PRIVATE
@@ -274,6 +295,17 @@ if (MSVC)
 else()
     target_link_libraries(molecule_model PUBLIC Qt6::Core ${INDIGO_LIB_DIR}/indigo.dll)
 endif()
+
+# Fewer, larger TUs to compile (no optimization-level change, so this is a pure build-time
+# win with no effect on the test executables that link this library unoptimized).
+set_target_properties(molecule_model PROPERTIES UNITY_BUILD ON)
+
+# This library is linked into sketch (the shipped app) as well as several test
+# executables below; give it the same -O2 as sketch (LTO dropped, see note on the
+# sketch target above -- this MinGW toolchain's ar.exe can't handle it).
+target_compile_options(molecule_model PRIVATE -O2)
+
+target_precompile_headers(molecule_model PRIVATE <QtCore/QtCore>)
 
 qt_add_executable(editable_molecule_test tests/editable_molecule_test.cpp)
 target_link_libraries(editable_molecule_test PRIVATE molecule_model)

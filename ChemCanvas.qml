@@ -666,6 +666,12 @@ Item {
         id: gridCanvas
         anchors.fill: parent
         antialiasing: true
+        // Moves the paint work off the GUI thread, same as ThumbnailGridItem already
+        // does. Safe here specifically because onPaint below only reads plain numbers
+        // (root.scale/offsetX/offsetY/width/height) -- no shared JS object graphs like
+        // MoleculeLayer/LabelLayer touch, so there's nothing for the worker thread to race.
+        renderStrategy: Canvas.Threaded
+        renderTarget: Canvas.FramebufferObject
         onPaint: {
             const ctx = getContext("2d")
             ctx.clearRect(0, 0, width, height)
