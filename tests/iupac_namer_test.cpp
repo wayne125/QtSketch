@@ -996,7 +996,24 @@ int main() {
         // bond-order saturation per ring atom and threading it into the SAME
         // computePeripheralNumbering3Ring candidate search substituents/indicated-H
         // already use (not a third independent call -- per Task 2's own forward
-        // guidance, avoiding the comparator-bypass bug class).
+        // guidance, avoiding the comparator-bypass bug class). Fix round 1 (task
+        // review) found and corrected: the ORIGINAL two-call split (one call for
+        // substituents, a separate call for indicated-H/hydro) still let those two
+        // calls win different numbering directions on a tie, producing OVERLAPPING
+        // substituent/hydro locants on the same molecule -- now genuinely one call;
+        // the reclassification wrongly fired for N==4+ chains too, silently dropping
+        // real saturation and misnaming a tetrahydro compound as its fully aromatic
+        // analog -- now restricted to N==3; the hydro+substituent prefix assembly
+        // order and hyphenation were both wrong relative to real PINs (hydro now
+        // fuses directly onto the parent with no hyphen, e.g.
+        // "tetrahydrodibenzo[...]pyridine" not "tetrahydro-dibenzo[...]pyridine",
+        // matching real "1,2,3,4-tetrahydroquinoline"-style PINs); the Part A.6
+        // acridine/carbazole guard didn't cover the carbazole branch's own
+        // indicated-H+hydro combination, nor the separate fluorene retained-name
+        // shortcut; and combining this task's hydro mechanism with Task 1's
+        // saturated-heterocycle mechanism on the same ring system (two different,
+        // never-designed-to-compose name-building paths) now rejects cleanly instead
+        // of emitting an invalid mixed name.
         //
         // Real target: TACRINE (tetrahydroacridine core, Nc1c2c(cccc2)nc2CCCCc12,
         // confirmed via check_sssr.exe as 3 ortho-fused 6-rings, 15 heavy atoms). The
@@ -1007,17 +1024,43 @@ int main() {
         // (14 heavy atoms, verified via check_sssr.exe as the identical 3-ring
         // skeleton minus the NH2).
         //
-        // Real driver output (not guessed): "2,3,4,5-tetrahydro-dibenzo[1,2-b:1,2-e]pyridine".
-        // This is a valid systematic fusion name, NOT the Blue Book mandatory retained
-        // name with hydro-prefix ("1,2,3,4-tetrahydroacridine") -- the acridine/
-        // carbazole retained-name shortcut a few lines above (search "Part A.6")
-        // intentionally skips itself when hydroPositionNodes is non-empty (that
-        // shortcut's fully-mancude retained names don't apply to a partially
-        // saturated ring system), falling through to this mechanism's own generic
-        // fusion-letter derivation instead. Combining a mandatory retained name with a
-        // hydro-prefix under its own canonical numbering is a real, separate gap, left
-        // for a dedicated follow-on rather than guessed here.
-        {"c1c2c(cccc2)nc2CCCCc12", "2,3,4,5-tetrahydro-dibenzo[1,2-b:1,2-e]pyridine"},
+        // Real driver output (not guessed, re-verified after the fix round):
+        // "2,3,4,5-tetrahydrodibenzo[1,2-b:1,2-e]pyridine". This is a valid
+        // systematic fusion name, NOT the Blue Book mandatory retained name with
+        // hydro-prefix ("1,2,3,4-tetrahydroacridine") -- the acridine/carbazole
+        // retained-name shortcut a few lines above (search "Part A.6") intentionally
+        // skips itself when hydroPositionNodes is non-empty (that shortcut's
+        // fully-mancude retained names don't apply to a partially saturated ring
+        // system), falling through to this mechanism's own generic fusion-letter
+        // derivation instead. Combining a mandatory retained name with a hydro-prefix
+        // under its own canonical numbering is a real, separate gap, left for a
+        // dedicated follow-on rather than guessed here. Manually traced through
+        // computePeripheralNumbering3Ring's own candidate search (not just taken on
+        // faith): the winning candidate assigns locants 2,3,4,5 to the saturated
+        // ring's own 4 atoms (contiguous, all one ring, not spanning two rings as an
+        // initial review pass suspected before this trace).
+        {"c1c2c(cccc2)nc2CCCCc12", "2,3,4,5-tetrahydrodibenzo[1,2-b:1,2-e]pyridine"},
+
+        // Fix round 1 regression guard (review finding B1): a substituent on the
+        // AROMATIC ring and a hydro-prefix on the SATURATED ring of the same 3-ring
+        // system must get non-overlapping locants from the one shared numbering
+        // call. Before the fix, this and the chloro variant below both produced a
+        // substituent locant ("5") that collided with a hydro locant also claiming
+        // "5" -- an impossible/overlapping locant set. Real driver output (not
+        // guessed): the methyl substituent and the 4 hydro positions now land on
+        // disjoint locants (7 vs 2,3,4,5).
+        {"c1ccc2nc3CCCCc3cc2c1C", "7-methyl-2,3,4,5-tetrahydrodibenzo[1,2-b:3,4-e]pyridine"},
+
+        // Fix round 1 regression guard (review finding B2): this task's all-carbon
+        // mancude reclassification must NOT fire for N==4+ chains (steroids are
+        // explicitly deferred to Task 4) -- before the fix, a tetrahydro-pyridine-
+        // fused 4-ring chain silently had its saturation dropped and was misnamed as
+        // its fully aromatic analog (byte-identical output to the real aromatic
+        // molecule). Structurally validated via check_sssr.exe: 4 rings (6,6,6,6),
+        // 18 heavy atoms (3 aromatic/mancude rings + 1 saturated all-carbon ring).
+        // Falls through unchanged to the same pre-existing generic rejection as
+        // before this task existed.
+        {"C1CCc2cc3cc4ccncc4cc3cc2C1", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."},
 
         // Regression guard: unsubstituted, FULLY aromatic acridine itself is
         // unaffected by this task's hydroPositionNodes-based guard on the Part A.6
@@ -1032,6 +1075,27 @@ int main() {
         // documented follow-on) -- falls through unchanged to the pre-existing generic
         // rejection, confirmed via check_sssr.exe as 3 rings (6,6,5), 13 heavy atoms.
         {"c1ccc2nc3c(cc2c1)CCC3", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."},
+
+        // Fix round 1 regression guard (review finding I1): a carbazole-shaped
+        // (PYRROLE center + 2 benzo) 3-ring system where one benzo ring is secretly
+        // saturated must still reject cleanly (same as the bare carbazole rejection
+        // above, search "Test 2: CARBAZOLE") rather than guess an indicated-H locant
+        // under a hydro-prefix -- carbazole's real indicated-H locant
+        // (2,3,4,9-tetrahydro-1H-carbazole's "9H") is fixed by the retained name's
+        // own canonical numbering, not this mechanism's generic lowest-locant search.
+        // Structurally validated via check_sssr.exe: 3 rings (6,6,5), 13 heavy atoms.
+        {"c1ccc2[nH]c3CCCCc3c2c1", "", true, ""},
+
+        // Fix round 1 regression guard (review finding I4): this task's hydro
+        // mechanism (all-carbon ring reclassified to BENZENE + hydroPositionNodes)
+        // and Task 1's saturated-heterocycle mechanism (a DIFFERENT ring in the same
+        // chain classified as PIPERIDINE) were never designed to compose -- before
+        // this guard, the saturated heteroring's own retained name ("piperidino")
+        // was combined with a hydro-prefix that only describes the OTHER ring,
+        // producing an invalid mixed name. Structurally validated via check_sssr.exe:
+        // 3 rings (6,6,6), 14 heavy atoms (1 saturated all-carbon ring, 1 aromatic
+        // benzo, 1 saturated N-heterocycle).
+        {"C1CCc2cc3NCCCc3cc2C1", "", true, "Combining hydro-prefix carbocycle saturation with a saturated heterocyclic ring in the same fused system is not yet supported."},
 
         // Negative/regression cases for the same dispatcher, confirming it
         // correctly declines (falls through to the pre-existing, unchanged

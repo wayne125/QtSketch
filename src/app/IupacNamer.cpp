@@ -5732,7 +5732,19 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                             }
                         }
 
-                        if (rHeteroN[i].empty() && nodesN[i].size() == 6) {
+                        if (rHeteroN[i].empty() && nodesN[i].size() == 6 && N == 3) {
+                            // Hydro-prefix fused-ring plan, Task 3 fix round 1: restricted to
+                            // N==3 (task review found this reclassification firing for N==4+
+                            // too, silently misnaming tetrahydro steroids-shaped chains as
+                            // their fully aromatic analogs -- e.g.
+                            // "C1CCc2cc3cc4ccncc4cc3cc2C1" produced the SAME string as its
+                            // fully aromatic counterpart, with the saturation dropped). N==4+
+                            // all-carbon rings now fall through to the unchanged
+                            // classifyMonocyclicHeteroRing call below, which has no
+                            // rHeteroN.empty() branch and fails classification -- same
+                            // pre-existing generic rejection as before this task, matching
+                            // Task 4's own explicit deferral of N==4 (steroids).
+                            //
                             // Hydro-prefix fused-ring plan, Task 3: an all-carbon 6-ring has
                             // NO path through classifyMonocyclicHeteroRing at all (confirmed
                             // by direct investigation -- its saturated-ring branches are
@@ -5795,6 +5807,31 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                         }
                     }
                     if (!classOkN[i]) allClassified = false;
+                }
+
+                // Hydro-prefix fused-ring plan, Task 3 fix round 1 (review finding I4):
+                // this task's mancude-reclassification (all-carbon ring -> BENZENE +
+                // hydroPositionNodes) and Task 1's saturated-retained-name mechanism
+                // (a different ring in the same chain classified as PIPERIDINE,
+                // TETRAHYDROFURAN, etc.) were never designed to combine -- the saturated
+                // heteroring's own retained name doesn't compose with a hydro-prefix the
+                // way a mancude-reclassified carbocycle does, and doing so produced an
+                // invalid fusion name (a "piperidino"/"pyrido" component next to a hydro
+                // prefix that only describes the OTHER ring). Reject cleanly rather than
+                // emit a mixed name neither mechanism actually validates.
+                if (!hydroPositionNodes.empty()) {
+                    auto isTask1SaturatedHeteroType = [](RingType t) {
+                        return t == RingType::PIPERIDINE || t == RingType::PYRROLIDINE ||
+                               t == RingType::TETRAHYDROFURAN || t == RingType::TETRAHYDROTHIOPHENE ||
+                               t == RingType::PYRAZOLIDINE || t == RingType::ISOXAZOLIDINE ||
+                               t == RingType::ISOTHIAZOLIDINE || t == RingType::IMIDAZOLIDINE ||
+                               t == RingType::OXAZOLIDINE || t == RingType::THIAZOLIDINE;
+                    };
+                    for (int i = 0; i < N; ++i) {
+                        if (isTask1SaturatedHeteroType(typesN[i])) {
+                            return {RingSystemNameResult{false, "Combining hydro-prefix carbocycle saturation with a saturated heterocyclic ring in the same fused system is not yet supported.", "", {}}};
+                        }
+                    }
                 }
 
                 auto isAllowedType = [](RingType t) {
@@ -6240,7 +6277,12 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                             if (typesN[i] == RingType::CYCLOPENTADIENE) cpCount++;
                             else if (typesN[i] == RingType::BENZENE) benzoCount++;
                         }
-                        if (N == 3 && cpCount == 1 && benzoCount == 2) {
+                        // Hydro-prefix fused-ring plan, Task 3 fix round 1 (review finding
+                        // M3): same guard as the Part A.6 acridine/carbazole shortcut -- a
+                        // BENZENE-typed ring here could be a secretly-saturated ring this
+                        // task reclassified, which the fluorene retained name doesn't
+                        // account for.
+                        if (N == 3 && cpCount == 1 && benzoCount == 2 && hydroPositionNodes.empty()) {
                             // Verify fusion topology: central CYCLOPENTADIENE fused to both BENZENE rings
                             // Find the CYCLOPENTADIENE index
                             int cpIdx = -1;
@@ -6618,97 +6660,6 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                             // locant support; callers must not use this for N!=3.
                             for (const auto &es : extraSubstituents) collectedSubstituents.push_back(es);
 
-                            // Handle substituents for N==3: build prefix string
-                            if (N == 3 && !collectedSubstituents.empty()) {
-                                // Compute bridgeheads the same way as the indicated-hydrogen code
-                                std::set<int> bheads;
-                                for (int i = 0; i < 3; ++i) {
-                                    for (int j = i + 1; j < 3; ++j) {
-                                        if (shared[i][j] == 2) {
-                                            bheads.insert(sharedNodesPairs[i][j][0]);
-                                            bheads.insert(sharedNodesPairs[i][j][1]);
-                                        }
-                                    }
-                                }
-                                // Collect substituent-bearing nodes
-                                std::set<int> substituentBearingNodes;
-                                for (const auto &sub : collectedSubstituents) {
-                                    substituentBearingNodes.insert(sub.first);
-                                }
-                                // Compute peripheral numbering
-                                std::map<int, QString> periphMap = computePeripheralNumbering3Ring(g, nodesN[0], nodesN[1], nodesN[2], bheads, substituentBearingNodes, false);
-                                
-                                // Build named substituents with locants
-                                std::vector<std::pair<QString, QString>> namedSubstituents; // (substituentName, locantStr)
-                                for (const auto &sub : collectedSubstituents) {
-                                    int ringNode = sub.first;
-                                    QString subName = sub.second;
-                                    if (!periphMap.count(ringNode)) {
-                                        return {RingSystemNameResult{false, "Failed to compute peripheral locant for substituent.", "", {}}};
-                                    }
-                                    QString locStr = periphMap[ringNode];
-                                    // Reject letter-suffixed locants (bridgehead atoms)
-                                    bool okInt = false;
-                                    locStr.toInt(&okInt);
-                                    if (!okInt) {
-                                        return {RingSystemNameResult{false, "Substituents on bridgehead atoms of fused ring systems are not yet supported.", "", {}}};
-                                    }
-                                    namedSubstituents.push_back({subName, locStr});
-                                }
-                                
-                                // Build prefix string: group by substituent name, alphabetize
-                                std::map<QString, std::vector<QString>> prefixLocantsMap;
-                                for (const auto &ns : namedSubstituents) {
-                                    prefixLocantsMap[ns.first].push_back(ns.second);
-                                }
-                                
-                                struct PrefixGroup {
-                                    QString baseName;
-                                    QString formattedStr;
-                                };
-                                std::vector<PrefixGroup> pGroups;
-                                for (auto it = prefixLocantsMap.begin(); it != prefixLocantsMap.end(); ++it) {
-                                    QString pName = it->first;
-                                    std::vector<QString> locs = it->second;
-                                    std::sort(locs.begin(), locs.end());
-                                    
-                                    QStringList locStrs;
-                                    for (const QString &l : locs) locStrs.append(l);
-                                    
-                                    QString pStr = locStrs.join(",");
-                                    if (locs.size() > 1) {
-                                        pStr += "-" + multiPrefix(static_cast<int>(locs.size())) + pName;
-                                    } else {
-                                        pStr += "-" + pName;
-                                    }
-                                    
-                                    PrefixGroup pg;
-                                    pg.baseName = alphabetizationKey(pName);
-                                    pg.formattedStr = pStr;
-                                    pGroups.push_back(pg);
-                                }
-                                
-                                std::sort(pGroups.begin(), pGroups.end(), [](const PrefixGroup &a, const PrefixGroup &b) {
-                                    return a.baseName.toLower() < b.baseName.toLower();
-                                });
-                                
-                                QString prefixPart;
-                                if (!pGroups.empty()) {
-                                    QStringList pStrs;
-                                    for (const auto &pg : pGroups) pStrs.append(pg.formattedStr);
-                                    prefixPart = pStrs.join("-");
-                                }
-                                
-                                if (!prefixPart.isEmpty()) {
-                                    // See the equivalent fix in Phase 31 for why this hyphen is
-                                    // needed: a locant-led resultName (GENERAL_HETEROCYCLE's own
-                                    // citation prefix) must not concatenate directly onto a
-                                    // substituent prefix's own trailing locant.
-                                    QString sep = (!resultName.isEmpty() && resultName[0].isDigit()) ? "-" : "";
-                                    resultName = prefixPart + sep + resultName;
-                                }
-                            }
-                            
                             // Reject N==4 chains containing CYCLOPENTADIENE/CYCLOHEPTATRIENE (indicated hydrogen not yet supported)
                             if (N == 4) {
                                 for (int i = 0; i < N; ++i) {
@@ -6718,7 +6669,16 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                 }
                             }
 
-                            // Indicated hydrogen for exactly 3 rings, per original Phase 44 logic
+                            // Substituent / indicated-hydrogen / hydro-prefix locants for
+                            // exactly 3 rings, per original Phase 44 logic, extended by the
+                            // hydro-prefix fused-ring plan (Task 3, fix round 1). All three
+                            // locant classes are resolved from ONE shared
+                            // computePeripheralNumbering3Ring call -- task review (finding B1)
+                            // found the original split (a separate call for substituents, then
+                            // a separate call for indicated-H/hydro) could win DIFFERENT
+                            // numbering directions on a heteroatomLocants tie, producing
+                            // locants that overlap/conflict (a substituent and a saturated
+                            // position both reported at the same locant).
                             if (N == 3) {
                                 // Collect ALL indicated-hydrogen positions across all rings
                                 std::vector<int> ihNodes;
@@ -6774,15 +6734,34 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                     return {RingSystemNameResult{false, "Multiple indicated hydrogen positions detected; this mechanism currently only supports single indicated-H cases.", "", {}}};
                                 }
 
-                                // Hydro-prefix fused-ring plan, Task 3: hydro-prefix locants join
-                                // the SAME peripheral-numbering call as indicated-H below (per
-                                // Task 2's own documented forward guidance), not a separate call --
-                                // trigger this whole block whenever EITHER is present, since a
-                                // molecule can have hydro-prefix positions with no indicated-H at
-                                // all (e.g. TACRINE: a fully saturated carbocycle fused to two
-                                // aromatic rings, no PYRROLE/IMIDAZOLE/PYRAZOLE/CYCLOPENTADIENE/
-                                // CYCLOHEPTATRIENE ring present, so ihNodes stays empty).
-                                if (!ihNodes.empty() || !hydroPositionNodes.empty()) {
+                                // Hydro-prefix fused-ring plan, Task 3 fix round 1 (review
+                                // finding I1): the Part A.6 carbazole rejection above
+                                // intentionally rejects cleanly rather than guess an
+                                // indicated-H prefix (its real locant is fixed by the retained
+                                // name's own canonical numbering, not this mechanism's generic
+                                // lowest-locant search) -- but that rejection matches on ring
+                                // TYPE only and doesn't know about hydroPositionNodes. A
+                                // PYRROLE-type ring (contributing to ihNodes above) combined
+                                // with hydro positions elsewhere in the same 3-ring system hits
+                                // the identical "guess the indicated-H locant" problem (e.g.
+                                // real 2,3,4,9-tetrahydro-1H-carbazole's "9H" is not this
+                                // mechanism's generic pick). Reject the same way rather than
+                                // guess.
+                                if (!ihNodes.empty() && !hydroPositionNodes.empty()) {
+                                    return {RingSystemNameResult{false, "", "", {}}};
+                                }
+
+                                // Collect substituent-bearing nodes
+                                std::set<int> substituentBearingNodes;
+                                for (const auto &sub : collectedSubstituents) {
+                                    substituentBearingNodes.insert(sub.first);
+                                }
+
+                                QString hydroPrefix;
+                                QString ihPrefix;
+                                QString prefixPart;
+
+                                if (!collectedSubstituents.empty() || !ihNodes.empty() || !hydroPositionNodes.empty()) {
                                     // Build bridgehead set for peripheral numbering
                                     std::set<int> bheads;
                                     for (int i = 0; i < 3; ++i) {
@@ -6793,8 +6772,76 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                             }
                                         }
                                     }
-                                    std::map<int, QString> periphMap = computePeripheralNumbering3Ring(g, nodesN[0], nodesN[1], nodesN[2], bheads, {}, true, hydroPositionNodes);
+                                    // Task 3 fix round 1 (review finding B1): ONE shared call
+                                    // for substituent, indicated-H, AND hydro-prefix locants --
+                                    // replaces the original two independent calls.
+                                    // preferIndicatedHydrogenLocant is now unconditionally true:
+                                    // an NH-type nitrogen should be preferred for the lowest
+                                    // locant whenever one exists, regardless of whether
+                                    // substituents are also being cited in the same call (the
+                                    // old false-when-citing-substituents branch had no cited
+                                    // chemical justification for differing).
+                                    std::map<int, QString> periphMap = computePeripheralNumbering3Ring(g, nodesN[0], nodesN[1], nodesN[2], bheads, substituentBearingNodes, true, hydroPositionNodes);
 
+                                    // --- substituent locants ---
+                                    std::vector<std::pair<QString, QString>> namedSubstituents; // (substituentName, locantStr)
+                                    for (const auto &sub : collectedSubstituents) {
+                                        int ringNode = sub.first;
+                                        QString subName = sub.second;
+                                        if (!periphMap.count(ringNode)) {
+                                            return {RingSystemNameResult{false, "Failed to compute peripheral locant for substituent.", "", {}}};
+                                        }
+                                        QString locStr = periphMap[ringNode];
+                                        bool okInt = false;
+                                        locStr.toInt(&okInt);
+                                        if (!okInt) {
+                                            return {RingSystemNameResult{false, "Substituents on bridgehead atoms of fused ring systems are not yet supported.", "", {}}};
+                                        }
+                                        namedSubstituents.push_back({subName, locStr});
+                                    }
+
+                                    std::map<QString, std::vector<QString>> prefixLocantsMap;
+                                    for (const auto &ns : namedSubstituents) {
+                                        prefixLocantsMap[ns.first].push_back(ns.second);
+                                    }
+
+                                    struct PrefixGroup {
+                                        QString baseName;
+                                        QString formattedStr;
+                                    };
+                                    std::vector<PrefixGroup> pGroups;
+                                    for (auto it = prefixLocantsMap.begin(); it != prefixLocantsMap.end(); ++it) {
+                                        QString pName = it->first;
+                                        std::vector<QString> locs = it->second;
+                                        std::sort(locs.begin(), locs.end());
+
+                                        QStringList locStrs;
+                                        for (const QString &l : locs) locStrs.append(l);
+
+                                        QString pStr = locStrs.join(",");
+                                        if (locs.size() > 1) {
+                                            pStr += "-" + multiPrefix(static_cast<int>(locs.size())) + pName;
+                                        } else {
+                                            pStr += "-" + pName;
+                                        }
+
+                                        PrefixGroup pg;
+                                        pg.baseName = alphabetizationKey(pName);
+                                        pg.formattedStr = pStr;
+                                        pGroups.push_back(pg);
+                                    }
+
+                                    std::sort(pGroups.begin(), pGroups.end(), [](const PrefixGroup &a, const PrefixGroup &b) {
+                                        return a.baseName.toLower() < b.baseName.toLower();
+                                    });
+
+                                    if (!pGroups.empty()) {
+                                        QStringList pStrs;
+                                        for (const auto &pg : pGroups) pStrs.append(pg.formattedStr);
+                                        prefixPart = pStrs.join("-");
+                                    }
+
+                                    // --- indicated-H locants ---
                                     for (int node : ihNodes) {
                                         if (!periphMap.count(node)) {
                                             return {RingSystemNameResult{false, "Failed to compute peripheral locant for indicated hydrogen.", "", {}}};
@@ -6807,17 +6854,17 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                         }
                                         ihLocants.push_back(locStr);
                                     }
-
-                                    // Sort locants numerically (as integers)
                                     std::sort(ihLocants.begin(), ihLocants.end(), [](const QString &a, const QString &b) {
                                         return a.toInt() < b.toInt();
                                     });
+                                    // Format: EACH locant gets its own "H", joined by commas.
+                                    // Verified real PIN at BlueBookV2.md:9580: "1H,3H-thieno[3,4-c]thiophene"
+                                    // -- the format is "1H,3H-", NOT "1,3H-" (a single trailing H would be wrong).
+                                    QStringList ihParts;
+                                    for (const QString &loc : ihLocants) ihParts.append(loc + "H");
+                                    ihPrefix = ihParts.isEmpty() ? "" : (ihParts.join(",") + "-");
 
-                                    // Hydro-prefix fused-ring plan, Task 3: convert the same
-                                    // structural hydro positions to display locants via the SAME
-                                    // periphMap just computed, rejecting (not guessing) a
-                                    // bridgehead-only/unconvertible position rather than silently
-                                    // dropping it.
+                                    // --- hydro-prefix locants ---
                                     std::vector<QString> hydroLocStrs;
                                     for (int node : hydroPositionNodes) {
                                         if (!periphMap.count(node)) {
@@ -6835,15 +6882,8 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                         return a.toInt() < b.toInt();
                                     });
 
-                                    // Format: EACH locant gets its own "H", joined by commas.
-                                    // Verified real PIN at BlueBookV2.md:9580: "1H,3H-thieno[3,4-c]thiophene"
-                                    // -- the format is "1H,3H-", NOT "1,3H-" (a single trailing H would be wrong).
-                                    QStringList ihParts;
-                                    for (const QString &loc : ihLocants) ihParts.append(loc + "H");
-                                    QString ihPrefix = ihParts.isEmpty() ? "" : (ihParts.join(",") + "-");
-
-                                    // P-31 hydro-prefix format: "<locants>-<count-word>hydro-", e.g.
-                                    // "4a,5,8,8a-tetrahydro-". Count word by position count: 2->di,
+                                    // P-31 hydro-prefix format: "<locants>-<count-word>hydro", e.g.
+                                    // "4a,5,8,8a-tetrahydro". Count word by position count: 2->di,
                                     // 4->tetra, 6->hexa, 8->octa (always even, since each saturated
                                     // ring-internal position pairs with the loss of one mancude
                                     // double bond) -- verified against real PINs this file already
@@ -6851,8 +6891,10 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                     // hexa/octa, not "bis"/"tetrakis" style, matching simple locant
                                     // sets). An odd count or >8 positions is outside what this task
                                     // scoped (6-membered all-carbon rings only) can produce; reject
-                                    // rather than guess a word for it.
-                                    QString hydroPrefix;
+                                    // rather than guess a word for it. No trailing hyphen here
+                                    // (fix round 1, review finding B3b) -- the separator before
+                                    // whatever follows (indicated-H or the parent name) is added
+                                    // once, below, not baked into this prefix.
                                     if (!hydroLocStrs.empty()) {
                                         QString countWord;
                                         switch (hydroLocStrs.size()) {
@@ -6865,18 +6907,44 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                         }
                                         QStringList hydroLocQList;
                                         for (const QString &s : hydroLocStrs) hydroLocQList.append(s);
-                                        hydroPrefix = hydroLocQList.join(",") + "-" + countWord + "hydro-";
+                                        hydroPrefix = hydroLocQList.join(",") + "-" + countWord + "hydro";
                                     }
+                                }
 
-                                    // Hydro-prefix precedes indicated-H per Blue Book convention
-                                    // (e.g. "2,3-dihydro-1H-indene") -- verified against this real
-                                    // PIN, not assumed. The combined hydro-AND-indicated-H case has
-                                    // no real test exercising it in this task (TACRINE has hydro
-                                    // positions only, no indicated-H); this ordering is believed
-                                    // correct per the cited PIN but is not independently verified
-                                    // against a real combined example the way TACRINE's hydro-only
-                                    // case is.
-                                    resultName = hydroPrefix + ihPrefix + resultName;
+                                // Assemble in Blue Book P-31.1.4.2.4 order (fix round 1, review
+                                // finding I2): detachable substituent prefixes first
+                                // (alphabetized, already built above as prefixPart), then
+                                // hydro/indicated-H (non-alphabetized, cited immediately before
+                                // the parent, NOT before the substituents as the original code
+                                // had it), then the parent name itself -- e.g.
+                                // "5-methyl-2,3-dihydro-1H-indene", not
+                                // "2,3-dihydro-1H-5-methylindene".
+                                // Fix round 1 (review finding B3b, caught again on
+                                // re-verification): a hydro-prefix with NO indicated-H
+                                // following it fuses directly onto the parent name with NO
+                                // hyphen -- real PINs write "tetrahydronaphthalene" and
+                                // "5,6,7,8-tetrahydroquinoline" as one word, not
+                                // "tetrahydro-naphthalene". indicated-H's own prefix always
+                                // keeps its trailing hyphen regardless of what follows
+                                // (ihPrefix already includes it, e.g. "1H-" in "1H-indene"),
+                                // and a hyphen is needed between hydroPrefix and ihPrefix
+                                // when both are present (hydroPrefix is alphabetic, ihPrefix
+                                // starts with a digit -- "2,3-dihydro-1H-indene").
+                                QString satPart = hydroPrefix;
+                                if (!ihPrefix.isEmpty()) {
+                                    if (!satPart.isEmpty()) satPart += "-";
+                                    satPart += ihPrefix;
+                                }
+                                QString satPlusParent = satPart + resultName;
+
+                                if (!prefixPart.isEmpty()) {
+                                    // See the equivalent fix in Phase 31 for why this hyphen is
+                                    // needed: a locant-led name must not concatenate directly
+                                    // onto a substituent prefix's own trailing locant.
+                                    QString sep = (!satPlusParent.isEmpty() && satPlusParent[0].isDigit()) ? "-" : "";
+                                    resultName = prefixPart + sep + satPlusParent;
+                                } else {
+                                    resultName = satPlusParent;
                                 }
                             }
                             if (resultName.isEmpty()) {
@@ -23709,14 +23777,15 @@ std::map<int, QString> computePeripheralNumbering3Ring(
                 return a.heteroatomLocants < b.heteroatomLocants;
             if (a.heteroatomSeniorityAtLocants != b.heteroatomSeniorityAtLocants)
                 return a.heteroatomSeniorityAtLocants < b.heteroatomSeniorityAtLocants;
-            if (a.substituentLocants != b.substituentLocants)
-                return a.substituentLocants < b.substituentLocants;
-            // Hydro-prefix locants rank below heteroatom/substituent locants
-            // (those take priority for lowest-locant assignment per general
-            // IUPAC numbering precedence) but above the arbitrary candidateIndex
-            // tiebreak -- same shape as the criteria above it.
+            // Fix round 1 (review finding I3): hydro/indicated-H-class locants
+            // rank ABOVE detachable substituent locants per P-31.1.4.2.4 (hydro
+            // prefixes are numbered before detachable substituent prefixes are
+            // considered), not below as the original comment claimed with no
+            // cited rule.
             if (a.hydroLocants != b.hydroLocants)
                 return a.hydroLocants < b.hydroLocants;
+            if (a.substituentLocants != b.substituentLocants)
+                return a.substituentLocants < b.substituentLocants;
             return a.candidateIndex < b.candidateIndex;
         });
 
@@ -23735,29 +23804,23 @@ std::map<int, QString> computePeripheralNumbering3Ring(
     // would buy no correctness benefit.
     //
     // This independence from NameScore does NOT mean this one call always
-    // produces a fully correct molecule-wide locant set on its own -- two
-    // real gaps, confirmed by task review, remain open as of Task 2:
-    // (1) The N==3 caller makes TWO SEPARATE calls to this function for the
-    //     same molecule -- one for substituent locants (passing
-    //     substituentBearingNodes, preferIndicatedHydrogenLocant=false) and
-    //     one for indicated-H locants (passing {}, true). Each runs its own
-    //     independent search, so when heteroatomLocants tie between
-    //     candidates, the two calls can pick DIFFERENT winning peripheral
-    //     numbering directions, producing a name whose substituent locants
-    //     and indicated-H locant come from two different numberings of the
-    //     same ring system. Any future locant class added to this N==3 path
-    //     (e.g. hydro-locants) MUST be folded into ONE shared call alongside
-    //     substituents and indicated-H, not added as a third independent
-    //     call, or this divergence risk compounds.
+    // produces a fully correct molecule-wide locant set on its own -- as of
+    // Task 2 two real gaps were open; gap (1) is CLOSED as of Task 3 fix
+    // round 1 (the N==3 caller now makes exactly ONE call passing
+    // substituentBearingNodes, hydroLocantBearingNodes, and
+    // preferIndicatedHydrogenLocant=true together; search "ONE shared call"
+    // in nameLinearChainFusion). Gap (2) remains open:
     // (2) Carbocyclic indicated-H (CYCLOPENTADIENE/CYCLOHEPTATRIENE's sp3
     //     position) is never a candidate-comparator criterion here -- the
     //     z!=6 filter on heteroatomLocants excludes carbon entirely, so when
     //     heteroatom locants tie, a carbocyclic indicated-H position's final
     //     locant falls to raw candidateIndex, not a true lowest-locant rule.
     //     This search only correctly minimizes for NH-type (nitrogen)
-    //     indicated H today. A future hydro-locant addition on a carbocyclic
-    //     ring would inherit this same gap unless this comparator is
-    //     extended with a genuine carbon-position criterion.
+    //     indicated H today. Task 3's hydroLocants criterion (above) is a
+    //     real carbon-position criterion but only for SATURATED carbon
+    //     positions, not indicated-H's own sp3 position on an otherwise
+    //     mancude carbocycle (CYCLOPENTADIENE/CYCLOHEPTATRIENE) -- that
+    //     specific carbocyclic-indicated-H gap is still open.
     return bestIt->locantMap;
 }
 
