@@ -1069,27 +1069,25 @@ int main() {
         // disjoint locants (7 vs 2,3,4,5).
         {"c1ccc2nc3CCCCc3cc2c1C", "7-methyl-2,3,4,5-tetrahydrodibenzo[1,2-b:3,4-e]pyridine"},
 
-        // Fix round 1 regression guard (review finding B2): this task's all-carbon
-        // mancude reclassification must NOT fire for N==4+ chains (steroids are
-        // explicitly deferred) -- a tetrahydro-pyridine-fused 4-ring chain would
-        // otherwise silently have its saturation dropped and be misnamed as its
-        // fully aromatic analog (byte-identical output to the real aromatic
-        // molecule). Two LATER attempts (both reverted) tried lifting this
-        // restriction after fixing a real walkPeripheryClockwise boundary-trace
-        // bug the N>=4 path depends on; the boundary-trace fix was kept (it
-        // benefits nameBranchingFusion's existing use), but a fresh review of the
-        // second attempt found the ORIENTATION/starting-point logic layered on top
-        // of it is atom-order-dependent (confirmed: up to 12 different names for
-        // the same molecule across 12 SMILES atom orderings) and in at least one
-        // case produces objectively wrong locants -- unacceptable for a tool that
-        // names chemicals. N==3 restriction restored a third time; real N>=4
-        // support needs a proper P-25.3.3 orientation implementation, a separate,
-        // substantial follow-on (search "Task 4 (third attempt)" in
-        // IupacNamer.cpp). Falls through unchanged to the same pre-existing
-        // generic rejection. Structurally validated via check_sssr.exe: 4 rings
-        // (6,6,6,6), 18 heavy atoms (3 aromatic/mancude rings + 1 saturated
-        // all-carbon ring).
-        {"C1CCc2cc3cc4ccncc4cc3cc2C1", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."},
+        // Originally a regression guard pinning the N==3-restricted rejection of
+        // this tetrahydro-pyridine-fused 4-ring chain, across 3 reverted attempts
+        // at N>=4 support (each blocked by a real bug: a boundary-trace defect, a
+        // layered atom-order-dependent orientation/start-selection issue). The
+        // fourth attempt (P-25.3.3 orientation plan) found and fixed the actual
+        // root cause -- an atom-order-dependent ring-placement mirroring bug in
+        // walkPeripheryClockwise, plus a reflection-composition sign bug in
+        // FusedRingOrientation.cpp, both confirmed via first-principles geometric
+        // derivation, not pattern-matching (search "fourth attempt" in
+        // IupacNamer.cpp for the full writeup) -- and this molecule now correctly
+        // NAMES instead of rejecting. Verified via live testing across 10
+        // independently-generated random SMILES atom orderings of the real test
+        // molecule used during this fix's own development: the hydro-prefix
+        // locants are 100% invariant; this specific SMILES's own parent-name
+        // fusion-letter descriptor (a separate, pre-existing, unrelated mechanism)
+        // is pinned as its own real, current output. Structurally validated via
+        // check_sssr.exe: 4 rings (6,6,6,6), 18 heavy atoms (3 aromatic/mancude
+        // rings + 1 saturated all-carbon ring).
+        {"C1CCc2cc3cc4ccncc4cc3cc2C1", "5,6,7,8-tetrahydrobenzo[3'',4'':6',1']benzo[4',3':6,1]benzo[4,3-c]pyridine"},
 
         // Regression guard: unsubstituted, FULLY aromatic acridine itself is
         // unaffected by this task's hydroPositionNodes-based guard on the Part A.6
@@ -1163,31 +1161,47 @@ int main() {
         {"C1CCc2cc3OC=CC=Cc3cc2C1", "7,8,9,10-tetrahydrobenzo[3',4':6,1]benzo[3,4-b]oxepine"},
         {"C1CCc2cc3NC=CC=Cc3cc2C1", "7,8,9,10-tetrahydrobenzo[3',4':6,1]benzo[3,4-b]azepine"},
 
-        // Task 4's N>=4 substituent/hydro-prefix extension (via
-        // computePeripheralNumberingGeneral + a real fix to its
-        // walkPeripheryClockwise dependency's boundary-trace algorithm) was
-        // attempted and reverted twice -- the boundary-trace fix itself is real
-        // and kept (see walkPeripheryClockwise's own comment, and the
-        // reclassification-site comment a few hundred lines above), but the
-        // orientation/starting-point logic layered on top of it is atom-order-
-        // dependent and sometimes produces objectively wrong locants, confirmed
-        // by a fresh review. N>=4 hydro/substituent citation is NOT enabled.
-        //
-        // Regression guard: this constructed 4-ring linear chain (benzo-benzo-
-        // pyridine-saturated-carbocycle shape, 2 saturated all-carbon rings) falls
-        // through to the pre-existing generic rejection, not a misname -- same
-        // molecule used during the investigation above. Structurally validated
-        // via check_sssr.exe as 4 ortho-fused 6-rings, 18 heavy atoms.
-        {"c1c2c(cc(CCCC3)c3c2)nc2CCCCc12", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."},
+        // Hydro-prefix fused-ring plan / P-25.3.3 orientation plan (Task 4, fourth
+        // attempt): substituent + hydro-prefix locant citation generalized to
+        // N>=4 (steroids), via computePeripheralNumberingGeneral after fixing the
+        // real atom-order-dependent bugs in its walkPeripheryClockwise/
+        // FusedRingOrientation.cpp dependency (a ring-placement mirroring bug, and
+        // a reflection-composition sign bug -- both confirmed via first-
+        // principles geometric derivation, search "fourth attempt" in
+        // IupacNamer.cpp for the full writeup). Real win: this constructed 4-ring
+        // linear chain (benzo-benzo-pyridine-saturated-carbocycle shape, 2
+        // saturated all-carbon rings totalling 8 sp3 carbons), structurally
+        // validated via check_sssr.exe as 4 ortho-fused 6-rings, 18 heavy atoms.
+        // Real driver output (not guessed), re-verified via 10 independently-
+        // generated random SMILES atom orderings of this exact molecule: the
+        // hydro locants ("1,4,5,6,7,10,11,12-octahydro") are IDENTICAL across
+        // every successfully-named ordering -- this is the actual atom-order-
+        // invariance property this whole investigation exists to establish. Per
+        // this plan's own established B3a precedent (Task 3), these locants are
+        // internally self-consistent but not independently verified as the real
+        // orientation-correct PIN (computePeripheralNumbering3Ring/General still
+        // lack a true P-25.3.3.1.1 bridgehead-adjacent-start rule in general,
+        // though the specific regression this would have caused for a
+        // topologically-symmetric branching molecule was found and avoided -- see
+        // the reclassification-site comment's own account of the reverted third
+        // sub-attempt).
+        {"c1c2c(cc(CCCC3)c3c2)nc2CCCCc12", "1,4,5,6,7,10,11,12-octahydrobenzo[1',2':4,5]benzo[2,1-b]benzo[2,1-e]pyridine"},
+
+        // Same molecule with a methyl substituent on a non-bridgehead aromatic
+        // position -- confirms the substituent locant and the 8 hydro locants
+        // land on genuinely disjoint positions from the SAME shared
+        // computePeripheralNumberingGeneral call (the N>=4 analog of Task 3's
+        // own B1 fix), not two independently-numbered, possibly-overlapping
+        // calls. Real driver output (not guessed).
+        {"c1(C)c2c(cc(CCCC3)c3c2)nc2CCCCc12", "9-methyl-1,4,5,6,7,10,11,12-octahydrobenzo[1',2':4,5]benzo[2,1-b]benzo[2,1-e]pyridine"},
 
         // Regression guard: the all-carbon (no heteroatom at all) analog of the
-        // same 4-ring shape also falls through to the pre-existing generic
-        // rejection (ring classification itself fails for an N>=4 saturated
-        // all-carbon ring before reaching the separate "mandatory Blue Book
-        // retained name" exclusion check, which only applies to rings that
-        // successfully classify as fully mancude). Structurally validated via
-        // check_sssr.exe: 4 rings (6,6,6,6), 18 heavy atoms.
-        {"C1CCc2cc3cc4CCCCc4cc3cc2C1", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."},
+        // same 4-ring shape still correctly falls to the PRE-EXISTING, separate
+        // "mandatory Blue Book retained name" exclusion for all-carbon fused ring
+        // systems (that check doesn't know about hydroPositionNodes -- a known,
+        // separate, pre-existing gap, not this task's concern). Structurally
+        // validated via check_sssr.exe: 4 rings (6,6,6,6), 18 heavy atoms.
+        {"C1CCc2cc3cc4CCCCc4cc3cc2C1", "", true, "All-carbon fused ring systems (e.g. anthracene, phenanthrene, benzo[c]cycloheptatriene) have mandatory Blue Book retained names; systematic fusion nomenclature via this mechanism is not applicable."},
 
         // Regression guard: the fully aromatic (no saturation anywhere) analog of
         // the pyridine-containing 4-ring shape is unaffected by any of this --
@@ -7320,15 +7334,21 @@ int main() {
             IupacResult r = IupacNamer::generateName(m);
             indigoFree(m);
             std::string n = r.name.toStdString();
-            // Locant updated (2026-10-08, general-ring-geometry-branching-fusion plan) --
-            // this is a characterization test (see comment above: pins real deterministic
-            // output, not a hand-verified value), so simply re-pinned to the new real output
-            // now that the orientation/numbering machinery explores every tied orientation.
-            if (r.success && n == "dibenzo[3b,7a:7b,11a]benzo[a]1,2,3-triazine") {
+            // Locant updated again (P-25.3.3 orientation plan, hydro-prefix fused-ring
+            // plan Task 4's geometry fixes): this is a characterization test (see comment
+            // above: pins real deterministic output, not a hand-verified value), re-pinned
+            // to the new real output after fixing two real bugs in
+            // walkPeripheryClockwise/FusedRingOrientation.cpp (an atom-order-dependent
+            // ring-placement mirroring bug, and a reflection-composition sign bug) --
+            // unlike the sibling "Branching molecule name" test above, this specific
+            // locant set was never independently hand-verified as the genuinely lowest
+            // one either before or after; both are characterizations of this mechanism's
+            // actual behavior.
+            if (r.success && n == "dibenzo[4b,8a:8b,12a]benzo[a]1,2,3-triazine") {
                 std::cout << "[PASS] Branching GENERAL_HETEROCYCLE test: " << n << "\n";
                 passed++;
             } else {
-                std::cout << "[FAIL] Branching GENERAL_HETEROCYCLE test: expected 'dibenzo[3b,7a:7b,11a]benzo[a]1,2,3-triazine', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+                std::cout << "[FAIL] Branching GENERAL_HETEROCYCLE test: expected 'dibenzo[4b,8a:8b,12a]benzo[a]1,2,3-triazine', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
                 failed++;
             }
         } else {

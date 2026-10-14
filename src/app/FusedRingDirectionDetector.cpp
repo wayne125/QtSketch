@@ -111,7 +111,25 @@ FusedRingSystemInput detectFusedRingDirections(int mol) {
     for (int i = 0; i < numRings; ++i) {
         input.ringSizes[i] = static_cast<int>(rings[i].size());
     }
-    if (numRings == 1) return input; // Trivial 1-ring system
+    input.ringDirectedCycles.resize(numRings);
+    if (numRings == 1) {
+        // Single ring, no fusions: still expose a directed cycle (starting
+        // atom/direction are both arbitrary here -- no fusion bond to anchor
+        // against -- but must be non-empty and real so callers like
+        // walkPeripheryClockwise can place this ring's atoms consistently).
+        int anyAtom = *rings[0].begin();
+        int anyNeighbor = -1;
+        auto it = adj.find(anyAtom);
+        if (it != adj.end()) {
+            for (int n : it->second) {
+                if (rings[0].count(n)) { anyNeighbor = n; break; }
+            }
+        }
+        if (anyNeighbor != -1) {
+            input.ringDirectedCycles[0] = buildDirectedCycle(rings[0], anyAtom, anyNeighbor, adj);
+        }
+        return input;
+    }
 
     std::vector<bool> visited(numRings, false);
     
@@ -149,6 +167,7 @@ FusedRingSystemInput detectFusedRingDirections(int mol) {
         int v = entry.v;
 
         std::vector<int> cycle = buildDirectedCycle(rings[r], u, v, adj);
+        input.ringDirectedCycles[r] = cycle;
 
         for (int nextR : ringAdj[r]) {
             if (visited[nextR]) continue;

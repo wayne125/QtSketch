@@ -145,6 +145,7 @@ std::vector<FusedRingOrientationResult> computeAllPreferredOrientations(const Fu
         std::vector<std::pair<double,double>> pos;
         std::vector<double> rotation;
         double y_main, x_mid;
+        bool reflected;
     };
     std::vector<CandidateResult> allCandidates;
 
@@ -157,11 +158,18 @@ std::vector<FusedRingOrientationResult> computeAllPreferredOrientations(const Fu
                 double y = placed[i].x * std::sin(rot) + placed[i].y * std::cos(rot);
                 if (reflect) y = -y;
                 cur_pos[i] = {x, y};
-                // Each ring's own rotation transforms the same way its
-                // position's angle would: reflect (negate) first, then add
-                // the system-wide rotation -- keeps ringRotation consistent
-                // with ringPos in the final output frame.
-                cur_rotation[i] = (reflect ? -placed[i].rotation : placed[i].rotation) + rot;
+                // Each ring's own vertex-0 angle must undergo the EXACT
+                // same point transform (rotate by rot, then reflect) as the
+                // ring's own relative position vector would -- NOT "negate
+                // first, then add rot" (that was the previous formula here,
+                // confirmed wrong by direct derivation during the P-25.3.3
+                // orientation plan): reflecting a point at angle theta maps
+                // it to angle -theta, so reflect(rotate(angle, rot)) =
+                // -(angle + rot) = -angle - rot, not -angle + rot. Verified
+                // the non-reflected branch (rot alone, no sign issue) was
+                // already correct; only the reflected branch's sign on
+                // `rot` was wrong.
+                cur_rotation[i] = reflect ? (-placed[i].rotation - rot) : (placed[i].rotation + rot);
             }
 
             // Group rings into horizontal rows (same y within tolerance) to
@@ -216,7 +224,7 @@ std::vector<FusedRingOrientationResult> computeAllPreferredOrientations(const Fu
             }
 
             ScoreTuple cand_score = {max_block_size, ur, -ll, above};
-            allCandidates.push_back({cand_score, cur_pos, cur_rotation, y_main, x_mid});
+            allCandidates.push_back({cand_score, cur_pos, cur_rotation, y_main, x_mid, reflect != 0});
         }
     }
 
@@ -274,6 +282,7 @@ std::vector<FusedRingOrientationResult> computeAllPreferredOrientations(const Fu
         r.ringOrder = sorted_rings;
         r.ringPos = c.pos;
         r.ringRotation = c.rotation;
+        r.reflected = c.reflected;
         results.push_back(r);
     }
     return results;

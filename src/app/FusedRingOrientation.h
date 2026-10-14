@@ -15,6 +15,19 @@ struct FusedRingOrientationResult {
     std::vector<std::pair<double,double>> ringPos;  // real (x,y) ring-center
                                                 // positions; side length
                                                 // normalized to 1.0.
+    // Whether this orientation applied a reflection (Y-flip) to the base
+    // BFS-placed layout. A reflection correctly flips ring CENTER positions
+    // and the stored ringRotation value, but reflecting a ring also
+    // reverses its own real atoms' winding sense (a mirrored hexagon's
+    // vertices run clockwise where the original ran counterclockwise) --
+    // callers placing individual atoms (walkPeripheryClockwise) must walk
+    // each ring's real atom cycle in REVERSE when this is true, not just
+    // trust ringRotation alone, or atom positions within the ring come out
+    // wrong even though the ring's own center/footprint is correctly
+    // placed. Confirmed via first-principles derivation during the
+    // P-25.3.3 orientation plan: ringRotation alone doesn't carry enough
+    // information to place individual atoms correctly under reflection.
+    bool reflected = false;
     std::vector<double> ringRotation;  // each ring's own absolute rotation
                                         // (radians, the angle its own vertex
                                         // 0 sits at) in the SAME final
@@ -44,6 +57,22 @@ struct FusedRingSystemInput {
     std::vector<int> ringSizes; // indexed by ring ID (0 to N-1)
     std::vector<FusedRingEdge> fusions;
     std::vector<std::set<int>> ringAtoms;
+    // Each ring's own directed cycle (ordered atom sequence), indexed by ring
+    // ID, matching the EXACT same (u,v) starting pair and walk direction
+    // `FusedRingEdge::bondIndex` was computed against in
+    // `detectFusedRingDirections` (same convention `edgeMidpointAngle` in
+    // FusedRingOrientation.cpp assumes when interpreting `ringRotation` as
+    // "the angle this ring's cycle[0] sits at"). Populated only by
+    // `detectFusedRingDirections`; empty for callers that build
+    // `FusedRingSystemInput` by hand without this data. A caller placing
+    // real atoms (e.g. IupacNamer.cpp's `walkPeripheryClockwise`) MUST use
+    // `ringDirectedCycles[r][0]`/`[1]` as the (refAtomA, refAtomB) pair for
+    // ring r, not an independently-chosen pair (e.g. sorted by raw atom
+    // index) -- doing so silently disagrees with the bondIndex/rotation
+    // convention and can mirror the ring's placement relative to the rest
+    // of the system, an atom-order-dependent bug confirmed during the
+    // hydro-prefix fused-ring plan's Task 4.
+    std::vector<std::vector<int>> ringDirectedCycles;
 };
 
 // Returns every orientation that ties for the best P-25.3.2.3 score (within
