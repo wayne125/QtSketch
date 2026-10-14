@@ -23543,6 +23543,21 @@ std::map<int, QString> computePeripheralNumbering3Ring(
             return a.candidateIndex < b.candidateIndex;
         });
 
+    // This candidate search (every numbering direction x every valid starting
+    // point relative to the bridgeheads, scored by lowest heteroatomLocants
+    // first) is independent of whatever fusion-letter numbering the caller's
+    // own NameScore comparator already settled on -- confirmed by direct
+    // investigation (hydro-prefix fused-ring plan, Task 2) not to share state
+    // with it. This is deliberate, not a gap: P-25.3 fusion-letter
+    // assignment and P-25.3.1/P-31 peripheral numbering (which indicated
+    // hydrogen and hydro-locants both belong to) are separate IUPAC locant
+    // systems, each optimized on its own criteria. Do not "fix" this by
+    // folding this search into NameScore's own comparator -- that would
+    // conflate two legitimately independent numbering systems for no
+    // correctness benefit. Confirmed via a temporary debug trace that this
+    // search is genuinely non-trivial on real molecules (e.g. 8 distinct
+    // candidates considered, winning index varying by molecule, not a
+    // degenerate always-first-candidate pattern).
     return bestIt->locantMap;
 }
 
