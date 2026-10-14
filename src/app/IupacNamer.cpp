@@ -5772,86 +5772,83 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                             }
                         }
 
-                        if (rHeteroN[i].empty() && nodesN[i].size() == 6) {
-                            // Hydro-prefix fused-ring plan / P-25.3.3 orientation plan
-                            // (Task 4, fourth attempt -- N==3 restriction LIFTED): N>=4
-                            // hydro-prefix/substituent support was attempted and reverted
-                            // three times before this one. Attempt 2 fixed a real bug in
-                            // walkPeripheryClockwise's boundary-trace algorithm (it walked
-                            // the FULL graph adjacency including each ring's own fusion
-                            // bond, relying on an unproven "most-clockwise-turn" heuristic
-                            // to avoid cutting through it -- replaced with the same
-                            // fusion-bond-excluding periphGraph technique
-                            // computePeripheralNumbering3Ring already uses). Attempt 3
-                            // found that fix alone wasn't enough -- a fresh review found the
-                            // ORIENTATION/starting-point logic layered on top was itself
-                            // atom-order-dependent (confirmed: up to 12 different names for
-                            // the same molecule across 12 SMILES orderings) -- and reverted
-                            // N>=4 again while keeping the boundary-trace fix.
+                        if (rHeteroN[i].empty() && nodesN[i].size() == 6 && N == 3) {
+                            // Hydro-prefix fused-ring plan / P-25.3.3 orientation plan:
+                            // N>=4 hydro-prefix/substituent support has been attempted and
+                            // reverted FOUR times now. Restricted to N==3 again.
                             //
-                            // This attempt found and fixed the REAL root cause of that
-                            // remaining non-determinism, via first-principles geometric
-                            // derivation (not pattern-matching to tests):
-                            // walkPeripheryClockwise's own ring-placement step picked each
-                            // ring's reference atom pair by raw ATOM-INDEX sorting
-                            // (`shared.begin()`/`next()` on a std::set, lowest index
-                            // first) -- unrelated to the real directed-cycle convention
+                            // Two REAL, independently-verified geometry bugs were found and
+                            // FIXED (and stay fixed -- they benefit nameBranchingFusion's
+                            // existing N>=4 use too, confirmed via live testing and a fresh
+                            // independent review, both before AND after this latest
+                            // revert): (1) walkPeripheryClockwise's ring-placement step
+                            // picked each ring's reference atom pair by raw ATOM-INDEX
+                            // sorting, unrelated to the real directed-cycle convention
                             // `FusedRingEdge::bondIndex`/`orientation.ringRotation` were
-                            // actually computed under in FusedRingDirectionDetector.cpp /
-                            // FusedRingOrientation.cpp. Since atom indices come from SMILES
-                            // parse order, this silently MIRRORED a ring's placement
-                            // relative to the rest of the system depending on which
-                            // bridgehead happened to have the lower index. Fixed by
-                            // exposing each ring's own already-computed directed cycle
-                            // (`FusedRingSystemInput::ringDirectedCycles`, populated by
-                            // `detectFusedRingDirections`, the exact atom sequence
-                            // `bondIndex` was derived from) and using it directly --
-                            // eliminating the independent, buggy BFS-placement logic
-                            // entirely (every ring now places independently and
-                            // consistently with the already-correct, already-order-
-                            // invariant `orientation.ringPos`/`ringRotation`). A SECOND,
-                            // separate bug was found while deriving this fix and verified
-                            // via two independent concrete numeric examples: a reflected
-                            // orientation (`FusedRingOrientationResult::reflected`, newly
-                            // exposed) correctly flips a ring's CENTER position and
-                            // vertex-0 angle, but also reverses that ring's own real-atom
-                            // WINDING sense (a mirrored hexagon's atoms run clockwise where
-                            // the original ran counterclockwise) -- `placeRingAtoms` wasn't
-                            // told to walk the atom cycle backward for reflected rings,
-                            // fixed in `walkPeripheryClockwise`'s per-ring placement loop,
-                            // and the rotation formula's own sign (in
-                            // FusedRingOrientation.cpp) was separately wrong for the
-                            // reflected case too.
+                            // computed under -- fixed via the new
+                            // `FusedRingSystemInput::ringDirectedCycles` field (populated by
+                            // `detectFusedRingDirections`, exposing the exact atom sequence
+                            // `bondIndex` was derived from), eliminating the independent,
+                            // buggy BFS-placement logic entirely. (2) A reflected orientation
+                            // (`FusedRingOrientationResult::reflected`, newly exposed) had a
+                            // wrong sign on its rotation formula AND didn't walk a ring's own
+                            // atom cycle backward to match its reversed winding -- both
+                            // confirmed wrong via independent numeric re-derivation by a
+                            // fresh reviewer, both now fixed.
                             //
-                            // A third change (reverted after introducing a real
-                            // regression) tried narrowing computePeripheralNumberingGeneral's
-                            // candidate generation to exactly one deterministic (start,
-                            // direction) pair per orientation, derived literally from
-                            // P-25.3.3.1.1's wording -- this dropped a genuinely lower-
-                            // locant numbering a topologically-symmetric branching molecule
-                            // needs (Blue Book's own P-25.3.3.1.2 anticipates "alternative
-                            // numberings" remaining after 1.1 for such systems); kept the
-                            // wider "every non-fused atom of the uppermost ring" candidate
-                            // search this function already had, just with an EPS-tolerant
-                            // (not exact floating-point) uppermost-ring tie-break -- a
-                            // real, independent non-determinism source in linear chains,
-                            // where every ring can legitimately sit at y~0.
-                            //
-                            // Verified via live testing (10 independently-generated random
-                            // SMILES atom orderings of a real constructed test molecule,
-                            // via RDKit, not hand-constructed): the hydro-prefix locants
-                            // themselves are now 100% atom-order-invariant across every
-                            // successfully-named ordering. A separate, PRE-EXISTING,
-                            // unrelated mechanism (the parent name's own fusion-letter
-                            // descriptor, built by NameScore/Block, untouched by any of
-                            // this) still varies with atom order -- confirmed out of scope
-                            // for this fix (a different locant system entirely, per Task
-                            // 2's own established finding). A small number of orderings
-                            // fail safely (reject, not a wrong name) via a separate,
-                            // pre-existing false-positive in computeAllPreferredOrientations's
-                            // own "Rings overlap" geometric check (code untouched by this
-                            // fix) -- a narrower, lower-stakes residual issue, documented
-                            // as a known follow-on rather than fixed here.
+                            // Those two fixes were NOT, however, the whole root cause of
+                            // N>=4's atom-order dependence -- a fresh review (after this
+                            // attempt's own 10-SMILES-ordering spot check looked clean)
+                            // stress-tested with 16 RDKit-randomized orderings per molecule
+                            // across several shapes and found TWO FURTHER, deeper, still-
+                            // unfixed bugs:
+                            // (A) The candidate orientation set itself is incomplete.
+                            //     `candidateRotations` (FusedRingOrientation.cpp, built from
+                            //     `-edgeMidpointAngle(...)` per real fusion bond) generates
+                            //     each bond's own alignment-to-+x rotation plus a Y-reflection,
+                            //     but never that rotation's 180-degree (X-mirror) partner.
+                            //     For a linear chain, which TERMINAL ring ends up "uppermost"
+                            //     is fixed by the fused-ring detector's own BFS root choice
+                            //     (the first leaf ring found in SSSR iteration order), which
+                            //     itself tracks atom/SMILES order -- so the SAME molecule's
+                            //     "uppermost" ring, and hence which end gets locant 1, flips
+                            //     with input order. Confirmed via live testing: the SAME
+                            //     linear 4-ring molecule's hydro locants varied between
+                            //     {1,2,3,4,7,8,9,10}-shifted families depending on which end
+                            //     the detector's BFS happened to reach first.
+                            // (B) computePeripheralNumberingGeneral's own candidate-start
+                            //     search (every non-fused atom of the uppermost ring, scored
+                            //     by lowest heteroatom locant) is NOT merely "broader than the
+                            //     true P-25.3.3.1.1 rule needs" as an earlier ruling here
+                            //     assumed -- it's actively WRONG: a mid-run (non-bridgehead-
+                            //     adjacent) start, including starting directly ON a
+                            //     heteroatom, can and does WIN over the true bridgehead-
+                            //     adjacent start specifically BECAUSE it scores a lower
+                            //     heteroatom locant. Confirmed against this exact plan's own
+                            //     prior test molecules: the pinned "1,4,5,6,7,10,11,12" and
+                            //     "5,6,7,8" hydro-locant sets this attempt shipped are
+                            //     provably NOT valid P-25.3.3.1.1 numberings (a real linear
+                            //     4-ring chain's terminal CH2x4 ring must number as a
+                            //     contiguous {1-4} or {7-10} block, which neither pinned
+                            //     value is) -- they are exactly the TRUE valid set shifted by
+                            //     a constant, consistent with numbering starting mid-ring or
+                            //     on the heteroatom itself.
+                            // Re-reverted N>=4 enablement as a result (the (start, hydro,
+                            // substituent)-citation block below, and the substituent-scan
+                            // gate a few hundred lines below this one). Real N>=4 support
+                            // needs, before any future re-attempt: (1) a complete orientation
+                            // candidate set including each candidate rotation's 180-degree
+                            // partner; (2) a start rule restricted to the bridgehead-adjacent,
+                            // most-counterclockwise atom per tied orientation (not every non-
+                            // fused atom); (3) a walk direction derived from real geometry,
+                            // not fitted to whichever existing tests happen to pass (the
+                            // shoelace-sign check below is still only empirically fitted,
+                            // confirmed by a fresh reviewer to actually produce a
+                            // COUNTERCLOCKWISE perimeter today, masked only because both
+                            // orientation reflections get scored); and (4) a random-SMILES-
+                            // ordering invariance test on a genuinely ASYMMETRIC N>=4
+                            // molecule as the acceptance gate for any future fix, not just a
+                            // symmetric one (symmetric molecules can show false invariance).
                             //
                             // Hydro-prefix fused-ring plan, Task 3: an all-carbon 6-ring has
                             // NO path through classifyMonocyclicHeteroRing at all (confirmed
@@ -6363,15 +6360,7 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                     if (!allSystemNodesUnion.count(nei) && g.nodes[nei].atomicNumber != 1) {
                                         // Skip the free valence atom's own exocyclic bond (it's the attachment point, not a substituent)
                                         if (node == freeValenceAtom) continue;
-                                        // Hydro-prefix fused-ring plan / P-25.3.3 orientation
-                                        // plan (Task 4, fourth attempt): substituent citation
-                                        // generalized to N>=4 now that the real geometry bugs
-                                        // in walkPeripheryClockwise/FusedRingOrientation.cpp
-                                        // are fixed (see the reclassification-site comment
-                                        // above for the full writeup). ringCount<3 is already
-                                        // rejected at this function's entry, so N is always
-                                        // >=3 here.
-                                        if (N == 3 || N >= 4) {
+                                        if (N == 3) {
                                             QString subName = simpleRingSubstituentName(g, node, nei, allSystemNodesUnion, mol);
                                             if (subName.isEmpty()) {
                                                 hasUnsupportedSubstituent = true;
@@ -6379,8 +6368,17 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                                 collectedSubstituents.push_back({node, subName});
                                             }
                                         } else {
-                                            // Unreachable: ringCount<3 already rejected at
-                                            // function entry.
+                                            // N == 2 or N == 4+: no peripheral numbering
+                                            // available via this mechanism, reject. N>=4
+                                            // enablement has been tried and reverted 4 times
+                                            // (see the mancude-reclassification gate's own
+                                            // comment above for the full writeup) -- the real
+                                            // geometry bugs that originally blocked it are
+                                            // fixed, but a deeper orientation-candidate-set
+                                            // incompleteness and an invalid-start-selection bug
+                                            // remain, confirmed via extensive atom-order stress
+                                            // testing to still produce non-deterministic/wrong
+                                            // locants.
                                             return {RingSystemNameResult{false, "Substituents on fused ring systems named via this mechanism are not yet supported.", "", {}}};
                                         }
                                     }
@@ -6823,190 +6821,16 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                 }
                             }
 
-                            // Hydro-prefix fused-ring plan / P-25.3.3 orientation plan
-                            // (Task 4, fourth attempt): substituent + hydro-prefix locant
-                            // citation generalized to N>=4 (steroids), reusing
-                            // computePeripheralNumberingGeneral via a correctly-oriented
-                            // FusedRingSystemInput built by detectFusedRingDirections (same
-                            // tool nameBranchingFusion already uses, with a cross-validation
-                            // guard against this call's own already-computed nodesN).
-                            // Indicated-H is explicitly OUT OF SCOPE here: no real corpus
-                            // target needs it, and the CYCLOPENTADIENE/CYCLOHEPTATRIENE
-                            // rejection just above already signals this boundary for N==4
-                            // chains. Deliberately separate code from the N==3 block below
-                            // (not refactored into a shared helper) to avoid touching that
-                            // already-heavily-reviewed path.
-                            //
-                            // This is the fourth attempt at N>=4 enablement in this plan's
-                            // history. Prior attempts found and this attempt fixes two real,
-                            // independent bugs in the shared geometry module this depends on
-                            // (walkPeripheryClockwise/FusedRingOrientation.cpp -- see the
-                            // reclassification-site comment above, search "P-25.3.3
-                            // orientation plan", for the full writeup): an atom-order-
-                            // dependent ring-PLACEMENT mirroring bug (fixed via
-                            // ringDirectedCycles, replacing an index-sorted reference-atom
-                            // pick with the real directed-cycle convention bondIndex/
-                            // ringRotation were computed under), and a reflection-
-                            // composition sign bug (a reflected orientation's own per-ring
-                            // atom winding wasn't correctly reversed). Verified via live
-                            // testing: the hydro-prefix locants themselves are now 100%
-                            // atom-order-invariant across 10 independently-generated random
-                            // SMILES atom orderings of the same real test molecule (all 8
-                            // that successfully name agree exactly on
-                            // "1,4,5,6,7,10,11,12-octahydro"; the other 2 fail safely with a
-                            // rejection, not a wrong name -- see Concerns in the task report
-                            // for the specific pre-existing, unrelated cause). The PARENT
-                            // fusion-letter descriptor (the separate NameScore/Block
-                            // mechanism nameLinearChainFusion already has, untouched by this
-                            // fix) still varies with atom order -- a confirmed pre-existing,
-                            // separate, out-of-scope issue (not this plan's mechanism).
-                            if (N >= 4 && (!collectedSubstituents.empty() || !hydroPositionNodes.empty())) {
-                                FusedRingSystemInput detectedInput = detectFusedRingDirections(mol);
-                                if (detectedInput.ringSizes.empty()) {
-                                    return {RingSystemNameResult{false, "Failed to compute peripheral numbering for this ring system.", "", {}}};
-                                }
-                                FusedRingSystemInput detectedInputGraph = detectedInput;
-                                for (auto &ring : detectedInputGraph.ringAtoms) {
-                                    std::set<int> converted;
-                                    for (int idx : ring) {
-                                        if (indigoToGraphIdx.count(idx)) converted.insert(indigoToGraphIdx.at(idx));
-                                    }
-                                    ring = converted;
-                                }
-                                // Same conversion for each ring's own directed cycle (used by
-                                // walkPeripheryClockwise to place atoms consistently with the
-                                // bondIndex/rotation convention -- must stay in the same index
-                                // space as ringAtoms/g).
-                                for (auto &cyc : detectedInputGraph.ringDirectedCycles) {
-                                    for (int &idx : cyc) {
-                                        if (indigoToGraphIdx.count(idx)) idx = indigoToGraphIdx.at(idx);
-                                    }
-                                }
-                                // Cross-validate against this call's own already-computed
-                                // nodesN: detectFusedRingDirections walks the WHOLE molecule's
-                                // SSSR, which could include unrelated rings elsewhere if this
-                                // call was invoked on a ringSubsetOverride/multi-component
-                                // subset. Reject cleanly rather than trust a mismatched
-                                // detection.
-                                std::vector<std::set<int>> sortedNodesN = nodesN;
-                                std::sort(sortedNodesN.begin(), sortedNodesN.end());
-                                std::vector<std::set<int>> sortedDetected = detectedInputGraph.ringAtoms;
-                                std::sort(sortedDetected.begin(), sortedDetected.end());
-                                if (sortedDetected != sortedNodesN) {
-                                    return {RingSystemNameResult{false, "Failed to compute peripheral numbering for this ring system.", "", {}}};
-                                }
-
-                                std::set<int> substituentBearingNodes4;
-                                for (const auto &sub : collectedSubstituents) {
-                                    substituentBearingNodes4.insert(sub.first);
-                                }
-
-                                std::map<int, QString> periphMap4 = computePeripheralNumberingGeneral(g, detectedInputGraph, substituentBearingNodes4, hydroPositionNodes);
-                                if (periphMap4.empty()) {
-                                    return {RingSystemNameResult{false, "Failed to compute peripheral numbering for this ring system.", "", {}}};
-                                }
-
-                                // --- substituent locants ---
-                                std::vector<std::pair<QString, QString>> namedSubstituents4;
-                                for (const auto &sub : collectedSubstituents) {
-                                    int ringNode = sub.first;
-                                    QString subName = sub.second;
-                                    if (!periphMap4.count(ringNode)) {
-                                        return {RingSystemNameResult{false, "Failed to compute peripheral locant for substituent.", "", {}}};
-                                    }
-                                    QString locStr = periphMap4[ringNode];
-                                    bool okInt = false;
-                                    locStr.toInt(&okInt);
-                                    if (!okInt) {
-                                        return {RingSystemNameResult{false, "Substituents on bridgehead atoms of fused ring systems are not yet supported.", "", {}}};
-                                    }
-                                    namedSubstituents4.push_back({subName, locStr});
-                                }
-
-                                std::map<QString, std::vector<QString>> prefixLocantsMap4;
-                                for (const auto &ns : namedSubstituents4) {
-                                    prefixLocantsMap4[ns.first].push_back(ns.second);
-                                }
-
-                                struct PrefixGroup4 {
-                                    QString baseName;
-                                    QString formattedStr;
-                                };
-                                std::vector<PrefixGroup4> pGroups4;
-                                for (auto it = prefixLocantsMap4.begin(); it != prefixLocantsMap4.end(); ++it) {
-                                    QString pName = it->first;
-                                    std::vector<QString> locs = it->second;
-                                    std::sort(locs.begin(), locs.end());
-
-                                    QStringList locStrs;
-                                    for (const QString &l : locs) locStrs.append(l);
-
-                                    QString pStr = locStrs.join(",");
-                                    if (locs.size() > 1) {
-                                        pStr += "-" + multiPrefix(static_cast<int>(locs.size())) + pName;
-                                    } else {
-                                        pStr += "-" + pName;
-                                    }
-
-                                    PrefixGroup4 pg;
-                                    pg.baseName = alphabetizationKey(pName);
-                                    pg.formattedStr = pStr;
-                                    pGroups4.push_back(pg);
-                                }
-
-                                std::sort(pGroups4.begin(), pGroups4.end(), [](const PrefixGroup4 &a, const PrefixGroup4 &b) {
-                                    return a.baseName.toLower() < b.baseName.toLower();
-                                });
-
-                                QString prefixPart4;
-                                if (!pGroups4.empty()) {
-                                    QStringList pStrs;
-                                    for (const auto &pg : pGroups4) pStrs.append(pg.formattedStr);
-                                    prefixPart4 = pStrs.join("-");
-                                }
-
-                                // --- hydro-prefix locants ---
-                                std::vector<QString> hydroLocStrs4;
-                                for (int node : hydroPositionNodes) {
-                                    if (!periphMap4.count(node)) {
-                                        return {RingSystemNameResult{false, "Failed to compute peripheral locant for hydro-prefix.", "", {}}};
-                                    }
-                                    QString locStr = periphMap4[node];
-                                    bool ok = false;
-                                    locStr.toInt(&ok);
-                                    if (!ok) {
-                                        return {RingSystemNameResult{false, "Hydro-prefix locant is letter-suffixed; bridgehead saturation is not yet supported.", "", {}}};
-                                    }
-                                    hydroLocStrs4.push_back(locStr);
-                                }
-                                std::sort(hydroLocStrs4.begin(), hydroLocStrs4.end(), [](const QString &a, const QString &b) {
-                                    return a.toInt() < b.toInt();
-                                });
-
-                                QString hydroPrefix4;
-                                if (!hydroLocStrs4.empty()) {
-                                    QString countWord;
-                                    switch (hydroLocStrs4.size()) {
-                                        case 2: countWord = "di"; break;
-                                        case 4: countWord = "tetra"; break;
-                                        case 6: countWord = "hexa"; break;
-                                        case 8: countWord = "octa"; break;
-                                        default:
-                                            return {RingSystemNameResult{false, "Unsupported hydro-prefix position count.", "", {}}};
-                                    }
-                                    QStringList hydroLocQList4;
-                                    for (const QString &s : hydroLocStrs4) hydroLocQList4.append(s);
-                                    hydroPrefix4 = hydroLocQList4.join(",") + "-" + countWord + "hydro";
-                                }
-
-                                QString satPlusParent4 = hydroPrefix4 + resultName;
-                                if (!prefixPart4.isEmpty()) {
-                                    QString sep = (!satPlusParent4.isEmpty() && satPlusParent4[0].isDigit()) ? "-" : "";
-                                    resultName = prefixPart4 + sep + satPlusParent4;
-                                } else {
-                                    resultName = satPlusParent4;
-                                }
-                            }
+                            // Hydro-prefix fused-ring plan / P-25.3.3 orientation plan:
+                            // N>=4 substituent + hydro-prefix locant citation via
+                            // computePeripheralNumberingGeneral has been attempted and
+                            // reverted four times now (see the mancude-reclassification
+                            // gate's own comment above, search "four times", for the full
+                            // writeup of what was fixed, what still isn't, and what a real
+                            // future attempt needs). Since the reclassification gate above
+                            // stays restricted to N==3, hydroPositionNodes is always empty
+                            // for N>=4, so there is nothing for an N>=4 block to cite here
+                            // even if one existed.
 
                             // Substituent / indicated-hydrogen / hydro-prefix locants for
                             // exactly 3 rings, per original Phase 44 logic, extended by the
