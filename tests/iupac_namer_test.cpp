@@ -1069,16 +1069,21 @@ int main() {
         // disjoint locants (7 vs 2,3,4,5).
         {"c1ccc2nc3CCCCc3cc2c1C", "7-methyl-2,3,4,5-tetrahydrodibenzo[1,2-b:3,4-e]pyridine"},
 
-        // Fix round 1 regression guard (review finding B2): this task's all-carbon
-        // mancude reclassification must NOT fire for N==4+ chains (steroids are
-        // explicitly deferred to Task 4) -- before the fix, a tetrahydro-pyridine-
-        // fused 4-ring chain silently had its saturation dropped and was misnamed as
-        // its fully aromatic analog (byte-identical output to the real aromatic
-        // molecule). Structurally validated via check_sssr.exe: 4 rings (6,6,6,6),
-        // 18 heavy atoms (3 aromatic/mancude rings + 1 saturated all-carbon ring).
-        // Falls through unchanged to the same pre-existing generic rejection as
-        // before this task existed.
-        {"C1CCc2cc3cc4ccncc4cc3cc2C1", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."},
+        // Originally a Task 3 fix-round-1 regression guard: when Task 3's all-carbon
+        // mancude reclassification was (at the time) restricted to N==3 only, this
+        // tetrahydro-pyridine-fused 4-ring chain fell through to the pre-existing
+        // generic rejection, guarding against a real misname bug (silently dropping
+        // saturation, byte-identical to the fully aromatic analog) that the N==3
+        // restriction was specifically added to prevent until N>=4 had real
+        // handling. Task 4's second attempt fixed the actual blocking bug (a
+        // boundary-trace defect in walkPeripheryClockwise, search "Task 4 (second
+        // attempt)" in IupacNamer.cpp) and lifted that restriction -- this molecule
+        // now correctly NAMES instead of rejecting. Real driver output (not
+        // guessed), re-verified after the fix: the saturated ring's 4 carbons get
+        // tetrahydro treatment. Structurally validated via check_sssr.exe: 4 rings
+        // (6,6,6,6), 18 heavy atoms (3 aromatic/mancude rings + 1 saturated
+        // all-carbon ring).
+        {"C1CCc2cc3cc4ccncc4cc3cc2C1", "5,6,7,8-tetrahydrobenzo[3'',4'':6',1']benzo[4',3':6,1]benzo[4,3-c]pyridine"},
 
         // Regression guard: unsubstituted, FULLY aromatic acridine itself is
         // unaffected by this task's hydroPositionNodes-based guard on the Part A.6
@@ -1151,6 +1156,55 @@ int main() {
         {"c1ccc2cc3OC=CC=Cc3cc2c1", "benzo[3',4':6,1]benzo[3,4-b]oxepine"},
         {"C1CCc2cc3OC=CC=Cc3cc2C1", "7,8,9,10-tetrahydrobenzo[3',4':6,1]benzo[3,4-b]oxepine"},
         {"C1CCc2cc3NC=CC=Cc3cc2C1", "7,8,9,10-tetrahydrobenzo[3',4':6,1]benzo[3,4-b]azepine"},
+
+        // Hydro-prefix fused-ring plan, Task 4 (second attempt): substituent +
+        // hydro-prefix locant citation generalized to N>=4 (steroids), via
+        // computePeripheralNumberingGeneral (extended with the same hydroLocants
+        // criterion as the 3-ring version) after fixing the real blocking bug in
+        // its own walkPeripheryClockwise dependency (a boundary-trace algorithm
+        // that walked the full graph adjacency including fusion bonds and relied
+        // on an unproven "most-clockwise-turn" heuristic to avoid them -- replaced
+        // with the same fusion-bond-excluding periphGraph technique
+        // computePeripheralNumbering3Ring already used, reducing any ortho-fused
+        // tree-of-rings topology to a single simple cycle with no turn-choice
+        // needed at all; search "Task 4 (second attempt)" in IupacNamer.cpp for
+        // the full writeup, at both the reclassification-site comment and
+        // walkPeripheryClockwise's own body).
+        //
+        // Real win: a real constructed 4-ring linear chain (benzo-benzo-pyridine-
+        // saturated-carbocycle shape, 2 saturated all-carbon rings totalling 8 sp3
+        // carbons), structurally validated via check_sssr.exe as 4 ortho-fused
+        // 6-rings, 18 heavy atoms. Real driver output (not guessed):
+        // "1,4,5,6,7,10,11,12-octahydrobenzo[1',2':4,5]benzo[2,1-b]benzo[2,1-e]pyridine".
+        // Per this plan's own established B3a precedent (Task 3), this mechanism's
+        // peripheral numbering has no P-25.3.3 orientation rule, so these locants
+        // are internally self-consistent but not independently verified as the
+        // real Preferred IUPAC Name's own numbering.
+        {"c1c2c(cc(CCCC3)c3c2)nc2CCCCc12", "1,4,5,6,7,10,11,12-octahydrobenzo[1',2':4,5]benzo[2,1-b]benzo[2,1-e]pyridine"},
+
+        // Same molecule with a methyl substituent on a non-bridgehead aromatic
+        // position -- confirms the substituent locant and the 8 hydro locants
+        // land on genuinely disjoint positions from the SAME shared
+        // computePeripheralNumberingGeneral call (the N>=4 analog of Task 3's own
+        // B1 fix), not two independently-numbered, possibly-overlapping calls.
+        // Real driver output (not guessed).
+        {"c1(C)c2c(cc(CCCC3)c3c2)nc2CCCCc12", "8-methyl-1,4,5,6,7,10,11,12-octahydrobenzo[1',2':4,5]benzo[2,1-b]benzo[2,1-e]pyridine"},
+
+        // Regression guard: the all-carbon (no heteroatom at all) analog of the
+        // same 4-ring shape still correctly falls to the PRE-EXISTING, separate
+        // "mandatory Blue Book retained name" exclusion for all-carbon fused ring
+        // systems (that check doesn't know about hydroPositionNodes -- a known,
+        // separate, pre-existing gap, not this task's concern; unaffected by the
+        // walkPeripheryClockwise fix either way since it fires before peripheral
+        // numbering is ever attempted). Structurally validated via check_sssr.exe:
+        // 4 rings (6,6,6,6), 18 heavy atoms.
+        {"C1CCc2cc3cc4CCCCc4cc3cc2C1", "", true, "All-carbon fused ring systems (e.g. anthracene, phenanthrene, benzo[c]cycloheptatriene) have mandatory Blue Book retained names; systematic fusion nomenclature via this mechanism is not applicable."},
+
+        // Regression guard: the fully aromatic (no saturation anywhere) analog of
+        // the pyridine-containing 4-ring shape is unaffected by this task's
+        // changes -- names identically to how nameLinearChainFusion already
+        // produced it before this task existed.
+        {"c1ccc2cc3cc4ccncc4cc3cc2c1", "benzo[3'',4'':6',1']benzo[4',3':6,1]benzo[4,3-c]pyridine"},
 
         // Negative/regression cases for the same dispatcher, confirming it
         // correctly declines (falls through to the pre-existing, unchanged
