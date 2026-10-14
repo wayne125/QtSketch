@@ -5817,6 +5817,27 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                             if (classOkN[i]) {
                                 for (size_t bi = 0; bi < cyclesN[i].size(); ++bi) {
                                     int node = cyclesN[i][bi];
+                                    // Fix round 2 -> fix round 3 (re-review): restrict this
+                                    // check to CARBON ring atoms only. A mancude-but-not-
+                                    // fully-aromatic ring (AZEPINE/OXEPINE/etc.) has real
+                                    // alternating single/double ring bonds -- its O/S/NH
+                                    // heteroatom always has two SINGLE ring bonds in that
+                                    // legitimate pattern (the double bonds fall on carbon-
+                                    // carbon positions), which the carbon-only all-carbon
+                                    // version of this check never had to account for. Without
+                                    // this restriction, a mancude oxepine/azepine ring was
+                                    // wrongly flagged as "saturated" via its own heteroatom,
+                                    // producing a false rejection for a perfectly valid mancude
+                                    // molecule (re-review probes:
+                                    // "C1CCc2cc3OC=CC=Cc3cc2C1" and
+                                    // "C1CCc2cc3NC=CC=Cc3cc2C1", both wrongly rejected before
+                                    // this fix). A genuine saturated position is always a ring
+                                    // CARBON with both ring bonds single; checking only carbon
+                                    // atoms still catches every real saturated-heteroring case
+                                    // this guard exists for (PIPERIDINE, the 5 Hantzsch-Widman
+                                    // shapes from fix round 2, etc.) since each has at least one
+                                    // sp3 ring carbon.
+                                    if (g.nodes[node].atomicNumber != 6) continue;
                                     int prevNode = cyclesN[i][(bi - 1 + cyclesN[i].size()) % cyclesN[i].size()];
                                     int nextNode = cyclesN[i][(bi + 1) % cyclesN[i].size()];
                                     bool bothSingle = true;

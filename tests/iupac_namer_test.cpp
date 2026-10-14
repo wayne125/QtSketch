@@ -1131,15 +1131,25 @@ int main() {
         {"C1CCc2cc3OCCCCc3cc2C1", "", true, "Combining hydro-prefix carbocycle saturation with a saturated heterocyclic ring in the same fused system is not yet supported."},
         {"C1CCc2cc3OCSc3cc2C1", "", true, "Combining hydro-prefix carbocycle saturation with a saturated heterocyclic ring in the same fused system is not yet supported."},
 
-        // Regression guard: the fully MANCUDE GENERAL_HETEROCYCLE analog (no real
-        // saturation anywhere) must be unaffected by the heteroRingHasSaturatedAtom
-        // check above -- it has no saturated atom, so the guard correctly leaves it
-        // alone (this molecule doesn't even reach the guard's hydroPositionNodes
-        // gate, since nothing here is hydro-reclassified, but confirms the
-        // heteroRingHasSaturatedAtom computation itself doesn't misfire on a
-        // genuinely mancude ring). Pre-existing, unrelated naming-pattern gap (an
-        // already-wrong azepine fusion descriptor) is not this task's concern.
-        {"c1ccc2cc3NCCCCc3cc2c1", "benzo[3',4':6,1]benzo[3,4-b]1-azepine"},
+        // Fix round 2 -> fix round 3 (re-review correction): the original pin here
+        // ("c1ccc2cc3NCCCCc3cc2c1") was NOT actually mancude -- its "NCCCC" ring is
+        // a real saturated azepane (4 sp3 carbons), so it wasn't a valid sanity
+        // check for "the guard leaves a genuinely mancude ring alone" at all (the
+        // comment's claim was wrong; this exact mistake was also present in the
+        // plan's own suggested probe). Replaced with a REAL mancude oxepine fusion
+        // (alternating single/double ring bonds, no sp3 position) to actually
+        // exercise that claim, plus two cases that exercise the carbon-only
+        // restriction directly: a hydro-reclassified carbocycle fused to a mancude
+        // (not saturated) oxepine/azepine ring. Before the carbon-only restriction
+        // was added (re-review finding on fix round 2), the heteroRingHasSaturatedAtom
+        // check wrongly flagged the oxepine/azepine ring's own O/NH heteroatom as
+        // "saturated" (every heteroatom in a mancude-but-not-fully-aromatic ring has
+        // two single ring bonds as part of its legitimate alternating pattern, which
+        // is not the same thing as a genuine sp3 saturated position) -- these two
+        // molecules were WRONGLY REJECTED before this fix; both now correctly name.
+        {"c1ccc2cc3OC=CC=Cc3cc2c1", "benzo[3',4':6,1]benzo[3,4-b]oxepine"},
+        {"C1CCc2cc3OC=CC=Cc3cc2C1", "7,8,9,10-tetrahydrobenzo[3',4':6,1]benzo[3,4-b]oxepine"},
+        {"C1CCc2cc3NC=CC=Cc3cc2C1", "7,8,9,10-tetrahydrobenzo[3',4':6,1]benzo[3,4-b]azepine"},
 
         // Negative/regression cases for the same dispatcher, confirming it
         // correctly declines (falls through to the pre-existing, unchanged
