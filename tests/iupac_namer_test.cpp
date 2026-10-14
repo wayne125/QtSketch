@@ -936,6 +936,30 @@ int main() {
         // (6,6,6,6), 1 N, 20 heavy atoms.
         {"c1ccc2cc3ncc(-c4ccccc4)cc3cc2c1", "3-phenylbenzo[3',4':6,1]benzo[3,4-b]pyridine"},
 
+        // Hydro-prefix fused-ring plan, Task 1 (Mechanism A: saturated N/O/S-heterocycle
+        // fusion support). classifyMonocyclicHeteroRing already classifies a saturated
+        // ring as its own dedicated retained-name RingType (PIPERIDINE, etc.) when
+        // allowSaturated=true, but its allSingleInRing/heteroAromatic check scans ALL
+        // bonds where both endpoints are in the ring's own cycle -- which includes the
+        // bond shared with a fused neighbor. If that neighbor is aromatic, the shared
+        // bond is order 4, making allSingleInRing false even for an otherwise fully
+        // saturated ring. Fixed by passing the ring's own fusion bonds (from the
+        // already-computed sharedNodesPairs) so the classifier excludes them. No real
+        // corpus molecule matching this exact shape (3-ring linear chain, one ring a
+        // saturated N/O/S-heterocycle) was found within this task's search budget --
+        // verified synthetically instead, matching this session's established fallback
+        // for mechanisms with zero current real-corpus wins (T3/T5 earlier in this
+        // session used the same practice). Structurally validated via check_sssr.exe:
+        // 3 rings (6,6,6), 14 heavy atoms, benzo+pyridine+piperidine linear chain.
+        {"c1c2c(cccc2)nc2CCNCc12", "benzo[2,1-b]piperidino[3,4-e]pyridine"},
+        // Regression guard: same shape but the saturated ring's nitrogen sits directly
+        // adjacent to the ring-fusion carbon -- hits a separate, pre-existing,
+        // unrelated gap in exocyclic-amine substituent handling (not a hydro-prefix-
+        // plan bug; confirmed by locating the exact rejection message's origin,
+        // IupacNamer.cpp:13270/13298, far outside nameLinearChainFusion). Pinned to
+        // confirm this specific unrelated gap's message stays unchanged.
+        {"c1c2c(cccc2)nc2CCCNc12", "", true, "Branched, ring, or unsaturated chains on N-substituted exocyclic amines are not supported"},
+
         // Negative/regression cases for the same dispatcher, confirming it
         // correctly declines (falls through to the pre-existing, unchanged
         // rejection) rather than misnaming or silently dropping a substituent:

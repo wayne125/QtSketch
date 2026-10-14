@@ -1181,6 +1181,16 @@ QString getFusionPrefixShared(RingType t) {
     if (t == RingType::THIEPINE) return "thiepino";
     if (t == RingType::SELENEPINE) return "selenepino";
     if (t == RingType::TELLUREPINE) return "tellurepino";
+    if (t == RingType::PIPERIDINE) return "piperidino";
+    if (t == RingType::PYRROLIDINE) return "pyrrolidino";
+    if (t == RingType::TETRAHYDROFURAN) return "tetrahydrofuro";
+    if (t == RingType::TETRAHYDROTHIOPHENE) return "tetrahydrothieno";
+    if (t == RingType::PYRAZOLIDINE) return "pyrazolidino";
+    if (t == RingType::ISOXAZOLIDINE) return "isoxazolidino";
+    if (t == RingType::ISOTHIAZOLIDINE) return "isothiazolidino";
+    if (t == RingType::IMIDAZOLIDINE) return "imidazolidino";
+    if (t == RingType::OXAZOLIDINE) return "oxazolidino";
+    if (t == RingType::THIAZOLIDINE) return "thiazolidino";
     return "";
 }
 
@@ -1211,11 +1221,21 @@ QString getBaseNameShared(RingType t) {
     if (t == RingType::THIEPINE) return "thiepine";
     if (t == RingType::SELENEPINE) return "selenepine";
     if (t == RingType::TELLUREPINE) return "tellurepine";
+    if (t == RingType::PIPERIDINE) return "piperidine";
+    if (t == RingType::PYRROLIDINE) return "pyrrolidine";
+    if (t == RingType::TETRAHYDROFURAN) return "tetrahydrofuran";
+    if (t == RingType::TETRAHYDROTHIOPHENE) return "tetrahydrothiophene";
+    if (t == RingType::PYRAZOLIDINE) return "pyrazolidine";
+    if (t == RingType::ISOXAZOLIDINE) return "isoxazolidine";
+    if (t == RingType::ISOTHIAZOLIDINE) return "isothiazolidine";
+    if (t == RingType::IMIDAZOLIDINE) return "imidazolidine";
+    if (t == RingType::OXAZOLIDINE) return "oxazolidine";
+    if (t == RingType::THIAZOLIDINE) return "thiazolidine";
     return "";
 }
 
 
-bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHeteroNodes, int ringSize, const std::vector<int> &ringCycle, RingType &outType, QString &outNameRoot, QString &outErrorMsg, bool allowSaturated = false) {
+bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHeteroNodes, int ringSize, const std::vector<int> &ringCycle, RingType &outType, QString &outNameRoot, QString &outErrorMsg, bool allowSaturated = false, const std::vector<std::pair<int,int>> &fusionBonds = {}) {
     outErrorMsg.clear();
     bool heteroAromatic = true;
     bool allSingleInRing = true;
@@ -1223,6 +1243,19 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
         bool uIn = (std::find(ringCycle.begin(), ringCycle.end(), gb.u) != ringCycle.end());
         bool vIn = (std::find(ringCycle.begin(), ringCycle.end(), gb.v) != ringCycle.end());
         if (uIn && vIn) {
+            // A bond this ring shares with a fused neighbor reflects the NEIGHBOR's
+            // own bond order (e.g. aromatic order 4 if the neighbor is aromatic),
+            // not this ring's own saturation -- skip it when the caller tells us
+            // which bonds are fusion bonds (callers outside a fused-ring context
+            // pass none, preserving this function's original behavior exactly).
+            bool isFusionBond = false;
+            for (const auto &fb : fusionBonds) {
+                if ((fb.first == gb.u && fb.second == gb.v) || (fb.first == gb.v && fb.second == gb.u)) {
+                    isFusionBond = true;
+                    break;
+                }
+            }
+            if (isFusionBond) continue;
             if (gb.order != 4) heteroAromatic = false;
             if (gb.order != 1) allSingleInRing = false;
         }
@@ -5666,7 +5699,19 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                     for (int n : nodesN[i]) if (g.nodes[n].atomicNumber != 6) rHeteroN[i].push_back(n);
                     if (cyclesN[i].size() == nodesN[i].size()) {
                         QString d1, d2;
-                        classOkN[i] = classifyMonocyclicHeteroRing(g, rHeteroN[i], static_cast<int>(nodesN[i].size()), cyclesN[i], typesN[i], d1, d2);
+                        // A ring's own saturation check must not be confused by a bond it
+                        // shares with a fused neighbor (that bond's order reflects the
+                        // NEIGHBOR's aromaticity, not this ring's) -- pass every bond this
+                        // ring shares with another ring in the fused system so
+                        // classifyMonocyclicHeteroRing can exclude it from allSingleInRing/
+                        // heteroAromatic.
+                        std::vector<std::pair<int,int>> ringIFusionBonds;
+                        for (int j = 0; j < N; ++j) {
+                            if (j != i && shared[i][j] == 2 && sharedNodesPairs[i][j].size() == 2) {
+                                ringIFusionBonds.push_back({sharedNodesPairs[i][j][0], sharedNodesPairs[i][j][1]});
+                            }
+                        }
+                        classOkN[i] = classifyMonocyclicHeteroRing(g, rHeteroN[i], static_cast<int>(nodesN[i].size()), cyclesN[i], typesN[i], d1, d2, true, ringIFusionBonds);
                     }
                     if (!classOkN[i]) allClassified = false;
                 }
@@ -5684,7 +5729,12 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                            t == RingType::CYCLOPENTADIENE || t == RingType::CYCLOHEPTATRIENE ||
                            t == RingType::AZEPINE || t == RingType::OXEPINE ||
                            t == RingType::THIEPINE || t == RingType::SELENEPINE ||
-                           t == RingType::TELLUREPINE || t == RingType::GENERAL_HETEROCYCLE;
+                           t == RingType::TELLUREPINE || t == RingType::GENERAL_HETEROCYCLE ||
+                           t == RingType::PIPERIDINE || t == RingType::PYRROLIDINE ||
+                           t == RingType::TETRAHYDROFURAN || t == RingType::TETRAHYDROTHIOPHENE ||
+                           t == RingType::PYRAZOLIDINE || t == RingType::ISOXAZOLIDINE ||
+                           t == RingType::ISOTHIAZOLIDINE || t == RingType::IMIDAZOLIDINE ||
+                           t == RingType::OXAZOLIDINE || t == RingType::THIAZOLIDINE;
                 };
 
                 bool allAllowed = allClassified;
@@ -5711,7 +5761,9 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                 cands.push_back(bwd);
                             }
                         } else if (t == RingType::FURAN || t == RingType::THIOPHENE || t == RingType::SELENOPHENE || t == RingType::TELLUROPHENE || t == RingType::PHOSPHININE || t == RingType::PYRIDINE || t == RingType::PYRROLE ||
-                           t == RingType::AZEPINE || t == RingType::OXEPINE || t == RingType::THIEPINE || t == RingType::SELENEPINE || t == RingType::TELLUREPINE) {
+                           t == RingType::AZEPINE || t == RingType::OXEPINE || t == RingType::THIEPINE || t == RingType::SELENEPINE || t == RingType::TELLUREPINE ||
+                           t == RingType::PIPERIDINE || t == RingType::PYRROLIDINE ||
+                           t == RingType::TETRAHYDROFURAN || t == RingType::TETRAHYDROTHIOPHENE) {
                             if (hNodes.size() == 1) {
                                 int hNode = hNodes[0];
                                 int hIdx = -1;
@@ -5740,7 +5792,8 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                     if (bwd2[reqOtherIdx] == n1) cands.push_back(bwd2);
                                 }
                             }
-                        } else if (t == RingType::IMIDAZOLE || t == RingType::PYRAZOLE) {
+                        } else if (t == RingType::IMIDAZOLE || t == RingType::PYRAZOLE ||
+                           t == RingType::IMIDAZOLIDINE || t == RingType::PYRAZOLIDINE) {
                             if (hNodes.size() == 2) {
                                 int hNH = -1, hN = -1;
                                 if (g.nodes[hNodes[0]].totalH >= 1 || g.nodes[hNodes[0]].neighbors.size() == 3) { hNH = hNodes[0]; hN = hNodes[1]; }
@@ -5750,12 +5803,14 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                 if (hIdx != -1) {
                                     std::vector<int> fwd(rSize), bwd(rSize);
                                     for (int i = 0; i < rSize; ++i) { fwd[i] = rCycle[(hIdx + i) % rSize]; bwd[i] = rCycle[(hIdx - i + rSize) % rSize]; }
-                                    int reqOtherIdx = (t == RingType::IMIDAZOLE) ? 2 : 1;
+                                    int reqOtherIdx = (t == RingType::IMIDAZOLE || t == RingType::IMIDAZOLIDINE) ? 2 : 1;
                                     if (fwd[reqOtherIdx] == hN) cands.push_back(fwd);
                                     if (bwd[reqOtherIdx] == hN) cands.push_back(bwd);
                                 }
                             }
-                        } else if (t == RingType::OXAZOLE || t == RingType::ISOXAZOLE || t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE) {
+                        } else if (t == RingType::OXAZOLE || t == RingType::ISOXAZOLE || t == RingType::THIAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::SELENAZOLE || t == RingType::ISOSELENAZOLE ||
+                           t == RingType::OXAZOLIDINE || t == RingType::ISOXAZOLIDINE ||
+                           t == RingType::THIAZOLIDINE || t == RingType::ISOTHIAZOLIDINE) {
                             if (hNodes.size() == 2) {
                                 int hOS = -1, hN = -1;
                                 int z0 = g.nodes[hNodes[0]].atomicNumber;
@@ -5766,7 +5821,8 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                 if (hIdx != -1) {
                                     std::vector<int> fwd(rSize), bwd(rSize);
                                     for (int i = 0; i < rSize; ++i) { fwd[i] = rCycle[(hIdx + i) % rSize]; bwd[i] = rCycle[(hIdx - i + rSize) % rSize]; }
-                                    int reqNIdx = (t == RingType::ISOXAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::ISOSELENAZOLE) ? 1 : 2;
+                                    int reqNIdx = (t == RingType::ISOXAZOLE || t == RingType::ISOTHIAZOLE || t == RingType::ISOSELENAZOLE ||
+                                                   t == RingType::ISOXAZOLIDINE || t == RingType::ISOTHIAZOLIDINE) ? 1 : 2;
                                     if (fwd[reqNIdx] == hN) cands.push_back(fwd);
                                     if (bwd[reqNIdx] == hN) cands.push_back(bwd);
                                 }
