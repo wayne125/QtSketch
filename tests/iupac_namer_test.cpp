@@ -1034,11 +1034,28 @@ int main() {
         // system), falling through to this mechanism's own generic fusion-letter
         // derivation instead. Combining a mandatory retained name with a hydro-prefix
         // under its own canonical numbering is a real, separate gap, left for a
-        // dedicated follow-on rather than guessed here. Manually traced through
-        // computePeripheralNumbering3Ring's own candidate search (not just taken on
-        // faith): the winning candidate assigns locants 2,3,4,5 to the saturated
-        // ring's own 4 atoms (contiguous, all one ring, not spanning two rings as an
-        // initial review pass suspected before this trace).
+        // dedicated follow-on rather than guessed here.
+        //
+        // KNOWN WRONG LOCANTS (re-review corrected an earlier, too-generous ruling
+        // here): the pinned locants "2,3,4,5" are NOT the correct IUPAC locants for
+        // this skeleton -- real tetrahydroacridine is 1,2,3,4-tetrahydroacridine
+        // (and the analogous dibenzopyrazine case is 1,2,3,4-tetrahydrophenazine).
+        // computePeripheralNumbering3Ring (search "This candidate search" for its
+        // own doc comment) has no P-25.3.3 orientation rule -- it starts numbering
+        // at any non-bridgehead atom following a bridgehead and picks whichever
+        // start/direction minimizes heteroatomLocants, which for THIS skeleton
+        // lets locant 1 land on a MIDDLE-ring atom (the pyridine N) with a "1a"
+        // bridgehead immediately after it -- something no valid oriented fused-ring
+        // numbering produces. All 4 hydro locants do land on the same physical ring
+        // (verified by tracing the actual candidate), so the set is internally
+        // self-consistent, but self-consistency is not the same as being the real
+        // IUPAC locants. This defect is inherited from this function's pre-existing
+        // architecture (same function Task 2 already reviewed and accepted for
+        // substituent/indicated-H citation), not introduced by this task -- fixing
+        // it means adding a real P-25.3.3 orientation rule to
+        // computePeripheralNumbering3Ring, a separate, larger-scoped follow-on.
+        // Pinned here as the mechanism's actual current output, not as a claim that
+        // this is the correct Preferred IUPAC Name.
         {"c1c2c(cccc2)nc2CCCCc12", "2,3,4,5-tetrahydrodibenzo[1,2-b:1,2-e]pyridine"},
 
         // Fix round 1 regression guard (review finding B1): a substituent on the
@@ -1096,6 +1113,33 @@ int main() {
         // 3 rings (6,6,6), 14 heavy atoms (1 saturated all-carbon ring, 1 aromatic
         // benzo, 1 saturated N-heterocycle).
         {"C1CCc2cc3NCCCc3cc2C1", "", true, "Combining hydro-prefix carbocycle saturation with a saturated heterocyclic ring in the same fused system is not yet supported."},
+
+        // Fix round 1, I4 re-review correction: the enumerated-RingType guard above
+        // missed that classifyMonocyclicHeteroRing's Hantzsch-Widman fallback
+        // returns the SAME RingType::GENERAL_HETEROCYCLE value for both its mancude
+        // branches and its saturated branches -- a type-based list can't tell those
+        // apart. Fixed by checking real per-atom saturation (heteroRingHasSaturatedAtom)
+        // instead of enumerating types. These 5 molecules (a saturated azepane,
+        // 1,4-diazepane, azocane, oxepane, and oxathiolane, each fused to a hydro-
+        // reclassified all-carbon ring) were all WRONGLY NAMED before this
+        // correction (e.g. "...tetrahydrobenzo[...]1-azepine" with the azepane's own
+        // saturation silently dropped); all 5 now reject the same way the
+        // PIPERIDINE case above already did.
+        {"C1CCc2cc3NCCCCc3cc2C1", "", true, "Combining hydro-prefix carbocycle saturation with a saturated heterocyclic ring in the same fused system is not yet supported."},
+        {"C1CCc2cc3NCCCNc3cc2C1", "", true, "Combining hydro-prefix carbocycle saturation with a saturated heterocyclic ring in the same fused system is not yet supported."},
+        {"C1CCc2cc3NCCCCCc3cc2C1", "", true, "Combining hydro-prefix carbocycle saturation with a saturated heterocyclic ring in the same fused system is not yet supported."},
+        {"C1CCc2cc3OCCCCc3cc2C1", "", true, "Combining hydro-prefix carbocycle saturation with a saturated heterocyclic ring in the same fused system is not yet supported."},
+        {"C1CCc2cc3OCSc3cc2C1", "", true, "Combining hydro-prefix carbocycle saturation with a saturated heterocyclic ring in the same fused system is not yet supported."},
+
+        // Regression guard: the fully MANCUDE GENERAL_HETEROCYCLE analog (no real
+        // saturation anywhere) must be unaffected by the heteroRingHasSaturatedAtom
+        // check above -- it has no saturated atom, so the guard correctly leaves it
+        // alone (this molecule doesn't even reach the guard's hydroPositionNodes
+        // gate, since nothing here is hydro-reclassified, but confirms the
+        // heteroRingHasSaturatedAtom computation itself doesn't misfire on a
+        // genuinely mancude ring). Pre-existing, unrelated naming-pattern gap (an
+        // already-wrong azepine fusion descriptor) is not this task's concern.
+        {"c1ccc2cc3NCCCCc3cc2c1", "benzo[3',4':6,1]benzo[3,4-b]1-azepine"},
 
         // Negative/regression cases for the same dispatcher, confirming it
         // correctly declines (falls through to the pre-existing, unchanged

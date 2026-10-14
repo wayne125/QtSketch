@@ -5713,6 +5713,16 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                 // aromatic ring simply contributes nothing here -- harmless to check
                 // uniformly rather than only for rings this task reclassifies below).
                 std::set<int> hydroPositionNodes;
+                // Hydro-prefix fused-ring plan, Task 3 fix round 1 (re-review finding:
+                // the I4 guard's enumerated RingType list missed GENERAL_HETEROCYCLE,
+                // which classifyMonocyclicHeteroRing also returns for its own saturated
+                // Hantzsch-Widman fallback branches, not just mancude ones -- a type
+                // list can't distinguish the two uses of the same RingType value).
+                // Tracks, per heteroatom ring, whether it has a genuinely saturated
+                // position (both ring-internal bonds order 1) -- the real structural
+                // signature of "this ring was classified via a saturated branch",
+                // independent of which specific RingType it ended up as.
+                std::vector<bool> heteroRingHasSaturatedAtom(N, false);
 
                 for (int i = 0; i < N; ++i) {
                     cyclesN[i] = buildCycleN(nodesN[i]);
@@ -5804,31 +5814,47 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                             }
                         } else {
                             classOkN[i] = classifyMonocyclicHeteroRing(g, rHeteroN[i], static_cast<int>(nodesN[i].size()), cyclesN[i], typesN[i], d1, d2, true, ringIFusionBonds);
+                            if (classOkN[i]) {
+                                for (size_t bi = 0; bi < cyclesN[i].size(); ++bi) {
+                                    int node = cyclesN[i][bi];
+                                    int prevNode = cyclesN[i][(bi - 1 + cyclesN[i].size()) % cyclesN[i].size()];
+                                    int nextNode = cyclesN[i][(bi + 1) % cyclesN[i].size()];
+                                    bool bothSingle = true;
+                                    for (int neigh : {prevNode, nextNode}) {
+                                        int order = -1;
+                                        for (size_t ni = 0; ni < g.nodes[node].neighbors.size(); ++ni) {
+                                            if (g.nodes[node].neighbors[ni] == neigh) {
+                                                order = g.nodes[node].bondOrders[ni];
+                                                break;
+                                            }
+                                        }
+                                        if (order != 1) bothSingle = false;
+                                    }
+                                    if (bothSingle) { heteroRingHasSaturatedAtom[i] = true; break; }
+                                }
+                            }
                         }
                     }
                     if (!classOkN[i]) allClassified = false;
                 }
 
-                // Hydro-prefix fused-ring plan, Task 3 fix round 1 (review finding I4):
-                // this task's mancude-reclassification (all-carbon ring -> BENZENE +
-                // hydroPositionNodes) and Task 1's saturated-retained-name mechanism
-                // (a different ring in the same chain classified as PIPERIDINE,
-                // TETRAHYDROFURAN, etc.) were never designed to combine -- the saturated
-                // heteroring's own retained name doesn't compose with a hydro-prefix the
-                // way a mancude-reclassified carbocycle does, and doing so produced an
-                // invalid fusion name (a "piperidino"/"pyrido" component next to a hydro
-                // prefix that only describes the OTHER ring). Reject cleanly rather than
-                // emit a mixed name neither mechanism actually validates.
+                // Hydro-prefix fused-ring plan, Task 3 fix round 1 (review finding I4,
+                // and corrected again on re-review): this task's mancude-
+                // reclassification (all-carbon ring -> BENZENE + hydroPositionNodes)
+                // and Task 1's saturated-retained-name mechanism (a different ring in
+                // the same chain genuinely saturated -- PIPERIDINE, TETRAHYDROFURAN,
+                // but ALSO a saturated GENERAL_HETEROCYCLE fallback, e.g. azepane/
+                // oxepane/oxathiolane shapes, which classifyMonocyclicHeteroRing
+                // returns for BOTH its mancude Hantzsch-Widman branches and its
+                // saturated ones -- an enumerated RingType list can't tell those two
+                // uses apart) were never designed to combine. Fixed by checking real
+                // structural saturation (heteroRingHasSaturatedAtom, computed the same
+                // way as hydroPositionNodes itself) instead of enumerating RingType
+                // values -- a mancude GENERAL_HETEROCYCLE ring has heteroRingHasSaturatedAtom[i]
+                // false and is correctly left alone.
                 if (!hydroPositionNodes.empty()) {
-                    auto isTask1SaturatedHeteroType = [](RingType t) {
-                        return t == RingType::PIPERIDINE || t == RingType::PYRROLIDINE ||
-                               t == RingType::TETRAHYDROFURAN || t == RingType::TETRAHYDROTHIOPHENE ||
-                               t == RingType::PYRAZOLIDINE || t == RingType::ISOXAZOLIDINE ||
-                               t == RingType::ISOTHIAZOLIDINE || t == RingType::IMIDAZOLIDINE ||
-                               t == RingType::OXAZOLIDINE || t == RingType::THIAZOLIDINE;
-                    };
                     for (int i = 0; i < N; ++i) {
-                        if (isTask1SaturatedHeteroType(typesN[i])) {
+                        if (heteroRingHasSaturatedAtom[i]) {
                             return {RingSystemNameResult{false, "Combining hydro-prefix carbocycle saturation with a saturated heterocyclic ring in the same fused system is not yet supported.", "", {}}};
                         }
                     }
