@@ -23548,16 +23548,39 @@ std::map<int, QString> computePeripheralNumbering3Ring(
     // first) is independent of whatever fusion-letter numbering the caller's
     // own NameScore comparator already settled on -- confirmed by direct
     // investigation (hydro-prefix fused-ring plan, Task 2) not to share state
-    // with it. This is deliberate, not a gap: P-25.3 fusion-letter
-    // assignment and P-25.3.1/P-31 peripheral numbering (which indicated
-    // hydrogen and hydro-locants both belong to) are separate IUPAC locant
-    // systems, each optimized on its own criteria. Do not "fix" this by
-    // folding this search into NameScore's own comparator -- that would
-    // conflate two legitimately independent numbering systems for no
-    // correctness benefit. Confirmed via a temporary debug trace that this
-    // search is genuinely non-trivial on real molecules (e.g. 8 distinct
-    // candidates considered, winning index varying by molecule, not a
-    // degenerate always-first-candidate pattern).
+    // with it, and confirmed via a temporary debug trace that the search is
+    // genuinely non-trivial on real molecules (e.g. 8 distinct candidates
+    // considered, winning index varying by molecule, not a degenerate
+    // always-first-candidate pattern). Do NOT "fix" this independence by
+    // folding the search into NameScore's own comparator -- P-25.3
+    // fusion-letter assignment and P-25.3.1/P-31 peripheral numbering are
+    // legitimately separate IUPAC locant systems, and conflating them here
+    // would buy no correctness benefit.
+    //
+    // This independence from NameScore does NOT mean this one call always
+    // produces a fully correct molecule-wide locant set on its own -- two
+    // real gaps, confirmed by task review, remain open as of Task 2:
+    // (1) The N==3 caller makes TWO SEPARATE calls to this function for the
+    //     same molecule -- one for substituent locants (passing
+    //     substituentBearingNodes, preferIndicatedHydrogenLocant=false) and
+    //     one for indicated-H locants (passing {}, true). Each runs its own
+    //     independent search, so when heteroatomLocants tie between
+    //     candidates, the two calls can pick DIFFERENT winning peripheral
+    //     numbering directions, producing a name whose substituent locants
+    //     and indicated-H locant come from two different numberings of the
+    //     same ring system. Any future locant class added to this N==3 path
+    //     (e.g. hydro-locants) MUST be folded into ONE shared call alongside
+    //     substituents and indicated-H, not added as a third independent
+    //     call, or this divergence risk compounds.
+    // (2) Carbocyclic indicated-H (CYCLOPENTADIENE/CYCLOHEPTATRIENE's sp3
+    //     position) is never a candidate-comparator criterion here -- the
+    //     z!=6 filter on heteroatomLocants excludes carbon entirely, so when
+    //     heteroatom locants tie, a carbocyclic indicated-H position's final
+    //     locant falls to raw candidateIndex, not a true lowest-locant rule.
+    //     This search only correctly minimizes for NH-type (nitrogen)
+    //     indicated H today. A future hydro-locant addition on a carbocyclic
+    //     ring would inherit this same gap unless this comparator is
+    //     extended with a genuine carbon-position criterion.
     return bestIt->locantMap;
 }
 
