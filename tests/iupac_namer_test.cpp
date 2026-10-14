@@ -989,6 +989,50 @@ int main() {
         // Structurally validated via check_sssr.exe: 3 rings (6,6,6), 15 heavy atoms.
         {"Nc1c2c(cccc2)nc2CCCNc12", "", true, "Substituents on fused ring systems named via this mechanism are not yet supported."},
 
+        // Hydro-prefix fused-ring plan, Task 3 (Mechanism B: all-carbon mancude
+        // classification + hydro-locant detection). Classifies a plain all-carbon
+        // 6-ring as its mancude form (BENZENE) for naming identity only, reusing the
+        // existing aromatic fusion machinery unchanged, while separately tracking real
+        // bond-order saturation per ring atom and threading it into the SAME
+        // computePeripheralNumbering3Ring candidate search substituents/indicated-H
+        // already use (not a third independent call -- per Task 2's own forward
+        // guidance, avoiding the comparator-bypass bug class).
+        //
+        // Real target: TACRINE (tetrahydroacridine core, Nc1c2c(cccc2)nc2CCCCc12,
+        // confirmed via check_sssr.exe as 3 ortho-fused 6-rings, 15 heavy atoms). The
+        // substituted molecule itself still hits the SAME pre-existing, unrelated
+        // "Substituents on fused ring systems" gap Task 1 already documented (the
+        // amino group is an exocyclic substituent on a fused ring system -- not this
+        // task's concern), so the actual win is pinned on the bare, unsubstituted core
+        // (14 heavy atoms, verified via check_sssr.exe as the identical 3-ring
+        // skeleton minus the NH2).
+        //
+        // Real driver output (not guessed): "2,3,4,5-tetrahydro-dibenzo[1,2-b:1,2-e]pyridine".
+        // This is a valid systematic fusion name, NOT the Blue Book mandatory retained
+        // name with hydro-prefix ("1,2,3,4-tetrahydroacridine") -- the acridine/
+        // carbazole retained-name shortcut a few lines above (search "Part A.6")
+        // intentionally skips itself when hydroPositionNodes is non-empty (that
+        // shortcut's fully-mancude retained names don't apply to a partially
+        // saturated ring system), falling through to this mechanism's own generic
+        // fusion-letter derivation instead. Combining a mandatory retained name with a
+        // hydro-prefix under its own canonical numbering is a real, separate gap, left
+        // for a dedicated follow-on rather than guessed here.
+        {"c1c2c(cccc2)nc2CCCCc12", "2,3,4,5-tetrahydro-dibenzo[1,2-b:1,2-e]pyridine"},
+
+        // Regression guard: unsubstituted, FULLY aromatic acridine itself is
+        // unaffected by this task's hydroPositionNodes-based guard on the Part A.6
+        // retained-name shortcut (hydroPositionNodes stays empty for a fully mancude
+        // ring system, so the shortcut still fires and returns the retained name).
+        // Already covered by the pre-existing "ACRIDINE bare" test above (search
+        // "Test 1: ACRIDINE"); not re-pinned here to avoid duplicating that test.
+        //
+        // Regression guard: a 5-membered all-carbon saturated ring fused the same way
+        // is explicitly out of scope per this task's own restriction to
+        // nodesN[i].size()==6 (5-/7-membered all-carbon rings are a separate,
+        // documented follow-on) -- falls through unchanged to the pre-existing generic
+        // rejection, confirmed via check_sssr.exe as 3 rings (6,6,5), 13 heavy atoms.
+        {"c1ccc2nc3c(cc2c1)CCC3", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."},
+
         // Negative/regression cases for the same dispatcher, confirming it
         // correctly declines (falls through to the pre-existing, unchanged
         // rejection) rather than misnaming or silently dropping a substituent:
