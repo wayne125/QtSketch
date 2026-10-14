@@ -76,7 +76,8 @@ std::map<int, QString> computePeripheralNumberingForMol(int mol);
 std::map<int, QString> computePeripheralNumberingGeneral(
     const Graph &g,
     const FusedRingSystemInput &input,
-    const std::set<int> &substituentBearingNodes = {});
+    const std::set<int> &substituentBearingNodes = {},
+    const std::set<int> &hydroLocantBearingNodes = {});
 
 struct SpiroNumberingResult {
     bool success;
@@ -5755,6 +5756,22 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                             // pre-existing generic rejection as before this task, matching
                             // Task 4's own explicit deferral of N==4 (steroids).
                             //
+                            // Hydro-prefix fused-ring plan, Task 4 attempted to lift this
+                            // restriction (computePeripheralNumberingGeneral extended with a
+                            // parallel hydroLocants criterion, mirroring Task 3's pattern) but
+                            // found a genuine, deep, pre-existing bug in the shared geometry
+                            // module this requires (search "Task 4 ruling" in the SDD ledger
+                            // for the full writeup): walkPeripheryClockwise's boundary-trace
+                            // algorithm (IupacNamer.cpp, ~line 24246) mis-traces the outer
+                            // perimeter of a 4+-ring system at a bridgehead atom (which has 3
+                            // distinct ring-neighbors, not 2), producing a truncated
+                            // perimeter (confirmed via live debug trace: 10 atoms returned
+                            // instead of the real 18) -- NOT something a hydro-prefix-plan
+                            // task should be fixing. Restriction restored to N==3; the
+                            // computePeripheralNumberingGeneral hydroLocants extension itself
+                            // was kept (inert, harmless, correct in isolation) as prep work
+                            // for whoever eventually fixes the boundary-trace bug.
+                            //
                             // Hydro-prefix fused-ring plan, Task 3: an all-carbon 6-ring has
                             // NO path through classifyMonocyclicHeteroRing at all (confirmed
                             // by direct investigation -- its saturated-ring branches are
@@ -6273,7 +6290,12 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                                 collectedSubstituents.push_back({node, subName});
                                             }
                                         } else {
-                                            // N == 2 or N == 4: no peripheral numbering available, reject
+                                            // N == 2 or N == 4+: no peripheral numbering
+                                            // available via this mechanism, reject. (Task 4
+                                            // attempted N>=4 substituent citation via
+                                            // computePeripheralNumberingGeneral; reverted --
+                                            // see the reclassification-site comment above for
+                                            // the blocking geometry-module bug.)
                                             return {RingSystemNameResult{false, "Substituents on fused ring systems named via this mechanism are not yet supported.", "", {}}};
                                         }
                                     }
@@ -6715,6 +6737,18 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                     }
                                 }
                             }
+
+                            // Hydro-prefix fused-ring plan, Task 4 attempted substituent +
+                            // hydro-prefix locant citation generalized to N>=4 (steroids) via
+                            // computePeripheralNumberingGeneral + detectFusedRingDirections.
+                            // Reverted: blocked by a genuine, deep, pre-existing bug in
+                            // walkPeripheryClockwise's boundary-trace algorithm (see the
+                            // reclassification-site comment above, and the SDD ledger's "Task
+                            // 4" entries, for the full writeup) -- out of this plan's scope to
+                            // fix. Since the mancude-reclassification gate above stays
+                            // restricted to N==3, hydroPositionNodes is always empty for
+                            // N>=4, so there is nothing for an N>=4 block to cite here even if
+                            // one existed.
 
                             // Substituent / indicated-hydrogen / hydro-prefix locants for
                             // exactly 3 rings, per original Phase 44 logic, extended by the
@@ -24116,7 +24150,8 @@ static std::vector<int> walkPeripheryClockwise(
 std::map<int, QString> computePeripheralNumberingGeneral(
     const Graph &g,
     const FusedRingSystemInput &input,
-    const std::set<int> &substituentBearingNodes) {
+    const std::set<int> &substituentBearingNodes,
+    const std::set<int> &hydroLocantBearingNodes) {
     std::map<int, QString> emptyMap;
 
     if (input.ringAtoms.empty()) return emptyMap;
@@ -24139,6 +24174,12 @@ std::map<int, QString> computePeripheralNumberingGeneral(
         std::vector<std::pair<int, int>> heteroatomSeniorityAtLocants;
         std::vector<int> fusionCarbonLocants;
         std::vector<int> substituentLocants;
+        // Hydro-prefix fused-ring plan, Task 4: parallel field to
+        // computePeripheralNumbering3Ring's own hydroLocants criterion (Task 3),
+        // extending hydro-locant support to N>=4 ring systems through this
+        // function's own independent candidate search/comparator -- not a
+        // separate call, same reasoning as Task 3's merged-call fix (B1).
+        std::vector<int> hydroLocants;
         int candidateIndex;
     };
 
@@ -24239,10 +24280,30 @@ std::map<int, QString> computePeripheralNumberingGeneral(
             }
         }
 
+        // Hydro-prefix fused-ring plan, Task 4: same locant-extraction shape as
+        // substituentBearingNodes just above, for the hydro-prefix positions.
+        for (int node : hydroLocantBearingNodes) {
+            auto it = cand.locantMap.find(node);
+            if (it != cand.locantMap.end()) {
+                QString locStr = it->second;
+                int numLoc = 0;
+                std::string s = locStr.toStdString();
+                for (char c : s) {
+                    if (std::isdigit(static_cast<unsigned char>(c))) {
+                        numLoc = numLoc * 10 + (c - '0');
+                    } else {
+                        break;
+                    }
+                }
+                cand.hydroLocants.push_back(numLoc);
+            }
+        }
+
         std::sort(cand.heteroatomLocants.begin(), cand.heteroatomLocants.end());
         std::sort(cand.heteroatomSeniorityAtLocants.begin(), cand.heteroatomSeniorityAtLocants.end());
         std::sort(cand.fusionCarbonLocants.begin(), cand.fusionCarbonLocants.end());
         std::sort(cand.substituentLocants.begin(), cand.substituentLocants.end());
+        std::sort(cand.hydroLocants.begin(), cand.hydroLocants.end());
 
         return cand;
     };
@@ -24309,6 +24370,13 @@ std::map<int, QString> computePeripheralNumberingGeneral(
                 return a.heteroatomLocants < b.heteroatomLocants;
             if (a.heteroatomSeniorityAtLocants != b.heteroatomSeniorityAtLocants)
                 return a.heteroatomSeniorityAtLocants < b.heteroatomSeniorityAtLocants;
+            // Hydro-prefix fused-ring plan, Task 4: hydroLocants ranks above
+            // fusionCarbonLocants/substituentLocants, mirroring the precedence
+            // computePeripheralNumbering3Ring's own comparator uses (Task 3, fix
+            // round 1, review finding I3) -- P-31.1.4.2.4 hydro prefixes are
+            // numbered before detachable substituent prefixes are considered.
+            if (a.hydroLocants != b.hydroLocants)
+                return a.hydroLocants < b.hydroLocants;
             if (a.fusionCarbonLocants != b.fusionCarbonLocants)
                 return a.fusionCarbonLocants < b.fusionCarbonLocants;
             if (a.substituentLocants != b.substituentLocants)
