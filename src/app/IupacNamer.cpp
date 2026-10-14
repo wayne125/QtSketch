@@ -1243,19 +1243,31 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
         bool uIn = (std::find(ringCycle.begin(), ringCycle.end(), gb.u) != ringCycle.end());
         bool vIn = (std::find(ringCycle.begin(), ringCycle.end(), gb.v) != ringCycle.end());
         if (uIn && vIn) {
-            // A bond this ring shares with a fused neighbor reflects the NEIGHBOR's
-            // own bond order (e.g. aromatic order 4 if the neighbor is aromatic),
-            // not this ring's own saturation -- skip it when the caller tells us
-            // which bonds are fusion bonds (callers outside a fused-ring context
-            // pass none, preserving this function's original behavior exactly).
-            bool isFusionBond = false;
-            for (const auto &fb : fusionBonds) {
-                if ((fb.first == gb.u && fb.second == gb.v) || (fb.first == gb.v && fb.second == gb.u)) {
-                    isFusionBond = true;
-                    break;
+            // A bond this ring shares with an AROMATIC fused neighbor (order 4)
+            // reflects the neighbor's own aromaticity, not this ring's own
+            // saturation -- skip it from the saturation check when the caller
+            // tells us which bonds are fusion bonds (callers outside a
+            // fused-ring context pass none, preserving this function's
+            // original behavior exactly). Only order-4 bonds are skipped: a
+            // fusion bond shared with a MANCUDE-but-not-fully-aromatic
+            // neighbor (AZEPINE/OXEPINE/THIEPINE/SELENEPINE/TELLUREPINE/
+            // CYCLOHEPTATRIENE, which have real alternating single/double
+            // bonds, not uniform order 4) must still count if it happens to
+            // land on a real double bond -- excluding it unconditionally
+            // would let a ring that's genuinely only partially saturated
+            // (one of its own edges has a real double bond) misclassify as
+            // fully saturated (e.g. wrongly PIPERIDINE instead of a
+            // tetrahydropyridine-shaped partial form).
+            bool isAromaticFusionBond = false;
+            if (gb.order == 4) {
+                for (const auto &fb : fusionBonds) {
+                    if ((fb.first == gb.u && fb.second == gb.v) || (fb.first == gb.v && fb.second == gb.u)) {
+                        isAromaticFusionBond = true;
+                        break;
+                    }
                 }
             }
-            if (isFusionBond) continue;
+            if (isAromaticFusionBond) continue;
             if (gb.order != 4) heteroAromatic = false;
             if (gb.order != 1) allSingleInRing = false;
         }

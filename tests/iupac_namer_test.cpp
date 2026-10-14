@@ -952,13 +952,27 @@ int main() {
         // session used the same practice). Structurally validated via check_sssr.exe:
         // 3 rings (6,6,6), 14 heavy atoms, benzo+pyridine+piperidine linear chain.
         {"c1c2c(cccc2)nc2CCNCc12", "benzo[2,1-b]piperidino[3,4-e]pyridine"},
-        // Regression guard: same shape but the saturated ring's nitrogen sits directly
+        // Adjacent-gap note (not this task's own regression guard, kept as a separate
+        // documented pin): same shape but the saturated ring's nitrogen sits directly
         // adjacent to the ring-fusion carbon -- hits a separate, pre-existing,
         // unrelated gap in exocyclic-amine substituent handling (not a hydro-prefix-
         // plan bug; confirmed by locating the exact rejection message's origin,
-        // IupacNamer.cpp:13270/13298, far outside nameLinearChainFusion). Pinned to
-        // confirm this specific unrelated gap's message stays unchanged.
+        // IupacNamer.cpp:13270/13298, far outside nameLinearChainFusion). This one does
+        // NOT exercise this task's own new code (the rejection fires upstream of
+        // classifyMonocyclicHeteroRing entirely) -- kept only to document the adjacent
+        // gap's message stays unchanged, not as Task 1's regression guard.
         {"c1c2c(cccc2)nc2CCCNc12", "", true, "Branched, ring, or unsaturated chains on N-substituted exocyclic amines are not supported"},
+        // Task 1's actual regression guard: a saturated TWO-heteroatom ring with an
+        // unsupported 1,4-relationship (two N atoms 3 positions apart in a 6-ring --
+        // classifyMonocyclicHeteroRing's saturated two-heteroatom branches only support
+        // 1,2- and 1,3-relationships, per its own documented non-goal). Confirmed via a
+        // temporary debug trace (added and removed during this task) that this
+        // genuinely reaches and exercises the new allowSaturated=true classification
+        // path for ring 2 (classOk=0 there specifically, not an upstream gate) --
+        // unlike the pin directly above, which never reaches this task's new code at
+        // all. Structurally validated via check_sssr.exe: 3 rings (6,6,6), 14 heavy
+        // atoms, 2 N atoms in the saturated ring.
+        {"c1c2c(cccc2)nc2CNCNc12", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."},
 
         // Negative/regression cases for the same dispatcher, confirming it
         // correctly declines (falls through to the pre-existing, unchanged
