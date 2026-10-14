@@ -1183,6 +1183,34 @@ QString getFusionPrefixShared(RingType t) {
     if (t == RingType::THIEPINE) return "thiepino";
     if (t == RingType::SELENEPINE) return "selenepino";
     if (t == RingType::TELLUREPINE) return "tellurepino";
+    // KNOWN GAP (hydro-prefix fused-ring plan, final whole-branch review):
+    // these 10 entries (Task 1) name a saturated heterocyclic fusion
+    // component via its OWN dedicated retained-name/fusion-prefix (e.g.
+    // "piperidino", a real PIN "benzo[2,1-b]piperidino[3,4-e]pyridine" --
+    // confirmed real driver output, pinned in tests/iupac_namer_test.cpp).
+    // Task 3's own comment two sections below states the opposite general
+    // principle for all-carbon rings: real IUPAC names a saturated
+    // component via its MANCUDE parent plus a hydro-prefix, not a
+    // dedicated "cyclohexano"-style saturated fusion grammar -- the SAME
+    // P-25.3.1.3/P-31.1.4.2.4 rule applies to heterocycles too, meaning
+    // the real PIN for e.g. the piperidine case above may actually be a
+    // hydro-prefixed pyrido name instead. The Task 1 brief's own Step 5
+    // asked for these specific word forms to be verified against
+    // BlueBookV2.md; that verification was never actually recorded
+    // (confirmed by the final whole-branch review -- the ledger/report
+    // only show the word forms being read off existing irregular-stem
+    // entries elsewhere in this same table, not independently checked
+    // against Blue Book text for THIS specific saturated-heterocycle-as-
+    // fusion-component case). "piperidino" is also the standard
+    // substituent prefix for piperidin-1-yl, so a name using it as a
+    // FUSION component is additionally ambiguous to a reader. No real
+    // corpus molecule reaching this code path was found during this
+    // plan's own search budget (Task 1's test molecules are synthetic).
+    // Real fix: reclassify these saturated heterocycles to their mancude
+    // parent (PIPERIDINE -> PYRIDINE, etc.) for naming identity, same as
+    // Task 3's all-carbon mechanism, tracking real saturation separately
+    // as hydro-locants -- a separate, scoped follow-on task, not fixed
+    // here.
     if (t == RingType::PIPERIDINE) return "piperidino";
     if (t == RingType::PYRROLIDINE) return "pyrrolidino";
     if (t == RingType::TETRAHYDROFURAN) return "tetrahydrofuro";
@@ -5709,10 +5737,11 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                 std::vector<bool> classOkN(N, false);
                 bool allClassified = true;
                 // Hydro-prefix fused-ring plan, Task 3: graph node indices that are
-                // saturated relative to their ring's mancude ideal, collected across
-                // every ring regardless of its real classification (a genuinely
-                // aromatic ring simply contributes nothing here -- harmless to check
-                // uniformly rather than only for rings this task reclassifies below).
+                // saturated relative to their ring's mancude ideal. Populated only in
+                // the N==3 all-carbon-6-ring reclassification branch below (final
+                // whole-branch review: an earlier version of this comment claimed this
+                // ran "across every ring regardless of classification" -- not accurate;
+                // it is scoped to that one branch).
                 std::set<int> hydroPositionNodes;
                 // Hydro-prefix fused-ring plan, Task 3 fix round 1 (re-review finding:
                 // the I4 guard's enumerated RingType list missed GENERAL_HETEROCYCLE,
@@ -5751,26 +5780,57 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                             // "C1CCc2cc3cc4ccncc4cc3cc2C1" produced the SAME string as its
                             // fully aromatic counterpart, with the saturation dropped). N==4+
                             // all-carbon rings now fall through to the unchanged
-                            // classifyMonocyclicHeteroRing call below, which has no
-                            // rHeteroN.empty() branch and fails classification -- same
-                            // pre-existing generic rejection as before this task, matching
-                            // Task 4's own explicit deferral of N==4 (steroids).
+                            // classifyMonocyclicHeteroRing call below -- that function DOES
+                            // have a ringHeteroNodes.empty() branch (it classifies a fully
+                            // mancude all-carbon 6-ring as BENZENE), but that branch requires
+                            // heteroAromatic (every ring-internal bond order 4); a saturated
+                            // or partially-saturated all-carbon ring fails that condition and
+                            // correctly fails classification -- same pre-existing generic
+                            // rejection as before this task, matching Task 4's own explicit
+                            // deferral of N==4 (steroids).
                             //
                             // Hydro-prefix fused-ring plan, Task 4 attempted to lift this
                             // restriction (computePeripheralNumberingGeneral extended with a
                             // parallel hydroLocants criterion, mirroring Task 3's pattern) but
-                            // found a genuine, deep, pre-existing bug in the shared geometry
-                            // module this requires (search "Task 4 ruling" in the SDD ledger
-                            // for the full writeup): walkPeripheryClockwise's boundary-trace
-                            // algorithm (IupacNamer.cpp, ~line 24246) mis-traces the outer
-                            // perimeter of a 4+-ring system at a bridgehead atom (which has 3
-                            // distinct ring-neighbors, not 2), producing a truncated
-                            // perimeter (confirmed via live debug trace: 10 atoms returned
-                            // instead of the real 18) -- NOT something a hydro-prefix-plan
-                            // task should be fixing. Restriction restored to N==3; the
-                            // computePeripheralNumberingGeneral hydroLocants extension itself
-                            // was kept (inert, harmless, correct in isolation) as prep work
-                            // for whoever eventually fixes the boundary-trace bug.
+                            // found a genuine, deep, pre-existing bug in a shared geometry
+                            // module this requires: computePeripheralNumberingGeneral's
+                            // dependency, the static walkPeripheryClockwise function in this
+                            // same file, places every ring atom in real 2D space then walks
+                            // the outer boundary via a "most-clockwise-turn" heuristic at each
+                            // atom. For a real constructed test case (18 heavy atoms, a
+                            // benzo-benzo-pyridine-saturated-carbocycle 4-ring linear chain,
+                            // SMILES "c1c2c(cc(CCCC3)c3c2)nc2CCCCc12", confirmed via
+                            // check_sssr.exe as 4 ortho-fused 6-rings), a live debug trace
+                            // showed: the walk starts at a bridgehead atom that is tied, to
+                            // floating-point precision, with 3 other atoms for the geometric
+                            // minimum-y "bottommost" position (this molecule has approximate
+                            // mirror symmetry along its long axis); that bridgehead has 3
+                            // distinct ring-neighbors (not 2, since it belongs to 2 rings
+                            // simultaneously); and the walk returns only 10 atoms instead of
+                            // the real 18, consistent with the "most-clockwise-turn" choice at
+                            // that 3-neighbor point cutting through the ring system's interior
+                            // rather than continuing along the true outer boundary (this
+                            // mechanism was the most likely explanation found during
+                            // investigation, not independently proven line-by-line). This also
+                            // affects substituent-only citation for N>=4 (not just hydro):
+                            // lifting this restriction made the fix-round-1 B2 regression pin
+                            // ("C1CCc2cc3cc4ccncc4cc3cc2C1") regress from its expected generic
+                            // rejection message to a different (still fail-safe) one via the
+                            // same underlying truncated-perimeter bug, reached through the
+                            // substituent-only path. This geometry module predates this plan
+                            // and is used today only by nameBranchingFusion for branching
+                            // (degree>2) systems -- a pure linear 4+-ring chain with this kind
+                            // of geometric near-symmetry appears to be a genuinely new
+                            // combination it has never faced. Fixing a 2D boundary-trace
+                            // algorithm's tie-breaking and 3-neighbor direction selection is
+                            // real, separate geometric-debugging work, not something a
+                            // hydro-prefix-locant task should attempt as a side effect.
+                            // Restriction restored to N==3; the computePeripheralNumberingGeneral
+                            // hydroLocants extension itself was kept (inert today -- every
+                            // existing call site omits the new parameter, defaulting to an
+                            // empty set -- harmless, correct in isolation) as prep work for
+                            // whoever eventually fixes the boundary-trace bug and revisits
+                            // N>=4 support.
                             //
                             // Hydro-prefix fused-ring plan, Task 3: an all-carbon 6-ring has
                             // NO path through classifyMonocyclicHeteroRing at all (confirmed
@@ -6742,10 +6802,10 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                             // hydro-prefix locant citation generalized to N>=4 (steroids) via
                             // computePeripheralNumberingGeneral + detectFusedRingDirections.
                             // Reverted: blocked by a genuine, deep, pre-existing bug in
-                            // walkPeripheryClockwise's boundary-trace algorithm (see the
-                            // reclassification-site comment above, and the SDD ledger's "Task
-                            // 4" entries, for the full writeup) -- out of this plan's scope to
-                            // fix. Since the mancude-reclassification gate above stays
+                            // walkPeripheryClockwise's boundary-trace algorithm (full writeup
+                            // at the mancude-reclassification gate above, search "Task 4
+                            // attempted to lift this restriction") -- out of this plan's scope
+                            // to fix. Since the mancude-reclassification gate above stays
                             // restricted to N==3, hydroPositionNodes is always empty for
                             // N>=4, so there is nothing for an N>=4 block to cite here even if
                             // one existed.
@@ -6820,14 +6880,27 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                 // intentionally rejects cleanly rather than guess an
                                 // indicated-H prefix (its real locant is fixed by the retained
                                 // name's own canonical numbering, not this mechanism's generic
-                                // lowest-locant search) -- but that rejection matches on ring
-                                // TYPE only and doesn't know about hydroPositionNodes. A
-                                // PYRROLE-type ring (contributing to ihNodes above) combined
-                                // with hydro positions elsewhere in the same 3-ring system hits
-                                // the identical "guess the indicated-H locant" problem (e.g.
-                                // real 2,3,4,9-tetrahydro-1H-carbazole's "9H" is not this
-                                // mechanism's generic pick). Reject the same way rather than
-                                // guess.
+                                // lowest-locant search). Part A.6 itself checks
+                                // hydroPositionNodes, but only to SKIP ITSELF ENTIRELY when
+                                // non-empty (correct for the acridine/fully-reclassified-
+                                // BENZENE case) -- it has no way to distinguish that from "a
+                                // PYRROLE-type ring elsewhere ALSO needs carbazole's clean
+                                // rejection for its own indicated-H", so skipping itself here
+                                // would otherwise fall through to this mechanism's generic
+                                // fusion derivation, guessing an indicated-H locant (e.g. real
+                                // 2,3,4,9-tetrahydro-1H-carbazole's "9H" is not this
+                                // mechanism's generic pick). This guard catches that combined
+                                // case directly, rejecting the same way rather than guess. As
+                                // of the final whole-branch review, this guard's own condition
+                                // (`!ihNodes.empty() && !hydroPositionNodes.empty()`) rejects
+                                // EVERY combination of indicated-H with hydro positions, not
+                                // only the carbazole case specifically (also covers
+                                // CYCLOPENTADIENE/CYCLOHEPTATRIENE's own indicated-H combined
+                                // with hydro elsewhere) -- intentionally conservative, and it
+                                // means the hydro+indicated-H joining logic further below
+                                // (search "2,3-dihydro-1H-indene") is currently unreachable in
+                                // practice, not independently verified against a real combined
+                                // example.
                                 if (!ihNodes.empty() && !hydroPositionNodes.empty()) {
                                     return {RingSystemNameResult{false, "", "", {}}};
                                 }
@@ -23731,11 +23804,12 @@ std::map<int, QString> computePeripheralNumbering3Ring(
         std::vector<int> substituentLocants;
         // Hydro-prefix fused-ring plan, Task 3: P-31 hydro-prefix locants,
         // folded into this SAME candidate search/comparator (not a separate
-        // call) per the forward guidance this file's own comment already
-        // documents above this function -- a separate independent call could
-        // pick a different winning numbering direction than the
-        // substituent/indicated-H call on a tie, producing a name whose
-        // locants come from two different numberings of the same ring system.
+        // call) per the forward guidance this function's own comment
+        // documents below, at its return site (search "This candidate
+        // search") -- a separate independent call could pick a different
+        // winning numbering direction than the substituent/indicated-H call
+        // on a tie, producing a name whose locants come from two different
+        // numberings of the same ring system.
         std::vector<int> hydroLocants;
         int candidateIndex;
     };
