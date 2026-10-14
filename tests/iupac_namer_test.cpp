@@ -962,17 +962,32 @@ int main() {
         // classifyMonocyclicHeteroRing entirely) -- kept only to document the adjacent
         // gap's message stays unchanged, not as Task 1's regression guard.
         {"c1c2c(cccc2)nc2CCCNc12", "", true, "Branched, ring, or unsaturated chains on N-substituted exocyclic amines are not supported"},
-        // Task 1's actual regression guard: a saturated TWO-heteroatom ring with an
-        // unsupported 1,4-relationship (two N atoms 3 positions apart in a 6-ring --
-        // classifyMonocyclicHeteroRing's saturated two-heteroatom branches only support
-        // 1,2- and 1,3-relationships, per its own documented non-goal). Confirmed via a
-        // temporary debug trace (added and removed during this task) that this
-        // genuinely reaches and exercises the new allowSaturated=true classification
-        // path for ring 2 (classOk=0 there specifically, not an upstream gate) --
-        // unlike the pin directly above, which never reaches this task's new code at
-        // all. Structurally validated via check_sssr.exe: 3 rings (6,6,6), 14 heavy
-        // atoms, 2 N atoms in the saturated ring.
-        {"c1c2c(cccc2)nc2CNCNc12", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."},
+        // Task 1's actual regression guard, fix round 2 (round 1's attempt below this
+        // comment was wrong on two counts, caught by re-review: its own heteroatom
+        // relationship arithmetic was wrong -- two N atoms 2 ring-positions apart is a
+        // 1,3-relationship (sep==2), not 1,4 as originally claimed -- and more
+        // fundamentally, classifyMonocyclicHeteroRing's saturated two-heteroatom block
+        // has no matching branch at all for (ringSize==6, sep==2), so that case falls
+        // through to the SAME !heteroAromatic rejection regardless of whether
+        // allowSaturated is true or false -- a debug trace showing classOk=0 there is
+        // true either way and does not prove dependence on this task's new code).
+        //
+        // This molecule IS genuinely differential: its saturated ring's nitrogen sits
+        // directly adjacent to the fusion carbon (same local shape as the adjacent-gap
+        // pin above), which pre-task (allowSaturated=false) makes ring classification
+        // fail immediately, so the WHOLE nameLinearChainFusion returns its own
+        // "no match" sentinel before ever reaching isAllowedType/substituent handling,
+        // and the molecule falls through to the GENERIC top-level "Fused, bridged,
+        // spiro, or multiple ring systems are not supported in Phase 2." rejection.
+        // Post-task (allowSaturated=true), ring classification succeeds (PIPERIDINE),
+        // so nameLinearChainFusion gets much further -- far enough to reach its own
+        // substituent-citation code, which doesn't yet support a substituent (here, the
+        // amino group) on a fused ring system, producing a DIFFERENT, more specific
+        // rejection message. The rejection MESSAGE ITSELF changes between the pre- and
+        // post-task state for this exact molecule -- direct, legible proof the new code
+        // ran and changed behavior, not reliant on an internal debug trace alone.
+        // Structurally validated via check_sssr.exe: 3 rings (6,6,6), 15 heavy atoms.
+        {"Nc1c2c(cccc2)nc2CCCNc12", "", true, "Substituents on fused ring systems named via this mechanism are not yet supported."},
 
         // Negative/regression cases for the same dispatcher, confirming it
         // correctly declines (falls through to the pre-existing, unchanged
