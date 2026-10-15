@@ -10,7 +10,26 @@
 // at the other meso position (atom[11]). This skeleton has the EXACT same atom
 // parse order as anthracene/phenazine -- verified via Indigo for all entries.
 //
-// SMILES pattern: c1ccc2nc3ccccc3Xc2c1, where X is:
+// CORRECTED (second fix, found during Task 6 verification): the SMILES
+// below write the nitrogen as uppercase 'N', not lowercase aromatic 'n'.
+// With lowercase 'n' (the originally-committed version), Indigo could not
+// determine a valid hydrogen count for that atom in this specific
+// asymmetric ring (one pyrrole-type N needing 1 explicit H, one plain
+// ether/thioether-type X needing none) -- it silently returned H=-1 (an
+// internal error state), giving a molecule one hydrogen short of the real
+// compound (confirmed: real phenothiazine is C12H9NS; the lowercase-n
+// version parsed to C12H8NS). This was invisible to validateRetainedRingSystem
+// (which never inspects hydrogen count or molecular formula) and to the
+// earlier bond-topology verification (which only checked connectivity, not
+// valence). Writing N in uppercase lets Indigo correctly resolve it to the
+// real structure: re-verified via Indigo for all 6 entries below, each now
+// giving the correct formula C12H9N[O/S/Se/Te/P/As] with N at H=1 and X at
+// H=0. (TricyclicNFamily.cpp's phenazine/acridine entries do NOT have this
+// bug -- their N position(s) are plain pyridine-type, correctly H=0 with
+// lowercase 'n', confirmed separately; the bug is specific to this family's
+// asymmetric N+X combination.)
+//
+// SMILES pattern: c1ccc2Nc3ccccc3Xc2c1, where X is:
 //   - phenoxazine:   o  (O)
 //   - phenothiazine: s  (S)
 //   - phenoselenazine: [se]
@@ -95,7 +114,7 @@ void registerPhenoxazineFamily(std::vector<RetainedRingSystem> &registry) {
     //     All consecutive pairs are confirmed real bonds in the neighbor lists.
     registry.push_back(RetainedRingSystem{
         "phenoxazine",
-        "c1ccc2nc3ccccc3oc2c1",
+        "c1ccc2Nc3ccccc3oc2c1",
         locants,
         bondLetters,
         1, // Appendix 2 seniority rank
@@ -109,7 +128,7 @@ void registerPhenoxazineFamily(std::vector<RetainedRingSystem> &registry) {
     //   Complete peripheral walk verified against real bonds (same as above).
     registry.push_back(RetainedRingSystem{
         "phenothiazine",
-        "c1ccc2nc3ccccc3sc2c1",
+        "c1ccc2Nc3ccccc3sc2c1",
         locants,
         bondLetters,
         2, // Appendix 2 seniority rank
@@ -123,7 +142,7 @@ void registerPhenoxazineFamily(std::vector<RetainedRingSystem> &registry) {
     //   Complete peripheral walk verified.
     registry.push_back(RetainedRingSystem{
         "phenoselenazine",
-        "c1ccc2nc3ccccc3[se]c2c1",
+        "c1ccc2Nc3ccccc3[se]c2c1",
         locants,
         bondLetters,
         3, // Appendix 2 seniority rank
@@ -137,7 +156,7 @@ void registerPhenoxazineFamily(std::vector<RetainedRingSystem> &registry) {
     //   Complete peripheral walk verified.
     registry.push_back(RetainedRingSystem{
         "phenotellurazine",
-        "c1ccc2nc3ccccc3[te]c2c1",
+        "c1ccc2Nc3ccccc3[te]c2c1",
         locants,
         bondLetters,
         4, // Appendix 2 seniority rank
@@ -153,7 +172,7 @@ void registerPhenoxazineFamily(std::vector<RetainedRingSystem> &registry) {
     //   Complete peripheral walk verified.
     registry.push_back(RetainedRingSystem{
         "phenophosphazinine",
-        "c1ccc2nc3ccccc3[P]c2c1",
+        "c1ccc2Nc3ccccc3[P]c2c1",
         locants,
         bondLetters,
         5, // Appendix 2 seniority rank
@@ -168,7 +187,7 @@ void registerPhenoxazineFamily(std::vector<RetainedRingSystem> &registry) {
     //   Complete peripheral walk verified.
     registry.push_back(RetainedRingSystem{
         "phenarsazinine",
-        "c1ccc2nc3ccccc3[As]c2c1",
+        "c1ccc2Nc3ccccc3[As]c2c1",
         locants,
         bondLetters,
         6, // Appendix 2 seniority rank
@@ -185,7 +204,7 @@ void registerPhenoxazineFamily(std::vector<RetainedRingSystem> &registry) {
     // To implement later if a valid aromatic Hg structure is confirmed:
     //   registry.push_back(RetainedRingSystem{
     //       "phenomercurazine",
-    //       "c1ccc2nc3ccccc3[Hg]c2c1",
+    //       "c1ccc2Nc3ccccc3[Hg]c2c1",
     //       locants,
     //       bondLetters,
     //       7,
