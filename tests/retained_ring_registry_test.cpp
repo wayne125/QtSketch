@@ -2,6 +2,7 @@
 #include "../src/app/retained/HydrocarbonFamily.h"
 #include "../src/app/retained/QuinolineFamily.h"
 #include "../src/app/retained/IndoleFamily.h"
+#include "../src/app/retained/TricyclicNFamily.h"
 #include "indigo.h"
 #include <iostream>
 #include <vector>
@@ -14,6 +15,7 @@ int main() {
     registerHydrocarbonFamily(registry);
     registerQuinolineFamily(registry);
     registerIndoleFamily(registry);
+    registerTricyclicNFamily(registry);
 
     int passed = 0, failed = 0;
     for (const auto &sys : registry) {
