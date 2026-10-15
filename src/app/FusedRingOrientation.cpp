@@ -19,9 +19,9 @@ double apothem(int ringSize) {
 // given the ring's own absolute rotation (the angle its own vertex 0 sits
 // at). Edge k's midpoint sits exactly between vertex k and vertex k+1, each
 // vertex spaced 2*PI/ringSize apart.
-double edgeMidpointAngle(double ringRotation, int ringSize, int bondIndex) {
+double edgeMidpointAngle(double ringRotation, int ringSize, CycleEdgeIndex bondIndex) {
     double vertexSpacing = 2.0 * PI / ringSize;
-    return ringRotation + (bondIndex + 0.5) * vertexSpacing;
+    return ringRotation + (bondIndex.value + 0.5) * vertexSpacing;
 }
 }  // namespace
 
@@ -63,7 +63,7 @@ std::vector<FusedRingOrientationResult> computeAllPreferredOrientations(const Fu
     // -- isOutgoing true means THIS ring's bondIndex is the one recorded in
     // input.fusions (ring1==this ring); false means we're looking at it from
     // ring2's side and need the mirrored angle (edge midpoint + PI).
-    struct AdjEntry { int neighbor; int bondIndex; bool isOutgoing; };
+    struct AdjEntry { int neighbor; CycleEdgeIndex bondIndex; bool isOutgoing; };
     std::vector<std::vector<AdjEntry>> adj(num_rings);
     for (const auto &edge : input.fusions) {
         adj[edge.ring1].push_back({edge.ring2, edge.bondIndex, true});

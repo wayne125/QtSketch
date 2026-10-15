@@ -4,6 +4,8 @@
 #include <string>
 #include <set>
 
+#include "NamingTypes.h"
+
 struct FusedRingOrientationResult {
     bool success = false;
     std::string error;
@@ -50,7 +52,7 @@ struct FusedRingOrientationResult {
 struct FusedRingEdge {
     int ring1;
     int ring2;
-    int bondIndex;
+    CycleEdgeIndex bondIndex;
 };
 
 struct FusedRingSystemInput {

@@ -3,6 +3,9 @@
 #include "FusedRingOrientation.h"
 #include "FusedRingDirectionDetector.h"
 #include "NamingTrace.h"
+#include "NamingTypes.h"
+#include "GraphTypes.h"
+#include "NamingValidation.h"
 #include "indigo.h"
 #include <QStringList>
 #include <vector>
@@ -21,24 +24,8 @@
 #include <QJsonObject>
 #include <QJsonArray>
 
-struct GraphNode {
-    int id;           // 0..N-1 index in heavy atom graph
-    int indigoIdx;    // original indigo atom index
-    int atomicNumber; // Z (6=C, 7=N, 8=O, 16=S, 9=F, 17=Cl, 35=Br, 53=I)
-    int totalH;       // total hydrogen count (explicit + implicit)
-    std::vector<int> neighbors; // neighbor indices in GraphNode array
-    std::vector<int> bondOrders;// bond orders (1, 2, 3, 4=aromatic)
-};
-
-struct GraphBond {
-    int u, v; // node indices
-    int order; // 1, 2, 3, 4
-};
-
-struct Graph {
-    std::vector<GraphNode> nodes;
-    std::vector<GraphBond> bonds;
-};
+// Graph, GraphNode, and GraphBond are all defined in GraphTypes.h (included via NamingValidation.h)
+#include "NamingValidation.h"
 
 struct RingSystemNameResult {
     bool success = false;
@@ -6431,17 +6418,17 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                     // NOT a raw g.nodes[].neighbors index.
                                     const std::vector<int> &ring1Cycle = cyclesN[i];
                                     int ring1Size = static_cast<int>(ring1Cycle.size());
-                                    int idxA = -1, idxB = -1;
+                                    CycleEdgeIndex idxA(-1), idxB(-1);
                                     for (int k = 0; k < ring1Size; ++k) {
-                                        if (ring1Cycle[k] == bhA) idxA = k;
-                                        if (ring1Cycle[k] == bhB) idxB = k;
+                                        if (ring1Cycle[k] == bhA) idxA = CycleEdgeIndex(k);
+                                        if (ring1Cycle[k] == bhB) idxB = CycleEdgeIndex(k);
                                     }
                                     bool foundBond = false;
-                                    if (idxA != -1 && idxB != -1) {
-                                        if ((idxA + 1) % ring1Size == idxB) {
+                                    if (idxA.value != -1 && idxB.value != -1) {
+                                        if ((idxA.value + 1) % ring1Size == idxB.value) {
                                             edge.bondIndex = idxA;
                                             foundBond = true;
-                                        } else if ((idxB + 1) % ring1Size == idxA) {
+                                        } else if ((idxB.value + 1) % ring1Size == idxA.value) {
                                             edge.bondIndex = idxB;
                                             foundBond = true;
                                         }
@@ -6452,6 +6439,7 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                 }
                             }
                         }
+                        assert(validateFusionInput(g, input));
                         periphMapN4Precomp = computePeripheralNumberingGeneral(g, input, substituentBearingNodes, hydroPositionNodes, &tiedPeriphMaps);
                         if (!periphMapN4Precomp.empty()) {
                             periphMapN4PrecompValid = true;

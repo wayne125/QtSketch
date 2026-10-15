@@ -20,6 +20,8 @@ set(IUPAC_NAMING_SOURCES
     src/app/NamingTrace.h src/app/NamingTrace.cpp
     src/app/FusedRingOrientation.h src/app/FusedRingOrientation.cpp
     src/app/FusedRingDirectionDetector.h src/app/FusedRingDirectionDetector.cpp
+    src/app/NamingTypes.h src/app/GraphTypes.h
+    src/app/NamingValidation.h src/app/NamingValidation.cpp
 )
 
 set_source_files_properties(Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
@@ -277,6 +279,18 @@ else()
     target_link_libraries(fused_ring_direction_detector_test PRIVATE ${INDIGO_LIB_DIR}/indigo.dll)
 endif()
 add_test(NAME fused_ring_direction_detector_test COMMAND fused_ring_direction_detector_test)
+
+qt_add_executable(naming_validation_test tests/naming_validation_test.cpp src/app/NamingValidation.h src/app/NamingValidation.cpp src/app/FusedRingOrientation.h src/app/FusedRingOrientation.cpp src/app/NamingTypes.h)
+target_include_directories(naming_validation_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/app
+)
+if (MSVC)
+    target_link_libraries(naming_validation_test PRIVATE Qt6::Core)
+else()
+    target_link_libraries(naming_validation_test PRIVATE Qt6::Core)
+endif()
+add_test(NAME naming_validation_test COMMAND naming_validation_test)
 
 add_library(molecule_model STATIC
     src/app/molecule/ExtensionData.h
