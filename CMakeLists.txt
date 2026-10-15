@@ -24,6 +24,7 @@ set(IUPAC_NAMING_SOURCES
     src/app/NamingValidation.h src/app/NamingValidation.cpp
     src/app/RetainedRingTypes.h src/app/RetainedRingTypes.cpp
     src/app/retained/HydrocarbonFamily.h src/app/retained/HydrocarbonFamily.cpp
+    src/app/retained/QuinolineFamily.h src/app/retained/QuinolineFamily.cpp
 )
 
 set_source_files_properties(Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
