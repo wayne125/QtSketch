@@ -5991,15 +5991,46 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                 }
 
                 if (allAllowed) {
-                    auto getCandidates = [&](RingType t, const std::vector<int> &hNodes, int rSize, const std::vector<int> &rCycle) {
+                    auto getCandidates = [&](RingType t, const std::vector<int> &hNodes, int rSize, const std::vector<int> &rCycle,
+                                           const std::map<int, QString> &periphMap, const auto &locantLess, int totalRings, bool periphMapValid) {
                         std::vector<std::vector<int>> cands;
                         if (t == RingType::BENZENE || t == RingType::CYCLOPENTADIENE || t == RingType::CYCLOHEPTATRIENE) {
-                            // Benzene has no heteroatoms, generate every rotation in both directions
+                            // Benzene has no heteroatoms.
                             if (hNodes.empty()) {
-                                std::vector<int> fwd(rSize), bwd(rSize);
-                                for (int i = 0; i < rSize; ++i) { fwd[i] = rCycle[(0 + i) % rSize]; bwd[i] = rCycle[(0 - i + rSize) % rSize]; }
-                                cands.push_back(fwd);
-                                cands.push_back(bwd);
+                                // For N>=4 with periphMap available, local numbering is INDUCED
+                                // by the whole-system peripheral numbering (FR-5.3) -- never
+                                // anchored on an atom-order-dependent graph index. This ring's
+                                // own atoms sorted by their already-computed peripheral rank is
+                                // the one canonical candidate; genuine tied-orientation symmetry
+                                // (if any) is handled upstream by computePeripheralNumberingGeneral
+                                // retaining every tied orientation, not by rotation search here.
+                                if (totalRings >= 4 && periphMapValid) {
+                                    std::vector<std::pair<int, QString>> ringAtomsWithLocants;
+                                    bool allAtomsFound = true;
+                                    for (int atom : rCycle) {
+                                        auto it = periphMap.find(atom);
+                                        if (it != periphMap.end()) {
+                                            ringAtomsWithLocants.emplace_back(atom, it->second);
+                                        } else {
+                                            allAtomsFound = false;
+                                            break;
+                                        }
+                                    }
+                                    if (allAtomsFound && !ringAtomsWithLocants.empty()) {
+                                        std::sort(ringAtomsWithLocants.begin(), ringAtomsWithLocants.end(),
+                                            [&](const auto &a, const auto &b) { return locantLess(a.second, b.second); });
+                                        std::vector<int> sortedCycle;
+                                        for (const auto &p : ringAtomsWithLocants) sortedCycle.push_back(p.first);
+                                        cands.push_back(sortedCycle);
+                                    }
+                                }
+                                if (cands.empty()) {
+                                    // Fallback for N<4, or if periphMap computation failed.
+                                    std::vector<int> fwd(rSize), bwd(rSize);
+                                    for (int i = 0; i < rSize; ++i) { fwd[i] = rCycle[(0 + i) % rSize]; bwd[i] = rCycle[(0 - i + rSize) % rSize]; }
+                                    cands.push_back(fwd);
+                                    cands.push_back(bwd);
+                                }
                             }
                         } else if (t == RingType::FURAN || t == RingType::THIOPHENE || t == RingType::SELENOPHENE || t == RingType::TELLUROPHENE || t == RingType::PHOSPHININE || t == RingType::PYRIDINE || t == RingType::PYRROLE ||
                            t == RingType::AZEPINE || t == RingType::OXEPINE || t == RingType::THIEPINE || t == RingType::SELENEPINE || t == RingType::TELLUREPINE ||
@@ -6313,44 +6344,142 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                         }
                     }
 
+                    // Locant comparator for peripheral numbering labels: "3" < "3a" < "3b" < "4".
+                    auto locantLess = [](const QString &a, const QString &b) {
+                        int numA = 0, numB = 0;
+                        int i = 0, j = 0;
+                        while (i < a.size() && a[i].isDigit()) { numA = numA * 10 + a[i].digitValue(); i++; }
+                        while (j < b.size() && b[j].isDigit()) { numB = numB * 10 + b[j].digitValue(); j++; }
+                        if (numA != numB) return numA < numB;
+                        return a.mid(i) < b.mid(j);
+                    };
+
+                    // Pre-compute substituent info and periphMap for N>=4 BEFORE building
+                    // allCands, so getCandidates' no-heteroatom branch can induce each ring's
+                    // local numbering from the whole-system peripheral numbering instead of
+                    // generating atom-order-dependent rotation candidates.
+                    std::set<int> allSystemNodesUnion;
+                    for (const auto &ringNodes : nodesN) {
+                        allSystemNodesUnion.insert(ringNodes.begin(), ringNodes.end());
+                    }
+                    std::vector<std::pair<int, QString>> collectedSubstituents;
+                    bool hasUnsupportedSubstituentPre = false;
+                    for (int i = 0; i < N; ++i) {
+                        for (int node : nodesN[i]) {
+                            const GraphNode &n = g.nodes[node];
+                            for (size_t j = 0; j < n.neighbors.size(); ++j) {
+                                int nei = n.neighbors[j];
+                                if (!allSystemNodesUnion.count(nei) && g.nodes[nei].atomicNumber != 1) {
+                                    if (node == freeValenceAtom) continue;
+                                    if (N >= 3) {
+                                        QString subName = simpleRingSubstituentName(g, node, nei, allSystemNodesUnion, mol);
+                                        if (subName.isEmpty()) {
+                                            hasUnsupportedSubstituentPre = true;
+                                        } else {
+                                            collectedSubstituents.push_back({node, subName});
+                                        }
+                                    } else {
+                                        hasUnsupportedSubstituentPre = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    std::set<int> substituentBearingNodes;
+                    for (const auto &sub : collectedSubstituents) {
+                        substituentBearingNodes.insert(sub.first);
+                    }
+                    std::map<int, QString> periphMapN4Precomp;
+                    bool periphMapN4PrecompValid = false;
+                    if (N >= 4 && !hasUnsupportedSubstituentPre) {
+                        // Build FusedRingSystemInput directly from already-computed nodesN/
+                        // cyclesN/sharedNodesPairs (all already graph-index space), instead of
+                        // calling detectFusedRingDirections (whose own buildDirectedCycle picks
+                        // the first ring-neighbor found in indigoIterateNeighbors order -- itself
+                        // atom-order dependent) and needing an indigo-index conversion step.
+                        FusedRingSystemInput input;
+                        input.ringSizes.resize(N);
+                        input.ringDirectedCycles.resize(N);
+                        for (int i = 0; i < N; ++i) {
+                            input.ringDirectedCycles[i] = cyclesN[i];
+                            input.ringSizes[i] = static_cast<int>(nodesN[i].size());
+                        }
+                        input.ringAtoms = nodesN;
+                        for (int i = 0; i < N; ++i) {
+                            for (int j = i + 1; j < N; ++j) {
+                                if (shared[i][j] == 2 && sharedNodesPairs[i][j].size() == 2) {
+                                    FusedRingEdge edge;
+                                    edge.ring1 = i;
+                                    edge.ring2 = j;
+                                    int bhA = sharedNodesPairs[i][j][0];
+                                    int bhB = sharedNodesPairs[i][j][1];
+                                    // bondIndex is ring1's own directed-cycle position of this
+                                    // shared edge (FusedRingOrientation.h's documented contract),
+                                    // NOT a raw g.nodes[].neighbors index.
+                                    const std::vector<int> &ring1Cycle = cyclesN[i];
+                                    int ring1Size = static_cast<int>(ring1Cycle.size());
+                                    int idxA = -1, idxB = -1;
+                                    for (int k = 0; k < ring1Size; ++k) {
+                                        if (ring1Cycle[k] == bhA) idxA = k;
+                                        if (ring1Cycle[k] == bhB) idxB = k;
+                                    }
+                                    bool foundBond = false;
+                                    if (idxA != -1 && idxB != -1) {
+                                        if ((idxA + 1) % ring1Size == idxB) {
+                                            edge.bondIndex = idxA;
+                                            foundBond = true;
+                                        } else if ((idxB + 1) % ring1Size == idxA) {
+                                            edge.bondIndex = idxB;
+                                            foundBond = true;
+                                        }
+                                    }
+                                    if (foundBond) {
+                                        input.fusions.push_back(edge);
+                                    }
+                                }
+                            }
+                        }
+                        periphMapN4Precomp = computePeripheralNumberingGeneral(g, input, substituentBearingNodes, hydroPositionNodes);
+                        if (!periphMapN4Precomp.empty()) {
+                            periphMapN4PrecompValid = true;
+                        }
+                    }
+
                     std::vector<std::vector<std::vector<int>>> allCands(N);
                     bool hasValidCands = true;
                     for (int i = 0; i < N; ++i) {
-                        allCands[i] = getCandidates(typesN[i], rHeteroN[i], static_cast<int>(nodesN[i].size()), cyclesN[i]);
+                        allCands[i] = getCandidates(typesN[i], rHeteroN[i], static_cast<int>(nodesN[i].size()), cyclesN[i], periphMapN4Precomp, locantLess, N, periphMapN4PrecompValid);
                         if (allCands[i].empty()) hasValidCands = false;
                     }
 
                     if (hasValidCands) {
-                        // Part B: Safety guard - check for exocyclic substituents on any ring atom
-                        // For each ring in the assembled system, check each atom's neighbors
-                        std::set<int> allSystemNodesUnion;
-                        for (const auto &ringNodes : nodesN) {
-                            allSystemNodesUnion.insert(ringNodes.begin(), ringNodes.end());
-                        }
-                        // For N==3, we will classify and accept plain alkyl/halogen substituents;
-                        // for N==2 or N==4, any substituent causes rejection (no peripheral numbering exists)
-                        std::vector<std::pair<int, QString>> collectedSubstituents; // (ringNode, substituentName) for N==3
-                        bool hasUnsupportedSubstituent = false;
-                        
-                        for (int i = 0; i < N; ++i) {
-                            for (int node : nodesN[i]) {
-                                const GraphNode &n = g.nodes[node];
-                                for (size_t j = 0; j < n.neighbors.size(); ++j) {
-                                    int nei = n.neighbors[j];
-                                    // If neighbor is not in any ring in the system and is not hydrogen, it's an exocyclic substituent
-                                    if (!allSystemNodesUnion.count(nei) && g.nodes[nei].atomicNumber != 1) {
-                                        // Skip the free valence atom's own exocyclic bond (it's the attachment point, not a substituent)
-                                        if (node == freeValenceAtom) continue;
-                                        if (N >= 3) {
-                                            QString subName = simpleRingSubstituentName(g, node, nei, allSystemNodesUnion, mol);
-                                            if (subName.isEmpty()) {
-                                                hasUnsupportedSubstituent = true;
+                        // Use the pre-computed substituent scan from above (N>=4) or re-scan now
+                        // (N<4, where it wasn't needed for periphMap hoisting).
+                        bool hasUnsupportedSubstituent = hasUnsupportedSubstituentPre;
+                        if (N < 4) {
+                            std::set<int> allSystemNodesUnion2;
+                            for (const auto &ringNodes : nodesN) {
+                                allSystemNodesUnion2.insert(ringNodes.begin(), ringNodes.end());
+                            }
+                            collectedSubstituents.clear();
+                            hasUnsupportedSubstituent = false;
+                            for (int i = 0; i < N; ++i) {
+                                for (int node : nodesN[i]) {
+                                    const GraphNode &n = g.nodes[node];
+                                    for (size_t j = 0; j < n.neighbors.size(); ++j) {
+                                        int nei = n.neighbors[j];
+                                        if (!allSystemNodesUnion2.count(nei) && g.nodes[nei].atomicNumber != 1) {
+                                            if (node == freeValenceAtom) continue;
+                                            if (N >= 3) {
+                                                QString subName = simpleRingSubstituentName(g, node, nei, allSystemNodesUnion2, mol);
+                                                if (subName.isEmpty()) {
+                                                    hasUnsupportedSubstituent = true;
+                                                } else {
+                                                    collectedSubstituents.push_back({node, subName});
+                                                }
                                             } else {
-                                                collectedSubstituents.push_back({node, subName});
+                                                return {RingSystemNameResult{false, "Substituents on fused ring systems named via this mechanism are not yet supported.", "", {}}};
                                             }
-                                        } else {
-                                            // N == 2: no peripheral numbering available via this mechanism, reject.
-                                            return {RingSystemNameResult{false, "Substituents on fused ring systems named via this mechanism are not yet supported.", "", {}}};
                                         }
                                     }
                                 }
@@ -6824,45 +6953,18 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                     substituentBearingNodes.insert(sub.first);
                                 }
                                 
-                                // For N >= 4, use computePeripheralNumberingGeneral
-                                // For N == 3, use computePeripheralNumbering3Ring (existing logic)
+                                // For N >= 4, reuse the periphMap already hoisted/computed
+                                // before the bracket-name candidate search (so the bracket
+                                // name's induced ring numbering and these hydro/substituent
+                                // locants agree on the SAME peripheral numbering) instead of
+                                // recomputing via detectFusedRingDirections here.
+                                // For N == 3, use computePeripheralNumbering3Ring (existing logic).
                                 std::map<int, QString> periphMap;
                                 if (N >= 4) {
-                                    // Build FusedRingSystemInput from the linear chain's nodesN
-                                    FusedRingSystemInput detectedInput = detectFusedRingDirections(mol);
-                                    if (detectedInput.ringSizes.empty()) {
-                                        return {RingSystemNameResult{false, "Failed to detect fused ring directions for N>=4 system.", "", {}}};
-                                    }
-                                    
-                                    // Cross-validate: detectedInput should have N rings
-                                    if (static_cast<int>(detectedInput.ringAtoms.size()) != N) {
-                                        return {RingSystemNameResult{false, "Detected ring count does not match expected N>=4 chain.", "", {}}};
-                                    }
-                                    
-                                    // Convert from indigo indices to graph indices
-                                    FusedRingSystemInput detectedInputGraph = detectedInput;
-                                    for (auto &ring : detectedInputGraph.ringAtoms) {
-                                        std::set<int> converted;
-                                        for (int idx : ring) {
-                                            if (indigoToGraphIdx.count(idx)) {
-                                                converted.insert(indigoToGraphIdx.at(idx));
-                                            }
-                                        }
-                                        ring = converted;
-                                    }
-                                    for (auto &cyc : detectedInputGraph.ringDirectedCycles) {
-                                        for (int &idx : cyc) {
-                                            if (indigoToGraphIdx.count(idx)) {
-                                                idx = indigoToGraphIdx.at(idx);
-                                            }
-                                        }
-                                    }
-                                    
-                                    // Call computePeripheralNumberingGeneral
-                                    periphMap = computePeripheralNumberingGeneral(g, detectedInputGraph, substituentBearingNodes, hydroPositionNodes);
-                                    if (periphMap.empty()) {
+                                    if (!periphMapN4PrecompValid) {
                                         return {RingSystemNameResult{false, "Failed to compute peripheral numbering for N>=4 system.", "", {}}};
                                     }
+                                    periphMap = periphMapN4Precomp;
                                 }
 
                                 // Check nitrogen-based NH types (existing logic)
