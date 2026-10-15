@@ -1,6 +1,7 @@
 #include "../src/app/RetainedRingTypes.h"
 #include "../src/app/retained/HydrocarbonFamily.h"
 #include "../src/app/retained/QuinolineFamily.h"
+#include "../src/app/retained/IndoleFamily.h"
 #include "indigo.h"
 #include <iostream>
 #include <vector>
@@ -12,6 +13,7 @@ int main() {
     std::vector<RetainedRingSystem> registry;
     registerHydrocarbonFamily(registry);
     registerQuinolineFamily(registry);
+    registerIndoleFamily(registry);
 
     int passed = 0, failed = 0;
     for (const auto &sys : registry) {
