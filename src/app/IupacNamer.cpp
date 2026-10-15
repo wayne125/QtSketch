@@ -2,6 +2,7 @@
 #include "BondStereoPerception.h"
 #include "FusedRingOrientation.h"
 #include "FusedRingDirectionDetector.h"
+#include "NamingTrace.h"
 #include "indigo.h"
 #include <QStringList>
 #include <vector>
@@ -73,11 +74,22 @@ std::map<int, QString> computePeripheralNumberingForMol(int mol);
 // system can have several geometrically-tied orientations distinguishable
 // only by real heteroatom position, which this function (unlike
 // FusedRingOrientation.cpp) has the atom data to judge correctly.
+//
+// tiedMapsOut, when non-null, is cleared and filled with every candidate
+// locant map that ties the winning map's own semantic score (heteroatom
+// locants/seniority, fusion-carbon locants, hydro/substituent locants --
+// NOT candidateIndex, which is an insertion-order artifact, not a real
+// criterion). Existing callers that omit it see no behavior change. This
+// lets a caller with its own further tie-break (e.g. nameLinearChainFusion's
+// own NameScore over complete bracket-name assemblies) evaluate every
+// genuinely-tied whole-system numbering as its own complete, correlated
+// context, rather than this function silently picking one arbitrarily.
 std::map<int, QString> computePeripheralNumberingGeneral(
     const Graph &g,
     const FusedRingSystemInput &input,
     const std::set<int> &substituentBearingNodes = {},
-    const std::set<int> &hydroLocantBearingNodes = {});
+    const std::set<int> &hydroLocantBearingNodes = {},
+    std::vector<std::map<int, QString>> *tiedMapsOut = nullptr);
 
 struct SpiroNumberingResult {
     bool success;
@@ -6391,6 +6403,7 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                     }
                     std::map<int, QString> periphMapN4Precomp;
                     bool periphMapN4PrecompValid = false;
+                    std::vector<std::map<int, QString>> tiedPeriphMaps;
                     if (N >= 4 && !hasUnsupportedSubstituentPre) {
                         // Build FusedRingSystemInput directly from already-computed nodesN/
                         // cyclesN/sharedNodesPairs (all already graph-index space), instead of
@@ -6439,9 +6452,16 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                 }
                             }
                         }
-                        periphMapN4Precomp = computePeripheralNumberingGeneral(g, input, substituentBearingNodes, hydroPositionNodes);
+                        periphMapN4Precomp = computePeripheralNumberingGeneral(g, input, substituentBearingNodes, hydroPositionNodes, &tiedPeriphMaps);
                         if (!periphMapN4Precomp.empty()) {
                             periphMapN4PrecompValid = true;
+                        }
+                        if (tiedPeriphMaps.empty() && periphMapN4PrecompValid) {
+                            // Defensive fallback: bestIt is always itself one of
+                            // scoredCandidates, so tiedMapsOut should never come
+                            // back empty when periphMapN4PrecompValid is true --
+                            // but don't silently lose the single-candidate case.
+                            tiedPeriphMaps.push_back(periphMapN4Precomp);
                         }
                     }
 
@@ -6679,15 +6699,39 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                     const auto& hc2 = o.higherLocsCitation.at(d);
                                     if (hc1 != hc2) return hc1 < hc2;
                                 }
-                                if (finalName != o.finalName) {
-                                    return finalName < o.finalName;
-                                }
+                                // FR-4.5's locant-set comparisons above are the complete,
+                                // correct tie-break -- no lexicographic string compare on
+                                // the assembled name. (Confirmed independently: comparing
+                                // name strings broke 16 previously-correct tests, since the
+                                // string interleaves component prefixes in alphabetical
+                                // CITATION order, not locant-comparison order.)
                                 return false;
                             }
                         };
 
+                        // Evaluate each genuinely-tied whole-system peripheral numbering
+                        // (N>=4: tiedPeriphMaps; N<4, or N>=4 fallback: the single
+                        // periphMapN4Precomp, which is empty/unused by getCandidates for
+                        // N<4 anyway) as its own complete, correlated context -- never mix
+                        // one context's ring numbering with another's in the same
+                        // assembly, which is why allCands is rebuilt fresh per context
+                        // rather than pooling per-ring candidates across contexts.
+                        std::vector<std::map<int, QString>> candidateContexts =
+                            (N >= 4 && !tiedPeriphMaps.empty()) ? tiedPeriphMaps
+                                                                 : std::vector<std::map<int, QString>>{periphMapN4Precomp};
+
                         NameScore bestScore;
                         bool scoreInit = false;
+                        std::map<int, QString> winningPeriphMap = periphMapN4Precomp;
+
+                        for (const auto &periphMapCtx : candidateContexts) {
+                        std::vector<std::vector<std::vector<int>>> allCandsCtx(N);
+                        bool hasValidCandsCtx = true;
+                        for (int i = 0; i < N; ++i) {
+                            allCandsCtx[i] = getCandidates(typesN[i], rHeteroN[i], static_cast<int>(nodesN[i].size()), cyclesN[i], periphMapCtx, locantLess, N, periphMapN4PrecompValid);
+                            if (allCandsCtx[i].empty()) hasValidCandsCtx = false;
+                        }
+                        if (!hasValidCandsCtx) continue;
 
                         for (int root : bestRoots) {
                             std::vector<int> depths(N, -1);
@@ -6709,7 +6753,7 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                             bool done = false;
                             while (!done) {
                                 std::vector<std::vector<int>> currentNum(N);
-                                for (int i = 0; i < N; ++i) currentNum[i] = allCands[i][assign[i]];
+                                for (int i = 0; i < N; ++i) currentNum[i] = allCandsCtx[i][assign[i]];
 
                                 std::function<std::pair<bool, Block>(int, int)> buildBlock = [&](int u, int p) -> std::pair<bool, Block> {
                                     std::vector<Block> cBlocks;
@@ -6889,16 +6933,27 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                     if (!scoreInit || score < bestScore) {
                                         bestScore = score;
                                         scoreInit = true;
+                                        winningPeriphMap = periphMapCtx;
                                     }
                                 }
 
                                 for (int i = 0; i < N; ++i) {
                                     assign[i]++;
-                                    if (assign[i] < (int)allCands[i].size()) break;
+                                    if (assign[i] < (int)allCandsCtx[i].size()) break;
                                     assign[i] = 0;
                                     if (i == N - 1) done = true;
                                 }
                             }
+                        }
+                        } // end for (periphMapCtx : candidateContexts)
+
+                        if (N >= 4 && scoreInit) {
+                            // Carry the winning context's peripheral map forward for the
+                            // hydro-locant/substituent-locant extraction block below, so both
+                            // the bracket name and those locants agree on the SAME whole-
+                            // system numbering -- not just whichever context happened to be
+                            // precomputed first.
+                            periphMapN4Precomp = winningPeriphMap;
                         }
 
                         if (scoreInit) {
@@ -24365,8 +24420,10 @@ std::map<int, QString> computePeripheralNumberingGeneral(
     const Graph &g,
     const FusedRingSystemInput &input,
     const std::set<int> &substituentBearingNodes,
-    const std::set<int> &hydroLocantBearingNodes) {
+    const std::set<int> &hydroLocantBearingNodes,
+    std::vector<std::map<int, QString>> *tiedMapsOut) {
     std::map<int, QString> emptyMap;
+    if (tiedMapsOut) tiedMapsOut->clear();
 
     if (input.ringAtoms.empty()) return emptyMap;
 
@@ -24645,6 +24702,35 @@ std::map<int, QString> computePeripheralNumberingGeneral(
                 return a.substituentLocants < b.substituentLocants;
             return a.candidateIndex < b.candidateIndex;
         });
+
+    if (tiedMapsOut) {
+        // Collect every candidate tying bestIt's own semantic score fields
+        // (excluding candidateIndex, which is not a real criterion -- it is
+        // exactly the insertion-order artifact this whole mechanism exists to
+        // avoid). Dedup by exact map equality only (removing literal repeats
+        // within this one call, where atom IDs are consistent); this must
+        // never be used to RANK between candidates -- comparing maps keyed
+        // by raw atom index to choose a winner is the already-rejected,
+        // circular approach (atom indices are themselves assigned in
+        // SMILES/molfile input order).
+        for (const auto &c : scoredCandidates) {
+            if (c.heteroatomLocants == bestIt->heteroatomLocants &&
+                c.heteroatomSeniorityAtLocants == bestIt->heteroatomSeniorityAtLocants &&
+                c.fusionCarbonLocants == bestIt->fusionCarbonLocants &&
+                c.hydroLocants == bestIt->hydroLocants &&
+                c.substituentLocants == bestIt->substituentLocants) {
+                bool dup = false;
+                for (const auto &existing : *tiedMapsOut) {
+                    if (existing == c.locantMap) { dup = true; break; }
+                }
+                if (!dup) tiedMapsOut->push_back(c.locantMap);
+            }
+        }
+    }
+
+    if (tiedMapsOut) {
+        traceNaming("tie_retained", QString("count=%1").arg(tiedMapsOut->size()));
+    }
 
     return bestIt->locantMap;
 }

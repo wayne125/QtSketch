@@ -14,18 +14,26 @@ find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Concu
 qt_standard_project_setup(REQUIRES 6.6)
 qt_policy(SET QTP0004 OLD)
 
+# Central naming source list: IupacNamer + its fused-ring geometry helpers
+set(IUPAC_NAMING_SOURCES
+    src/app/IupacNamer.h src/app/IupacNamer.cpp
+    src/app/NamingTrace.h src/app/NamingTrace.cpp
+    src/app/FusedRingOrientation.h src/app/FusedRingOrientation.cpp
+    src/app/FusedRingDirectionDetector.h src/app/FusedRingDirectionDetector.cpp
+)
+
 set_source_files_properties(Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 set_source_files_properties(StyleSheets.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
-qt_add_executable(sketch src/app/main.cpp src/app/IndigoService.h src/app/IndigoService.cpp src/app/IupacNamer.h src/app/IupacNamer.cpp src/app/FusedRingOrientation.h src/app/FusedRingOrientation.cpp src/app/FusedRingDirectionDetector.h src/app/FusedRingDirectionDetector.cpp src/app/ImagoService.h src/app/ImagoService.cpp src/v8_process.h src/v8_process.cpp src/app/FileIO.h src/app/PlacementEngines.h src/app/PlacementEngines.cpp src/app/PlacementPreviewManager.h src/app/PlacementPreviewManager.cpp src/app/AppController.h src/app/AppController.cpp src/app/DocumentManager.h src/app/DocumentManager.cpp)
+qt_add_executable(sketch src/app/main.cpp src/app/IndigoService.h src/app/IndigoService.cpp ${IUPAC_NAMING_SOURCES} src/app/ImagoService.h src/app/ImagoService.cpp src/v8_process.h src/v8_process.cpp src/app/FileIO.h src/app/PlacementEngines.h src/app/PlacementEngines.cpp src/app/PlacementPreviewManager.h src/app/PlacementPreviewManager.cpp src/app/AppController.h src/app/AppController.cpp src/app/DocumentManager.h src/app/DocumentManager.cpp)
 if (WIN32)
     target_sources(sketch PRIVATE src/app/app_icon.rc)
 endif()
-# FusedRingOrientation/FusedRingDirectionDetector are NOT linked into this target:
-# IupacNamer.cpp has zero calls into them (confirmed 2026-07-29). They're real,
-# tested geometric-orientation modules meant for a future numbering-integration
-# phase, not dead weight to ship in the app binary today. They're still built
-# and exercised by their own standalone test executables below.
+# FusedRingOrientation/FusedRingDirectionDetector ARE actively used by IupacNamer.cpp's
+# N>=3/N>=4 fused-ring numbering logic via computeAllPreferredOrientations,
+# computePeripheralNumberingGeneral, detectFusedRingDirections, etc. They are correctly
+# included in the sketch target's source list above and are also exercised by their
+# own standalone test executables below (confirmed 2026-10-15).
 
 # Console subsystem (the default here) ships with no embedded Windows
 # manifest, so Windows falls back to DPI-Unaware and bitmap-stretches the
@@ -220,7 +228,7 @@ add_custom_command(TARGET sketch POST_BUILD
         ${CMAKE_CURRENT_SOURCE_DIR}/indigo/data/molecules/basic/monomer_library.ket
 )
 
-qt_add_executable(iupac_namer_test tests/iupac_namer_test.cpp src/app/IupacNamer.h src/app/IupacNamer.cpp src/app/BondStereoPerception.h src/app/BondStereoPerception.cpp src/app/FusedRingOrientation.h src/app/FusedRingOrientation.cpp src/app/FusedRingDirectionDetector.h src/app/FusedRingDirectionDetector.cpp)
+qt_add_executable(iupac_namer_test tests/iupac_namer_test.cpp ${IUPAC_NAMING_SOURCES} src/app/BondStereoPerception.h src/app/BondStereoPerception.cpp)
 target_include_directories(iupac_namer_test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/src/app
@@ -235,7 +243,7 @@ endif()
 enable_testing()
 add_test(NAME iupac_namer_test COMMAND iupac_namer_test)
 
-qt_add_executable(smiles_driver_v72 .claude_scratch_fdafull/smiles_driver.cpp src/app/IupacNamer.h src/app/IupacNamer.cpp src/app/BondStereoPerception.h src/app/BondStereoPerception.cpp src/app/FusedRingOrientation.h src/app/FusedRingOrientation.cpp src/app/FusedRingDirectionDetector.h src/app/FusedRingDirectionDetector.cpp)
+qt_add_executable(smiles_driver_v72 tools/iupac/smiles_driver.cpp ${IUPAC_NAMING_SOURCES} src/app/BondStereoPerception.h src/app/BondStereoPerception.cpp)
 target_include_directories(smiles_driver_v72 PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/src/app
@@ -244,7 +252,7 @@ target_include_directories(smiles_driver_v72 PRIVATE
 if (MSVC)
     target_link_libraries(smiles_driver_v72 PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.lib)
 else()
-    target_link_libraries(smiles_driver_v72 PRIVATE ${INDIGO_LIB_DIR}/indigo.dll)
+    target_link_libraries(smiles_driver_v72 PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.dll)
 endif()
 
 qt_add_executable(fused_ring_orientation_test tests/fused_ring_orientation_test.cpp src/app/FusedRingOrientation.h src/app/FusedRingOrientation.cpp)

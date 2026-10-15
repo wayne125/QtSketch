@@ -44,7 +44,8 @@ std::map<int, QString> computePeripheralNumberingGeneral(
     const Graph &g,
     const FusedRingSystemInput &input,
     const std::set<int> &substituentBearingNodes = {},
-    const std::set<int> &hydroLocantBearingNodes = {});
+    const std::set<int> &hydroLocantBearingNodes = {},
+    std::vector<std::map<int, QString>> *tiedMapsOut = nullptr);
 
 // Helper to build Graph from molecule (copied from computePeripheralNumberingForMol)
 static Graph buildGraphFromMol(int mol, std::map<int, int> &indigoToGraphIdx) {
