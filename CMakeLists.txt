@@ -28,6 +28,7 @@ set(IUPAC_NAMING_SOURCES
     src/app/retained/IndoleFamily.h src/app/retained/IndoleFamily.cpp
     src/app/retained/TricyclicNFamily.h src/app/retained/TricyclicNFamily.cpp
     src/app/retained/PhenoxazineFamily.h src/app/retained/PhenoxazineFamily.cpp
+    src/app/retained/ChromeneXanthineFamily.h src/app/retained/ChromeneXanthineFamily.cpp
 )
 
 set_source_files_properties(Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
