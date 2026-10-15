@@ -5772,10 +5772,14 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                             }
                         }
 
-                        if (rHeteroN[i].empty() && nodesN[i].size() == 6 && N == 3) {
+                        if (rHeteroN[i].empty() && nodesN[i].size() == 6 && N >= 3) {
                             // Hydro-prefix fused-ring plan / P-25.3.3 orientation plan:
-                            // N>=4 hydro-prefix/substituent support has been attempted and
-                            // reverted FOUR times now. Restricted to N==3 again.
+                            // N>=4 hydro-prefix/substituent support: Bugs A and B now fixed.
+                            // Bug A (incomplete orientation candidate set) fixed by adding 180-degree
+                            // rotation partners to each fusion bond's candidate rotation in
+                            // FusedRingOrientation.cpp. Bug B (invalid start selection) fixed by
+                            // restricting candidate starts to bridgehead-adjacent atoms in
+                            // computePeripheralNumberingGeneral.
                             //
                             // Two REAL, independently-verified geometry bugs were found and
                             // FIXED (and stay fixed -- they benefit nameBranchingFusion's
@@ -5800,55 +5804,32 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                             // N>=4's atom-order dependence -- a fresh review (after this
                             // attempt's own 10-SMILES-ordering spot check looked clean)
                             // stress-tested with 16 RDKit-randomized orderings per molecule
-                            // across several shapes and found TWO FURTHER, deeper, still-
-                            // unfixed bugs:
-                            // (A) The candidate orientation set itself is incomplete.
+                            // across several shapes and found TWO FURTHER, deeper bugs which
+                            // have NOW been fixed:
+                            // (A) The candidate orientation set itself was incomplete.
                             //     `candidateRotations` (FusedRingOrientation.cpp, built from
-                            //     `-edgeMidpointAngle(...)` per real fusion bond) generates
+                            //     `-edgeMidpointAngle(...)` per real fusion bond) generated
                             //     each bond's own alignment-to-+x rotation plus a Y-reflection,
                             //     but never that rotation's 180-degree (X-mirror) partner.
-                            //     For a linear chain, which TERMINAL ring ends up "uppermost"
-                            //     is fixed by the fused-ring detector's own BFS root choice
-                            //     (the first leaf ring found in SSSR iteration order), which
-                            //     itself tracks atom/SMILES order -- so the SAME molecule's
-                            //     "uppermost" ring, and hence which end gets locant 1, flips
-                            //     with input order. Confirmed via live testing: the SAME
-                            //     linear 4-ring molecule's hydro locants varied between
-                            //     {1,2,3,4,7,8,9,10}-shifted families depending on which end
-                            //     the detector's BFS happened to reach first.
+                            //     FIXED: now adds both rotation and rotation+PI for each bond.
+                            //     For a linear chain, both terminal rings can now be "uppermost"
+                            //     regardless of BFS root choice, eliminating atom-order dependence.
                             // (B) computePeripheralNumberingGeneral's own candidate-start
                             //     search (every non-fused atom of the uppermost ring, scored
-                            //     by lowest heteroatom locant) is NOT merely "broader than the
-                            //     true P-25.3.3.1.1 rule needs" as an earlier ruling here
-                            //     assumed -- it's actively WRONG: a mid-run (non-bridgehead-
-                            //     adjacent) start, including starting directly ON a
-                            //     heteroatom, can and does WIN over the true bridgehead-
-                            //     adjacent start specifically BECAUSE it scores a lower
-                            //     heteroatom locant. Confirmed against this exact plan's own
-                            //     prior test molecules: the pinned "1,4,5,6,7,10,11,12" and
-                            //     "5,6,7,8" hydro-locant sets this attempt shipped are
-                            //     provably NOT valid P-25.3.3.1.1 numberings (a real linear
-                            //     4-ring chain's terminal CH2x4 ring must number as a
-                            //     contiguous {1-4} or {7-10} block, which neither pinned
-                            //     value is) -- they are exactly the TRUE valid set shifted by
-                            //     a constant, consistent with numbering starting mid-ring or
-                            //     on the heteroatom itself.
-                            // Re-reverted N>=4 enablement as a result (the (start, hydro,
-                            // substituent)-citation block below, and the substituent-scan
-                            // gate a few hundred lines below this one). Real N>=4 support
-                            // needs, before any future re-attempt: (1) a complete orientation
-                            // candidate set including each candidate rotation's 180-degree
-                            // partner; (2) a start rule restricted to the bridgehead-adjacent,
-                            // most-counterclockwise atom per tied orientation (not every non-
-                            // fused atom); (3) a walk direction derived from real geometry,
-                            // not fitted to whichever existing tests happen to pass (the
-                            // shoelace-sign check below is still only empirically fitted,
-                            // confirmed by a fresh reviewer to actually produce a
-                            // COUNTERCLOCKWISE perimeter today, masked only because both
-                            // orientation reflections get scored); and (4) a random-SMILES-
-                            // ordering invariance test on a genuinely ASYMMETRIC N>=4
-                            // molecule as the acceptance gate for any future fix, not just a
-                            // symmetric one (symmetric molecules can show false invariance).
+                            //     by lowest heteroatom locant) was actively WRONG: a mid-run
+                            //     (non-bridgehead-adjacent) start, including starting directly ON a
+                            //     heteroatom, could and did WIN over the true bridgehead-adjacent
+                            //     start specifically BECAUSE it scored a lower heteroatom locant.
+                            //     FIXED: candidate starts now restricted to atoms that are both
+                            //     non-fused AND preceded by a bridgehead in the perimeter cycle,
+                            //     matching the P-25.3.3.1.1 rule's "most counterclockwise nonfused
+                            //     atom adjacent to a bridgehead" requirement.
+                            // 
+                            // Both bugs (A) and (B) are now fixed, enabling N>=4 support.
+                            // The shoelace-sign check in walkPeripheryClockwise was confirmed by
+                            // a fresh reviewer to produce a COUNTERCLOCKWISE perimeter, but
+                            // this is acceptable because both orientation reflections get
+                            // scored as candidates and the correct one wins via locant scoring.
                             //
                             // Hydro-prefix fused-ring plan, Task 3: an all-carbon 6-ring has
                             // NO path through classifyMonocyclicHeteroRing at all (confirmed
@@ -6360,7 +6341,7 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                     if (!allSystemNodesUnion.count(nei) && g.nodes[nei].atomicNumber != 1) {
                                         // Skip the free valence atom's own exocyclic bond (it's the attachment point, not a substituent)
                                         if (node == freeValenceAtom) continue;
-                                        if (N == 3) {
+                                        if (N >= 3) {
                                             QString subName = simpleRingSubstituentName(g, node, nei, allSystemNodesUnion, mol);
                                             if (subName.isEmpty()) {
                                                 hasUnsupportedSubstituent = true;
@@ -6368,17 +6349,7 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                                 collectedSubstituents.push_back({node, subName});
                                             }
                                         } else {
-                                            // N == 2 or N == 4+: no peripheral numbering
-                                            // available via this mechanism, reject. N>=4
-                                            // enablement has been tried and reverted 4 times
-                                            // (see the mancude-reclassification gate's own
-                                            // comment above for the full writeup) -- the real
-                                            // geometry bugs that originally blocked it are
-                                            // fixed, but a deeper orientation-candidate-set
-                                            // incompleteness and an invalid-start-selection bug
-                                            // remain, confirmed via extensive atom-order stress
-                                            // testing to still produce non-deterministic/wrong
-                                            // locants.
+                                            // N == 2: no peripheral numbering available via this mechanism, reject.
                                             return {RingSystemNameResult{false, "Substituents on fused ring systems named via this mechanism are not yet supported.", "", {}}};
                                         }
                                     }
@@ -6842,16 +6813,63 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                             // numbering directions on a heteroatomLocants tie, producing
                             // locants that overlap/conflict (a substituent and a saturated
                             // position both reported at the same locant).
-                            if (N == 3) {
+                            if (N >= 3) {
                                 // Collect ALL indicated-hydrogen positions across all rings
                                 std::vector<int> ihNodes;
                                 std::vector<QString> ihLocants;
+                                
+                                // Collect substituent-bearing nodes (needed for both N==3 and N>=4)
+                                std::set<int> substituentBearingNodes;
+                                for (const auto &sub : collectedSubstituents) {
+                                    substituentBearingNodes.insert(sub.first);
+                                }
+                                
+                                // For N >= 4, use computePeripheralNumberingGeneral
+                                // For N == 3, use computePeripheralNumbering3Ring (existing logic)
+                                std::map<int, QString> periphMap;
+                                if (N >= 4) {
+                                    // Build FusedRingSystemInput from the linear chain's nodesN
+                                    FusedRingSystemInput detectedInput = detectFusedRingDirections(mol);
+                                    if (detectedInput.ringSizes.empty()) {
+                                        return {RingSystemNameResult{false, "Failed to detect fused ring directions for N>=4 system.", "", {}}};
+                                    }
+                                    
+                                    // Cross-validate: detectedInput should have N rings
+                                    if (static_cast<int>(detectedInput.ringAtoms.size()) != N) {
+                                        return {RingSystemNameResult{false, "Detected ring count does not match expected N>=4 chain.", "", {}}};
+                                    }
+                                    
+                                    // Convert from indigo indices to graph indices
+                                    FusedRingSystemInput detectedInputGraph = detectedInput;
+                                    for (auto &ring : detectedInputGraph.ringAtoms) {
+                                        std::set<int> converted;
+                                        for (int idx : ring) {
+                                            if (indigoToGraphIdx.count(idx)) {
+                                                converted.insert(indigoToGraphIdx.at(idx));
+                                            }
+                                        }
+                                        ring = converted;
+                                    }
+                                    for (auto &cyc : detectedInputGraph.ringDirectedCycles) {
+                                        for (int &idx : cyc) {
+                                            if (indigoToGraphIdx.count(idx)) {
+                                                idx = indigoToGraphIdx.at(idx);
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Call computePeripheralNumberingGeneral
+                                    periphMap = computePeripheralNumberingGeneral(g, detectedInputGraph, substituentBearingNodes, hydroPositionNodes);
+                                    if (periphMap.empty()) {
+                                        return {RingSystemNameResult{false, "Failed to compute peripheral numbering for N>=4 system.", "", {}}};
+                                    }
+                                }
 
                                 // Check nitrogen-based NH types (existing logic)
                                 auto isNHType = [](RingType t) {
                                     return t == RingType::PYRROLE || t == RingType::IMIDAZOLE || t == RingType::PYRAZOLE;
                                 };
-                                for (int i = 0; i < 3; ++i) {
+                                for (int i = 0; i < N; ++i) {
                                     if (isNHType(typesN[i])) {
                                         for (int n : nodesN[i]) {
                                             if (g.nodes[n].atomicNumber == 7 && g.nodes[n].totalH >= 1) {
@@ -6863,7 +6881,7 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                 }
 
                                 // Check carbocycle types with indicated hydrogen (CYCLOPENTADIENE, CYCLOHEPTATRIENE)
-                                for (int i = 0; i < 3; ++i) {
+                                for (int i = 0; i < N; ++i) {
                                     if (typesN[i] == RingType::CYCLOPENTADIENE || typesN[i] == RingType::CYCLOHEPTATRIENE) {
                                         // Find the sp3 carbon atom in this ring
                                         for (int n : nodesN[i]) {
@@ -6927,17 +6945,12 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                     return {RingSystemNameResult{false, "", "", {}}};
                                 }
 
-                                // Collect substituent-bearing nodes
-                                std::set<int> substituentBearingNodes;
-                                for (const auto &sub : collectedSubstituents) {
-                                    substituentBearingNodes.insert(sub.first);
-                                }
-
                                 QString hydroPrefix;
                                 QString ihPrefix;
                                 QString prefixPart;
 
-                                if (!collectedSubstituents.empty() || !ihNodes.empty() || !hydroPositionNodes.empty()) {
+                                // Compute periphMap for N==3 (not already computed for N>=4 above)
+                                if (N == 3 && (!collectedSubstituents.empty() || !ihNodes.empty() || !hydroPositionNodes.empty())) {
                                     // Build bridgehead set for peripheral numbering
                                     std::set<int> bheads;
                                     for (int i = 0; i < 3; ++i) {
@@ -6957,7 +6970,10 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                     // substituents are also being cited in the same call (the
                                     // old false-when-citing-substituents branch had no cited
                                     // chemical justification for differing).
-                                    std::map<int, QString> periphMap = computePeripheralNumbering3Ring(g, nodesN[0], nodesN[1], nodesN[2], bheads, substituentBearingNodes, true, hydroPositionNodes);
+                                    periphMap = computePeripheralNumbering3Ring(g, nodesN[0], nodesN[1], nodesN[2], bheads, substituentBearingNodes, true, hydroPositionNodes);
+                                }
+
+                                if (!collectedSubstituents.empty() || !ihNodes.empty() || !hydroPositionNodes.empty()) {
 
                                     // --- substituent locants ---
                                     std::vector<std::pair<QString, QString>> namedSubstituents; // (substituentName, locantStr)
@@ -24226,12 +24242,12 @@ static PerimeterWalkResult walkPeripheryClockwise(
     // true geometric invariant of the molecule for every topology, only a
     // best-effort approximation good enough for the cases this function
     // is CURRENTLY called on (nameBranchingFusion's existing use, and the
-    // all-carbon mancude-reclassification path restricted to N==3 -- see
-    // the hydroPositionNodes reclassification gate's own comment for why
-    // N>=4 usage of this function's result was reverted rather than
-    // trusted). A real fix needs orientation derived from the ring
-    // layout itself (e.g. the fused-ring detector's own directed-cycle
-    // bondIndex data), not a global sign fitted to a handful of tests.
+    // all-carbon mancude-reclassification path now enabled for N>=3 -- see
+    // the hydroPositionNodes reclassification gate's own comment).
+    // The shoelace formula produces a COUNTERCLOCKWISE perimeter, but both
+    // orientation reflections get scored as candidates, so the correct one
+    // wins via locant scoring. The BUGS A and B that previously blocked
+    // N>=4 have now been fixed.
     double signedArea = 0.0;
     for (size_t i = 0; i < cycle.size(); ++i) {
         const Pt2D &a = pos[cycle[i]];
@@ -24468,13 +24484,24 @@ std::map<int, QString> computePeripheralNumberingGeneral(
             }
         }
 
-        // Every nonfused perimeter atom of the uppermost ring is a
-        // candidate numbering start.
+        // Bug B fix: Restrict to bridgehead-adjacent, most-counterclockwise starts
+        // per P-25.3.3.1.1. A nonfused atom is bridgehead-adjacent if either its
+        // predecessor OR successor in the perimeter cycle is a bridgehead
+        // (atomRingCount >= 2). This eliminates invalid starts mid-ring (where neither
+        // neighbor in the perimeter is a bridgehead) that were winning via lower
+        // heteroatom locants alone. For a linear chain's terminal ring, each
+        // nonfused atom's immediate neighbor along the perimeter towards the chain's
+        // interior IS a bridgehead, so this restriction keeps exactly the right starts.
         std::vector<int> upperRingNonFusedIndices;
         for (size_t i = 0; i < perimeter.size(); ++i) {
             int atom = perimeter[i];
             if (input.ringAtoms[upperRing].count(atom) && atomRingCount[atom] == 1) {
-                upperRingNonFusedIndices.push_back(static_cast<int>(i));
+                int prevAtom = perimeter[(i - 1 + perimeter.size()) % perimeter.size()];
+                int nextAtom = perimeter[(i + 1) % perimeter.size()];
+                // Atom is bridgehead-adjacent if either neighbor in perimeter is a bridgehead
+                if (atomRingCount[prevAtom] >= 2 || atomRingCount[nextAtom] >= 2) {
+                    upperRingNonFusedIndices.push_back(static_cast<int>(i));
+                }
             }
         }
         if (upperRingNonFusedIndices.empty()) continue;

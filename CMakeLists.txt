@@ -235,6 +235,18 @@ endif()
 enable_testing()
 add_test(NAME iupac_namer_test COMMAND iupac_namer_test)
 
+qt_add_executable(smiles_driver_v72 .claude_scratch_fdafull/smiles_driver.cpp src/app/IupacNamer.h src/app/IupacNamer.cpp src/app/BondStereoPerception.h src/app/BondStereoPerception.cpp src/app/FusedRingOrientation.h src/app/FusedRingOrientation.cpp src/app/FusedRingDirectionDetector.h src/app/FusedRingDirectionDetector.cpp)
+target_include_directories(smiles_driver_v72 PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/app
+    ${CMAKE_CURRENT_SOURCE_DIR}/indigo/api/c/indigo
+)
+if (MSVC)
+    target_link_libraries(smiles_driver_v72 PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.lib)
+else()
+    target_link_libraries(smiles_driver_v72 PRIVATE ${INDIGO_LIB_DIR}/indigo.dll)
+endif()
+
 qt_add_executable(fused_ring_orientation_test tests/fused_ring_orientation_test.cpp src/app/FusedRingOrientation.h src/app/FusedRingOrientation.cpp)
 target_include_directories(fused_ring_orientation_test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src

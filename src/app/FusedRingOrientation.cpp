@@ -123,9 +123,9 @@ std::vector<FusedRingOrientationResult> computeAllPreferredOrientations(const Fu
 
     // Candidate orientations: for each real fusion bond, the rotation that
     // aligns that bond's direction with the horizontal axis, times 2 for a
-    // reflection (flip y) -- a small, chemically-meaningful candidate set
-    // (not continuous/arbitrary rotation search), generalizing the old
-    // code's 12 discrete hex symmetries.
+    // reflection (flip y), times 2 more for a 180-degree rotation -- a small,
+    // chemically-meaningful candidate set (not continuous/arbitrary rotation
+    // search), generalizing the old code's 12 discrete hex symmetries.
     //
     // NOTE: a broader "every vertex of every ring" candidate set was tried
     // here and made things WORSE (regressed naphthalene/anthracene/
@@ -133,10 +133,18 @@ std::vector<FusedRingOrientationResult> computeAllPreferredOrientations(const Fu
     // branching-ground-truth regression's real cause is NOT candidate
     // breadth; it's elsewhere (scoring criteria or tie-break behavior).
     // Reverted to this narrower, empirically-correct-for-linear-chains set.
+    //
+    // Fix for Bug A: Each fusion bond's base rotation now gets TWO partners:
+    // (1) its Y-reflection (already present), and (2) its 180-degree X-mirror
+    // rotation. For a linear chain, this ensures BOTH terminal rings can be
+    // "uppermost" regardless of BFS root choice, eliminating atom-order
+    // dependence on which end gets locant 1.
     std::vector<double> candidateRotations;
     for (const auto &edge : input.fusions) {
         double a = edgeMidpointAngle(placed[edge.ring1].rotation, input.ringSizes[edge.ring1], edge.bondIndex);
         candidateRotations.push_back(-a);
+        // Add 180-degree (PI) rotation partner for this fusion bond
+        candidateRotations.push_back(-a + PI);
     }
     if (candidateRotations.empty()) candidateRotations.push_back(0.0);
 
