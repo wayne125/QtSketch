@@ -3,6 +3,7 @@
 #include "../src/app/retained/QuinolineFamily.h"
 #include "../src/app/retained/IndoleFamily.h"
 #include "../src/app/retained/TricyclicNFamily.h"
+#include "../src/app/retained/PhenoxazineFamily.h"
 #include "indigo.h"
 #include <iostream>
 #include <vector>
@@ -16,6 +17,7 @@ int main() {
     registerQuinolineFamily(registry);
     registerIndoleFamily(registry);
     registerTricyclicNFamily(registry);
+    registerPhenoxazineFamily(registry);
 
     int passed = 0, failed = 0;
     for (const auto &sys : registry) {
