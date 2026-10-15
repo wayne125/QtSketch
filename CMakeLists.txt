@@ -22,6 +22,8 @@ set(IUPAC_NAMING_SOURCES
     src/app/FusedRingDirectionDetector.h src/app/FusedRingDirectionDetector.cpp
     src/app/NamingTypes.h src/app/GraphTypes.h
     src/app/NamingValidation.h src/app/NamingValidation.cpp
+    src/app/RetainedRingTypes.h src/app/RetainedRingTypes.cpp
+    src/app/retained/HydrocarbonFamily.h src/app/retained/HydrocarbonFamily.cpp
 )
 
 set_source_files_properties(Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
@@ -291,6 +293,19 @@ else()
     target_link_libraries(naming_validation_test PRIVATE Qt6::Core)
 endif()
 add_test(NAME naming_validation_test COMMAND naming_validation_test)
+
+qt_add_executable(retained_ring_registry_test tests/retained_ring_registry_test.cpp ${IUPAC_NAMING_SOURCES} src/app/BondStereoPerception.h src/app/BondStereoPerception.cpp)
+target_include_directories(retained_ring_registry_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/app
+    ${CMAKE_CURRENT_SOURCE_DIR}/indigo/api/c/indigo
+)
+if (MSVC)
+    target_link_libraries(retained_ring_registry_test PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.lib)
+else()
+    target_link_libraries(retained_ring_registry_test PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.dll)
+endif()
+add_test(NAME retained_ring_registry_test COMMAND retained_ring_registry_test)
 
 add_library(molecule_model STATIC
     src/app/molecule/ExtensionData.h
