@@ -5,6 +5,7 @@
 #include "../src/app/retained/TricyclicNFamily.h"
 #include "../src/app/retained/PhenoxazineFamily.h"
 #include "../src/app/retained/ChromeneXanthineFamily.h"
+#include "../src/app/retained/PhosphorusArsenicFamily.h"
 #include "indigo.h"
 #include <iostream>
 #include <vector>
@@ -20,6 +21,7 @@ int main() {
     registerTricyclicNFamily(registry);
     registerPhenoxazineFamily(registry);
     registerChromeneXanthineFamily(registry);
+    registerPhosphorusArsenicFamily(registry);
 
     int passed = 0, failed = 0;
     for (const auto &sys : registry) {
