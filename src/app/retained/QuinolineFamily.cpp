@@ -13,6 +13,34 @@
 // All heterobicyclics below reuse this same atom->locant mapping.
 // Each SMILES was empirically verified to place N atoms at the correct
 // atom indices matching their chemical locant positions.
+//
+// RETROACTIVE FIX (found independently during Task 8's matching-engine
+// verification, long after this file's original commit 35f1a4c): every
+// entry below except 1,5-naphthyridine used an UPPERCASE "N" for its
+// pyridine-type (no N-H) nitrogen atoms mixed into an otherwise lowercase-
+// aromatic SMILES string (e.g. isoquinoline's "N1ccc2ccccc2c1"). Indigo's
+// aromaticity perception does not treat that uppercase N as part of the
+// aromatic ring even after an explicit indigoAromatize() call -- it leaves
+// the two ring bonds adjacent to it as non-aromatic/open, which silently
+// gives the WRONG gross molecular formula (confirmed via indigoGrossFormula:
+// e.g. isoquinoline parsed to C9H11N instead of the real C9H7N; quinazoline/
+// quinoxaline/cinnoline/phthalazine/4 of the 5 naphthyridines all showed the
+// same class of error). This predates bug class 4's discovery (Task 6, long
+// after this file was committed in Task 2) so gross formula was never
+// checked against these entries until now. 1,5-naphthyridine was ALREADY
+// using lowercase "n" for both its nitrogens and already gave the correct
+// C8H6N2 -- that one entry is the reason this bug wasn't caught by a
+// same-file comparison sooner.
+//
+// FIX: every pyridine-type N below (none of these systems have an N-H --
+// all are 2-ring-bond, lone-pair nitrogens, same valence class as the
+// carbons they replace) is now written as lowercase "n", matching
+// 1,5-naphthyridine's already-correct pattern. Confirmed via fresh Indigo
+// runs: atom order, element, and degree at every index are IDENTICAL
+// between the old uppercase and new lowercase SMILES (case-only change) --
+// only the computed H-count differs, now correctly C9H7N (mono-aza) or
+// C8H6N2 (diaza) for every entry, matching the real compounds' known
+// formulas. No locant/bondLetter changes needed for any entry.
 
 void registerQuinolineFamily(std::vector<RetainedRingSystem> &registry) {
     // 1. quinoline: N at locant 1 (atom[9])
@@ -22,7 +50,7 @@ void registerQuinolineFamily(std::vector<RetainedRingSystem> &registry) {
     //          atom[8]="8a", atom[9]="1" (N)
     registry.push_back(RetainedRingSystem{
         "quinoline",
-        "c1ccc2ccccc2N1",
+        "c1ccc2ccccc2n1",
         {"2","3","4","4a","5","6","7","8","8a","1"},
         {
             {'a', {"1","2"}}, {'b', {"2","3"}}, {'c', {"3","4"}},
@@ -38,7 +66,7 @@ void registerQuinolineFamily(std::vector<RetainedRingSystem> &registry) {
     // Locants: same mapping as quinoline
     registry.push_back(RetainedRingSystem{
         "isoquinoline",
-        "N1ccc2ccccc2c1",
+        "n1ccc2ccccc2c1",
         {"2","3","4","4a","5","6","7","8","8a","1"},
         {
             {'a', {"1","2"}}, {'b', {"2","3"}}, {'c', {"3","4"}},
@@ -53,7 +81,7 @@ void registerQuinolineFamily(std::vector<RetainedRingSystem> &registry) {
     // SMILES N1ccc2ccccc2N1 verified: atom[0]=N, atom[9]=N, 10 atoms
     registry.push_back(RetainedRingSystem{
         "cinnoline",
-        "N1ccc2ccccc2N1",
+        "n1ccc2ccccc2n1",
         {"2","3","4","4a","5","6","7","8","8a","1"},
         {
             {'a', {"1","2"}}, {'b', {"2","3"}}, {'c', {"3","4"}},
@@ -79,7 +107,7 @@ void registerQuinolineFamily(std::vector<RetainedRingSystem> &registry) {
     // C(4)-C(4a)-... -- the textbook quinazoline arrangement.
     registry.push_back(RetainedRingSystem{
         "quinazoline",
-        "c1Ncc2ccccc2N1",
+        "c1ncc2ccccc2n1",
         {"2","3","4","4a","5","6","7","8","8a","1"},
         {
             {'a', {"1","2"}}, {'b', {"2","3"}}, {'c', {"3","4"}},
@@ -94,7 +122,7 @@ void registerQuinolineFamily(std::vector<RetainedRingSystem> &registry) {
     // SMILES c1cNc2ccccc2N1 verified: atom[2]=N, atom[9]=N, 10 atoms
     registry.push_back(RetainedRingSystem{
         "quinoxaline",
-        "c1cNc2ccccc2N1",
+        "c1cnc2ccccc2n1",
         {"2","3","4","4a","5","6","7","8","8a","1"},
         {
             {'a', {"1","2"}}, {'b', {"2","3"}}, {'c', {"3","4"}},
@@ -109,7 +137,7 @@ void registerQuinolineFamily(std::vector<RetainedRingSystem> &registry) {
     // SMILES N1Ncc2ccccc2c1 verified: atom[0]=N, atom[1]=N, 10 atoms
     registry.push_back(RetainedRingSystem{
         "phthalazine",
-        "N1Ncc2ccccc2c1",
+        "n1ncc2ccccc2c1",
         {"2","3","4","4a","5","6","7","8","8a","1"},
         {
             {'a', {"1","2"}}, {'b', {"2","3"}}, {'c', {"3","4"}},
@@ -139,7 +167,7 @@ void registerQuinolineFamily(std::vector<RetainedRingSystem> &registry) {
     // SMILES c1ccc2cNccc2N1 verified: atom[5]=N, atom[9]=N, 10 atoms
     registry.push_back(RetainedRingSystem{
         "1,6-naphthyridine",
-        "c1ccc2cNccc2N1",
+        "c1ccc2cnccc2n1",
         {"2","3","4","4a","5","6","7","8","8a","1"},
         {
             {'a', {"1","2"}}, {'b', {"2","3"}}, {'c', {"3","4"}},
@@ -154,7 +182,7 @@ void registerQuinolineFamily(std::vector<RetainedRingSystem> &registry) {
     // SMILES c1ccc2ccNcc2N1 verified: atom[6]=N, atom[9]=N, 10 atoms
     registry.push_back(RetainedRingSystem{
         "1,7-naphthyridine",
-        "c1ccc2ccNcc2N1",
+        "c1ccc2ccncc2n1",
         {"2","3","4","4a","5","6","7","8","8a","1"},
         {
             {'a', {"1","2"}}, {'b', {"2","3"}}, {'c', {"3","4"}},
@@ -169,7 +197,7 @@ void registerQuinolineFamily(std::vector<RetainedRingSystem> &registry) {
     // SMILES c1ccc2cccNc2N1 verified: atom[7]=N, atom[9]=N, 10 atoms
     registry.push_back(RetainedRingSystem{
         "1,8-naphthyridine",
-        "c1ccc2cccNc2N1",
+        "c1ccc2cccnc2n1",
         {"2","3","4","4a","5","6","7","8","8a","1"},
         {
             {'a', {"1","2"}}, {'b', {"2","3"}}, {'c', {"3","4"}},
@@ -184,7 +212,7 @@ void registerQuinolineFamily(std::vector<RetainedRingSystem> &registry) {
     // SMILES N1ccc2cNccc2c1 verified: atom[0]=N, atom[5]=N, 10 atoms
     registry.push_back(RetainedRingSystem{
         "2,6-naphthyridine",
-        "N1ccc2cNccc2c1",
+        "n1ccc2cnccc2c1",
         {"2","3","4","4a","5","6","7","8","8a","1"},
         {
             {'a', {"1","2"}}, {'b', {"2","3"}}, {'c', {"3","4"}},
@@ -199,7 +227,7 @@ void registerQuinolineFamily(std::vector<RetainedRingSystem> &registry) {
     // SMILES N1ccc2ccNcc2c1 verified: atom[0]=N, atom[6]=N, 10 atoms
     registry.push_back(RetainedRingSystem{
         "2,7-naphthyridine",
-        "N1ccc2ccNcc2c1",
+        "n1ccc2ccncc2c1",
         {"2","3","4","4a","5","6","7","8","8a","1"},
         {
             {'a', {"1","2"}}, {'b', {"2","3"}}, {'c', {"3","4"}},
