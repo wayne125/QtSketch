@@ -23,6 +23,7 @@ set(IUPAC_NAMING_SOURCES
     src/app/NamingTypes.h src/app/GraphTypes.h
     src/app/NamingValidation.h src/app/NamingValidation.cpp
     src/app/RetainedRingTypes.h src/app/RetainedRingTypes.cpp
+    src/app/RetainedRingMatcher.h src/app/RetainedRingMatcher.cpp
     src/app/retained/HydrocarbonFamily.h src/app/retained/HydrocarbonFamily.cpp
     src/app/retained/QuinolineFamily.h src/app/retained/QuinolineFamily.cpp
     src/app/retained/IndoleFamily.h src/app/retained/IndoleFamily.cpp
@@ -312,6 +313,19 @@ else()
     target_link_libraries(retained_ring_registry_test PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.dll)
 endif()
 add_test(NAME retained_ring_registry_test COMMAND retained_ring_registry_test)
+
+qt_add_executable(retained_ring_matcher_test tests/retained_ring_matcher_test.cpp ${IUPAC_NAMING_SOURCES} src/app/BondStereoPerception.h src/app/BondStereoPerception.cpp)
+target_include_directories(retained_ring_matcher_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/app
+    ${CMAKE_CURRENT_SOURCE_DIR}/indigo/api/c/indigo
+)
+if (MSVC)
+    target_link_libraries(retained_ring_matcher_test PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.lib)
+else()
+    target_link_libraries(retained_ring_matcher_test PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.dll)
+endif()
+add_test(NAME retained_ring_matcher_test COMMAND retained_ring_matcher_test)
 
 add_library(molecule_model STATIC
     src/app/molecule/ExtensionData.h

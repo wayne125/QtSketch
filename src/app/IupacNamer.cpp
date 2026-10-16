@@ -27,13 +27,6 @@
 // Graph, GraphNode, and GraphBond are all defined in GraphTypes.h (included via NamingValidation.h)
 #include "NamingValidation.h"
 
-struct RingSystemNameResult {
-    bool success = false;
-    QString error;
-    QString baseName;
-    std::map<int, QString> locantMap;
-};
-
 std::map<int, QString> computePeripheralNumbering(
     const Graph &g,
     const std::set<int> &ring1Nodes,

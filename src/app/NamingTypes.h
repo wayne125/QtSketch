@@ -1,4 +1,6 @@
 #pragma once
+#include <QString>
+#include <map>
 
 // Strong-typed wrappers for the index spaces this file's fused-ring naming
 // code mixes in ways that have caused real, previously-shipped bugs (see
@@ -46,4 +48,14 @@ struct CycleEdgeIndex {
     CycleEdgeIndex(int v) : value(v) {}
     operator int() const { return value; }
     bool operator==(const CycleEdgeIndex &o) const { return value == o.value; }
+};
+
+// Result type for ring system naming -- used by both IupacNamer.cpp
+// and RetainedRingMatcher.cpp. Defined here (not in either .cpp) so there
+// is exactly one definition visible to both translation units.
+struct RingSystemNameResult {
+    bool success = false;
+    QString error;
+    QString baseName;
+    std::map<int, QString> locantMap;
 };
