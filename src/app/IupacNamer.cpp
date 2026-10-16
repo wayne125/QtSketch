@@ -6,6 +6,7 @@
 #include "NamingTypes.h"
 #include "GraphTypes.h"
 #include "NamingValidation.h"
+#include "RetainedRingMatcher.h"
 #include "indigo.h"
 #include <QStringList>
 #include <vector>
@@ -23528,6 +23529,65 @@ IupacResult IupacNamer::generateName(int mol) {
             // didn't say "no match"; otherwise fall out of this whole if/else-if chain
             // and let the later, generic checks run, matching the original pre-extraction
             // behavior.
+            // Task 9 (retained-polycyclic registry pre-check): try matching the
+            // whole ring system directly against the Appendix 2 registry BEFORE
+            // nameLinearChainFusion runs. Only consumed when the registry's
+            // matched base component covers EVERY ring atom in the molecule (no
+            // attached component remains uncited) -- tryRetainedBaseDecomposition's
+            // own result for a k<N match (attached rings still present, e.g. the
+            // naphtho[2,3-g]isoquinoline ground-truth molecule) does not yet carry
+            // a real FR-4 citation for that attached component; completing that
+            // assembly is Task 10's job, not this integration step's. Falling
+            // through unchanged for any k<N match keeps this wiring a genuine
+            // no-op for every molecule that needs attached-component citation,
+            // matching this task's own "still safe no-op" goal even though Task 8's
+            // search body is real (not a placeholder) by the time this runs.
+            // Two additional conditions found necessary via the real iupac_namer_test
+            // regression run (not anticipated by the plan's own Task 9 text):
+            //  1. Only intercept when at least one covered ring atom is a heteroatom.
+            //     The registry's own HydrocarbonFamily entries (naphthalene,
+            //     anthracene) exist mainly as reference skeletons other families
+            //     reuse, not to compete with the already-correct, already-working
+            //     mandatory-retained-hydrocarbon-name mechanism elsewhere in this
+            //     function (confirmed by test 309: bare anthracene must still flow
+            //     through that existing mechanism's specific rejection-then-handoff
+            //     path, not be intercepted here as a bare "anthracene" success).
+            //  2. Only intercept when no ring atom has an exocyclic substituent.
+            //     A substituted ring system (e.g. test 441's anthracene-acetic-acid,
+            //     or QUINACRINE's heavily-substituted acridine core) still needs the
+            //     existing substituent-handling machinery this pre-check knows
+            //     nothing about; intercepting here would silently discard every
+            //     substituent and return just the bare ring name.
+            if (auto retainedResult = tryRetainedBaseDecomposition(mol)) {
+                if (retainedResult->success) {
+                    std::set<int> allRingAtomsForRetainedCheck;
+                    for (const auto &r : sssrRings) {
+                        allRingAtomsForRetainedCheck.insert(r.begin(), r.end());
+                    }
+                    if (retainedResult->locantMap.size() == allRingAtomsForRetainedCheck.size()) {
+                        bool hasHeteroatom = false;
+                        bool hasExocyclicSubstituent = false;
+                        for (int ringAtomIdx : allRingAtomsForRetainedCheck) {
+                            int atom = indigoGetAtom(mol, ringAtomIdx);
+                            if (atom < 0) continue;
+                            if (indigoAtomicNumber(atom) != 6) hasHeteroatom = true;
+                            int neiIter = indigoIterateNeighbors(atom);
+                            int nei;
+                            while ((nei = indigoNext(neiIter)) != 0) {
+                                if (!allRingAtomsForRetainedCheck.count(indigoIndex(nei))) {
+                                    hasExocyclicSubstituent = true;
+                                }
+                            }
+                            indigoFree(neiIter);
+                            if (hasExocyclicSubstituent) break;
+                        }
+                        if (hasHeteroatom && !hasExocyclicSubstituent) {
+                            return {true, retainedResult->baseName, ""};
+                        }
+                    }
+                }
+            }
+
             bool linearChainApplies = false;
             std::vector<RingSystemNameResult> chainResults;
             if (validFusion && ends == 2 && centers == N - 2) {
