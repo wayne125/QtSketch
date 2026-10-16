@@ -1198,13 +1198,20 @@ int main() {
         // check_sssr.exe: 4 rings (6,6,6,6), 18 heavy atoms.
         {"C1CCc2cc3cc4CCCCc4cc3cc2C1", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."},
 
-        // Regression guard: the fully aromatic (no saturation anywhere) analog of
-        // the pyridine-containing 4-ring shape is unaffected by any of this --
-        // reaches nameBranchingFusion's own existing (unrelated to this plan)
-        // fusion-letter assembly, which the walkPeripheryClockwise fix was
-        // independently verified to leave byte-for-byte unchanged for every
-        // pre-existing passing test.
-        {"c1ccc2cc3cc4ccncc4cc3cc2c1", "benzo[3'',4'':6',1']benzo[4',3':6,1]benzo[4,3-c]pyridine"},
+        // Task 10 ground-truth molecule: naphtho[2,3-g]isoquinoline. Confirmed
+        // real IUPAC name via PubChem. This test was ALREADY failing at the
+        // Task 10 baseline (the pin below used to read
+        // "benzo[3'',4'':6',1']benzo[4',3':6,1]benzo[4,3-c]pyridine", which
+        // didn't even match the actual pre-Task-10 driver output of
+        // "benzo[1'',6'':3',4']benzo[1',6':3,4]benzo[6,1-c]pyridine" -- both
+        // are the fully-decomposed nameLinearChainFusion path's output,
+        // wrong either way since a real retained bicyclic base (isoquinoline)
+        // plus a real retained bicyclic attached component (naphtho) exist
+        // for this molecule). RetainedRingMatcher.cpp's
+        // tryRetainedBaseDecomposition now finds and cites both, verified
+        // via the real smiles_driver_v72 executable:
+        //   NAME	18	naphtho[2,3-g]isoquinoline
+        {"c1ccc2cc3cc4ccncc4cc3cc2c1", "naphtho[2,3-g]isoquinoline"},
 
         // Negative/regression cases for the same dispatcher, confirming it
         // correctly declines (falls through to the pre-existing, unchanged

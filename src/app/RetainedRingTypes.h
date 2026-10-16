@@ -41,6 +41,24 @@ struct RetainedRingSystem {
     // by the matcher checking heteroatom content first, per FR-2.3(a),
     // before ever comparing seniorityRank).
     int seniorityRank = 0;
+
+    // Task 10: this system's own FUSION PREFIX word, used when citing this
+    // system as an ATTACHED component (e.g. "naphtho" for naphthalene, per
+    // Blue Book FR-4 / the same irregular-stem convention IupacNamer.cpp's
+    // getFusionPrefixShared(RingType) already follows for monocyclic rings
+    // -- see its doc comment for examples like "benzo", "pyrido"). Appended
+    // as a NEW TRAILING field so every pre-existing positional aggregate
+    // initializer across src/app/retained/*.cpp (which omit it) still
+    // compiles unchanged and simply defaults to "" (this struct has no
+    // user-declared constructor, so it stays an aggregate). Deliberately
+    // left empty ("") for every entry not yet verified as a correct fusion
+    // prefix -- RetainedRingMatcher.cpp's attached-component assembly
+    // treats an empty fusionPrefix as "can't confidently cite this system
+    // as an attached component" and falls back rather than guessing a word
+    // form. Only "naphthalene" (HydrocarbonFamily.cpp) has this populated
+    // so far, since it's the only entry Task 10's ground-truth molecule
+    // (naphtho[2,3-g]isoquinoline) actually needs.
+    QString fusionPrefix;
 };
 
 // Parses sys.referenceSmiles standalone, confirms:

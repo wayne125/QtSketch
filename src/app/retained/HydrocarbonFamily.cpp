@@ -24,6 +24,8 @@ void registerHydrocarbonFamily(std::vector<RetainedRingSystem> &registry) {
             {'j', {"8a","1"}},
         },
         56, // Appendix 1 seniority position
+        "naphtho", // Task 10: fusion prefix, for citing naphthalene as an
+                   // attached component (e.g. "naphtho[2,3-g]isoquinoline")
     });
 
     // Anthracene -- 14 carbons; 9 and 10 are the two unique "meso" positions.

@@ -23531,17 +23531,23 @@ IupacResult IupacNamer::generateName(int mol) {
             // behavior.
             // Task 9 (retained-polycyclic registry pre-check): try matching the
             // whole ring system directly against the Appendix 2 registry BEFORE
-            // nameLinearChainFusion runs. Only consumed when the registry's
-            // matched base component covers EVERY ring atom in the molecule (no
-            // attached component remains uncited) -- tryRetainedBaseDecomposition's
-            // own result for a k<N match (attached rings still present, e.g. the
-            // naphtho[2,3-g]isoquinoline ground-truth molecule) does not yet carry
-            // a real FR-4 citation for that attached component; completing that
-            // assembly is Task 10's job, not this integration step's. Falling
-            // through unchanged for any k<N match keeps this wiring a genuine
-            // no-op for every molecule that needs attached-component citation,
-            // matching this task's own "still safe no-op" goal even though Task 8's
-            // search body is real (not a placeholder) by the time this runs.
+            // nameLinearChainFusion runs.
+            // Task 10 update: tryRetainedBaseDecomposition now also handles the
+            // k<N case (attached rings still present, e.g. the
+            // naphtho[2,3-g]isoquinoline ground-truth molecule) -- when it
+            // returns success=true for k<N, result.baseName already holds the
+            // FULLY ASSEMBLED name (base + attached-component citation), per
+            // its own "never return a partial/truncated name" contract (see
+            // RetainedRingMatcher.cpp's tryRetainedBaseDecomposition doc
+            // comment). So success==true alone is now the right signal to
+            // consume this result -- NOT locantMap covering every ring atom,
+            // which this task's own atom-map bookkeeping (base keys and
+            // remainder keys both counted, even for atoms shared at the
+            // fusion bond) can legitimately over-count past the true ring
+            // atom total. Falling through unchanged whenever
+            // tryRetainedBaseDecomposition returns nullopt (no confident
+            // complete assembly) keeps this wiring a safe no-op for every
+            // molecule it can't fully name, exactly as before.
             // Two additional conditions found necessary via the real iupac_namer_test
             // regression run (not anticipated by the plan's own Task 9 text):
             //  1. Only intercept when at least one covered ring atom is a heteroatom.
@@ -23564,7 +23570,7 @@ IupacResult IupacNamer::generateName(int mol) {
                     for (const auto &r : sssrRings) {
                         allRingAtomsForRetainedCheck.insert(r.begin(), r.end());
                     }
-                    if (retainedResult->locantMap.size() == allRingAtomsForRetainedCheck.size()) {
+                    {
                         bool hasHeteroatom = false;
                         bool hasExocyclicSubstituent = false;
                         for (int ringAtomIdx : allRingAtomsForRetainedCheck) {
