@@ -72,9 +72,28 @@ void registerIndoleFamily(std::vector<RetainedRingSystem> &registry) {
     // atom[6]=4, atom[5]=5, atom[4]=6, atom[3]=7, atom[2]=7a. Every
     // consecutive pair in that sequence (including the 7a-1 closing bond,
     // atom[2]-atom[1]) is confirmed a real bond above.
+    //
+    // SECOND FIX (found independently during Task 7's continuation review,
+    // long after this entry's original commit baf1df2): the SMILES
+    // "N1cc2ccccc2c1" parses to formula C8H9N, but real isoindole is C8H7N
+    // (isoindole is indole's structural isomer -- both share one molecular
+    // formula). Indigo's aromaticity perception fails to treat atom[1] and
+    // atom[8] (the two carbons directly bonded to the non-lowercase N) as
+    // aromatic CH -- it gives them H=2 each (sp3-like), 2 H too many. This
+    // is the same class of bug as the chromene-family indicated-hydrogen
+    // bug found in Task 6, just not checked here until now because bug
+    // class 4 (gross-formula verification) did not exist yet when this
+    // entry was first written. Switching to an explicit Kekule structure
+    // (same technique used to fix arsindole/isoarsindole in Task 7) fixes
+    // it: "N1C=C2C=CC=CC2=C1" gives the correct C8H7N, with atom[1]/atom[8]
+    // now H=1 as real aromatic CH should be. Atom indices, degrees, and
+    // neighbor lists are IDENTICAL between the old and new SMILES (only the
+    // two H-counts change) -- so the locants/bondLetters below remain valid
+    // unchanged, and nothing that already reused isoindoleLocants/
+    // isoindoleBondLetters needs re-deriving.
     registry.push_back(RetainedRingSystem{
         "isoindole",
-        "N1cc2ccccc2c1",
+        "N1C=C2C=CC=CC2=C1",
         {"2","1","7a","7","6","5","4","3a","3"},
         {
             {'a', {"1","2"}}, {'b', {"2","3"}}, {'c', {"3","3a"}},
