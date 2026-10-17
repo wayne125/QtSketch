@@ -113,9 +113,15 @@ void registerHydrocarbonFamily(std::vector<RetainedRingSystem> &registry) {
         {}, // bond letters not yet needed by any confirmed use case as an
             // attached component -- same empty-map convention as anthracene
         38,
-        "", // fusionPrefix left empty: "naphthaceno" is the expected word
-            // form by analogy with naphtho/anthra-style stems, but it was
-            // not independently verified from a real source this session,
-            // and no test molecule needs it as an attached component yet.
+        // fusionPrefix: verified directly against Blue Book FR-2.1.2
+        // (fetched iupac.qmul.ac.uk/fusedring/FR21.html this session):
+        // "In an attached component prefix the ending '-acene' is changed
+        // to '-aceno'." Tetracene is NOT one of FR-2.1.9's four irregular
+        // stems (naphtho/anthra/benzo/phenanthro only cover
+        // naphthalene/anthracene/benzene/phenanthrene), so the regular
+        // rule applies: tetracene -> tetraceno. (A prior guess of
+        // "naphthaceno" here, by loose analogy with naphtho/anthra, was
+        // never independently verified and is superseded by this check.)
+        "tetraceno",
     });
 }

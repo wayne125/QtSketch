@@ -65,9 +65,15 @@ int main() {
         } else if (tet->referenceSmiles != "c1ccc2cc3cc4ccccc4cc3cc2c1") {
             std::cout << "[FAIL] tetracene referenceSmiles mismatch\n";
             ++failed;
+        } else if (tet->fusionPrefix != "tetraceno") {
+            std::cout << "[FAIL] tetracene fusionPrefix mismatch (got '"
+                       << tet->fusionPrefix.toStdString() << "', expected 'tetraceno')\n";
+            ++failed;
         } else {
-            std::cout << "[PASS] tetracene entry present with 18 atoms and the "
-                          "expected independently-derived locant sequence\n";
+            std::cout << "[PASS] tetracene entry present with 18 atoms, the "
+                          "expected independently-derived locant sequence, and "
+                          "fusionPrefix='tetraceno' (verified against Blue Book "
+                          "FR-2.1.2)\n";
             ++passed;
         }
     }
