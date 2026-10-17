@@ -1189,14 +1189,20 @@ int main() {
         // validated via check_sssr.exe as 4 ortho-fused 6-rings, 18 heavy atoms.
         {"c1c2c(cc(CCCC3)c3c2)nc2CCCCc12", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."},
 
-        // Regression guard: the all-carbon (no heteroatom at all) analog of the
-        // same 4-ring shape also falls through to the pre-existing generic
-        // rejection (ring classification itself fails for an N>=4 saturated
-        // all-carbon ring before reaching the separate "mandatory Blue Book
-        // retained name" exclusion check, which only applies to rings that
-        // successfully classify as fully mancude). Structurally validated via
-        // check_sssr.exe: 4 rings (6,6,6,6), 18 heavy atoms.
-        {"C1CCc2cc3cc4CCCCc4cc3cc2C1", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."},
+        // Partial-hydrogenation follow-on task, Part 3 (skeleton-only /
+        // bond-order-agnostic matching): this is the all-carbon
+        // (no heteroatom at all) analog of the shape above --
+        // 1,2,3,4,7,8,9,10-octahydrotetracene, i.e. tetracene (newly added
+        // to HydrocarbonFamily.cpp's registry) with both terminal rings
+        // reduced. Confirmed real IUPAC name via PubChem CID 12446083's
+        // IUPACName field, independently cross-checked this session against
+        // rubrene's real name (5,6,11,12-tetraphenyltetracene) and
+        // tetracene-5,12-dione (ChEBI:51287) to pin down tetracene's own
+        // locant numbering before this test was updated. No longer falls
+        // through to the generic rejection now that the registry has a
+        // tetracene entry and tryRetainedBaseDecomposition can match it via
+        // the skeleton-only fallback.
+        {"C1CCc2cc3cc4CCCCc4cc3cc2C1", "1,2,3,4,7,8,9,10-octahydrotetracene"},
 
         // Task 10 ground-truth molecule: naphtho[2,3-g]isoquinoline. Confirmed
         // real IUPAC name via PubChem. This test was ALREADY failing at the

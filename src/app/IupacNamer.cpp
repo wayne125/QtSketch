@@ -23587,7 +23587,28 @@ IupacResult IupacNamer::generateName(int mol) {
                             indigoFree(neiIter);
                             if (hasExocyclicSubstituent) break;
                         }
-                        if (hasHeteroatom && !hasExocyclicSubstituent) {
+                        // Partial-hydrogenation follow-on task (Part 3): an
+                        // all-carbon retained base matched only via
+                        // tryRetainedBaseDecomposition's skeleton-only
+                        // fallback (one or more ring positions saturated,
+                        // e.g. tetracene's own two terminal rings reduced)
+                        // is NOT competing with the existing mandatory-
+                        // retained-hydrocarbon-name mechanism the plain
+                        // hasHeteroatom guard protects (test 309's bare,
+                        // fully-aromatic anthracene) -- that mechanism has
+                        // no partial-saturation handling at all and would
+                        // otherwise just emit the flat "mandatory retained
+                        // names" rejection with no name. Every hydro-prefix
+                        // this engine's retained-ring mechanism ever
+                        // produces literally contains the word "hydro"
+                        // (buildHydroPrefix's own fixed format), so that is
+                        // a safe, cheap signal to distinguish "a genuinely
+                        // bare exact match" (still must defer to the
+                        // existing mechanism) from "a partially-saturated
+                        // skeleton match" (safe to consume here even with
+                        // no heteroatom present).
+                        bool hasHydroPrefix = retainedResult->baseName.contains("hydro");
+                        if ((hasHeteroatom || hasHydroPrefix) && !hasExocyclicSubstituent) {
                             return {true, retainedResult->baseName, ""};
                         }
                     }

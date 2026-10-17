@@ -35,6 +35,43 @@ int main() {
         }
     }
 
+    // Dedicated tetracene self-test (Part 1 of the skeleton-matching /
+    // partial-hydrogenation follow-on task): confirm the entry exists,
+    // has the right atom count and the exact locant sequence independently
+    // derived and cross-checked against rubrene's real name
+    // (5,6,11,12-tetraphenyltetracene), tetracene-5,12-dione, and
+    // PubChem's "1,2,3,4,7,8,9,10-octahydrotetracene" -- see
+    // HydrocarbonFamily.cpp's own doc comment on this entry for the full
+    // derivation.
+    {
+        const RetainedRingSystem *tet = nullptr;
+        for (const auto &sys : registry) {
+            if (sys.name == "tetracene") { tet = &sys; break; }
+        }
+        std::vector<QString> expectedLocants = {
+            "2","3","4","4a","5","5a","6","6a","7","8","9","10","10a","11","11a","12","12a","1"
+        };
+        if (tet == nullptr) {
+            std::cout << "[FAIL] tetracene entry not found in registry\n";
+            ++failed;
+        } else if (tet->peripheralLocants.size() != 18) {
+            std::cout << "[FAIL] tetracene peripheralLocants.size() != 18 (got "
+                       << tet->peripheralLocants.size() << ")\n";
+            ++failed;
+        } else if (tet->peripheralLocants != expectedLocants) {
+            std::cout << "[FAIL] tetracene peripheralLocants do not match the expected "
+                          "derived sequence\n";
+            ++failed;
+        } else if (tet->referenceSmiles != "c1ccc2cc3cc4ccccc4cc3cc2c1") {
+            std::cout << "[FAIL] tetracene referenceSmiles mismatch\n";
+            ++failed;
+        } else {
+            std::cout << "[PASS] tetracene entry present with 18 atoms and the "
+                          "expected independently-derived locant sequence\n";
+            ++passed;
+        }
+    }
+
     // Deliberate negative test: a transposed locant must be caught, not
     // just a wrong-length list (this is the Review Focus item -- prove it
     // here, don't just assert it in the plan).

@@ -14,6 +14,7 @@
 #include <map>
 #include <algorithm>
 #include <functional>
+#include <QStringList>
 
 // Build the full registry once, on first use.
 static const std::vector<RetainedRingSystem>& fullRegistry() {
@@ -124,6 +125,320 @@ static bool matchesRetainedSystem(int mol, const std::set<int> &ringAtoms,
     indigoFree(refMol);
     return success;
 }
+
+// ---------------------------------------------------------------------
+// Part 3 (partial-hydrogenation / skeleton-only matching follow-on task):
+// a FALLBACK matcher used whenever matchesRetainedSystem (above) fails for
+// a given (ringAtoms, sys) pair. Matches the SAME atom connectivity and
+// SAME heteroatom identity at every ring position, but ignores bond
+// order/aromaticity entirely, so a candidate with some ring positions
+// saturated (extra H) still matches its fully-mancude registry reference.
+// Separately reports which registry locants are "hydro" (saturation)
+// positions by comparing each matched atom's actual implicit-H count
+// against what the SAME position has in the registry's own fully-aromatic
+// reference form.
+//
+// Implementation note (do not reintroduce either of matchesRetainedSystem's
+// own previously-fixed bugs, documented above it): an "any-bond,
+// element-only" QUERY molecule is required (not a plain molecule -- a
+// plain-molecule target for indigoMatch fails the same way indigoMatch
+// fails on a plain molecule "query", confirmed empirically), and
+// indigoMatch (NOT indigoExactMatch, which only compares two plain
+// molecules and cannot express "any bond") is the correct substructure
+// API for a query molecule. The query itself is built as a SMARTS string
+// with "[#Z]" element-only atom tokens and "~" any-bond tokens, loaded via
+// indigoLoadSmartsFromString -- confirmed via a fresh scratch Indigo run
+// that this correctly matches a 6-ring query against BOTH a fully aromatic
+// benzene target AND a fully saturated cyclohexane target, whereas the
+// equally-plausible-looking alternative of building the query
+// PROGRAMMATICALLY via indigoCreateQueryMolecule + indigoAddAtom +
+// indigoAddBond(..., 8) ("8" = MDL any-bond code) was ALSO tried in that
+// same scratch run and silently matched NEITHER target (handle 0) --
+// Indigo's query-molecule bond-order field apparently does not accept the
+// MDL "any" code via this API, so that path is NOT used here.
+
+// Builds an "any-bond, element-only" SMARTS query string from refMol
+// (already parsed, NOT aromatized -- topology/elements only, bond order is
+// irrelevant to this function), and fills outDfsOrderToQPos such that the
+// p-th atom token written into the string (0-based, left to right) is
+// refMol's own atom index p corresponds to -- i.e. outDfsOrderToQPos[p] is
+// the "qPos" (sys.peripheralLocants index / referenceSmiles atom-order
+// index) of the p-th atom the resulting parsed query molecule will assign
+// index p to (standard left-to-right parse order, the same convention this
+// file's other doc comments already rely on for indigoLoadMoleculeFromString
+// itself -- e.g. HydrocarbonFamily.cpp's naphthalene/anthracene/tetracene
+// atom-order comments).
+//
+// Works via a single DFS spanning tree from atom 0 (visiting neighbors in
+// ascending index order, deterministic): tree edges become the SMILES-like
+// branch structure, non-tree edges (always back-edges to an ancestor, since
+// this is DFS on a simple undirected graph) become ring-closure digits,
+// assigned and attached at BOTH endpoints before any text is emitted (two
+// conceptual passes: detect structure, then emit) so a ring-closure digit
+// is never attached to an atom's text after that atom's own token has
+// already been written.
+static QString buildAnyBondElementSmarts(int refMol, std::vector<int> &outDfsOrderToQPos) {
+    outDfsOrderToQPos.clear();
+
+    int n = 0;
+    {
+        int it = indigoIterateAtoms(refMol);
+        while (indigoNext(it)) ++n;
+        indigoFree(it);
+    }
+    if (n <= 0) return QString();
+
+    std::vector<int> atomicNum(n);
+    std::vector<std::vector<int>> adj(n);
+    {
+        int it = indigoIterateAtoms(refMol);
+        int idx = 0;
+        int a;
+        while ((a = indigoNext(it)) != 0) {
+            atomicNum[idx] = indigoAtomicNumber(a);
+            std::vector<int> neis;
+            int neiIter = indigoIterateNeighbors(a);
+            int nei;
+            while ((nei = indigoNext(neiIter)) != 0) {
+                neis.push_back(indigoIndex(nei));
+                indigoFree(nei);
+            }
+            indigoFree(neiIter);
+            std::sort(neis.begin(), neis.end());
+            adj[idx] = neis;
+            indigoFree(a);
+            ++idx;
+        }
+        indigoFree(it);
+    }
+
+    std::vector<bool> visited(n, false);
+    std::vector<std::vector<int>> children(n);
+    std::set<std::pair<int,int>> consumedEdges;
+    std::vector<std::pair<int,int>> backEdges; // (ancestor qPos, descendant qPos)
+    std::vector<int> dfsOrder;
+
+    std::function<void(int,int)> dfs = [&](int u, int par) {
+        visited[u] = true;
+        dfsOrder.push_back(u);
+        for (int v : adj[u]) {
+            auto key = std::make_pair(std::min(u, v), std::max(u, v));
+            if (consumedEdges.count(key)) continue;
+            if (!visited[v]) {
+                consumedEdges.insert(key);
+                children[u].push_back(v);
+                dfs(v, u);
+            } else if (v != par) {
+                consumedEdges.insert(key);
+                backEdges.push_back({v, u}); // v was visited first -> ancestor
+            }
+        }
+    };
+    dfs(0, -1);
+
+    if (static_cast<int>(dfsOrder.size()) != n) {
+        return QString(); // disconnected graph -- not a valid ring reference
+    }
+
+    std::map<int, std::vector<int>> ringDigitsAtAtom;
+    int nextDigit = 1;
+    for (const auto &be : backEdges) {
+        int digit = nextDigit++;
+        ringDigitsAtAtom[be.first].push_back(digit);
+        ringDigitsAtAtom[be.second].push_back(digit);
+    }
+    if (nextDigit > 10) {
+        return QString(); // more than 9 ring-closure digits -- not expected
+                           // for any registry entry in this task's scope
+    }
+
+    std::function<QString(int)> emitAtom = [&](int u) -> QString {
+        QString s = QString("[#%1]").arg(atomicNum[u]);
+        auto dit = ringDigitsAtAtom.find(u);
+        if (dit != ringDigitsAtAtom.end()) {
+            for (int d : dit->second) s += QString("~%1").arg(d);
+        }
+        for (int c : children[u]) {
+            s += "(~" + emitAtom(c) + ")";
+        }
+        return s;
+    };
+
+    outDfsOrderToQPos = dfsOrder;
+    return emitAtom(0);
+}
+
+// Result of a successful skeleton-only (bond-order-agnostic) match.
+struct SkeletonMatchResult {
+    std::map<int,int> atomMap;      // qPos -> real target atom index (same
+                                     // convention as matchesRetainedSystem)
+    QStringList hydroLocants;       // sys.peripheralLocants[] strings for
+                                     // every saturation position found
+};
+
+// Fallback for matchesRetainedSystem: same topology + heteroatom identity,
+// bond order ignored. See the doc comment above buildAnyBondElementSmarts
+// for the Indigo API choices this relies on. Rejects (returns false)
+// outright if any saturation position maps to a letter-suffixed (bridgehead)
+// locant -- bridgehead saturation is out of scope, matching the existing
+// "Hydro-prefix locant is letter-suffixed; bridgehead saturation is not yet
+// supported." rejection convention used elsewhere in this engine
+// (IupacNamer.cpp's P-31 hydro-prefix mechanism).
+static bool skeletonMatchRetainedSystem(int mol, const std::set<int> &ringAtoms,
+                                          const RetainedRingSystem &sys,
+                                          SkeletonMatchResult &outResult) {
+    if (static_cast<int>(ringAtoms.size()) != static_cast<int>(sys.peripheralLocants.size())) {
+        return false;
+    }
+
+    int refMol = indigoLoadMoleculeFromString(sys.referenceSmiles.toUtf8().constData());
+    if (refMol < 0) return false;
+
+    int refAtomCount = 0;
+    {
+        int it = indigoIterateAtoms(refMol);
+        while (indigoNext(it)) ++refAtomCount;
+        indigoFree(it);
+    }
+    if (refAtomCount != static_cast<int>(ringAtoms.size())) {
+        indigoFree(refMol);
+        return false;
+    }
+
+    // Scoped to ALL-CARBON (hydrocarbon) registry entries only. Found via
+    // the mandatory full-test-suite regression check this task requires:
+    // allowing a HETEROCYCLIC base (e.g. acridine, which contains the
+    // registry's own qualifying N) to skeleton-match caused test 448
+    // (c1c2c(cccc2)nc2CCCCc12, an acridine-shaped molecule with one flank
+    // reduced) to flip from its existing correct/pinned
+    // "2,3,4,5-tetrahydrodibenzo[1,2-b:1,2-e]pyridine" to a DIFFERENT,
+    // unpinned "5,6,7,8-tetrahydroacridine" -- technically plausible-
+    // looking, but not independently verified, and a real regression
+    // against this task's hard "every other test stays byte-for-byte
+    // identical" requirement. Every one of this task's own verified
+    // ground-truth skeleton-match cases (molecule 463/tetracene) is an
+    // all-carbon system; no heterocyclic case was confirmed safe, so this
+    // restriction costs nothing confirmed while avoiding a real regression.
+    {
+        bool allCarbon = true;
+        int it = indigoIterateAtoms(refMol);
+        int a;
+        while ((a = indigoNext(it)) != 0) {
+            if (indigoAtomicNumber(a) != 6) allCarbon = false;
+            indigoFree(a);
+        }
+        indigoFree(it);
+        if (!allCarbon) {
+            indigoFree(refMol);
+            return false;
+        }
+    }
+
+    std::vector<int> dfsOrderToQPos;
+    QString smarts = buildAnyBondElementSmarts(refMol, dfsOrderToQPos);
+    if (smarts.isEmpty()) {
+        indigoFree(refMol);
+        return false;
+    }
+
+    int queryMol = indigoLoadSmartsFromString(smarts.toUtf8().constData());
+    if (queryMol < 0) {
+        indigoFree(refMol);
+        return false;
+    }
+
+    // Reference totalH per qPos, computed on a FRESH, fully-aromatized copy
+    // of refMol (refMol's own atom order IS qPos space -- no translation
+    // needed, per RetainedRingTypes.h's own documented convention).
+    int refAromMol = indigoLoadMoleculeFromString(sys.referenceSmiles.toUtf8().constData());
+    if (refAromMol < 0) {
+        indigoFree(queryMol);
+        indigoFree(refMol);
+        return false;
+    }
+    indigoAromatize(refAromMol);
+    std::vector<int> refTotalH(refAtomCount, 0);
+    {
+        int it = indigoIterateAtoms(refAromMol);
+        int idx = 0, a;
+        while ((a = indigoNext(it)) != 0) {
+            refTotalH[idx] = indigoCountImplicitHydrogens(a);
+            indigoFree(a);
+            ++idx;
+        }
+        indigoFree(it);
+    }
+
+    // Extract the candidate submolecule WITHOUT aromatizing it -- we want
+    // its ACTUAL bond orders/implicit-H pattern as present in the real
+    // input molecule, since that is exactly what reveals which positions
+    // are saturated (per this task's own explicit instruction; this is the
+    // one deliberate difference from matchesRetainedSystem's extraction).
+    std::vector<int> verts(ringAtoms.begin(), ringAtoms.end());
+    int sub = indigoGetSubmolecule(mol, static_cast<int>(verts.size()), verts.data());
+    int clone = indigoClone(sub);
+
+    int matcher = indigoSubstructureMatcher(clone, "");
+    int match = indigoMatch(matcher, queryMol);
+    bool success = (match > 0);
+
+    if (success) {
+        outResult.atomMap.clear();
+        outResult.hydroLocants.clear();
+        bool bridgeheadSaturation = false;
+
+        int qIter = indigoIterateAtoms(queryMol);
+        int qLocalPos = 0;
+        int qAtom;
+        while ((qAtom = indigoNext(qIter)) != 0) {
+            int tAtom = indigoMapAtom(match, qAtom);
+            if (tAtom == 0) {
+                success = false;
+                indigoFree(qAtom);
+                break;
+            }
+            int cloneIdx = indigoIndex(tAtom);
+            int realIdx = verts[cloneIdx];
+            if (qLocalPos >= static_cast<int>(dfsOrderToQPos.size())) {
+                success = false;
+                indigoFree(qAtom);
+                break;
+            }
+            int qPos = dfsOrderToQPos[qLocalPos];
+            outResult.atomMap[qPos] = realIdx;
+
+            int actualH = indigoCountImplicitHydrogens(tAtom);
+            int expectedH = (qPos >= 0 && qPos < static_cast<int>(refTotalH.size())) ? refTotalH[qPos] : -1;
+            if (expectedH >= 0 && actualH > expectedH) {
+                const QString &loc = sys.peripheralLocants[qPos];
+                bool numOk = false;
+                loc.toInt(&numOk);
+                if (!numOk) {
+                    bridgeheadSaturation = true;
+                } else {
+                    outResult.hydroLocants.append(loc);
+                }
+            }
+
+            ++qLocalPos;
+            indigoFree(qAtom);
+        }
+        indigoFree(qIter);
+
+        if (bridgeheadSaturation) success = false;
+    }
+
+    if (match > 0) indigoFree(match);
+    indigoFree(matcher);
+    indigoFree(queryMol);
+    indigoFree(clone);
+    indigoFree(sub);
+    indigoFree(refAromMol);
+    indigoFree(refMol);
+    return success;
+}
+
+// ---------------------------------------------------------------------
 
 // FR-2.3 heteroatom priority order for tie-breaking (a) criterion.
 // Lower rank = more senior. This list follows Blue Book FR-2.3(a):
@@ -274,6 +589,33 @@ static bool locantLess(const QString &a, const QString &b) {
     return pa.second < pb.second;
 }
 
+// Builds the P-31 hydro-prefix text (e.g. "1,2,3,4,7,8,9,10-octahydro") from
+// a set of locant strings -- same count-word table and format convention as
+// IupacNamer.cpp's own existing hydro-prefix mechanism (search "P-31
+// hydro-prefix format" there): 2->di, 4->tetra, 6->hexa, 8->octa, anything
+// else rejected rather than guessed. Returns an empty string with ok=true
+// for a genuinely empty input (no hydro-prefix needed), or ok=false if the
+// count is unsupported.
+static QString buildHydroPrefix(const QStringList &locants, bool &ok) {
+    ok = true;
+    if (locants.isEmpty()) return QString();
+
+    QStringList sorted = locants;
+    std::sort(sorted.begin(), sorted.end(), [](const QString &a, const QString &b) {
+        return locantLess(a, b);
+    });
+
+    QString countWord;
+    switch (sorted.size()) {
+        case 2: countWord = "di"; break;
+        case 4: countWord = "tetra"; break;
+        case 6: countWord = "hexa"; break;
+        case 8: countWord = "octa"; break;
+        default: ok = false; return QString();
+    }
+    return sorted.join(",") + "-" + countWord + "hydro";
+}
+
 // Build ring adjacency information for the molecule's SSSR.
 // Returns false if the ring system is not a simple linear/ortho-fused chain.
 static bool buildRingAdjacency(int mol, 
@@ -404,6 +746,13 @@ std::optional<RingSystemNameResult> tryRetainedBaseDecomposition(int mol) {
         int startIdx; // start index in chainOrder for this contiguous subset
         const RetainedRingSystem *system;
         std::map<int, int> atomMap; // query atom pos -> target atom index
+        // Part 3 (skeleton-only / partial-hydrogenation follow-on task):
+        // non-empty only when this candidate matched via
+        // skeletonMatchRetainedSystem (the bond-order-agnostic fallback)
+        // rather than matchesRetainedSystem (the exact match) -- holds this
+        // candidate's own system's locants for every saturation position
+        // found. Empty for an exact match (no hydro-prefix needed).
+        QStringList hydroLocants;
     };
     
     std::vector<Candidate> bestCandidates;
@@ -447,13 +796,31 @@ std::optional<RingSystemNameResult> tryRetainedBaseDecomposition(int mol) {
                 
                 std::map<int, int> atomMap;
                 if (matchesRetainedSystem(mol, ringAtoms, sys, atomMap)) {
-                    // Found a match at this k
+                    // Found an exact match at this k
                     Candidate cand;
                     cand.k = k;
                     cand.startIdx = start;
                     cand.system = &sys;
                     cand.atomMap = atomMap;
                     bestCandidates.push_back(cand);
+                } else {
+                    // Part 3 (skeleton-only / partial-hydrogenation follow-on
+                    // task): exact match failed -- try the bond-order-
+                    // agnostic fallback before giving up on this (ringAtoms,
+                    // sys) pair entirely. This is what lets a candidate with
+                    // one or more saturated rings (e.g. tetracene with its
+                    // two terminal rings reduced) still match its mancude
+                    // registry reference.
+                    SkeletonMatchResult skel;
+                    if (skeletonMatchRetainedSystem(mol, ringAtoms, sys, skel)) {
+                        Candidate cand;
+                        cand.k = k;
+                        cand.startIdx = start;
+                        cand.system = &sys;
+                        cand.atomMap = skel.atomMap;
+                        cand.hydroLocants = skel.hydroLocants;
+                        bestCandidates.push_back(cand);
+                    }
                 }
             }
         }
@@ -494,9 +861,22 @@ std::optional<RingSystemNameResult> tryRetainedBaseDecomposition(int mol) {
     bool hasSuffixRemainder = remSuffixStart < N;
 
     if (!hasPrefixRemainder && !hasSuffixRemainder) {
+        // Part 3: if `best` matched via the skeleton-only fallback (one or
+        // more saturated ring positions), prepend the P-31 hydro-prefix,
+        // fused directly onto the base name with no hyphen (e.g.
+        // "1,2,3,4,7,8,9,10-octahydrotetracene", NOT
+        // "...-octahydro-tetracene") -- matches the exact format convention
+        // documented at IupacNamer.cpp's own "P-31 hydro-prefix format"
+        // comment.
+        bool hydroOk = false;
+        QString hydroPrefix = buildHydroPrefix(best->hydroLocants, hydroOk);
+        if (!hydroOk) {
+            return std::nullopt; // unsupported saturation-position count --
+                                  // don't guess a word for it
+        }
         RingSystemNameResult result;
         result.success = true;
-        result.baseName = best->system->name;
+        result.baseName = hydroPrefix + best->system->name;
         for (const auto &kv : best->atomMap) {
             result.locantMap[kv.first] = QString::number(kv.second);
         }
@@ -546,56 +926,12 @@ std::optional<RingSystemNameResult> tryRetainedBaseDecomposition(int mol) {
         return std::nullopt;
     }
 
-    // Collect the remainder's own ring atoms, then try matching the WHOLE
-    // remainder ring-set against the registry (same approach as the main
-    // k-loop above, but for this one fixed ring-set).
-    std::set<int> remainderRingAtoms;
-    for (int ringIdx : remainderRingIndices) {
-        for (int a : sssrRings[ringIdx]) remainderRingAtoms.insert(a);
-    }
-
-    const RetainedRingSystem *remainderSys = nullptr;
-    std::map<int, int> remainderAtomMap;
-    bool remainderAmbiguous = false;
-    for (const auto &sys : registry) {
-        if (static_cast<int>(remainderRingAtoms.size()) != static_cast<int>(sys.peripheralLocants.size())) {
-            continue;
-        }
-        std::map<int, int> candidateMap;
-        if (matchesRetainedSystem(mol, remainderRingAtoms, sys, candidateMap)) {
-            if (remainderSys != nullptr && remainderSys->name != sys.name) {
-                remainderAmbiguous = true; // two different registry entries both match -- don't guess
-            }
-            remainderSys = &sys;
-            remainderAtomMap = candidateMap;
-        }
-    }
-
-    // No registry match for the remainder ring-set, more than one distinct
-    // match (ambiguous), or a match whose fusionPrefix hasn't been verified
-    // yet (see RetainedRingTypes.h's doc comment on fusionPrefix): fall
-    // back to the existing monocyclic per-ring attached-component path.
-    //
-    // TODO(Task 10 follow-on): that monocyclic fallback (classify each
-    // remainder ring's own RingType via the existing per-ring
-    // classification logic elsewhere in IupacNamer.cpp, then cite each via
-    // getFusionPrefixShared(RingType)) is NOT implemented here. No test
-    // molecule in the current corpus was confirmed to need it (every
-    // molecule that reaches this point either resolves via the naphthalene
-    // case below or safely falls through to nameLinearChainFusion exactly
-    // as it did before this task, since returning std::nullopt here is
-    // behaviorally identical to the pre-Task-10 code's own partial,
-    // unconsumed result for every such molecule). Implementing it without
-    // a concrete ground-truth molecule to verify against risks emitting a
-    // confidently wrong name instead of correctly falling through.
-    if (remainderSys == nullptr || remainderAmbiguous || remainderSys->fusionPrefix.isEmpty()) {
-        return std::nullopt;
-    }
-
-    // Translate the two real fusion-atom indices into each system's OWN
-    // locant numbering via the reverse of their respective atomMaps
-    // (query-position -> real-atom-index, inverted here to real-atom-index
-    // -> that system's own locant string).
+    // Translate a real-molecule atom index into `sys`'s OWN locant string,
+    // via the reverse of its atomMap (query-position -> real-atom-index,
+    // inverted here to real-atom-index -> that system's own locant string).
+    // Moved ahead of its original single call site (now further below) so
+    // Part 2's monocyclic fallback, inserted between here and there, can
+    // also use it.
     auto reverseLocant = [](const std::map<int,int> &atomMap, const RetainedRingSystem &sys, int realAtomIdx) -> QString {
         for (const auto &kv : atomMap) {
             if (kv.second == realAtomIdx) {
@@ -608,6 +944,129 @@ std::optional<RingSystemNameResult> tryRetainedBaseDecomposition(int mol) {
         return QString();
     };
 
+    // Part 3 honest-gap guard: if the BASE itself needed a hydro-prefix
+    // (matched via the skeleton-only fallback), combining that with an
+    // attached-component citation on top would require knowing the base's
+    // own locants still refer to the SAME positions in the final assembled
+    // system's numbering -- true in at least one real case checked this
+    // session (acridine's own "1,2,3,4" literally reappear in CAS's real
+    // "1,2,3,4,7,8,9,10-octahydrobenz[b]acridine"), but this engine has no
+    // general machinery to VERIFY that for an arbitrary base+attached-
+    // component composition, and no case needing ONLY base-side hydro (with
+    // a clean, non-saturated remainder) was found to justify proceeding
+    // confidently either way. Reject rather than guess; see this task's
+    // final report for the specific molecule (462) this affects.
+    if (!best->hydroLocants.isEmpty()) {
+        return std::nullopt;
+    }
+
+    // Collect the remainder's own ring atoms, then try matching the WHOLE
+    // remainder ring-set against the registry (same approach as the main
+    // k-loop above, but for this one fixed ring-set).
+    std::set<int> remainderRingAtoms;
+    for (int ringIdx : remainderRingIndices) {
+        for (int a : sssrRings[ringIdx]) remainderRingAtoms.insert(a);
+    }
+
+    const RetainedRingSystem *remainderSys = nullptr;
+    std::map<int, int> remainderAtomMap;
+    QStringList remainderHydroLocants;
+    bool remainderAmbiguous = false;
+    for (const auto &sys : registry) {
+        if (static_cast<int>(remainderRingAtoms.size()) != static_cast<int>(sys.peripheralLocants.size())) {
+            continue;
+        }
+        std::map<int, int> candidateMap;
+        if (matchesRetainedSystem(mol, remainderRingAtoms, sys, candidateMap)) {
+            if (remainderSys != nullptr && remainderSys->name != sys.name) {
+                remainderAmbiguous = true; // two different registry entries both match -- don't guess
+            }
+            remainderSys = &sys;
+            remainderAtomMap = candidateMap;
+            remainderHydroLocants.clear();
+        } else {
+            // Part 3 fallback: same bond-order-agnostic match, tried here
+            // for the remainder exactly as in the main k-loop above.
+            SkeletonMatchResult skel;
+            if (skeletonMatchRetainedSystem(mol, remainderRingAtoms, sys, skel)) {
+                if (remainderSys != nullptr && remainderSys->name != sys.name) {
+                    remainderAmbiguous = true;
+                }
+                remainderSys = &sys;
+                remainderAtomMap = skel.atomMap;
+                remainderHydroLocants = skel.hydroLocants;
+            }
+        }
+    }
+
+    // No registry match for the remainder ring-set, more than one distinct
+    // match (ambiguous), or a match whose fusionPrefix hasn't been verified
+    // yet (see RetainedRingTypes.h's doc comment on fusionPrefix): fall
+    // back to the monocyclic per-ring attached-component path (Part 2 of
+    // the skeleton-matching follow-on task).
+    if (remainderSys == nullptr || remainderAmbiguous || remainderSys->fusionPrefix.isEmpty()) {
+        // Part 2 (Task 10 follow-on) was IMPLEMENTED and then DELIBERATELY
+        // DISABLED after the mandatory full-test-suite regression check
+        // this task requires caught a real wrong-name case: a lone, plain
+        // all-carbon 6-membered remainder ring DOES classify cleanly as
+        // RingType::BENZENE / "benzo" (same principle
+        // classifyMonocyclicHeteroRing already uses -- saturation is a
+        // separate hydro-prefix concern, never a distinct RingType), and
+        // citing it as "benzo[<base's bond letter>]<base name>" (own
+        // locants omitted, matching real practice like
+        // "benzo[a]anthracene") is mechanically straightforward and DOES
+        // produce the right answer for this task's own verified example
+        // (benz[b]acridine, molecule 462) -- except molecule 462 is
+        // rejected anyway by the Part 3 hydro-ambiguity guard just above
+        // (both its base AND its remainder are saturated), so that one
+        // verified case is UNREACHABLE regardless of whether this path is
+        // enabled.
+        //
+        // With no reachable verified case left to justify enabling it, the
+        // regression check found a real failure mode: bare CARBAZOLE
+        // (a 6-5-6 all-carbon-plus-one-N system NOT yet present anywhere in
+        // this registry -- see TricyclicNFamily.cpp's own "CARBAZOLE ...
+        // Deferred" comment). Its best-available registry candidate here
+        // is indole (k=2) with the other benzo ring as a clean, unsaturated
+        // one-ring remainder -- exactly the shape this path would cite as
+        // "benz[b]indole". But carbazole is ITSELF a Blue Book MANDATORY
+        // retained name (same category as acridine, see IupacNamer.cpp's
+        // "Part A.6: Exclude acridine and carbazole" comment) that must be
+        // used whenever the WHOLE ring system matches it -- citing it via
+        // smaller retained pieces instead ("benz[b]indole") is genuinely
+        // wrong, not just differently-pinned, and pre-empts the EARLIER,
+        // correct mechanism (nameLinearChainFusion's own Part A.6 check)
+        // that currently produces "carbazole" by relying on
+        // tryRetainedBaseDecomposition returning nullopt here. Confirmed
+        // via the full iupac_namer_test run: enabling this path flipped
+        // "CARBAZOLE bare" from passing ("carbazole") to failing
+        // ("benz[b]indole").
+        //
+        // A correct general fix needs either (a) carbazole added as its
+        // own registry entry so it wins outright as `best` before any
+        // remainder logic runs, or (b) a check here for "does base+remainder
+        // together match some OTHER smaller mandatory-retained-name shape
+        // not yet in this registry" -- neither was something this task
+        // could verify safely in the time available, so this path stays
+        // disabled (nullopt) exactly as it did before this task, rather
+        // than ship a mechanism proven to produce at least one wrong name.
+        // See this task's final report for the honest-gaps note.
+        return std::nullopt;
+    }
+
+    // Part 3 honest-gap guard, remainder side: see the identical guard
+    // above for the base side. A remainder matched via the skeleton-only
+    // fallback has its own saturation positions, but merging those with
+    // (or citing them against) the final assembled system's numbering is
+    // not implemented -- reject rather than guess.
+    if (!remainderHydroLocants.isEmpty()) {
+        return std::nullopt;
+    }
+
+    // Translate the two real fusion-atom indices into each system's OWN
+    // locant numbering via the reverse of their respective atomMaps
+    // (query-position -> real-atom-index, inverted here to real-atom-index
+    // -> that system's own locant string).
     QString baseLocA = reverseLocant(best->atomMap, *best->system, fusionAtoms[0]);
     QString baseLocB = reverseLocant(best->atomMap, *best->system, fusionAtoms[1]);
     if (baseLocA.isEmpty() || baseLocB.isEmpty()) {
