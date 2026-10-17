@@ -268,6 +268,12 @@ static QString buildAnyBondElementSmarts(int refMol, std::vector<int> &outDfsOrd
     return emitAtom(0);
 }
 
+// Forward declarations: both are defined further down this file (used
+// originally for fusion-bond locant tie-breaking), reused here unmodified
+// per this task's own interface contract -- do not reimplement either.
+static std::vector<std::vector<int>> computeAutomorphisms(int refMol);
+static bool locantLess(const QString &a, const QString &b);
+
 // Result of a successful skeleton-only (bond-order-agnostic) match.
 struct SkeletonMatchResult {
     std::map<int,int> atomMap;      // qPos -> real target atom index (same
@@ -305,34 +311,14 @@ static bool skeletonMatchRetainedSystem(int mol, const std::set<int> &ringAtoms,
         return false;
     }
 
-    // Scoped to ALL-CARBON (hydrocarbon) registry entries only. Found via
-    // the mandatory full-test-suite regression check this task requires:
-    // allowing a HETEROCYCLIC base (e.g. acridine, which contains the
-    // registry's own qualifying N) to skeleton-match caused test 448
-    // (c1c2c(cccc2)nc2CCCCc12, an acridine-shaped molecule with one flank
-    // reduced) to flip from its existing correct/pinned
-    // "2,3,4,5-tetrahydrodibenzo[1,2-b:1,2-e]pyridine" to a DIFFERENT,
-    // unpinned "5,6,7,8-tetrahydroacridine" -- technically plausible-
-    // looking, but not independently verified, and a real regression
-    // against this task's hard "every other test stays byte-for-byte
-    // identical" requirement. Every one of this task's own verified
-    // ground-truth skeleton-match cases (molecule 463/tetracene) is an
-    // all-carbon system; no heterocyclic case was confirmed safe, so this
-    // restriction costs nothing confirmed while avoiding a real regression.
-    {
-        bool allCarbon = true;
-        int it = indigoIterateAtoms(refMol);
-        int a;
-        while ((a = indigoNext(it)) != 0) {
-            if (indigoAtomicNumber(a) != 6) allCarbon = false;
-            indigoFree(a);
-        }
-        indigoFree(it);
-        if (!allCarbon) {
-            indigoFree(refMol);
-            return false;
-        }
-    }
+    // Previously fenced to all-carbon entries only, after allowing acridine
+    // through flipped test 448 to an unpinned wrong-direction locant set.
+    // Root cause was the numbering-direction tie-break (fixed below, see
+    // the automorphism-enumeration step), not heteroatom content -- so the
+    // fence is removed rather than replaced with a narrower heteroatom-
+    // specific one. Test 448 is now pinned to its CIR/PubChem-confirmed
+    // correct value (1,2,3,4-tetrahydroacridine) and exercises this path
+    // directly.
 
     std::vector<int> dfsOrderToQPos;
     QString smarts = buildAnyBondElementSmarts(refMol, dfsOrderToQPos);
@@ -383,8 +369,12 @@ static bool skeletonMatchRetainedSystem(int mol, const std::set<int> &ringAtoms,
     bool success = (match > 0);
 
     if (success) {
-        outResult.atomMap.clear();
-        outResult.hydroLocants.clear();
+        // Single-mapping derivation (the pre-existing logic, unchanged):
+        // builds baseAtomMap (qPos -> real target atom index) and the set
+        // of saturated qPos positions from the ONE correspondence indigoMatch
+        // happened to return.
+        std::map<int,int> baseAtomMap;
+        std::vector<int> saturatedQPos;
         bool bridgeheadSaturation = false;
 
         int qIter = indigoIterateAtoms(queryMol);
@@ -405,7 +395,7 @@ static bool skeletonMatchRetainedSystem(int mol, const std::set<int> &ringAtoms,
                 break;
             }
             int qPos = dfsOrderToQPos[qLocalPos];
-            outResult.atomMap[qPos] = realIdx;
+            baseAtomMap[qPos] = realIdx;
 
             int actualH = indigoCountImplicitHydrogens(tAtom);
             int expectedH = (qPos >= 0 && qPos < static_cast<int>(refTotalH.size())) ? refTotalH[qPos] : -1;
@@ -416,7 +406,7 @@ static bool skeletonMatchRetainedSystem(int mol, const std::set<int> &ringAtoms,
                 if (!numOk) {
                     bridgeheadSaturation = true;
                 } else {
-                    outResult.hydroLocants.append(loc);
+                    saturatedQPos.push_back(qPos);
                 }
             }
 
@@ -426,6 +416,78 @@ static bool skeletonMatchRetainedSystem(int mol, const std::set<int> &ringAtoms,
         indigoFree(qIter);
 
         if (bridgeheadSaturation) success = false;
+
+        // Numbering-direction tie-break (Task 2): enumerate every mapping
+        // obtainable by composing baseAtomMap with each automorphism of
+        // refMol, and keep the one whose resulting hydro-locant set is
+        // lexicographically lowest by locantLess -- same tie-break
+        // principle Task 10 already applies to fusion-bond locants for
+        // naphthalene's point symmetry. Without this, a symmetric
+        // reference (like acridine's own mirror symmetry) can pick an
+        // arbitrary one of several equally-valid-but-differently-numbered
+        // mappings -- exactly the test 448 "5,6,7,8-" vs "1,2,3,4-" bug.
+        // automorphism[p] gives the qPos that position p's label is
+        // equivalent to under the symmetry; re-labeling baseAtomMap's keys
+        // and the saturated-position locants through it keeps atomMap and
+        // hydroLocants mutually consistent. computeAutomorphisms always
+        // returns at least the identity permutation, so an asymmetric
+        // reference (e.g. isoquinoline) degrades to exactly one candidate.
+        if (success) {
+            std::vector<std::vector<int>> automorphisms = computeAutomorphisms(refMol);
+            std::map<int,int> bestAtomMap;
+            QStringList bestHydroLocants;
+            bool haveBest = false;
+            for (const auto &automorphism : automorphisms) {
+                std::map<int,int> candidateAtomMap;
+                for (const auto &kv : baseAtomMap) {
+                    candidateAtomMap[automorphism[kv.first]] = kv.second;
+                }
+                QStringList candidateLocants;
+                for (int qPos : saturatedQPos) {
+                    candidateLocants.append(sys.peripheralLocants[automorphism[qPos]]);
+                }
+                std::sort(candidateLocants.begin(), candidateLocants.end(), locantLess);
+
+                if (!haveBest) {
+                    bestAtomMap = candidateAtomMap;
+                    bestHydroLocants = candidateLocants;
+                    haveBest = true;
+                    continue;
+                }
+                for (int i = 0; i < candidateLocants.size() && i < bestHydroLocants.size(); ++i) {
+                    if (candidateLocants[i] == bestHydroLocants[i]) continue;
+                    if (locantLess(candidateLocants[i], bestHydroLocants[i])) {
+                        bestAtomMap = candidateAtomMap;
+                        bestHydroLocants = candidateLocants;
+                    }
+                    break;
+                }
+            }
+            outResult.atomMap = bestAtomMap;
+            outResult.hydroLocants = bestHydroLocants;
+
+            // Honest-gap guard, found via this task's own mandatory full-
+            // suite regression check (removing the all-carbon fence above
+            // exposed this, not just acridine): a registry entry with a
+            // non-empty indicatedHydrogenLocant (currently only carbazole)
+            // combined with actual skeleton-match saturation requires Blue
+            // Book P-31.1.4.2.4's "added hydrogen" migration rule -- e.g.
+            // real tetrahydrocarbazole is "2,3,4,9-tetrahydro-1H-carbazole"
+            // (indicated H migrates from 9 to 1; "9" itself becomes a hydro
+            // locant), NOT the naive concatenation "1,2,3,4-tetrahydro-9H-
+            // carbazole" that the existing hydroPrefix+ihPrefix renderer
+            // (RetainedRingMatcher.cpp's k==N bare-whole-molecule path)
+            // would produce. That migration rule is not implemented here
+            // (same latent gap the design spec's Review Focus already
+            // flagged for Task 3's attached-component case, just surfacing
+            // here first for the whole-molecule case instead) -- confirmed
+            // via test 452 (c1ccc2[nH]c3CCCCc3c2c1), which must keep
+            // rejecting per its own pre-existing comment until a future
+            // task implements the real rule. Reject rather than guess.
+            if (!sys.indicatedHydrogenLocant.isEmpty() && !outResult.hydroLocants.isEmpty()) {
+                success = false;
+            }
+        }
     }
 
     if (match > 0) indigoFree(match);

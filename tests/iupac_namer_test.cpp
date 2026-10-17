@@ -1038,27 +1038,21 @@ int main() {
         // under its own canonical numbering is a real, separate gap, left for a
         // dedicated follow-on rather than guessed here.
         //
-        // KNOWN WRONG LOCANTS (re-review corrected an earlier, too-generous ruling
-        // here): the pinned locants "2,3,4,5" are NOT the correct IUPAC locants for
-        // this skeleton -- real tetrahydroacridine is 1,2,3,4-tetrahydroacridine
-        // (and the analogous dibenzopyrazine case is 1,2,3,4-tetrahydrophenazine).
-        // computePeripheralNumbering3Ring (search "This candidate search" for its
-        // own doc comment) has no P-25.3.3 orientation rule -- it starts numbering
-        // at any non-bridgehead atom following a bridgehead and picks whichever
-        // start/direction minimizes heteroatomLocants, which for THIS skeleton
-        // lets locant 1 land on a MIDDLE-ring atom (the pyridine N) with a "1a"
-        // bridgehead immediately after it -- something no valid oriented fused-ring
-        // numbering produces. All 4 hydro locants do land on the same physical ring
-        // (verified by tracing the actual candidate), so the set is internally
-        // self-consistent, but self-consistency is not the same as being the real
-        // IUPAC locants. This defect is inherited from this function's pre-existing
-        // architecture (same function Task 2 already reviewed and accepted for
-        // substituent/indicated-H citation), not introduced by this task -- fixing
-        // it means adding a real P-25.3.3 orientation rule to
-        // computePeripheralNumbering3Ring, a separate, larger-scoped follow-on.
-        // Pinned here as the mechanism's actual current output, not as a claim that
-        // this is the correct Preferred IUPAC Name.
-        {"c1c2c(cccc2)nc2CCCCc12", "2,3,4,5-tetrahydrodibenzo[1,2-b:1,2-e]pyridine"},
+        // Real target: TACRINE's core ring system (tacrine =
+        // 9-amino-1,2,3,4-tetrahydroacridine). Confirmed via two
+        // independent sources: NIH CACTUS/CIR
+        // (cactus.nci.nih.gov/chemical/structure/<smiles>/iupac_name
+        // returned "1,2,3,4-Tetrahydroacridine" verbatim) and PubChem CID
+        // 155315 (formula C13H13N, name "1,2,3,4-tetrahydroacridine").
+        // This IS the correct Preferred IUPAC Name, not merely "the
+        // mechanism's actual current output" as the old pin's comment
+        // said. Task 2 (RetainedRingMatcher.cpp) now reaches this skeleton
+        // via skeletonMatchRetainedSystem's heterocyclic-eligible path and
+        // its automorphism-enumeration numbering-direction tie-break,
+        // rather than falling through to the generic
+        // computePeripheralNumbering3Ring fusion-letter derivation the old
+        // pin's comment described.
+        {"c1c2c(cccc2)nc2CCCCc12", "1,2,3,4-tetrahydroacridine"},
 
         // Fix round 1 regression guard (review finding B1): a substituent on the
         // AROMATIC ring and a hydro-prefix on the SATURATED ring of the same 3-ring
