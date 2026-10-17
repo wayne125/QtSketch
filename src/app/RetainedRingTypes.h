@@ -59,6 +59,15 @@ struct RetainedRingSystem {
     // so far, since it's the only entry Task 10's ground-truth molecule
     // (naphtho[2,3-g]isoquinoline) actually needs.
     QString fusionPrefix;
+
+    // Locant of the atom whose hydrogen is "indicated hydrogen" (Blue Book
+    // P-25.7.1) rather than ordinary ring hydrogen -- e.g. "9" for
+    // carbazole's NH. Empty ("") for every retained system that doesn't
+    // need one. When non-empty, citing this system's bare name must
+    // prepend "<locant>H-" using the same format IupacNamer.cpp's
+    // existing ihPrefix convention uses (IupacNamer.cpp, the
+    // "1H-" / "1H,3H-" format near the indicated-H locant assembly code).
+    QString indicatedHydrogenLocant;
 };
 
 // Parses sys.referenceSmiles standalone, confirms:

@@ -24,7 +24,9 @@
 // Strategy per Task 4 spec:
 // - phenazine, acridine: Reuse anthracene skeleton (low-risk).
 // - phenanthridine: Angular (phenanthrene-shaped), needs phenanthrene skeleton.
-// - carbazole: 6-5-6 system (not 6-6-6), needs fresh SMILES.
+// - carbazole: 6-5-6 system (not 6-6-6). DONE (Task 1 of the 2026-10-17
+//   retained-hydro-assembly plan) -- fresh SMILES verified via Indigo
+//   neighbor dump, see entry 3 below.
 // - perimidine, pteridine, purine: Need verification.
 // - phenanthroline isomers (10): All need phenanthrene skeleton with 2N.
 
@@ -135,6 +137,65 @@ void registerTricyclicNFamily(std::vector<RetainedRingSystem> &registry) {
         20, // Appendix 2 seniority rank
     });
 
+    // --- 3. Carbazole (rank 22) -------------------------------------------
+    // 6-5-6 system: two benzo rings fused to a central pyrrole ring (NH).
+    // SMILES: c1cccc2c3ccccc3[nH]c12 (13 atoms, C12H9N) -- UNBRANCHED (pure
+    // chain + ring-closure digits only, same style as the existing
+    // acridine/phenazine entries above), chosen specifically so Indigo's
+    // atom-parse order equals the periphery-walk order. (A prior branched
+    // SMILES, c1ccc2c(c1)[nH]c1ccccc21, was chemically self-consistent but
+    // failed validateRetainedRingSystem's cyclic-array-adjacency check,
+    // since a "(...)" branch breaks the parse-order == periphery-order
+    // property every other entry in this file relies on -- fixed here by
+    // re-deriving an unbranched SMILES instead.)
+    //
+    // Full Indigo verification output (from scratch program):
+    //   atom[0]: C neighbors=[1,12]    -> locant "1"
+    //   atom[1]: C neighbors=[0,2]     -> locant "2"
+    //   atom[2]: C neighbors=[1,3]     -> locant "3"
+    //   atom[3]: C neighbors=[2,4]     -> locant "4"
+    //   atom[4]: C neighbors=[3,5,12]  -> locant "4a"  BRIDGEHEAD
+    //   atom[5]: C neighbors=[4,6,10]  -> locant "4b"  BRIDGEHEAD
+    //   atom[6]: C neighbors=[5,7]     -> locant "5"
+    //   atom[7]: C neighbors=[6,8]     -> locant "6"
+    //   atom[8]: C neighbors=[7,9]     -> locant "7"
+    //   atom[9]: C neighbors=[8,10]    -> locant "8"
+    //   atom[10]: C neighbors=[9,5,11] -> locant "8a"  BRIDGEHEAD
+    //   atom[11]: N neighbors=[10,12]  -> locant "9" (implicitH=1, N-H)
+    //   atom[12]: C neighbors=[11,0,4] -> locant "9a"  BRIDGEHEAD
+    //
+    // Ring SSSR confirmed: {0,1,2,3,4,12}=benzo1, {4,5,10,11,12}=central
+    // pyrrole, {5,6,7,8,9,10}=benzo2 -- matches real carbazole exactly.
+    // Mapped to Blue Book carbazole numbering (periphery walk
+    // 1-2-3-4-4a-4b-5-6-7-8-8a-9-9a-1; central ring = 4a-4b-8a-9-9a).
+    // Cross-checked independently against this project's own pre-existing
+    // test comment at tests/iupac_namer_test.cpp:~1120, which separately
+    // derived carbazole's indicated-H locant as "9H" for an unrelated
+    // regression guard -- both derivations agree.
+    registry.push_back(RetainedRingSystem{
+        "carbazole",
+        "c1cccc2c3ccccc3[nH]c12",
+        {"1","2","3","4","4a","4b","5","6","7","8","8a","9","9a"},
+        {
+            {'a', {"1","2"}},   // 1-2 bond
+            {'b', {"2","3"}},   // 2-3 bond
+            {'c', {"3","4"}},   // 3-4 bond
+            {'d', {"4","4a"}},  // 4-4a bond
+            {'e', {"4a","4b"}}, // 4a-4b bond
+            {'f', {"4b","5"}},  // 4b-5 bond
+            {'g', {"5","6"}},   // 5-6 bond
+            {'h', {"6","7"}},   // 6-7 bond
+            {'i', {"7","8"}},   // 7-8 bond
+            {'j', {"8","8a"}},  // 8-8a bond
+            {'k', {"8a","9"}},  // 8a-9 bond
+            {'l', {"9","9a"}},  // 9-9a bond
+            {'m', {"9a","1"}},  // 9a-1 bond (closing the cycle)
+        },
+        22, // Appendix 2 seniority rank
+        "", // fusionPrefix: unverified, leave empty
+        "9", // indicatedHydrogenLocant: carbazole's N-H
+    });
+
     // =========================================================================
     // DEferred ENTRIES: See notes below for each.
     // =========================================================================
@@ -149,11 +210,6 @@ void registerTricyclicNFamily(std::vector<RetainedRingSystem> &registry) {
     // - phenanthridine (rank 21): Angular with N at position 5.
     //   Requires: (1) correct phenanthrene-based SMILES, (2) Indigo verification
     //   of atom indices and neighbors, (3) mapping to correct Blue Book locants.
-    //
-    // CARBAZOLE (6-5-6, 13 atoms):
-    // - carbazole (rank 22): Two benzene rings + pyrrole (NH).
-    //   Requires: (1) correct 13-atom SMILES, (2) full Indigo verification,
-    //   (3) 6-5-6 locant mapping (different from 6-6-6 anthracene/phenanthrene).
     //
     // OTHER TRICYCLICS:
     // - perimidine (rank 19): Structure requires verification.

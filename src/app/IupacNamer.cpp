@@ -6518,6 +6518,15 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                     } else if (typesN[centerIdx] == RingType::PYRROLE) {
                                         // CARBAZOLE - mandatory retained name, but reject cleanly
                                         // per brief: "reject cleanly rather than guess the indicated-hydrogen prefix"
+                                        // NOTE: unreachable for a bare carbazole molecule now that
+                                        // carbazole is registered in TricyclicNFamily.cpp -- Task 9's
+                                        // earlier retained-registry pre-check in generateName (search
+                                        // "Task 9 (retained-polycyclic registry pre-check)") intercepts
+                                        // first via RetainedRingMatcher.cpp's own k==N exact-match path,
+                                        // which now correctly renders "9H-carbazole" (see that file's
+                                        // indicatedHydrogenLocant handling). Left in place only as a
+                                        // defensive fallback in case this function is ever reached via
+                                        // some other caller that bypasses the Task 9 pre-check.
                                         return {RingSystemNameResult{false, "", "", {}}};
                                     }
                                 }

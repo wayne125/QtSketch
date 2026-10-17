@@ -72,6 +72,42 @@ int main() {
         }
     }
 
+    // Dedicated carbazole self-test (Task 1 of the retained-hydro-assembly
+    // plan): confirm the entry exists, has 13 atoms, and its
+    // indicatedHydrogenLocant is "9" (the carbazole N-H), independently
+    // verified via a compiled Indigo neighbor dump and cross-checked
+    // against this project's own pre-existing hydro-prefix regression
+    // comment in tests/iupac_namer_test.cpp (~line 1120) that separately
+    // derived carbazole's indicated-H locant as "9H".
+    {
+        const RetainedRingSystem *carb = nullptr;
+        for (const auto &sys : registry) {
+            if (sys.name == "carbazole") { carb = &sys; break; }
+        }
+        if (carb == nullptr) {
+            std::cout << "[FAIL] carbazole entry not found in registry\n";
+            ++failed;
+        } else if (carb->peripheralLocants.size() != 13) {
+            std::cout << "[FAIL] carbazole peripheralLocants.size() != 13 (got "
+                       << carb->peripheralLocants.size() << ")\n";
+            ++failed;
+        } else if (carb->indicatedHydrogenLocant != "9") {
+            std::cout << "[FAIL] carbazole indicatedHydrogenLocant != \"9\" (got '"
+                       << carb->indicatedHydrogenLocant.toStdString() << "')\n";
+            ++failed;
+        } else {
+            QString err = validateRetainedRingSystem(0, *carb);
+            if (!err.isEmpty()) {
+                std::cout << "[FAIL] carbazole validateRetainedRingSystem: " << err.toStdString() << "\n";
+                ++failed;
+            } else {
+                std::cout << "[PASS] carbazole entry present with 13 atoms, "
+                              "indicatedHydrogenLocant=\"9\", and self-consistent\n";
+                ++passed;
+            }
+        }
+    }
+
     // Deliberate negative test: a transposed locant must be caught, not
     // just a wrong-length list (this is the Review Focus item -- prove it
     // here, don't just assert it in the plan).

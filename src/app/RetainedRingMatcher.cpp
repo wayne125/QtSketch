@@ -874,9 +874,31 @@ std::optional<RingSystemNameResult> tryRetainedBaseDecomposition(int mol) {
             return std::nullopt; // unsupported saturation-position count --
                                   // don't guess a word for it
         }
+        // Task 1 (carbazole) fix: a registry entry's own indicated hydrogen
+        // (Blue Book P-25.7.1, e.g. "9" for carbazole's N-H) must still be
+        // cited here even for the plain k==N whole-molecule case -- this
+        // was silently dropped before (confirmed live via bare carbazole
+        // once it was registered: this path returned bare "carbazole"
+        // instead of "9H-carbazole"). Hydro-prefix first, then indicated-H,
+        // matching the existing convention documented in IupacNamer.cpp
+        // (e.g. "2,3-dihydro-1H-indene"); for carbazole specifically
+        // hydroPrefix is always empty (bare carbazole has no saturation),
+        // so the hyphen is omitted and this reduces to just "9H-carbazole".
+        QString ihPart;
+        if (!best->system->indicatedHydrogenLocant.isEmpty()) {
+            ihPart = best->system->indicatedHydrogenLocant + "H-";
+        }
+        // Hyphen only between hydroPrefix and ihPart when BOTH are present
+        // (e.g. "2,3-dihydro-1H-indene") -- NOT whenever hydroPrefix alone
+        // is non-empty, since the pure-hydro case (no indicated H, e.g.
+        // tetracene's own already-passing "1,2,3,4,7,8,9,10-octahydrotetracene"
+        // test) fuses hydroPrefix directly onto the name with no hyphen, per
+        // this block's own comment above. Getting this wrong would silently
+        // break that already-passing test.
+        QString joiner = (!hydroPrefix.isEmpty() && !ihPart.isEmpty()) ? "-" : "";
         RingSystemNameResult result;
         result.success = true;
-        result.baseName = hydroPrefix + best->system->name;
+        result.baseName = hydroPrefix + joiner + ihPart + best->system->name;
         for (const auto &kv : best->atomMap) {
             result.locantMap[kv.first] = QString::number(kv.second);
         }

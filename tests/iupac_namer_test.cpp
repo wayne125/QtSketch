@@ -5889,14 +5889,18 @@ int main() {
     }
 
     {
-        // Test 2: CARBAZOLE (bare, unsubstituted) - Blue Book mandatory retained name
-        // Per brief: reject cleanly rather than guess the indicated-hydrogen prefix
+        // Test 2: CARBAZOLE (bare, unsubstituted) - Blue Book mandatory
+        // retained name. Registered in TricyclicNFamily.cpp (rank 22) with
+        // indicatedHydrogenLocant="9", verified via a compiled Indigo
+        // neighbor dump this session and cross-checked against this
+        // file's own pre-existing hydro-prefix regression comment at line
+        // ~1120 (independently derived carbazole's indicated-H as "9H").
         int m = indigoLoadMoleculeFromString("c1ccc2c(c1)[nH]c1ccccc21");
         if (m >= 0) {
             IupacResult r = IupacNamer::generateName(m);
             indigoFree(m);
-            if (!r.success && r.name.isEmpty()) {
-                std::cout << "[PASS] CARBAZOLE bare -> rejected cleanly\n";
+            if (r.success && r.name == "9H-carbazole") {
+                std::cout << "[PASS] CARBAZOLE bare -> 9H-carbazole\n";
                 passed++;
             } else {
                 std::cout << "[FAIL] CARBAZOLE bare -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
