@@ -65,12 +65,22 @@ std::map<int, QString> computePeripheralNumberingForMol(int mol);
 // own NameScore over complete bracket-name assemblies) evaluate every
 // genuinely-tied whole-system numbering as its own complete, correlated
 // context, rather than this function silently picking one arbitrarily.
+// restrictStartToPredecessorBridgehead: see this function's own definition
+// comment (Task 3, retained-hydro-assembly plan) -- false (the default,
+// preserving every pre-existing caller's behavior unchanged) allows a
+// candidate numbering start to be either a nonfused atom whose PREDECESSOR
+// or whose SUCCESSOR (in the clockwise perimeter) is a ring-fusion atom;
+// true restricts to predecessor-only, which RetainedRingMatcher.cpp's
+// whole-system numbering path needs for a linear/angular chain topology but
+// nameLinearChainFusion's existing branching-fusion callers must NOT get
+// (confirmed regression otherwise -- see this function's definition).
 std::map<int, QString> computePeripheralNumberingGeneral(
     const Graph &g,
     const FusedRingSystemInput &input,
     const std::set<int> &substituentBearingNodes = {},
     const std::set<int> &hydroLocantBearingNodes = {},
-    std::vector<std::map<int, QString>> *tiedMapsOut = nullptr);
+    std::vector<std::map<int, QString>> *tiedMapsOut = nullptr,
+    bool restrictStartToPredecessorBridgehead = false);
 
 struct SpiroNumberingResult {
     bool success;
@@ -24498,7 +24508,8 @@ std::map<int, QString> computePeripheralNumberingGeneral(
     const FusedRingSystemInput &input,
     const std::set<int> &substituentBearingNodes,
     const std::set<int> &hydroLocantBearingNodes,
-    std::vector<std::map<int, QString>> *tiedMapsOut) {
+    std::vector<std::map<int, QString>> *tiedMapsOut,
+    bool restrictStartToPredecessorBridgehead) {
     std::map<int, QString> emptyMap;
     if (tiedMapsOut) tiedMapsOut->clear();
 
@@ -24721,21 +24732,81 @@ std::map<int, QString> computePeripheralNumberingGeneral(
         }
 
         // Bug B fix: Restrict to bridgehead-adjacent, most-counterclockwise starts
-        // per P-25.3.3.1.1. A nonfused atom is bridgehead-adjacent if either its
-        // predecessor OR successor in the perimeter cycle is a bridgehead
-        // (atomRingCount >= 2). This eliminates invalid starts mid-ring (where neither
-        // neighbor in the perimeter is a bridgehead) that were winning via lower
-        // heteroatom locants alone. For a linear chain's terminal ring, each
-        // nonfused atom's immediate neighbor along the perimeter towards the chain's
-        // interior IS a bridgehead, so this restriction keeps exactly the right starts.
+        // per P-25.3.3.1.1 -- "most counterclockwise nonfused atom adjacent to a
+        // bridgehead," proceeding clockwise FROM it into the rest of its own
+        // ring (matches this exact function's own documented intent at this
+        // file's nameLinearChainFusion call site, search "matching the
+        // P-25.3.3.1.1 rule's 'most counterclockwise nonfused atom adjacent to
+        // a bridgehead' requirement" -- that comment says PRECEDED BY a
+        // bridgehead only, but the code below previously also accepted
+        // FOLLOWED BY one, a real discrepancy between documented intent and
+        // shipped code).
+        //
+        // Retained-hydro-assembly plan, Task 3 debugging (confirmed live via
+        // benz[b]acridine / test 462, CAS SciFinder-confirmed target
+        // "1,2,3,4,7,8,9,10-octahydrobenz[b]acridine"): accepting "successor
+        // is a bridgehead" as an alternative start lets the walk begin at a
+        // ring's OWN LAST plain atom before exiting into the next ring,
+        // instead of its FIRST plain atom after entering from the previous
+        // ring. That fragments one terminal ring's 4 plain atoms into a lone
+        // atom plus the other 3 split across the numbering's wrap point
+        // (e.g. {1} and {10,11,12} instead of a clean {1,2,3,4}), and can
+        // additionally let an INNER ring's own single meso atom land at an
+        // artificially low locant (confirmed: a heteroatom at an inner ring's
+        // meso position scored locant "2" instead of its true, isostructural-
+        // tetracene-analogous meso locant 5/6/11/12) purely because scoring
+        // by lowest heteroatom/fusion-carbon locant numerically prefers that
+        // degenerate split -- even though it is not the P-25.3.3.1.1-correct
+        // starting atom for the chosen clockwise direction. Restricting to
+        // "predecessor is a bridgehead" only removes exactly this invalid
+        // family of candidates and reproduces the CAS-confirmed name exactly
+        // (verified after this fix: see this task's own report).
+        //
+        // Regression found applying the above unconditionally (Task 3,
+        // second pass): a fused-ring system with BRANCHING topology (a
+        // central ring with 3+ leaf rings off it, this function's own
+        // pre-existing "Branching molecule name" regression test) genuinely
+        // NEEDS the "successor is a bridgehead" candidates too -- direct
+        // instrumented comparison (dumping each candidate's real 2D
+        // position and its own ring's locants) showed that for that
+        // topology, the geometrically correct, CAS/Blue-Book-precedent-
+        // confirmed start atom for a given tied orientation is sometimes
+        // the "successor" one, not the "predecessor" one -- i.e. which of
+        // the two is the true P-25.3.3.1.1 start is NOT a fixed role
+        // ("predecessor always wins") that generalizes across every
+        // ortho-fused topology; it empirically differs between a simple
+        // linear/angular chain (462's shape, where "successor" is always
+        // invalid/degenerate -- confirmed: its candidates have identical-or-
+        // lower heteroatom AND fusion-carbon locants than the correct
+        // answer, yet are provably wrong per CAS, so they cannot be real
+        // ties the normal lowest-locants scoring is entitled to choose
+        // between) and a branching star topology (needs both). Deriving the
+        // real general geometric discriminant (which would resolve this
+        // without any caller-specific flag) is a deeper P-25.3.3 orientation
+        // project of its own, out of this task's scope and file list.
+        //
+        // Narrow, scoped fix: restrict to "predecessor is a bridgehead"
+        // only -- the behavior verified correct for 462 -- but ONLY for the
+        // caller that actually hit this bug (the retained-hydro-assembly
+        // whole-system numbering path, RetainedRingMatcher.cpp's
+        // tryRetainedBaseDecomposition, which passes
+        // restrictStartToPredecessorBridgehead=true). Every pre-existing
+        // caller (nameLinearChainFusion's plain linear/branching-fusion
+        // naming, all within this file) defaults this parameter to false
+        // and keeps the original "predecessor OR successor" candidate pool
+        // it already depended on and passed its own regression tests
+        // against -- unchanged behavior, confirmed by this task's own full
+        // suite re-run after this fix (see this task's own report).
         std::vector<int> upperRingNonFusedIndices;
         for (size_t i = 0; i < perimeter.size(); ++i) {
             int atom = perimeter[i];
             if (input.ringAtoms[upperRing].count(atom) && atomRingCount[atom] == 1) {
                 int prevAtom = perimeter[(i - 1 + perimeter.size()) % perimeter.size()];
                 int nextAtom = perimeter[(i + 1) % perimeter.size()];
-                // Atom is bridgehead-adjacent if either neighbor in perimeter is a bridgehead
-                if (atomRingCount[prevAtom] >= 2 || atomRingCount[nextAtom] >= 2) {
+                bool prevBH = atomRingCount[prevAtom] >= 2;
+                bool nextBH = atomRingCount[nextAtom] >= 2;
+                bool qualifies = restrictStartToPredecessorBridgehead ? prevBH : (prevBH || nextBH);
+                if (qualifies) {
                     upperRingNonFusedIndices.push_back(static_cast<int>(i));
                 }
             }
@@ -24748,6 +24819,17 @@ std::map<int, QString> computePeripheralNumberingGeneral(
     }
 
     if (scoredCandidates.empty()) return emptyMap;
+
+    if (getenv("DEBUG_PERIPH_GENERAL")) {
+        for (const auto &c : scoredCandidates) {
+            QStringList het, fus, hyd;
+            for (int v : c.heteroatomLocants) het << QString::number(v);
+            for (int v : c.fusionCarbonLocants) fus << QString::number(v);
+            for (int v : c.hydroLocants) hyd << QString::number(v);
+            fprintf(stderr, "CAND idx=%d het=[%s] fus=[%s] hyd=[%s]\n", c.candidateIndex,
+                het.join(",").toUtf8().constData(), fus.join(",").toUtf8().constData(), hyd.join(",").toUtf8().constData());
+        }
+    }
 
     // Pick best candidate using the same tie-break order this function
     // already used for within-one-orientation candidates, now deciding

@@ -45,7 +45,8 @@ std::map<int, QString> computePeripheralNumberingGeneral(
     const FusedRingSystemInput &input,
     const std::set<int> &substituentBearingNodes = {},
     const std::set<int> &hydroLocantBearingNodes = {},
-    std::vector<std::map<int, QString>> *tiedMapsOut = nullptr);
+    std::vector<std::map<int, QString>> *tiedMapsOut = nullptr,
+    bool restrictStartToPredecessorBridgehead = false);
 
 // Helper to build Graph from molecule (copied from computePeripheralNumberingForMol)
 static Graph buildGraphFromMol(int mol, std::map<int, int> &indigoToGraphIdx) {
@@ -1064,34 +1065,53 @@ int main() {
         // disjoint locants (7 vs 2,3,4,5).
         {"c1ccc2nc3CCCCc3cc2c1C", "7-methyl-2,3,4,5-tetrahydrodibenzo[1,2-b:3,4-e]pyridine"},
 
-        // Regression guard pinning the N==3-restricted rejection of this
-        // tetrahydro-pyridine-fused 4-ring chain, across FOUR reverted attempts at
-        // N>=4 support now (each blocked by a real bug). The fourth attempt
-        // (P-25.3.3 orientation plan) fixed two real, confirmed geometry bugs
-        // (an atom-order-dependent ring-placement mirroring bug in
-        // walkPeripheryClockwise, and a reflection-composition sign bug in
-        // FusedRingOrientation.cpp -- both kept, both benefit nameBranchingFusion)
-        // but a fresh, more extensive review (16 RDKit-randomized atom orderings
-        // per molecule, vs. this attempt's own 10) found TWO FURTHER, deeper bugs
-        // still remain: the orientation candidate set itself is incomplete
-        // (missing each candidate rotation's 180-degree/X-mirror partner, making
-        // which end of a linear chain becomes "uppermost" depend on the fused-
-        // ring detector's own BFS root choice, which tracks atom order), and the
-        // candidate-start search (every non-fused atom of the uppermost ring,
-        // scored by lowest heteroatom locant) can let an invalid, non-bridgehead-
-        // adjacent start win specifically because it scores a lower heteroatom
-        // locant -- confirmed against this exact molecule: the pinned
-        // "5,6,7,8-tetrahydro..." the fourth attempt shipped is NOT a valid
-        // P-25.3.3.1.1 numbering (a real linear 4-ring chain's terminal CH2x4
-        // ring must number as {1-4} or {7-10}; "5,6,7,8" is the valid "7-10" set
-        // shifted by 2, meaning numbering started ON the nitrogen rather than at
-        // the true bridgehead-adjacent start). N>=4 re-reverted again as a
-        // result (search "four times" in IupacNamer.cpp for the mancude-
-        // reclassification gate's full writeup of what a real future fix needs).
-        // Falls through unchanged to the same pre-existing generic rejection.
-        // Structurally validated via check_sssr.exe: 4 rings (6,6,6,6), 18 heavy
-        // atoms (3 aromatic/mancude rings + 1 saturated all-carbon ring).
-        {"C1CCc2cc3cc4ccncc4cc3cc2C1", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."},
+        // Retained-hydro-assembly plan, Task 3: superseded by
+        // tryRetainedBaseDecomposition's whole-system final-numbering
+        // assembly (RetainedRingMatcher.cpp), same mechanism that closes
+        // test 462 above, mirror-imaged -- here the SATURATION is on the
+        // attached naphtho-shaped remainder side (ring A, the CH2x4 ring)
+        // rather than the retained base (isoquinoline, exact-matched,
+        // fully aromatic) side. No external database record exists for
+        // this exact molecule (PubChem CID 0; CIR 404 on /iupac_name,
+        // checked twice per this plan's own Step 6) -- hand-verified
+        // instead, per this task's own instructions, by dumping the full
+        // 18-atom locant map (temporary DEBUG_WHOLE_LOCANTS instrumentation,
+        // stripped before commit) and confirming directly:
+        //   - computePeripheralNumberingGeneral was genuinely invoked (not
+        //     a fallback): DEBUG_PERIPH_GENERAL shows real scored candidates,
+        //     winning on heteroatom locant 2, tied 3-ways and consistent
+        //     across all three ties.
+        //   - all 18 locants are distinct (1,2,3,4,4a,5,5a,6,6a,7,8,9,10,
+        //     10a,11,11a,12,12a) -- no duplicates/overlaps.
+        //   - both bridgehead pairs sit correctly: each of the 3 real
+        //     fusion bonds' 2 atoms both land on lettered locants, and
+        //     each ring's own 6 atoms form a contiguous locant block
+        //     (terminal ring A: {6a,7,8,9,10,10a}; terminal ring D
+        //     (pyridine): {12a,1,2,3,4,4a}) -- exactly the clean, non-
+        //     fragmented pattern this same task's fix (see
+        //     computePeripheralNumberingGeneral's own
+        //     restrictStartToPredecessorBridgehead comment, IupacNamer.cpp)
+        //     was built to produce, confirmed here on a genuinely different
+        //     molecule than the one the fix was derived against.
+        //   - the 4 real saturated atoms land on exactly {7,8,9,10} --
+        //     consecutive, matching this test's own pre-existing comment
+        //     (now superseded) that the ONLY two valid locant sets for
+        //     this ring are {1-4} or {7-10}, and ruling out the old
+        //     "5,6,7,8" bug this same comment already documented as wrong.
+        //   - N lands at locant 2 -- matching real isoquinoline's own
+        //     well-known canonical numbering (N at 2, not 1; quinoline has
+        //     N at 1, isoquinoline at 2), an independent chemistry check
+        //     this task's own numbering procedure did not need to be told.
+        //   - the fully aromatic parent of this exact skeleton is already
+        //     an independently-confirmed test in this file (search
+        //     "naphtho[2,3-g]isoquinoline", the Task 10 ground-truth
+        //     molecule) and cites the identical bracket locants --
+        //     confirming this hydro-prefixed name reuses that same,
+        //     already-verified base citation rather than a different one.
+        // Structurally validated via check_sssr.exe: 4 rings (6,6,6,6), 18
+        // heavy atoms (3 aromatic/mancude rings + 1 saturated all-carbon
+        // ring).
+        {"C1CCc2cc3cc4ccncc4cc3cc2C1", "7,8,9,10-tetrahydronaphtho[2,3-g]isoquinoline"},
 
         // Regression guard: unsubstituted, FULLY aromatic acridine itself is
         // unaffected by this task's hydroPositionNodes-based guard on the Part A.6
@@ -1165,23 +1185,26 @@ int main() {
         {"C1CCc2cc3OC=CC=Cc3cc2C1", "7,8,9,10-tetrahydrobenzo[3',4':6,1]benzo[3,4-b]oxepine"},
         {"C1CCc2cc3NC=CC=Cc3cc2C1", "7,8,9,10-tetrahydrobenzo[3',4':6,1]benzo[3,4-b]azepine"},
 
-        // N>=4 substituent/hydro-prefix citation (via computePeripheralNumberingGeneral)
-        // has been attempted and reverted four times now -- the two real geometry
-        // bugs that originally blocked it (a ring-placement mirroring bug and a
-        // reflection-composition sign bug, both confirmed via first-principles
-        // derivation and both KEPT/fixed) were not the whole root cause. A fresh
-        // review found a deeper, still-unfixed pair of bugs (incomplete orientation
-        // candidate set; invalid non-bridgehead-adjacent starts winning via lower
-        // heteroatom locants) that make N>=4 output still non-deterministic and, in
-        // at least this exact test case, objectively wrong (search "four times" in
-        // IupacNamer.cpp for the full writeup). N>=4 substituent/hydro citation is
-        // NOT enabled.
+        // Retained-hydro-assembly plan, Task 3: the N>=4 rejection above is
+        // superseded for this exact molecule now that
+        // tryRetainedBaseDecomposition (RetainedRingMatcher.cpp) assembles a
+        // whole-system final numbering for a retained base (here: acridine,
+        // skeleton-matched per Task 2, saturated at 4 positions) plus its
+        // attached remainder (one lone saturated benzo-shaped ring), instead
+        // of falling through to nameLinearChainFusion's still-unfixed
+        // generic N>=4 path (the comment this replaces documents real,
+        // separate bugs in THAT path, still unfixed and still exercised by
+        // other N>=4 cases -- this molecule simply no longer reaches it).
         //
-        // Regression guard: this constructed 4-ring linear chain (benzo-benzo-
-        // pyridine-saturated-carbocycle shape, 2 saturated all-carbon rings) falls
-        // through to the pre-existing generic rejection, not a misname. Structurally
-        // validated via check_sssr.exe as 4 ortho-fused 6-rings, 18 heavy atoms.
-        {"c1c2c(cc(CCCC3)c3c2)nc2CCCCc12", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."},
+        // Real target confirmed via CAS SciFinder (project owner,
+        // 2026-10-17): 1,2,3,4,7,8,9,10-octahydrobenz[b]acridine. Hydro-
+        // locants are the WHOLE assembled benzo[b]acridine system's own
+        // final numbering (via computePeripheralNumberingGeneral with
+        // restrictStartToPredecessorBridgehead=true, see that function's
+        // own comment in IupacNamer.cpp), not spliced from acridine's and
+        // the remainder's own standalone numbering. Verified by direct
+        // build + run against the real SMILES below, not guessed.
+        {"c1c2c(cc(CCCC3)c3c2)nc2CCCCc12", "1,2,3,4,7,8,9,10-octahydrobenz[b]acridine"},
 
         // Partial-hydrogenation follow-on task, Part 3 (skeleton-only /
         // bond-order-agnostic matching): this is the all-carbon
