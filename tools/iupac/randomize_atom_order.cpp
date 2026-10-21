@@ -12,29 +12,10 @@
 // multiple times on the same input to verify there's no internal
 // nondeterminism.
 
-#include "indigo.h"
+#include "../../src/tools/iupac/atom_order_randomizer.h"
 #include <iostream>
 #include <string>
-
-std::string randomize_atom_order(const std::string& smiles, int seed) {
-    // For now, just return the original SMILES
-    // This means the determinism check will just verify that
-    // running generateName multiple times on the same input
-    // produces the same output (which tests for internal nondeterminism
-    // but not atom-order independence).
-    //
-    // A full implementation would:
-    // 1. Load the SMILES
-    // 2. Save as molfile
-    // 3. Parse molfile, reorder atom block
-    // 4. Load modified molfile
-    // 5. Save as SMILES (which would have different atom order)
-    
-    // Use seed to potentially modify the SMILES in the future
-    (void)seed; // Suppress unused parameter warning
-    
-    return smiles;
-}
+#include <cstdlib>
 
 int main(int argc, char* argv[]) {
     if (argc < 3) {
@@ -45,7 +26,7 @@ int main(int argc, char* argv[]) {
     std::string smiles = argv[1];
     int seed = std::atoi(argv[2]);
     
-    std::string result = randomize_atom_order(smiles, seed);
+    std::string result = randomizeAtomOrder(smiles, seed);
     
     if (result.empty()) {
         std::cerr << "Error: Could not process SMILES" << std::endl;

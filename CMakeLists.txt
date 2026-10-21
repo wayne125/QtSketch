@@ -255,7 +255,7 @@ enable_testing()
 add_test(NAME iupac_namer_test COMMAND iupac_namer_test)
 
 # Golden-data regression test (Task A/B)
-qt_add_executable(iupac_golden_test tests/iupac_golden_test.cpp ${IUPAC_NAMING_SOURCES} src/app/BondStereoPerception.h src/app/BondStereoPerception.cpp)
+qt_add_executable(iupac_golden_test tests/iupac_golden_test.cpp src/tools/iupac/atom_order_randomizer.cpp ${IUPAC_NAMING_SOURCES} src/app/BondStereoPerception.h src/app/BondStereoPerception.cpp)
 target_compile_definitions(iupac_golden_test PRIVATE SKETCH_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 target_include_directories(iupac_golden_test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -270,7 +270,7 @@ endif()
 add_test(NAME iupac_golden_test COMMAND iupac_golden_test)
 
 # Atom order randomization tool (Task A/B)
-qt_add_executable(randomize_atom_order tools/iupac/randomize_atom_order.cpp ${IUPAC_NAMING_SOURCES} src/app/BondStereoPerception.h src/app/BondStereoPerception.cpp)
+qt_add_executable(randomize_atom_order tools/iupac/randomize_atom_order.cpp src/tools/iupac/atom_order_randomizer.cpp ${IUPAC_NAMING_SOURCES} src/app/BondStereoPerception.h src/app/BondStereoPerception.cpp)
 target_include_directories(randomize_atom_order PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/src/app
