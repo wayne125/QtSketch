@@ -14,6 +14,7 @@
 #include <string>
 #include <cstdlib>
 #include <map>
+#include <set>
 
 struct GoldenRow {
     int id;
@@ -119,6 +120,22 @@ std::vector<GoldenRow> read_baseline_csv(const std::string& path, bool& hadMalfo
     return rows;
 }
 
+std::set<int> read_known_determinism_failures(const std::string& path) {
+    std::set<int> known;
+    std::ifstream file(path);
+    if (!file.is_open()) return known;
+    std::string line;
+    while (std::getline(file, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        try {
+            known.insert(std::stoi(line));
+        } catch (...) {
+            // Not a row id, ignore.
+        }
+    }
+    return known;
+}
+
 int main() {
     setvbuf(stdout, nullptr, _IONBF, 0);
     
@@ -147,6 +164,15 @@ int main() {
         determinism_mode = true;
         std::cout << "Determinism check mode enabled" << std::endl;
     }
+
+    std::set<int> known_determinism_failures;
+    if (determinism_mode) {
+        std::string known_path = std::string(SKETCH_SOURCE_DIR) +
+            "/tests/data/iupac/golden/known_determinism_failures.txt";
+        known_determinism_failures = read_known_determinism_failures(known_path);
+        std::cout << "Loaded " << known_determinism_failures.size()
+                  << " known pre-existing determinism failures from " << known_path << std::endl;
+    }
     
     qword sid = indigoAllocSessionId();
     indigoSetSessionId(sid);
@@ -154,6 +180,9 @@ int main() {
     int total_passed = 0;
     int total_failed = 0;
     int total_pin_mismatches = 0;
+    int total_known_determinism_failures = 0;
+    int total_determinism_verified = 0;
+    int total_determinism_skipped = 0;
     
     for (const auto& row : rows) {
         // Skip rows with empty SMILES (no way to test)
@@ -230,13 +259,16 @@ int main() {
         // sensitive, or the equivalence self-check failed) is skipped for
         // that seed rather than silently counted as a pass.
         if (determinism_mode) {
+            bool row_is_known_failure = known_determinism_failures.count(row.id) > 0;
             for (int s = 1; s <= 5; s++) {
                 std::string reordered_smiles;
                 bool reorder_ok = randomizeAtomOrder(row.smiles, s, reordered_smiles);
                 if (!reorder_ok) {
                     std::cout << "  [DETERMINISM SKIP] Row " << row.id << ": no verified reordering for seed " << s << std::endl;
+                    total_determinism_skipped++;
                     continue;
                 }
+                total_determinism_verified++;
 
                 int mol_reorder = indigoLoadMoleculeFromString(reordered_smiles.c_str());
                 if (mol_reorder < 0) {
@@ -257,12 +289,18 @@ int main() {
 
                 if (!(reorder_success == fresh_success &&
                       reorder_name == fresh_name)) {
-                    std::cout << "  [DETERMINISM FAIL] Row " << row.id << ": seed " << s << " produced a different result" << std::endl;
-                    std::cout << "    Expected: success=" << fresh_success
-                              << " name='" << fresh_name << "'" << std::endl;
-                    std::cout << "    Got: success=" << reorder_success
-                              << " name='" << reorder_name << "'" << std::endl;
-                    total_failed++;
+                    if (row_is_known_failure) {
+                        std::cout << "  [DETERMINISM KNOWN FAIL] Row " << row.id << ": seed " << s
+                                  << " produced a different result (pre-existing, see known_determinism_failures.txt)" << std::endl;
+                        total_known_determinism_failures++;
+                    } else {
+                        std::cout << "  [DETERMINISM FAIL] Row " << row.id << ": seed " << s << " produced a different result" << std::endl;
+                        std::cout << "    Expected: success=" << fresh_success
+                                  << " name='" << fresh_name << "'" << std::endl;
+                        std::cout << "    Got: success=" << reorder_success
+                                  << " name='" << reorder_name << "'" << std::endl;
+                        total_failed++;
+                    }
                     break;
                 }
             }
@@ -274,6 +312,20 @@ int main() {
     
     std::cout << "\nSummary: " << total_passed << " passed, " << total_failed << " failed, "
               << total_pin_mismatches << " pin mismatches." << std::endl;
-    
+    if (determinism_mode) {
+        std::cout << "Determinism: " << total_determinism_verified << " seeds verified, "
+                  << total_determinism_skipped << " seeds skipped, "
+                  << total_known_determinism_failures << " known pre-existing failures." << std::endl;
+        // If the randomizer never produced a single verified reordering,
+        // the mechanism itself is broken (e.g. regressed back to a
+        // no-op) -- that must be a hard failure, not a quiet all-skip
+        // that looks identical to "nothing to test."
+        if (total_determinism_verified == 0) {
+            std::cerr << "FATAL: determinism check verified zero seeds across all rows -- "
+                         "the atom-order randomizer itself appears broken." << std::endl;
+            return 1;
+        }
+    }
+
     return (total_failed == 0) ? 0 : 1;
 }

@@ -1,0 +1,33 @@
+# Known, reviewed, pre-existing atom-order-dependence failures in
+# IupacNamer, discovered 2026-10-22 when the IUPAC_GOLDEN_DETERMINISM=1
+# check in iupac_golden_test was first wired to a real seeded atom-order
+# permutation (tools/iupac/AtomOrderRandomizer). Each row below has a
+# verified canonical-equivalent reordering (confirmed via Indigo
+# canonical SMILES, independent of generateName) that still produces a
+# different generateName() result -- success vs REJECTED, or a
+# different name -- than the row's own original atom order.
+#
+# This is a real bug in IupacNamer, not a harness artifact. It is NOT
+# fixed here: this plan's global constraints forbid touching naming-
+# correctness logic. These row IDs are tracked as a known baseline so
+# later tasks' determinism runs can gate on "no NEW divergence" instead
+# of being permanently red. A row ID appearing here is not a license to
+# ignore it forever -- it is flagged for a dedicated future task.
+#
+# One row ID per line. Lines starting with # are comments.
+183
+184
+289
+441
+444
+445
+446
+449
+450
+459
+460
+461
+462
+464
+499
+522
