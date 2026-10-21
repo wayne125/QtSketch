@@ -50,4 +50,16 @@ Both checks are performed separately so that a pin mismatch (expected for known-
 
 ### Determinism Check
 
-With `IUPAC_GOLDEN_DETERMINISM=1` environment variable, the test harness also verifies that generating 5 random atom-order reorderings of each molecule produces byte-identical names. This uses `tools/iupac/randomize_atom_order.cpp`.
+With the `IUPAC_GOLDEN_DETERMINISM=1` environment variable, the test
+harness also verifies that generating 5 seeded atom-order reorderings
+(seeds 1-5) of each molecule produces byte-identical names from
+`generateName()`. The reordering is a real seeded permutation of the
+molecule's atom order (via `tools/iupac/AtomOrderRandomizer.{h,cpp}`,
+shared with the standalone `tools/iupac/randomize_atom_order` CLI tool),
+not a re-run on the unchanged SMILES. It self-checks that the reordered
+molecule is still the same molecule (same Indigo canonical SMILES) and
+that its raw atom order genuinely differs from the original before
+returning it. Molecules with any stereocenter or stereo-flagged bond are
+skipped for this check (`[DETERMINISM SKIP]` in the output) rather than
+reordered, since this permutation does not re-derive stereo descriptors
+for the new atom order.

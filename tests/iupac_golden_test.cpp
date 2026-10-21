@@ -4,6 +4,7 @@
 // generateName() produces identical output to the baseline.
 
 #include "IupacNamer.h"
+#include "AtomOrderRandomizer.h"
 #include "indigo.h"
 
 #include <iostream>
@@ -25,8 +26,9 @@ struct GoldenRow {
     std::string notes;
 };
 
-std::vector<GoldenRow> read_baseline_csv(const std::string& path) {
+std::vector<GoldenRow> read_baseline_csv(const std::string& path, bool& hadMalformedRow) {
     std::vector<GoldenRow> rows;
+    hadMalformedRow = false;
     std::ifstream file(path);
     
     if (!file.is_open()) {
@@ -75,7 +77,8 @@ std::vector<GoldenRow> read_baseline_csv(const std::string& path) {
         fields.push_back(field);
         
         if (fields.size() < 7) {
-            std::cerr << "WARNING: Line " << line_num << " has only " << fields.size() << " fields, expected 8" << std::endl;
+            std::cerr << "ERROR: Line " << line_num << " has only " << fields.size() << " fields, expected 8 -- treating baseline.csv as corrupt" << std::endl;
+            hadMalformedRow = true;
             continue;
         }
         
@@ -89,7 +92,8 @@ std::vector<GoldenRow> read_baseline_csv(const std::string& path) {
         try {
             row.id = std::stoi(fields[0]);
         } catch (...) {
-            std::cerr << "WARNING: Invalid id on line " << line_num << std::endl;
+            std::cerr << "ERROR: Invalid id on line " << line_num << " -- treating baseline.csv as corrupt" << std::endl;
+            hadMalformedRow = true;
             continue;
         }
         
@@ -122,12 +126,18 @@ int main() {
     std::string csv_path = std::string(SKETCH_SOURCE_DIR) + "/tests/data/iupac/golden/baseline.csv";
     
     // Read baseline
-    std::vector<GoldenRow> rows = read_baseline_csv(csv_path);
+    bool hadMalformedRow = false;
+    std::vector<GoldenRow> rows = read_baseline_csv(csv_path, hadMalformedRow);
     if (rows.empty()) {
         std::cerr << "ERROR: No rows read from baseline CSV" << std::endl;
         return 1;
     }
-    
+    if (hadMalformedRow) {
+        std::cerr << "FATAL: baseline.csv contains malformed row(s) (see ERROR lines above) -- "
+                      "a corrupted golden file must never silently pass." << std::endl;
+        return 1;
+    }
+
     std::cout << "Loaded " << rows.size() << " golden rows from " << csv_path << std::endl;
     
     // Check for determinism mode
@@ -143,6 +153,7 @@ int main() {
     
     int total_passed = 0;
     int total_failed = 0;
+    int total_pin_mismatches = 0;
     
     for (const auto& row : rows) {
         // Skip rows with empty SMILES (no way to test)
@@ -190,9 +201,10 @@ int main() {
             // Fingerprint matches - this is the critical check
             // Log pin mismatch if present, but still PASS
             if (!pin_match) {
-                std::cout << "[PASS (pin mismatch)] Row " << row.id << " (" << row.smiles << ") -> " 
+                std::cout << "[PASS (pin mismatch)] Row " << row.id << " (" << row.smiles << ") -> "
                           << (fresh_success ? fresh_name : "REJECTED: " + fresh_error) << std::endl;
                 std::cout << "  Note: Pinned expectation differs from actual" << std::endl;
+                total_pin_mismatches++;
             } else {
                 std::cout << "[PASS] Row " << row.id << " (" << row.smiles << ") -> " 
                           << (fresh_success ? fresh_name : "REJECTED: " + fresh_error) << std::endl;
@@ -211,20 +223,30 @@ int main() {
             total_failed++;
         }
         
-        // Determinism check: generate multiple atom orderings
+        // Determinism check: for each seed, build a REAL seeded atom-order
+        // permutation of this row's SMILES (not the same string re-parsed)
+        // and confirm generateName produces the identical result. A
+        // molecule the randomizer cannot verify a reordering for (stereo-
+        // sensitive, or the equivalence self-check failed) is skipped for
+        // that seed rather than silently counted as a pass.
         if (determinism_mode) {
-            // For each seed, load a fresh molecule and run generateName
-            // This verifies that the naming is deterministic regardless of
-            // any internal state
             for (int s = 1; s <= 5; s++) {
-                int mol_reorder = indigoLoadMoleculeFromString(row.smiles.c_str());
-                if (mol_reorder < 0) {
-                    std::cout << "  [DETERMINISM SKIP] Failed to load molecule for seed " << s << std::endl;
+                std::string reordered_smiles;
+                bool reorder_ok = randomizeAtomOrder(row.smiles, s, reordered_smiles);
+                if (!reorder_ok) {
+                    std::cout << "  [DETERMINISM SKIP] Row " << row.id << ": no verified reordering for seed " << s << std::endl;
                     continue;
+                }
+
+                int mol_reorder = indigoLoadMoleculeFromString(reordered_smiles.c_str());
+                if (mol_reorder < 0) {
+                    std::cout << "  [DETERMINISM FAIL] Row " << row.id << ": reordered SMILES failed to parse for seed " << s << std::endl;
+                    total_failed++;
+                    break;
                 }
                 IupacResult res_reorder = IupacNamer::generateName(mol_reorder);
                 indigoFree(mol_reorder);
-                
+
                 // Normalize the result for comparison
                 bool reorder_success = res_reorder.success;
                 std::string reorder_name = res_reorder.name.toStdString();
@@ -232,13 +254,13 @@ int main() {
                 if (!reorder_success) {
                     reorder_name = reorder_error;
                 }
-                
-                if (!(reorder_success == fresh_success && 
+
+                if (!(reorder_success == fresh_success &&
                       reorder_name == fresh_name)) {
-                    std::cout << "  [DETERMINISM FAIL] Seed " << s << " produced different result" << std::endl;
-                    std::cout << "    Expected: success=" << fresh_success 
+                    std::cout << "  [DETERMINISM FAIL] Row " << row.id << ": seed " << s << " produced a different result" << std::endl;
+                    std::cout << "    Expected: success=" << fresh_success
                               << " name='" << fresh_name << "'" << std::endl;
-                    std::cout << "    Got: success=" << reorder_success 
+                    std::cout << "    Got: success=" << reorder_success
                               << " name='" << reorder_name << "'" << std::endl;
                     total_failed++;
                     break;
@@ -250,7 +272,8 @@ int main() {
     // Cleanup
     indigoReleaseSessionId(sid);
     
-    std::cout << "\nSummary: " << total_passed << " passed, " << total_failed << " failed." << std::endl;
+    std::cout << "\nSummary: " << total_passed << " passed, " << total_failed << " failed, "
+              << total_pin_mismatches << " pin mismatches." << std::endl;
     
     return (total_failed == 0) ? 0 : 1;
 }
