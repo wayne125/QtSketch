@@ -19,6 +19,18 @@ import csv
 import sys
 import os
 import argparse
+import codecs
+
+
+def unescape_cpp_string(s):
+    """Unescape a C++ string literal."""
+    if not s or len(s) < 2 or s[0] != '"' or s[-1] != '"':
+        return s
+    content = s[1:-1]
+    try:
+        return codecs.decode(content, 'unicode_escape')
+    except:
+        return content
 
 
 def parse_raw_output_for_results(raw_path):
@@ -209,24 +221,61 @@ def extract_test_cases_from_cpp(cpp_path):
         # Parse: "SMILES", "expectedName"
         # or: "SMILES", "expectedName", true, "error"
         # or: "SMILES", "expectedName", false
-        parts = [p.strip().strip('"') for p in line.split(',')]
+        # Use a simpler approach: tokenize properly
+        tokens = []
+        i = 0
+        n = len(line)
+        while i < n:
+            if line[i] in ' \t':
+                i += 1
+                continue
+            if line[i] == '"':
+                # Quoted string
+                j = i + 1
+                while j < n and line[j] != '"':
+                    if line[j] == '\\':
+                        j += 2
+                    else:
+                        j += 1
+                if j < n:
+                    tokens.append(line[i:j+1])
+                    i = j + 1
+                else:
+                    break
+            elif line[i] == ',':
+                i += 1
+            else:
+                # Unquoted token
+                j = i
+                while j < n and line[j] not in ', \t':
+                    j += 1
+                tokens.append(line[i:j])
+                i = j
         
-        if len(parts) < 2:
+        if len(tokens) < 2:
             continue
         
-        smiles = parts[0]
-        expected_name = parts[1]
+        # Unescape quoted tokens
+        unescaped = []
+        for t in tokens:
+            if t and t[0] == '"' and t[-1] == '"':
+                unescaped.append(unescape_cpp_string(t))
+            else:
+                unescaped.append(t)
+        
+        smiles = unescaped[0]
+        expected_name = unescaped[1]
         should_fail = False
         error_substring = ''
         
-        if len(parts) >= 3:
-            if parts[2] == 'true':
+        if len(unescaped) >= 3:
+            if unescaped[2] == 'true':
                 should_fail = True
-            elif parts[2] == 'false':
+            elif unescaped[2] == 'false':
                 should_fail = False
         
-        if len(parts) >= 4:
-            error_substring = parts[3]
+        if len(unescaped) >= 4:
+            error_substring = unescaped[3]
         
         pinned_name = expected_name if not should_fail else ''
         pinned_success = not should_fail
@@ -303,6 +352,25 @@ def main():
             'notes': notes
         })
     
+    # Parse additional formats from raw output
+    # Phase 31, Phase 48, stereo anchor, etc.
+    extra_results = parse_additional_formats(args.raw, max_test_id)
+    print(f"Found {len(extra_results)} additional results")
+    
+    # Add extra results to csv_rows
+    for test_id, smiles, actual_name, actual_success in extra_results:
+        # For these, we don't have C++ data, so pinned_name is empty
+        csv_rows.append({
+            'id': test_id,
+            'smiles': smiles,
+            'pinned_name': '',
+            'pinned_success': 'true',
+            'actual_name': actual_name,
+            'actual_success': str(actual_success).lower(),
+            'expected_status': '',
+            'notes': ''
+        })
+    
     # Write to CSV
     with open(args.output, 'w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -326,6 +394,135 @@ def main():
         print(f"First few missing: {missing_smiles[:3]}")
     else:
         print("All rows have SMILES")
+
+
+def parse_additional_formats(raw_path, start_id):
+    """Parse Phase 31, Phase 48, stereo anchor, and other formats."""
+    extra = []
+    next_id = start_id + 1
+    
+    with open(raw_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    
+    for line in content.split('\n'):
+        line = line.strip()
+        
+        # Skip Test N format (already parsed)
+        if line.startswith('[PASS] Test ') or line.startswith('[FAIL] Test '):
+            continue
+        
+        # Skip non-PASS lines
+        if not line.startswith('[PASS]'):
+            continue
+        
+        # Try to extract SMILES and name from various formats
+        # Format: [PASS] Phase N name (SMILES) -> result
+        # Format: [PASS] Phase N description -> result (no SMILES in output)
+        # Format: [PASS] Stereo anchor SMILES1 vs SMILES2 -> name1 vs name2
+        # Format: [PASS] Some description -> name
+        
+        try:
+            # Check for Stereo anchor format FIRST (before generic handlers)
+            if 'Stereo anchor' in line and ' vs ' in line and ' -> ' in line:
+                parts = line.split(' -> ', 1)
+                stereo_part = parts[0].replace('[PASS] Stereo anchor ', '')
+                names = parts[1]
+                if ' vs ' in stereo_part and ' vs ' in names:
+                    s1, s2 = stereo_part.split(' vs ')
+                    n1, n2 = names.split(' vs ')
+                    extra.append((next_id, s1, n1, True))
+                    next_id += 1
+                    extra.append((next_id, s2, n2, True))
+                    next_id += 1
+                    continue
+            
+            # Check if it has (SMILES) pattern
+            if '(' in line and ')' in line and ' -> ' in line:
+                # Try to extract SMILES from parentheses
+                # Look for a pattern like "(SMILES)" where SMILES doesn't contain spaces
+                match = re.search(r'\(([^)\s]+)\)', line)
+                if match:
+                    smiles = match.group(1)
+                    # Extract name after ->
+                    name = line.split(' -> ', 1)[1]
+                    extra.append((next_id, smiles, name, True))
+                    next_id += 1
+                    continue
+            
+            # Check for SMILES before -> without parentheses
+            # Pattern: [PASS] Phase 61 description: SMILES -> name
+            # or: [PASS] description SMILES -> name
+            if ' -> ' in line:
+                before_arrow = line.split(' -> ', 1)[0]
+                name = line.split(' -> ', 1)[1]
+                # Try to find a SMILES at the end of before_arrow
+                # SMILES typically don't have spaces
+                tokens = before_arrow.split()
+                if tokens:
+                    last_token = tokens[-1]
+                    # Simple heuristic: if it has no spaces and looks like a chemical identifier
+                    # Just use it as SMILES
+                    # This is a rough approximation
+                    if ':' in before_arrow:
+                        # Pattern: "description: SMILES"
+                        after_colon = before_arrow.split(':', 1)[1]
+                        last_token = after_colon.strip()
+                    # Use the last token as SMILES
+                    if last_token and not last_token.startswith('['):
+                        extra.append((next_id, last_token, name, True))
+                        next_id += 1
+                        continue
+                    else:
+                        # No SMILES found
+                        extra.append((next_id, '', name, True))
+                        next_id += 1
+                        continue
+                else:
+                    extra.append((next_id, '', name, True))
+                    next_id += 1
+                    continue
+            
+            # Check for Stereo anchor format
+            if 'Stereo anchor' in line and ' vs ' in line and ' -> ' in line:
+                parts = line.split(' -> ', 1)
+                stereo_part = parts[0].replace('[PASS] Stereo anchor ', '')
+                names = parts[1]
+                if ' vs ' in stereo_part and ' vs ' in names:
+                    s1, s2 = stereo_part.split(' vs ')
+                    n1, n2 = names.split(' vs ')
+                    extra.append((next_id, s1, n1, True))
+                    next_id += 1
+                    extra.append((next_id, s2, n2, True))
+                    next_id += 1
+                    continue
+            
+            # Check for stereo format: [PASS] Stereo description -> name1 vs name2
+            if line.startswith('[PASS] Stereo ') and ' -> ' in line:
+                parts = line.split(' -> ', 1)
+                names = parts[1]
+                if ' vs ' in names:
+                    # Skip - no SMILES in output
+                    pass
+                else:
+                    # Single stereo result
+                    extra.append((next_id, '', names, True))
+                    next_id += 1
+                continue
+            
+            # Generic format: [PASS] description -> name
+            # These don't have SMILES in the output
+            if ' -> ' in line:
+                parts = line.split(' -> ', 1)
+                name = parts[1]
+                extra.append((next_id, '', name, True))
+                next_id += 1
+                continue
+            
+        except Exception as e:
+            # Silently skip parsing errors
+            pass
+    
+    return extra
 
 
 if __name__ == '__main__':
