@@ -741,319 +741,317 @@ id,smiles,pinned_name,pinned_success,actual_name,actual_success,expected_status,
 740,n1ccccc1c2cccn2,2-pyrrol-2-ylpyridine,true,2-pyrrol-2-ylpyridine,true,,
 741,n1ccccc1c2ncnc2,"2-(1,4-diazol-2-yl)pyridine",true,"2-(1,4-diazol-2-yl)pyridine",true,,
 742,n1ccccc1C2cccnc2,,false,Two ring systems of equal seniority (P-44.2.1) are not yet supported as parent vs. substituent.,false,,
-743,[C@H](F)(Cl)Br,,true,(1S)-bromochlorofluoromethane,true,,
-744,[C@@H](F)(Cl)Br,,true,(1R)-bromochlorofluoromethane,true,,
-745,2S,,true,(2S)-2-chlorobutane vs (2R)-2-chlorobutane,true,,
-746,2S,,true,(2S)-1-chloro-2-methylcyclohexane vs (2R)-1-chloro-2-methylcyclohexane,true,,
-747,"2R,3S",,true,"(2R,3S)-2-bromo-3-chlorobutane",true,,
-748,C/C=C/C,,true,(2E)-but-2-ene,true,,
-749,C/C=C\C,,true,(2Z)-but-2-ene,true,,
-750,"2E,4S",,true,"(2E,4S)-4-chloropent-2-ene",true,,
-751,cyclohexanecarboxylate,,true,methyl cyclohexanecarboxylate,true,,
-752,benzenecarboxylate,,true,methyl benzenecarboxylate,true,,
-753,2-chlorocyclohexanecarboxylate,,true,methyl 2-chlorocyclohexanecarboxylate,true,,
-754,ethanoate,,true,phenyl ethanoate,true,,
-755,propanoate,,true,phenyl propanoate,true,,
-756,2-chlorophenyl,,true,(2-chlorophenyl) ethanoate,true,,
-757,naphthalene-1-carboxylate,,true,methyl naphthalene-1-carboxylate,true,,
-758,Diphenylmethane,,true,diphenylmethane,true,,
-759,acid,,true,"2,2-diphenylethanoic acid",true,,
-760,cyclohexyl,,true,2-cyclohexyl-2-phenylethanoic acid,true,,
-761,Biphenyl,,true,biphenyl,true,,
-762,Bicyclohexyl,,true,bicyclohexyl,true,,
-763,"2,2-bipyridine",,true,"2,2-bipyridine",true,,
-764,"2,3-bifuran",,true,"2,3-bifuran",true,,
-765,"3,3-bithiophene",,true,"3,3-bithiophene",true,,
-766,4-chlorobiphenyl,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,
-767,cyclohexylbenzene,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,
-768,regression,,true,naphthalene,true,,
-769,regression,,true,1-methylnaphthalene,true,,
-770,3-chlorophenyl,,true,3-(3-chlorophenyl)-2-phenylpropanoic acid,true,,
-771,sulfoxide,,true,methanesulfinylmethane,true,,
-772,sulfone,,true,methanesulfonylmethane,true,,
-773,disulfide,,true,methyldisulfanylmethane,true,,
-774,Thioacetone,,true,propane-2-thione,true,,
-775,Thioacetaldehyde,,true,ethanethial,true,,
-776,cleanly,,true,Unrecognized or unsupported substituent on ring.,true,,
-777,c1c[nH]cn1,,true,imidazole,true,,
-778,c1ccncn1,,true,pyrimidine,true,,
-779,5-ring),,true,pyrazole,true,,
-780,6-ring),,true,pyridazine,true,,
-781,6-ring),,true,pyrazine,true,,
-782,n1c(CC,,true,2-ethylimidazole,true,,
-783,Cc1c[nH]cn1,,true,4-methylimidazole,true,,
-784,Cc1ncccn1,,true,2-methylpyrimidine,true,,
-785,Cc1ccncn1,,true,4-methylpyrimidine,true,,
-786,Cc1cncnc1,,true,5-methylpyrimidine,true,,
-787,CP,,true,methylphosphine,true,,
-788,CCP,,true,ethylphosphine,true,,
-789,CB(O,,true,methylboronic acid,true,,
-790,CCB(O,,true,ethylboronic acid,true,,
-791,O,,true,3-(2-methylcyclohexyl)propylboronic acid,true,,
-792,2-methylcyclohexyl,,true,3-(2-methylcyclohexyl)propylphosphine,true,,
-793,O,,true,ethylboronic acid,true,,
-794,CCP,,true,ethylphosphine,true,,
-795,=O,,true,3-(2-methylcyclohexyl)propanoic acid,true,,
-796,[C@H](Cl,,true,4-[(1R)-1-chloroethyl]octane vs 4-[(1S)-1-chloroethyl]octane,true,,
-797,[C@H](Cl,,true,3-[(1R)-1-chloroethyl]pentanoic acid vs 3-[(1S)-1-chloroethyl]pentanoic acid,true,,
-798,1R,,true,[(1R)-1-chloroethyl]cyclohexane vs [(1S)-1-chloroethyl]cyclohexane,true,,
-799,1R,,true,1-[(1R)-1-chloroethyl]naphthalene vs 1-[(1S)-1-chloroethyl]naphthalene,true,,
-800,1R,,true,5-bromo-4-[(1R)-1-chloroethyl]nonane,true,,
-801,1S,,true,1-bromo-2-[(1S)-1-chloroethyl]cyclohexane,true,,
-802,1S,,true,2-bromo-1-[(1S)-1-chloroethyl]naphthalene,true,,
-803,F,,true,(1E)-1-chloro-1-fluoroprop-1-ene vs (1Z)-1-chloro-1-fluoroprop-1-ene,true,,
-804,F,,true,(1E)-2-bromo-1-chloro-1-fluoroprop-1-ene vs (1Z)-2-bromo-1-chloro-1-fluoroprop-1-ene,true,,
-805,norbornane,,true,bicyclo[2.2.1]heptane,true,,
-806,decalin,,true,bicyclo[4.4.0]decane,true,,
-807,bicyclo[2.2.2]octane,,true,bicyclo[2.2.2]octane,true,,
-808,spiro[4.5]decane,,true,spiro[4.5]decane,true,,
-809,spiro[5.5]undecane,,true,spiro[5.5]undecane,true,,
-810,spiro[3.3]heptane,,true,spiro[3.3]heptane,true,,
-811,spiro[2.5]octane,,true,spiro[2.5]octane,true,,
-812,"1S,2S,4R",,true,"(1S,2S,4R)-2-bromobicyclo[2.2.1]heptane",true,,
-813,2R,,true,(2R)-2-bromospiro[3.5]nonane,true,,
-814,3-methylspiro[5.5]undecane,,true,3-methylspiro[5.5]undecane,true,,
-815,6-oxaspiro[4.5]decane,,true,6-oxaspiro[4.5]decane,true,,
-816,9-oxa-6-azaspiro[4.5]decane,,true,9-oxa-6-azaspiro[4.5]decane,true,,
-817,7-thia-9-azaspiro[4.5]decane,,true,7-thia-9-azaspiro[4.5]decane,true,,
-818,rejected,,true,Radicals are not supported in Phase 1.,true,,
-819,spiro[5.5]undec-2-ene,,true,spiro[5.5]undec-2-ene,true,,
-820,2-methylbicyclo[2.2.1]heptane,,true,2-methylbicyclo[2.2.1]heptane,true,,
-821,1-methylbicyclo[2.2.1]heptane,,true,1-methylbicyclo[2.2.1]heptane,true,,
-822,1-fluorobicyclo[2.2.1]heptane,,true,1-fluorobicyclo[2.2.1]heptane,true,,
-823,1-fluoro-4-methylbicyclo[2.2.1]heptane,,true,1-fluoro-4-methylbicyclo[2.2.1]heptane,true,,
-824,1-methylspiro[4.5]decane,,true,1-methylspiro[4.5]decane,true,,
-825,rejection,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,
-826,7-oxabicyclo[2.2.1]heptane,,true,7-oxabicyclo[2.2.1]heptane,true,,
-827,2-oxa-4-thiabicyclo[3.2.1]octane,,true,2-oxa-4-thiabicyclo[3.2.1]octane,true,,
-828,"3,6,8-trioxabicyclo[3.2.2]nonane",,true,"3,6,8-trioxabicyclo[3.2.2]nonane",true,,
-829,bicyclo[2.2.1]hept-2-ene,,true,bicyclo[2.2.1]hept-2-ene,true,,
-830,spiro[3.5]non-5-ene,,true,spiro[3.5]non-5-ene,true,,
-831,c1cocn1,,true,oxazole,true,,
-832,c1ccon1,,true,isoxazole,true,,
-833,c1cscn1,,true,thiazole,true,,
-834,c1c[se]cn1,,true,selenazole,true,,
-835,c1ccsn1,,true,isothiazole,true,,
-836,c1cc[se]n1,,true,isoselenazole,true,,
-837,Cc1cc[nH]n1,,true,3-methylpyrazole,true,,
-838,c1nc(C,,true,2-methylthiazole,true,,
-839,Tetrahydrofuran,,true,tetrahydrofuran,true,,
-840,Pyrrolidine,,true,pyrrolidine,true,,
-841,Piperidine,,true,piperidine,true,,
-842,c1nc[nH]n1,,true,"1,2,4-triazole",true,,
-843,c1ncncn1,,true,"1,3,5-triazine",true,,
-844,c1nnn[nH]1,,true,"1,2,3,4-tetrazole",true,,
-845,o1cnnc1,,true,"1,3,4-oxadiazole",true,,
-846,c1nccoc1,,true,"1,4-oxazine",true,,
-847,n1c(C,,true,"3-methyl-1,2,4-triazole",true,,
-848,rejection,,true,Saturated or partially unsaturated heterocycles are not yet supported; only the fully aromatic (maximally unsaturated) forms are supported in this phase.,true,,
-849,c1nncccn1,,true,"3H-1,2,4-triazepine",true,,
-850,rejection,,true,Saturated or partially unsaturated heterocycles are not yet supported; only the fully aromatic (maximally unsaturated) forms are supported in this phase.,true,,
-851,non-regression,,true,imidazole,true,,
-852,c1ccc2[nH]ccc2c1,,true,indole,true,,
-853,c1ccc2c[nH]cc2c1,,true,isoindole,true,,
-854,c1ccc2occc2c1,,true,benzofuran,true,,
-855,c1ccc2cocc2c1,,true,isobenzofuran,true,,
-856,c1ccc2sccc2c1,,true,benzothiophene,true,,
-857,c1ccc2cscc2c1,,true,isobenzothiophene,true,,
-858,c1ccc2[se]ccc2c1,,true,benzoselenophene,true,,
-859,c1ccc2c[se]cc2c1,,true,isobenzoselenophene,true,,
-860,c1ccc2[te]ccc2c1,,true,benzotellurophene,true,,
-861,c1ccc2c[te]cc2c1,,true,isobenzotellurophene,true,,
-862,c1ccc2[nH]cnc2c1,,true,benzimidazole,true,,
-863,c1ccc2ncccc2c1,,true,quinoline,true,,
-864,c1ccc2cnccc2c1,,true,isoquinoline,true,,
-865,c1ccc2ncncc2c1,,true,quinazoline,true,,
-866,c1ccc2nnccc2c1,,true,cinnoline,true,,
-867,c1ccc2cnncc2c1,,true,phthalazine,true,,
-868,c1ccc2nccnc2c1,,true,quinoxaline,true,,
-869,c1ccc2scnc2c1,,true,"[1,3]benzothiazole",true,,
-870,c1ccc2ocnc2c1,,true,"[1,3]benzoxazole",true,,
-871,c1ccc2ncoc2c1,,true,"[1,3]benzoxazole",true,,
-872,c1ccc2nn[nH]c2c1,,true,"1,2,3-benzotriazole",true,,
-873,c1ccc2scnc2c1,,true,"[1,3]benzothiazole",true,,
-874,c1ccc2ocnc2c1,,true,"[1,3]benzoxazole",true,,
-875,c1ccc2[nH]cnc2c1,,true,benzimidazole,true,,
-876,c1cccc2ccccc12,,true,naphthalene,true,,
-877,CCOc1ccc2sc(S(N,,true,"5-ethoxy-2-sulfamoyl[1,3]benzothiazole",true,,
-878,CCOc1ccc2[nH]c(S(N,,true,5-ethoxy-2-sulfamoylbenzimidazole,true,,
-879,c1ccc2sncc2c1,,true,"[1,2]benzothiazole",true,,
-880,c1ccc2csnc2c1,,true,"[2,1]benzothiazole",true,,
-881,c1ccc2oncc2c1,,true,"[1,2]benzoxazole",true,,
-882,c1ccc2conc2c1,,true,"[2,1]benzoxazole",true,,
-883,c1ncnc2[nH]cnc12,,true,purine,true,,
-884,c1ncc2[nH]cnc2n1,,true,purine,true,,
-885,Cc1ncnc2[nH]cnc12,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,
-886,c1cc2cccnc2o1,,true,"furo[2,3-b]pyridine",true,,
-887,c1csc2[nH]cnc12,,true,"3H-thieno[3,2-d]imidazole",true,,
-888,C1=CC=C2C=CC=C12,,true,pentalene,true,,
-889,CC1=CC=C2C=CC=C12,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,
-890,C1CCC2CCCC12,,true,bicyclo[3.3.0]octane,true,,
-891,C1=CN2C=CC=C2C1,,true,3H-pyrrolizine,true,,
-892,C1=CC2=CC=CN2C1,,true,3H-pyrrolizine,true,,
-893,CC1=CN2C=CC=C2C1,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,
-894,C1=C[NH]C2=C1CCC2,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,
-895,C1=CC2=C(C=CO2,,true,"furo[3,2-b]pyridine",true,,
-896,C1=CC2=C(C=CO2,,true,"phosphinino[3,2-b]furan",true,,
-897,C1=CC2=CN=CN=C2N=C1,,true,"pyrido[2,3-d]pyrimidine",true,,
-898,C1=CSC2=C1SC=C2,,true,"thieno[3,2-b]thiophene",true,,
-899,C1=C[Se]C2=C1SC=C2,,true,"selenolo[3,2-b]thiophene",true,,
-900,C1=C[Te]C2=C1[Se]C=C2,,true,"tellurolo[3,2-b]selenophene",true,,
-901,c1c[te]c2c1pccc2,,true,"phosphinino[3,2-b]tellurophene",true,,
-902,CC1=CC2=C(C=CO2,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,
-903,c1cc2occc2[nH]1,,true,"4H-furo[3,2-b]pyrrole",true,,
-904,Cc1ccc2[nH]ccc2c1,,true,5-methylindole,true,,
-905,Cc1ccc2c[nH]cc2c1,,true,5-methylisoindole,true,,
-906,Cc1c2ccccc2c[nH]1,,true,1-methylisoindole,true,,
-907,Cc1[nH]cc2ccccc12,,true,1-methylisoindole,true,,
-908,Cc1ccc2occc2c1,,true,5-methylbenzofuran,true,,
-909,Cc1ccc2cocc2c1,,true,5-methylisobenzofuran,true,,
-910,Cc1c2ccccc2co1,,true,1-methylisobenzofuran,true,,
-911,Cc1occ2ccccc12,,true,1-methylisobenzofuran,true,,
-912,Cc1ccc2sccc2c1,,true,5-methylbenzothiophene,true,,
-913,Cc1ccc2cscc2c1,,true,5-methylisobenzothiophene,true,,
-914,Cc1c2ccccc2cs1,,true,1-methylisobenzothiophene,true,,
-915,Cc1scc2ccccc12,,true,1-methylisobenzothiophene,true,,
-916,Cc1ccc2[nH]cnc2c1,,true,5-methylbenzimidazole,true,,
-917,Cc1ccc2nc[nH]c2c1,,true,5-methylbenzimidazole,true,,
-918,c1ccc2ncc(Cl,,true,3-chloroquinoline,true,,
-919,Cc1ncc2ccccc2c1,,true,3-methylisoquinoline,true,,
-920,Cc1nc2ccccc2cn1,,true,2-methylquinazoline,true,,
-921,Cc1nnc2ccccc2c1,,true,3-methylcinnoline,true,,
-922,Cc1c2ccccc2cnn1,,true,1-methylphthalazine,true,,
-923,Cc1nncc2ccccc12,,true,1-methylphthalazine,true,,
-924,Cc1nc2ccccc2nc1,,true,2-methylquinoxaline,true,,
-925,Cc1cnc2ccccc2n1,,true,2-methylquinoxaline,true,,
-926,Cc1ccc2[nH]cc(C,,true,"3,5-dimethylindole",true,,
-927,CC12C=CC=CC1=NC=CC2,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,
-928,Cc1ncnc2[nH]cnc12,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,
-929,CC1=CC=C2C=CC=C12,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,
-930,CC1=CN2C=CC=C2C1,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,
-931,CC1=CC2=C(C=CO2,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,
-932,C1=CC2=C(N=C1,,true,"thiazolo[5,4-b]pyridine",true,,
-933,C1=CC2=C(N=C1,,true,"oxazolo[5,4-b]pyridine",true,,
-934,C1=CC2=C(NC=C2,,true,"1H-pyrrolo[2,3-b]pyridine",true,,
-935,C1=CC2=C(N=CN2,,true,"1H-imidazo[4,5-b]pyridine",true,,
-936,C1=CC2=C(N=C1,,true,"1H-pyrazolo[4,5-b]pyridine",true,,
-937,CC1=CNC2=C1C=CC=N2,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,
-938,C1=CC2=NC=CN2C=C1,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,
-939,o1ccc2nc3ccoc3cc12,,true,"difuro[3,2-b:5,4-e]pyridine",true,,
-940,o1ccc2nc3cocc3cc12,,true,"difuro[3,2-b:3,4-e]pyridine",true,,
-941,c12ccoc1c3occc3o2,,true,"furo[4,5-b:3,2-b]difuran",true,,
-942,o1ccc2c3ccoc3oc12,,true,"furo[2,3-b:5,4-b]difuran",true,,
-943,o1ccc2nc3ccsc3cc12,,true,"furo[3,2-b]thieno[2,3-e]pyridine",true,,
-944,o1ccc2nc3ccsc3nc12,,true,"furo[2,3-b]thieno[3,2-e]pyrazine",true,,
-945,o1ccc2nc3cc[nH]c3cc12,,true,"6H-furo[3,2-b]pyrrolo[2,3-e]pyridine",true,,
-946,o1ccc2nc3c[nH]nc3cc12,,true,"2H-furo[3,2-b]pyrazolo[3,4-e]pyridine",true,,
-947,o1c2c(cncc2,,true,"thieno[3',4':4,5]furo[3,2-c]pyridine",true,,
-948,O1C=NC2=C1SC=N2,,true,"thiazolo[4,5-d]oxazole",true,,
-949,S1C=NC2=C1[Se]C=N2,,true,"selenazolo[4,5-d]thiazole",true,,
-950,C=12C=NN=CC1N=CC=N2,,true,"pyrazino[2,3-d]pyridazine",true,,
-951,N1=CC=C2C(=C1,,true,"pyrido[3,4-b]pyrido[6',5':4,5]pyrido[2,3-d]pyridine",true,,
-952,N1=CC=C2C(=C1,,true,"pyrido[4',3':5,6]pyrido[4,3-b]pyrido[6',5':4,5]pyrido[2,3-d]pyridine",true,,
-953,N1=CC=C2C(=C1,,true,"pyrido[4',3':5,6]pyrido[4,3-b]pyrido[6'',5'':4',5']pyrido[2',3':4,5]pyrido[2,3-d]pyridine",true,,
-954,o1ccc2nc3ncc4ccsc4c3nc12,,true,"furo[2,3-b]thieno[2',3':4,5]pyrido[2,3-e]pyrazine",true,,
-955,o1ccc2nc3ccsc3cc4cc[se]c4c12,,true,furo[b]selenolo[d]thieno[b]1-azocine,true,,
-956,C1C2CC3CC1CC(C2,,true,adamantane,true,,
-957,C12C3C4C1C5C2C3C45,,true,cubane,true,,
-958,OC12CC3CC(CC(C1,,true,adamantan-1-ol,true,,
-959,ClC12CC3CC(CC(C1,,true,1-chloroadamantane,true,,
-960,O=C1C2CC3CC(C2,,true,adamantan-2-one,true,,
-961,ClC12C3C4C1C5C2C3C45,,true,1-chlorocubane,true,,
-962,C1CCC2CCCCC2C1,,true,bicyclo[4.4.0]decane,true,,
-963,C1CN2CCC1CC2,,true,1-azabicyclo[2.2.2]octane,true,,
-964,4-methoxybenzamido,,true,methyl 2-(4-methoxybenzamido)-3-{4-[(1-methylpiperidin-4-yl)oxy]phenyl}propanoate,true,,
-965,furan-3-yl,,true,cyclohexyl(furan-3-yl)phenylmethane,true,,
-966,4-chlorophenyl,,true,2-(4-chlorophenyl)ethanoic acid,true,,
-967,furan-2-yl,,true,2-{4-[(furan-2-yl)oxy]phenyl}ethanoic acid,true,,
-968,c1ccc2c(c1,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,
-969,C1C2CC3CC1CC(C2,,true,adamantane,true,,
-970,c1ncncn1,,true,"1,3,5-triazine",true,,
-971,c1nocn1,,true,"1,2,4-oxadiazole",true,,
-972,[se]1ncnc1,,true,"1,2,4-selenadiazole",true,,
-973,P1=CP=CP=C1,,true,"1,3,5-triphosphinine",true,,
-974,c1ncccccc1,,true,1-azocine,true,,
-975,c1nccccncc1,,true,"2H-1,5-diazonine",true,,
-976,c1nn1,,true,"3H-1,2-diazirine",true,,
-977,"1,3,5-triazine",,true,"1,3,5-triazine",true,,
-978,furan,,true,furan,true,,
-979,c1ncncn1,,true,"1,3,5-triazine",true,,
-980,c1nocn1,,true,"1,2,4-oxadiazole",true,,
-981,11-membered saturated heterocycle,,true,azacycloundecane,true,,
-982,same-kind multi-heteroatom,,true,"1,5-dithiacyclododecane",true,,
-983,mixed-kind heteroatoms,,true,1-thia-5-selenacyclododecane,true,,
-984,2R,,true,5-[(2R)-2-methylcyclopentyl]heptanoic acid,true,,
-985,azocane,,true,azocane,true,,
-986,aziridine,,true,aziridine,true,,
-987,3-methylbutyl,,true,6-(3-methylbutyl)undecan-1-amine,true,,
-988,Succinimide,,true,"pyrrolidine-2,5-dione",true,,
-989,Piperidin-4-ol,,true,piperidin-4-ol,true,,
-990,pyrrolidin-2-one,,true,pyrrolidin-2-one,true,,
-991,azepane,,true,azepane,true,,
-992,azepan-2-one,,true,azepan-2-one,true,,
-993,=S,,true,ethanethioamide,true,,
-994,=S,,true,propanethioamide,true,,
-995,=S,,true,benzenecarbothioamide,true,,
-996,2-hydrazinylcyclohexyl,,true,3-(2-hydrazinylcyclohexyl)propanoic acid,true,,
-997,parent,,true,2-hydrazinylcyclohexanecarboxylic acid,true,,
-998,spirobi,,true,"7,7'-spirobi[bicyclo[4.1.0]heptane]",true,,
-999,2,,true,"6,6'-spirobi[bicyclo[3.1.0]hexane]",true,,
-1000,1,,true,"3,3':6',6''-dispiroter[bicyclo[3.1.0]hexane]",true,,
-1001,2,,true,"2,3':7',7''-dispiroter[bicyclo[4.1.0]heptane]",true,,
-1002,acetate,,true,phenyl ethanoate,true,,
-1003,2-methoxycarbonyl...,,true,2-methoxycarbonylbenzenecarboxylic acid,true,,
-1004,aspirin,,true,2-ethanoyloxybenzenecarboxylic acid,true,,
-1005,analogue,,true,2-propanoyloxybenzenecarboxylic acid,true,,
-1006,2-methyl-5-nitroimidazol-1-yl,,true,2-(2-methyl-5-nitroimidazol-1-yl)ethanol,true,,
-1007,1-methylpyrazole,,true,1-methylpyrazole,true,,
-1008,COC(c1ccccc1,,true,"completed, name='(diphenylmethyl)oxymethane' err=''",true,,
-1009,CN(C,,true,"completed, name='' err='Branched or ring N-substituents on amines are not supported'",true,,
-1010,CNCCC(c1ccccc1,,true,"completed, name='' err='Branched or ring N-substituents on amines are not supported'",true,,
-1011,naphthalene,,true,Unrecognized or unsupported substituent on ring.,true,,
-1012,naphthalene,,true,Unrecognized or unsupported substituent on ring.,true,,
-1013,naphthalen-2-yl,,true,3-(naphthalen-2-yl)propanoic acid,true,,
-1014,diphenylmethyl,,true,(diphenylmethyl)oxymethane,true,,
-1015,rejected,,true,Branched or ring N-substituents on amides are not supported,true,,
-1016,rejected,,true,Branched or ring N-substituents on amides are not supported,true,,
-1017,rejected,,true,Branched or ring N-substituents on amides are not supported,true,,
-1018,2-chloroethyl,,true,4-[4-bis(2-chloroethyl)aminophenyl]butanoic acid,true,,
-1019,4-diethylamino-1-methylbutyl,,true,4-[(4-diethylamino-1-methylbutyl)amino]-7-chloroquinoline,true,,
-1020,4-amino-1-methylbutyl,,true,8-[(4-amino-1-methylbutyl)amino]-6-methoxyquinoline,true,,
-1021,1-methylethyl,,true,1-[(1-methylethyl)amino]-3-([4-(2-methoxyethyl)phenyl])oxypropan-2-ol,true,,
-1022,correctly,,true,aniline,true,,
-1023,rejected,,true,Unrecognized or unsupported substituent on ring.,true,,
-1024,rejected,,true,Unrecognized or unsupported substituent on ring.,true,,
-1025,4-carboxycyclohexyl,,true,3-(4-carboxycyclohexyl)propanoic acid,true,,
-1026,rejected,,true,Branched or ring N-substituents on amides are not supported,true,,
-1027,correctly,,true,benzenecarboxamide,true,,
-1028,rejected,,true,Ring substituent bearing the principal group also carries additional substituent structure beyond the principal group itself; this is not supported.,true,,
-1029,rejected,,true,Ring substituent bearing the principal group also carries additional substituent structure beyond the principal group itself; this is not supported.,true,,
-1030,correctly,,true,phenylmethanol,true,,
-1031,rejected,,true,Unsupported acyl group in an amide substituent on the parent chain.,true,,
-1032,2-methylaminoethyl,,true,2-methoxy-5-(2-methylaminoethyl)benzene-1-sulfonamide,true,,
-1033,"garbled double-hyphen artifact eliminated, honest rejection",,true,err='Fused ring systems other than naphthalene are not supported in this phase.',true,,
-1034,acid),,true,benzenecarboxylic acid,true,,
-1035,toluene,,true,methylbenzene,true,,
-1036,"ring correctly wins parent selection, real name",,true,4-aminomethylbenzene-1-sulfonamide,true,,
-1037,1-methylethyl,,true,5-methyl-2-(1-methylethyl)cyclohexan-1-ol,true,,
-1038,bare,,true,acridine,true,,
-1039,bare,,true,9H-carbazole,true,,
-1040,QUINACRINE,,true,rejected with substituent error,true,,
-1041,IMIQUIMOD,,true,rejected with substituent error,true,,
-1042,methyl,,true,"5-methylfuro[3,2-b]thieno[2,3-e]pyridine",true,,
-1043,substituents,,true,"8-chloro-5-methylfuro[3,2-b]thieno[2,3-e]pyridine",true,,
-1044,substituent,,true,rejected as expected (Fused ring systems other than naphthalene are not supported in this phase.),true,,
-1045,bare,,true,"benzo[4,3-b]thieno[2,3-e]pyridine",true,,
-1046,bare,,true,"furo[3,2-b]thieno[2,3-e]pyridine",true,,
-1047,naphthalene,,true,naphthalene,true,,
-1048,ACETANILIDE,,true,N-phenylacetamide,true,,
-1049,4-hydroxyphenyl,,true,N-(4-hydroxyphenyl)acetamide,true,,
-1050,LIDOCAINE,,true,rejected cleanly (substituted amine branch not yet supported),true,,
-1051,P-44.1.1,,true,A chain-based principal group outranks the ring in this structure; chain-as-parent seniority (P-44.1.1) for this ring/class combination is not yet supported.,true,,
-1052,regression,,true,2-phenylethanoic acid,true,,
-1053,14,,true,[14C]urea,true,,
-1054,13,,true,[13C]urea,true,,
-1055,75,,true,clean rejection (multi-word not yet supported),true,,
-1056,regression,,true,still rejected with 'No carbon atoms present',true,,
-1057,regression,,true,still rejected,true,,
-1058,regression,,true,urea,true,,
+743,,,true,(1S)-bromochlorofluoromethane vs (1R)-bromochlorofluoromethane,true,,"smiles not extracted, needs follow-up"
+744,,,true,(2S)-2-chlorobutane vs (2R)-2-chlorobutane,true,,"smiles not extracted, needs follow-up"
+745,,,true,(2S)-1-chloro-2-methylcyclohexane vs (2R)-1-chloro-2-methylcyclohexane,true,,"smiles not extracted, needs follow-up"
+746,,,true,"(2R,3S)-2-bromo-3-chlorobutane",true,,"smiles not extracted, needs follow-up"
+747,,,true,(2E)-but-2-ene vs (2Z)-but-2-ene,true,,"smiles not extracted, needs follow-up"
+748,,,true,"(2E,4S)-4-chloropent-2-ene",true,,"smiles not extracted, needs follow-up"
+749,,,true,methyl cyclohexanecarboxylate,true,,"smiles not extracted, needs follow-up"
+750,,,true,methyl benzenecarboxylate,true,,"smiles not extracted, needs follow-up"
+751,,,true,methyl 2-chlorocyclohexanecarboxylate,true,,"smiles not extracted, needs follow-up"
+752,,,true,phenyl ethanoate,true,,"smiles not extracted, needs follow-up"
+753,,,true,phenyl propanoate,true,,"smiles not extracted, needs follow-up"
+754,,,true,(2-chlorophenyl) ethanoate,true,,"smiles not extracted, needs follow-up"
+755,,,true,methyl naphthalene-1-carboxylate,true,,"smiles not extracted, needs follow-up"
+756,,,true,diphenylmethane,true,,"smiles not extracted, needs follow-up"
+757,,,true,"2,2-diphenylethanoic acid",true,,"smiles not extracted, needs follow-up"
+758,,,true,2-cyclohexyl-2-phenylethanoic acid,true,,"smiles not extracted, needs follow-up"
+759,,,true,biphenyl,true,,"smiles not extracted, needs follow-up"
+760,,,true,bicyclohexyl,true,,"smiles not extracted, needs follow-up"
+761,,,true,"2,2-bipyridine",true,,"smiles not extracted, needs follow-up"
+762,,,true,"2,3-bifuran",true,,"smiles not extracted, needs follow-up"
+763,,,true,"3,3-bithiophene",true,,"smiles not extracted, needs follow-up"
+764,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+765,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+766,,,true,naphthalene,true,,"smiles not extracted, needs follow-up"
+767,,,true,1-methylnaphthalene,true,,"smiles not extracted, needs follow-up"
+768,,,true,3-(3-chlorophenyl)-2-phenylpropanoic acid,true,,"smiles not extracted, needs follow-up"
+769,,,true,methanesulfinylmethane,true,,"smiles not extracted, needs follow-up"
+770,,,true,methanesulfonylmethane,true,,"smiles not extracted, needs follow-up"
+771,,,true,methyldisulfanylmethane,true,,"smiles not extracted, needs follow-up"
+772,,,true,propane-2-thione,true,,"smiles not extracted, needs follow-up"
+773,,,true,ethanethial,true,,"smiles not extracted, needs follow-up"
+774,,,true,Unrecognized or unsupported substituent on ring.,true,,"smiles not extracted, needs follow-up"
+775,,,true,imidazole,true,,"smiles not extracted, needs follow-up"
+776,,,true,pyrimidine,true,,"smiles not extracted, needs follow-up"
+777,,,true,pyrazole,true,,"smiles not extracted, needs follow-up"
+778,,,true,pyridazine,true,,"smiles not extracted, needs follow-up"
+779,,,true,pyrazine,true,,"smiles not extracted, needs follow-up"
+780,,,true,2-ethylimidazole,true,,"smiles not extracted, needs follow-up"
+781,,,true,4-methylimidazole,true,,"smiles not extracted, needs follow-up"
+782,,,true,2-methylpyrimidine,true,,"smiles not extracted, needs follow-up"
+783,,,true,4-methylpyrimidine,true,,"smiles not extracted, needs follow-up"
+784,,,true,5-methylpyrimidine,true,,"smiles not extracted, needs follow-up"
+785,,,true,methylphosphine,true,,"smiles not extracted, needs follow-up"
+786,,,true,ethylphosphine,true,,"smiles not extracted, needs follow-up"
+787,,,true,methylboronic acid,true,,"smiles not extracted, needs follow-up"
+788,,,true,ethylboronic acid,true,,"smiles not extracted, needs follow-up"
+789,,,true,3-(2-methylcyclohexyl)propylboronic acid,true,,"smiles not extracted, needs follow-up"
+790,,,true,3-(2-methylcyclohexyl)propylphosphine,true,,"smiles not extracted, needs follow-up"
+791,,,true,ethylboronic acid,true,,"smiles not extracted, needs follow-up"
+792,,,true,ethylphosphine,true,,"smiles not extracted, needs follow-up"
+793,,,true,3-(2-methylcyclohexyl)propanoic acid,true,,"smiles not extracted, needs follow-up"
+794,,,true,4-[(1R)-1-chloroethyl]octane vs 4-[(1S)-1-chloroethyl]octane,true,,"smiles not extracted, needs follow-up"
+795,,,true,3-[(1R)-1-chloroethyl]pentanoic acid vs 3-[(1S)-1-chloroethyl]pentanoic acid,true,,"smiles not extracted, needs follow-up"
+796,,,true,[(1R)-1-chloroethyl]cyclohexane vs [(1S)-1-chloroethyl]cyclohexane,true,,"smiles not extracted, needs follow-up"
+797,,,true,1-[(1R)-1-chloroethyl]naphthalene vs 1-[(1S)-1-chloroethyl]naphthalene,true,,"smiles not extracted, needs follow-up"
+798,,,true,5-bromo-4-[(1R)-1-chloroethyl]nonane,true,,"smiles not extracted, needs follow-up"
+799,,,true,1-bromo-2-[(1S)-1-chloroethyl]cyclohexane,true,,"smiles not extracted, needs follow-up"
+800,,,true,2-bromo-1-[(1S)-1-chloroethyl]naphthalene,true,,"smiles not extracted, needs follow-up"
+801,,,true,(1E)-1-chloro-1-fluoroprop-1-ene vs (1Z)-1-chloro-1-fluoroprop-1-ene,true,,"smiles not extracted, needs follow-up"
+802,,,true,(1E)-2-bromo-1-chloro-1-fluoroprop-1-ene vs (1Z)-2-bromo-1-chloro-1-fluoroprop-1-ene,true,,"smiles not extracted, needs follow-up"
+803,,,true,bicyclo[2.2.1]heptane,true,,"smiles not extracted, needs follow-up"
+804,,,true,bicyclo[4.4.0]decane,true,,"smiles not extracted, needs follow-up"
+805,,,true,bicyclo[2.2.2]octane,true,,"smiles not extracted, needs follow-up"
+806,,,true,spiro[4.5]decane,true,,"smiles not extracted, needs follow-up"
+807,,,true,spiro[5.5]undecane,true,,"smiles not extracted, needs follow-up"
+808,,,true,spiro[3.3]heptane,true,,"smiles not extracted, needs follow-up"
+809,,,true,spiro[2.5]octane,true,,"smiles not extracted, needs follow-up"
+810,,,true,"(1S,2S,4R)-2-bromobicyclo[2.2.1]heptane",true,,"smiles not extracted, needs follow-up"
+811,,,true,(2R)-2-bromospiro[3.5]nonane,true,,"smiles not extracted, needs follow-up"
+812,,,true,3-methylspiro[5.5]undecane,true,,"smiles not extracted, needs follow-up"
+813,,,true,6-oxaspiro[4.5]decane,true,,"smiles not extracted, needs follow-up"
+814,,,true,9-oxa-6-azaspiro[4.5]decane,true,,"smiles not extracted, needs follow-up"
+815,,,true,7-thia-9-azaspiro[4.5]decane,true,,"smiles not extracted, needs follow-up"
+816,,,true,Radicals are not supported in Phase 1.,true,,"smiles not extracted, needs follow-up"
+817,,,true,spiro[5.5]undec-2-ene,true,,"smiles not extracted, needs follow-up"
+818,,,true,2-methylbicyclo[2.2.1]heptane,true,,"smiles not extracted, needs follow-up"
+819,,,true,1-methylbicyclo[2.2.1]heptane,true,,"smiles not extracted, needs follow-up"
+820,,,true,1-fluorobicyclo[2.2.1]heptane,true,,"smiles not extracted, needs follow-up"
+821,,,true,1-fluoro-4-methylbicyclo[2.2.1]heptane,true,,"smiles not extracted, needs follow-up"
+822,,,true,1-methylspiro[4.5]decane,true,,"smiles not extracted, needs follow-up"
+823,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+824,,,true,7-oxabicyclo[2.2.1]heptane,true,,"smiles not extracted, needs follow-up"
+825,,,true,2-oxa-4-thiabicyclo[3.2.1]octane,true,,"smiles not extracted, needs follow-up"
+826,,,true,"3,6,8-trioxabicyclo[3.2.2]nonane",true,,"smiles not extracted, needs follow-up"
+827,,,true,bicyclo[2.2.1]hept-2-ene,true,,"smiles not extracted, needs follow-up"
+828,,,true,spiro[3.5]non-5-ene,true,,"smiles not extracted, needs follow-up"
+829,,,true,oxazole,true,,"smiles not extracted, needs follow-up"
+830,,,true,isoxazole,true,,"smiles not extracted, needs follow-up"
+831,,,true,thiazole,true,,"smiles not extracted, needs follow-up"
+832,,,true,selenazole,true,,"smiles not extracted, needs follow-up"
+833,,,true,isothiazole,true,,"smiles not extracted, needs follow-up"
+834,,,true,isoselenazole,true,,"smiles not extracted, needs follow-up"
+835,,,true,3-methylpyrazole,true,,"smiles not extracted, needs follow-up"
+836,,,true,2-methylthiazole,true,,"smiles not extracted, needs follow-up"
+837,,,true,tetrahydrofuran,true,,"smiles not extracted, needs follow-up"
+838,,,true,pyrrolidine,true,,"smiles not extracted, needs follow-up"
+839,,,true,piperidine,true,,"smiles not extracted, needs follow-up"
+840,,,true,"1,2,4-triazole",true,,"smiles not extracted, needs follow-up"
+841,,,true,"1,3,5-triazine",true,,"smiles not extracted, needs follow-up"
+842,,,true,"1,2,3,4-tetrazole",true,,"smiles not extracted, needs follow-up"
+843,,,true,"1,3,4-oxadiazole",true,,"smiles not extracted, needs follow-up"
+844,,,true,"1,4-oxazine",true,,"smiles not extracted, needs follow-up"
+845,,,true,"3-methyl-1,2,4-triazole",true,,"smiles not extracted, needs follow-up"
+846,,,true,Saturated or partially unsaturated heterocycles are not yet supported; only the fully aromatic (maximally unsaturated) forms are supported in this phase.,true,,"smiles not extracted, needs follow-up"
+847,,,true,"3H-1,2,4-triazepine",true,,"smiles not extracted, needs follow-up"
+848,,,true,Saturated or partially unsaturated heterocycles are not yet supported; only the fully aromatic (maximally unsaturated) forms are supported in this phase.,true,,"smiles not extracted, needs follow-up"
+849,,,true,imidazole,true,,"smiles not extracted, needs follow-up"
+850,,,true,indole,true,,"smiles not extracted, needs follow-up"
+851,,,true,isoindole,true,,"smiles not extracted, needs follow-up"
+852,,,true,benzofuran,true,,"smiles not extracted, needs follow-up"
+853,,,true,isobenzofuran,true,,"smiles not extracted, needs follow-up"
+854,,,true,benzothiophene,true,,"smiles not extracted, needs follow-up"
+855,,,true,isobenzothiophene,true,,"smiles not extracted, needs follow-up"
+856,,,true,benzoselenophene,true,,"smiles not extracted, needs follow-up"
+857,,,true,isobenzoselenophene,true,,"smiles not extracted, needs follow-up"
+858,,,true,benzotellurophene,true,,"smiles not extracted, needs follow-up"
+859,,,true,isobenzotellurophene,true,,"smiles not extracted, needs follow-up"
+860,,,true,benzimidazole,true,,"smiles not extracted, needs follow-up"
+861,,,true,quinoline,true,,"smiles not extracted, needs follow-up"
+862,,,true,isoquinoline,true,,"smiles not extracted, needs follow-up"
+863,,,true,quinazoline,true,,"smiles not extracted, needs follow-up"
+864,,,true,cinnoline,true,,"smiles not extracted, needs follow-up"
+865,,,true,phthalazine,true,,"smiles not extracted, needs follow-up"
+866,,,true,quinoxaline,true,,"smiles not extracted, needs follow-up"
+867,,,true,"[1,3]benzothiazole",true,,"smiles not extracted, needs follow-up"
+868,,,true,"[1,3]benzoxazole",true,,"smiles not extracted, needs follow-up"
+869,,,true,"[1,3]benzoxazole",true,,"smiles not extracted, needs follow-up"
+870,,,true,"1,2,3-benzotriazole",true,,"smiles not extracted, needs follow-up"
+871,,,true,"[1,3]benzothiazole",true,,"smiles not extracted, needs follow-up"
+872,,,true,"[1,3]benzoxazole",true,,"smiles not extracted, needs follow-up"
+873,,,true,benzimidazole,true,,"smiles not extracted, needs follow-up"
+874,,,true,naphthalene,true,,"smiles not extracted, needs follow-up"
+875,,,true,"5-ethoxy-2-sulfamoyl[1,3]benzothiazole",true,,"smiles not extracted, needs follow-up"
+876,,,true,5-ethoxy-2-sulfamoylbenzimidazole,true,,"smiles not extracted, needs follow-up"
+877,,,true,"[1,2]benzothiazole",true,,"smiles not extracted, needs follow-up"
+878,,,true,"[2,1]benzothiazole",true,,"smiles not extracted, needs follow-up"
+879,,,true,"[1,2]benzoxazole",true,,"smiles not extracted, needs follow-up"
+880,,,true,"[2,1]benzoxazole",true,,"smiles not extracted, needs follow-up"
+881,,,true,purine,true,,"smiles not extracted, needs follow-up"
+882,,,true,purine,true,,"smiles not extracted, needs follow-up"
+883,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+884,,,true,"furo[2,3-b]pyridine",true,,"smiles not extracted, needs follow-up"
+885,,,true,"3H-thieno[3,2-d]imidazole",true,,"smiles not extracted, needs follow-up"
+886,,,true,pentalene,true,,"smiles not extracted, needs follow-up"
+887,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+888,,,true,bicyclo[3.3.0]octane,true,,"smiles not extracted, needs follow-up"
+889,,,true,3H-pyrrolizine,true,,"smiles not extracted, needs follow-up"
+890,,,true,3H-pyrrolizine,true,,"smiles not extracted, needs follow-up"
+891,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+892,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+893,,,true,"furo[3,2-b]pyridine",true,,"smiles not extracted, needs follow-up"
+894,,,true,"phosphinino[3,2-b]furan",true,,"smiles not extracted, needs follow-up"
+895,,,true,"pyrido[2,3-d]pyrimidine",true,,"smiles not extracted, needs follow-up"
+896,,,true,"thieno[3,2-b]thiophene",true,,"smiles not extracted, needs follow-up"
+897,,,true,"selenolo[3,2-b]thiophene",true,,"smiles not extracted, needs follow-up"
+898,,,true,"tellurolo[3,2-b]selenophene",true,,"smiles not extracted, needs follow-up"
+899,,,true,"phosphinino[3,2-b]tellurophene",true,,"smiles not extracted, needs follow-up"
+900,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+901,,,true,"4H-furo[3,2-b]pyrrole",true,,"smiles not extracted, needs follow-up"
+902,,,true,5-methylindole,true,,"smiles not extracted, needs follow-up"
+903,,,true,5-methylisoindole,true,,"smiles not extracted, needs follow-up"
+904,,,true,1-methylisoindole,true,,"smiles not extracted, needs follow-up"
+905,,,true,1-methylisoindole,true,,"smiles not extracted, needs follow-up"
+906,,,true,5-methylbenzofuran,true,,"smiles not extracted, needs follow-up"
+907,,,true,5-methylisobenzofuran,true,,"smiles not extracted, needs follow-up"
+908,,,true,1-methylisobenzofuran,true,,"smiles not extracted, needs follow-up"
+909,,,true,1-methylisobenzofuran,true,,"smiles not extracted, needs follow-up"
+910,,,true,5-methylbenzothiophene,true,,"smiles not extracted, needs follow-up"
+911,,,true,5-methylisobenzothiophene,true,,"smiles not extracted, needs follow-up"
+912,,,true,1-methylisobenzothiophene,true,,"smiles not extracted, needs follow-up"
+913,,,true,1-methylisobenzothiophene,true,,"smiles not extracted, needs follow-up"
+914,,,true,5-methylbenzimidazole,true,,"smiles not extracted, needs follow-up"
+915,,,true,5-methylbenzimidazole,true,,"smiles not extracted, needs follow-up"
+916,,,true,3-chloroquinoline,true,,"smiles not extracted, needs follow-up"
+917,,,true,3-methylisoquinoline,true,,"smiles not extracted, needs follow-up"
+918,,,true,2-methylquinazoline,true,,"smiles not extracted, needs follow-up"
+919,,,true,3-methylcinnoline,true,,"smiles not extracted, needs follow-up"
+920,,,true,1-methylphthalazine,true,,"smiles not extracted, needs follow-up"
+921,,,true,1-methylphthalazine,true,,"smiles not extracted, needs follow-up"
+922,,,true,2-methylquinoxaline,true,,"smiles not extracted, needs follow-up"
+923,,,true,2-methylquinoxaline,true,,"smiles not extracted, needs follow-up"
+924,,,true,"3,5-dimethylindole",true,,"smiles not extracted, needs follow-up"
+925,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+926,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+927,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+928,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+929,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+930,,,true,"thiazolo[5,4-b]pyridine",true,,"smiles not extracted, needs follow-up"
+931,,,true,"oxazolo[5,4-b]pyridine",true,,"smiles not extracted, needs follow-up"
+932,,,true,"1H-pyrrolo[2,3-b]pyridine",true,,"smiles not extracted, needs follow-up"
+933,,,true,"1H-imidazo[4,5-b]pyridine",true,,"smiles not extracted, needs follow-up"
+934,,,true,"1H-pyrazolo[4,5-b]pyridine",true,,"smiles not extracted, needs follow-up"
+935,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+936,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+937,,,true,"difuro[3,2-b:5,4-e]pyridine",true,,"smiles not extracted, needs follow-up"
+938,,,true,"difuro[3,2-b:3,4-e]pyridine",true,,"smiles not extracted, needs follow-up"
+939,,,true,"furo[4,5-b:3,2-b]difuran",true,,"smiles not extracted, needs follow-up"
+940,,,true,"furo[2,3-b:5,4-b]difuran",true,,"smiles not extracted, needs follow-up"
+941,,,true,"furo[3,2-b]thieno[2,3-e]pyridine",true,,"smiles not extracted, needs follow-up"
+942,,,true,"furo[2,3-b]thieno[3,2-e]pyrazine",true,,"smiles not extracted, needs follow-up"
+943,,,true,"6H-furo[3,2-b]pyrrolo[2,3-e]pyridine",true,,"smiles not extracted, needs follow-up"
+944,,,true,"2H-furo[3,2-b]pyrazolo[3,4-e]pyridine",true,,"smiles not extracted, needs follow-up"
+945,,,true,"thieno[3',4':4,5]furo[3,2-c]pyridine",true,,"smiles not extracted, needs follow-up"
+946,,,true,"thiazolo[4,5-d]oxazole",true,,"smiles not extracted, needs follow-up"
+947,,,true,"selenazolo[4,5-d]thiazole",true,,"smiles not extracted, needs follow-up"
+948,,,true,"pyrazino[2,3-d]pyridazine",true,,"smiles not extracted, needs follow-up"
+949,,,true,"pyrido[3,4-b]pyrido[6',5':4,5]pyrido[2,3-d]pyridine",true,,"smiles not extracted, needs follow-up"
+950,,,true,"pyrido[4',3':5,6]pyrido[4,3-b]pyrido[6',5':4,5]pyrido[2,3-d]pyridine",true,,"smiles not extracted, needs follow-up"
+951,,,true,"pyrido[4',3':5,6]pyrido[4,3-b]pyrido[6'',5'':4',5']pyrido[2',3':4,5]pyrido[2,3-d]pyridine",true,,"smiles not extracted, needs follow-up"
+952,,,true,"furo[2,3-b]thieno[2',3':4,5]pyrido[2,3-e]pyrazine",true,,"smiles not extracted, needs follow-up"
+953,,,true,furo[b]selenolo[d]thieno[b]1-azocine,true,,"smiles not extracted, needs follow-up"
+954,,,true,adamantane,true,,"smiles not extracted, needs follow-up"
+955,,,true,cubane,true,,"smiles not extracted, needs follow-up"
+956,,,true,adamantan-1-ol,true,,"smiles not extracted, needs follow-up"
+957,,,true,1-chloroadamantane,true,,"smiles not extracted, needs follow-up"
+958,,,true,adamantan-2-one,true,,"smiles not extracted, needs follow-up"
+959,,,true,1-chlorocubane,true,,"smiles not extracted, needs follow-up"
+960,,,true,bicyclo[4.4.0]decane,true,,"smiles not extracted, needs follow-up"
+961,,,true,1-azabicyclo[2.2.2]octane,true,,"smiles not extracted, needs follow-up"
+962,,,true,methyl 2-(4-methoxybenzamido)-3-{4-[(1-methylpiperidin-4-yl)oxy]phenyl}propanoate,true,,"smiles not extracted, needs follow-up"
+963,,,true,cyclohexyl(furan-3-yl)phenylmethane,true,,"smiles not extracted, needs follow-up"
+964,,,true,2-(4-chlorophenyl)ethanoic acid,true,,"smiles not extracted, needs follow-up"
+965,,,true,2-{4-[(furan-2-yl)oxy]phenyl}ethanoic acid,true,,"smiles not extracted, needs follow-up"
+966,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+967,,,true,adamantane,true,,"smiles not extracted, needs follow-up"
+968,,,true,"1,3,5-triazine",true,,"smiles not extracted, needs follow-up"
+969,,,true,"1,2,4-oxadiazole",true,,"smiles not extracted, needs follow-up"
+970,,,true,"1,2,4-selenadiazole",true,,"smiles not extracted, needs follow-up"
+971,,,true,"1,3,5-triphosphinine",true,,"smiles not extracted, needs follow-up"
+972,,,true,1-azocine,true,,"smiles not extracted, needs follow-up"
+973,,,true,"2H-1,5-diazonine",true,,"smiles not extracted, needs follow-up"
+974,,,true,"3H-1,2-diazirine",true,,"smiles not extracted, needs follow-up"
+975,,,true,"1,3,5-triazine",true,,"smiles not extracted, needs follow-up"
+976,,,true,furan,true,,"smiles not extracted, needs follow-up"
+977,,,true,"1,3,5-triazine",true,,"smiles not extracted, needs follow-up"
+978,,,true,"1,2,4-oxadiazole",true,,"smiles not extracted, needs follow-up"
+979,,,true,azacycloundecane,true,,"smiles not extracted, needs follow-up"
+980,,,true,"1,5-dithiacyclododecane",true,,"smiles not extracted, needs follow-up"
+981,,,true,1-thia-5-selenacyclododecane,true,,"smiles not extracted, needs follow-up"
+982,,,true,5-[(2R)-2-methylcyclopentyl]heptanoic acid,true,,"smiles not extracted, needs follow-up"
+983,,,true,azocane,true,,"smiles not extracted, needs follow-up"
+984,,,true,aziridine,true,,"smiles not extracted, needs follow-up"
+985,,,true,6-(3-methylbutyl)undecan-1-amine,true,,"smiles not extracted, needs follow-up"
+986,,,true,"pyrrolidine-2,5-dione",true,,"smiles not extracted, needs follow-up"
+987,,,true,piperidin-4-ol,true,,"smiles not extracted, needs follow-up"
+988,,,true,pyrrolidin-2-one,true,,"smiles not extracted, needs follow-up"
+989,,,true,azepane,true,,"smiles not extracted, needs follow-up"
+990,,,true,azepan-2-one,true,,"smiles not extracted, needs follow-up"
+991,,,true,ethanethioamide,true,,"smiles not extracted, needs follow-up"
+992,,,true,propanethioamide,true,,"smiles not extracted, needs follow-up"
+993,,,true,benzenecarbothioamide,true,,"smiles not extracted, needs follow-up"
+994,,,true,3-(2-hydrazinylcyclohexyl)propanoic acid,true,,"smiles not extracted, needs follow-up"
+995,,,true,2-hydrazinylcyclohexanecarboxylic acid,true,,"smiles not extracted, needs follow-up"
+996,,,true,"7,7'-spirobi[bicyclo[4.1.0]heptane]",true,,"smiles not extracted, needs follow-up"
+997,,,true,"6,6'-spirobi[bicyclo[3.1.0]hexane]",true,,"smiles not extracted, needs follow-up"
+998,,,true,"3,3':6',6''-dispiroter[bicyclo[3.1.0]hexane]",true,,"smiles not extracted, needs follow-up"
+999,,,true,"2,3':7',7''-dispiroter[bicyclo[4.1.0]heptane]",true,,"smiles not extracted, needs follow-up"
+1000,,,true,phenyl ethanoate,true,,"smiles not extracted, needs follow-up"
+1001,,,true,2-methoxycarbonylbenzenecarboxylic acid,true,,"smiles not extracted, needs follow-up"
+1002,,,true,2-ethanoyloxybenzenecarboxylic acid,true,,"smiles not extracted, needs follow-up"
+1003,,,true,2-propanoyloxybenzenecarboxylic acid,true,,"smiles not extracted, needs follow-up"
+1004,,,true,2-(2-methyl-5-nitroimidazol-1-yl)ethanol,true,,"smiles not extracted, needs follow-up"
+1005,,,true,1-methylpyrazole,true,,"smiles not extracted, needs follow-up"
+1006,,,true,"completed, name='(diphenylmethyl)oxymethane' err=''",true,,"smiles not extracted, needs follow-up"
+1007,,,true,"completed, name='' err='Branched or ring N-substituents on amines are not supported'",true,,"smiles not extracted, needs follow-up"
+1008,,,true,"completed, name='' err='Branched or ring N-substituents on amines are not supported'",true,,"smiles not extracted, needs follow-up"
+1009,,,true,Unrecognized or unsupported substituent on ring.,true,,"smiles not extracted, needs follow-up"
+1010,,,true,Unrecognized or unsupported substituent on ring.,true,,"smiles not extracted, needs follow-up"
+1011,,,true,3-(naphthalen-2-yl)propanoic acid,true,,"smiles not extracted, needs follow-up"
+1012,,,true,(diphenylmethyl)oxymethane,true,,"smiles not extracted, needs follow-up"
+1013,,,true,Branched or ring N-substituents on amides are not supported,true,,"smiles not extracted, needs follow-up"
+1014,,,true,Branched or ring N-substituents on amides are not supported,true,,"smiles not extracted, needs follow-up"
+1015,,,true,Branched or ring N-substituents on amides are not supported,true,,"smiles not extracted, needs follow-up"
+1016,,,true,4-[4-bis(2-chloroethyl)aminophenyl]butanoic acid,true,,"smiles not extracted, needs follow-up"
+1017,,,true,4-[(4-diethylamino-1-methylbutyl)amino]-7-chloroquinoline,true,,"smiles not extracted, needs follow-up"
+1018,,,true,8-[(4-amino-1-methylbutyl)amino]-6-methoxyquinoline,true,,"smiles not extracted, needs follow-up"
+1019,,,true,1-[(1-methylethyl)amino]-3-([4-(2-methoxyethyl)phenyl])oxypropan-2-ol,true,,"smiles not extracted, needs follow-up"
+1020,,,true,aniline,true,,"smiles not extracted, needs follow-up"
+1021,,,true,Unrecognized or unsupported substituent on ring.,true,,"smiles not extracted, needs follow-up"
+1022,,,true,Unrecognized or unsupported substituent on ring.,true,,"smiles not extracted, needs follow-up"
+1023,,,true,3-(4-carboxycyclohexyl)propanoic acid,true,,"smiles not extracted, needs follow-up"
+1024,,,true,Branched or ring N-substituents on amides are not supported,true,,"smiles not extracted, needs follow-up"
+1025,,,true,benzenecarboxamide,true,,"smiles not extracted, needs follow-up"
+1026,,,true,Ring substituent bearing the principal group also carries additional substituent structure beyond the principal group itself; this is not supported.,true,,"smiles not extracted, needs follow-up"
+1027,,,true,Ring substituent bearing the principal group also carries additional substituent structure beyond the principal group itself; this is not supported.,true,,"smiles not extracted, needs follow-up"
+1028,,,true,phenylmethanol,true,,"smiles not extracted, needs follow-up"
+1029,,,true,Unsupported acyl group in an amide substituent on the parent chain.,true,,"smiles not extracted, needs follow-up"
+1030,,,true,2-methoxy-5-(2-methylaminoethyl)benzene-1-sulfonamide,true,,"smiles not extracted, needs follow-up"
+1031,,,true,err='Fused ring systems other than naphthalene are not supported in this phase.',true,,"smiles not extracted, needs follow-up"
+1032,,,true,benzenecarboxylic acid,true,,"smiles not extracted, needs follow-up"
+1033,,,true,methylbenzene,true,,"smiles not extracted, needs follow-up"
+1034,,,true,4-aminomethylbenzene-1-sulfonamide,true,,"smiles not extracted, needs follow-up"
+1035,,,true,5-methyl-2-(1-methylethyl)cyclohexan-1-ol,true,,"smiles not extracted, needs follow-up"
+1036,,,true,acridine,true,,"smiles not extracted, needs follow-up"
+1037,,,true,9H-carbazole,true,,"smiles not extracted, needs follow-up"
+1038,,,true,rejected with substituent error,true,,"smiles not extracted, needs follow-up"
+1039,,,true,rejected with substituent error,true,,"smiles not extracted, needs follow-up"
+1040,,,true,"5-methylfuro[3,2-b]thieno[2,3-e]pyridine",true,,"smiles not extracted, needs follow-up"
+1041,,,true,"8-chloro-5-methylfuro[3,2-b]thieno[2,3-e]pyridine",true,,"smiles not extracted, needs follow-up"
+1042,,,true,rejected as expected (Fused ring systems other than naphthalene are not supported in this phase.),true,,"smiles not extracted, needs follow-up"
+1043,,,true,"benzo[4,3-b]thieno[2,3-e]pyridine",true,,"smiles not extracted, needs follow-up"
+1044,,,true,"furo[3,2-b]thieno[2,3-e]pyridine",true,,"smiles not extracted, needs follow-up"
+1045,,,true,naphthalene,true,,"smiles not extracted, needs follow-up"
+1046,,,true,N-phenylacetamide,true,,"smiles not extracted, needs follow-up"
+1047,,,true,N-(4-hydroxyphenyl)acetamide,true,,"smiles not extracted, needs follow-up"
+1048,,,true,rejected cleanly (substituted amine branch not yet supported),true,,"smiles not extracted, needs follow-up"
+1049,,,true,A chain-based principal group outranks the ring in this structure; chain-as-parent seniority (P-44.1.1) for this ring/class combination is not yet supported.,true,,"smiles not extracted, needs follow-up"
+1050,,,true,2-phenylethanoic acid,true,,"smiles not extracted, needs follow-up"
+1051,,,true,[14C]urea,true,,"smiles not extracted, needs follow-up"
+1052,,,true,[13C]urea,true,,"smiles not extracted, needs follow-up"
+1053,,,true,clean rejection (multi-word not yet supported),true,,"smiles not extracted, needs follow-up"
+1054,,,true,still rejected with 'No carbon atoms present',true,,"smiles not extracted, needs follow-up"
+1055,,,true,still rejected,true,,"smiles not extracted, needs follow-up"
+1056,,,true,urea,true,,"smiles not extracted, needs follow-up"
