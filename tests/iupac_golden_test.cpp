@@ -145,6 +145,12 @@ int main() {
     int total_failed = 0;
     
     for (const auto& row : rows) {
+        // Skip rows with empty SMILES (no way to test)
+        if (row.smiles.empty()) {
+            std::cout << "[SKIP] Row " << row.id << ": " << row.notes << std::endl;
+            continue;
+        }
+        
         int mol = indigoLoadMoleculeFromString(row.smiles.c_str());
         if (mol < 0) {
             std::cout << "[FAIL] Row " << row.id << " (" << row.smiles << "): Indigo failed to parse SMILES." << std::endl;
