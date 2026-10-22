@@ -1,6 +1,7 @@
 #include "IupacNamer.h"
 #include "NamingTrace.h"
 #include "indigo.h"
+#include "indigo-inchi.h"
 #include <iostream>
 #include <cstdlib>
 #include <cstdio>
@@ -65,6 +66,7 @@ int main(int argc, char** argv) {
     
     qword sid = indigoAllocSessionId();
     indigoSetSessionId(sid);
+    indigoInchiInit(sid);
     int mol = indigoLoadMoleculeFromString(argv[argOffset]);
     if (mol < 0) {
         std::cout << "LOAD_FAILED\t" << indigoGetLastError() << std::endl;

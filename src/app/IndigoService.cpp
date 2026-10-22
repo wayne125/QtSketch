@@ -1447,6 +1447,7 @@ void IndigoService::generateIupacName(const QString &molfile) {
         QString name, error;
         unsigned long long sid = indigoAllocSessionId();
         indigoSetSessionId(sid);
+        indigoInchiInit(sid);
         try {
             int mol = indigoLoadMoleculeFromString(sanitizeMolfileForAnalysis(molfile).toUtf8().constData());
             if (mol >= 0) {
@@ -1465,6 +1466,7 @@ void IndigoService::generateIupacName(const QString &molfile) {
         } catch (...) {
             error = "Unknown exception during IUPAC name generation.";
         }
+        indigoInchiDispose(sid);
         indigoReleaseSessionId(sid);
         emitOnGuiThread(self, [name, error](IndigoService *s) {
             emit s->iupacNameReady(name, error);

@@ -18,7 +18,7 @@
 #include <set>
 
 // Helper to convert NamingStatus enum to string (Task C)
-std::string namingStatusToString(NamingStatus status) {
+static std::string namingStatusToString(NamingStatus status) {
     switch (status) {
         case NamingStatus::Failed: return "Failed";
         case NamingStatus::KnownGapFallback: return "KnownGapFallback";
@@ -273,7 +273,6 @@ int main() {
                           << ", name='" << fresh_name << "'" << std::endl;
             }
             if (!status_match) {
-                std::string fresh_status = namingStatusToString(res.status);
                 std::cout << "  Status check: FAIL (expected '" << row.expected_status
                           << "', got '" << fresh_status << "')" << std::endl;
             }
@@ -323,8 +322,6 @@ int main() {
                 if (!(reorder_success == fresh_success &&
                       reorder_name == fresh_name &&
                       reorder_status == fresh_status)) {
-                    // Determine if this is a name divergence, status divergence, or both
-                    bool name_diverged = !(reorder_success == fresh_success && reorder_name == fresh_name);
                     bool status_diverged = (reorder_status != fresh_status);
                     
                     if (row_is_known_failure) {
@@ -350,6 +347,7 @@ int main() {
     }
     
     // Cleanup
+    indigoInchiDispose(sid);
     indigoReleaseSessionId(sid);
     
     std::cout << "\nSummary: " << total_passed << " passed, " << total_failed << " failed, "

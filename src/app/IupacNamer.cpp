@@ -12,6 +12,7 @@
 #include <QStringList>
 #include <vector>
 #include <string>
+#include <cstring>
 #include <algorithm>
 #include <iterator>
 #include <map>
@@ -23662,19 +23663,23 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                             // Task C: Check InChIKey for known PreferredIupacName molecules
                             // These are provenance-marked case overrides, not a classifier.
                             // Keyed by InChIKey (not SMILES) to remain stable under atom reordering.
+                            // Also require the generated name to still match the independently-
+                            // verified name on record -- an InChIKey match alone isn't enough to
+                            // call a DIFFERENT name "Preferred" if the generation logic drifts.
                             QString inchikey = getInchiKeyForMol(mol);
-                            static const std::set<QString> preferredInChIKeys = {
-                                QStringLiteral("RXBYRTSOWREATF-UHFFFAOYSA-N"),   // Test 448: 1,2,3,4-tetrahydroacridine
-                                QStringLiteral("CTHWHSJFXTXPPO-UHFFFAOYSA-N"),   // Test 462: 1,2,3,4,7,8,9,10-octahydrobenz[b]acridine
-                                QStringLiteral("JYYVQMYEESNQBA-UHFFFAOYSA-N"),   // Test 463: 1,2,3,4,7,8,9,10-octahydrotetracene
-                                QStringLiteral("UXGBAIAVLKQOQO-UHFFFAOYSA-N"),   // Test 464: naphtho[2,3-g]isoquinoline
+                            static const std::map<QString, QString> preferredInChIKeys = {
+                                {QStringLiteral("RXBYRTSOWREATF-UHFFFAOYSA-N"), QStringLiteral("1,2,3,4-tetrahydroacridine")},            // Test 448
+                                {QStringLiteral("CTHWHSJFXTXPPO-UHFFFAOYSA-N"), QStringLiteral("1,2,3,4,7,8,9,10-octahydrobenz[b]acridine")}, // Test 462
+                                {QStringLiteral("JYYVQMYEESNQBA-UHFFFAOYSA-N"), QStringLiteral("1,2,3,4,7,8,9,10-octahydrotetracene")},      // Test 463
+                                {QStringLiteral("UXGBAIAVLKQOQO-UHFFFAOYSA-N"), QStringLiteral("naphtho[2,3-g]isoquinoline")},               // Test 464
                             };
-                            
+
                             NamingStatus finalStatus = NamingStatus::SystematicIupacName;
-                            if (preferredInChIKeys.count(inchikey)) {
+                            auto it = preferredInChIKeys.find(inchikey);
+                            if (it != preferredInChIKeys.end() && it->second == retainedResult->baseName) {
                                 finalStatus = NamingStatus::PreferredIupacName;
                             }
-                            
+
                             return {true, retainedResult->baseName, "", finalStatus};
                         }
                     }

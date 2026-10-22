@@ -2,6 +2,7 @@
 #include "FusedRingOrientation.h"
 #include "FusedRingDirectionDetector.h"
 #include "indigo.h"
+#include "indigo-inchi.h"
 #include <iostream>
 #include <vector>
 #include <string>
@@ -133,6 +134,7 @@ int main() {
     setvbuf(stdout, nullptr, _IONBF, 0);
     qword sid = indigoAllocSessionId();
     indigoSetSessionId(sid);
+    indigoInchiInit(sid);
 
     std::vector<TestCase> tests = {
         {"OC(=O)CCC1CCC(C(=O)O)CC1", "3-(4-carboxycyclohexyl)propanoic acid", false, ""},
@@ -7407,6 +7409,7 @@ int main() {
     }
 
     std::cout << "\nSummary: " << passed << " passed, " << failed << " failed.\n";
+    indigoInchiDispose(sid);
     indigoReleaseSessionId(sid);
     return (failed == 0) ? 0 : 1;
 }
