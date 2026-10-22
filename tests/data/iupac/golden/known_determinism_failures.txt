@@ -40,28 +40,46 @@
 # (indicated-hydrogen assignment), unrelated to RetainedRingMatcher/
 # FusedRingOrientation. Flagged for a future dedicated task.
 #
-# 2026-10-23: rows 441 and 446 fixed and removed from this list. Root causes:
-# - Row 441 (A): nameRingSystemAsSubstituent hardcoded the assumption that ring 1
-#   in fusedSystemRingIdx was the central ring of anthracene, failing to recognize
-#   anthracene when the central ring sorted to index 0 or 2, causing spurious fallback
-#   rejections. Fixed by properly identifying center vs end rings via fusion degrees.
-# - Row 441 (B): nameRingSystemAsSubstituent only registered a single candidate locantMap
-#   from computePeripheralNumbering3Ring, starving Step 2's lowest-locant selector and
-#   letting the meso locant drift between 5 and 10 based on arbitrary starting node.
-#   Fixed by generating all 4 valid symmetry-equivalent peripheral numberings starting
-#   at end rings, canonicalizing the meso attachment locant to 5.
-# - Row 446: exocyclic amine detection at IupacNamer.cpp:13644 checked nitrogen
-#   membership on individual rings in sssrRings rather than the global ring atom union,
-#   mistakenly treating one endocyclic nitrogen of a multi-ring fused system as an
-#   "exocyclic amine" whenever it appeared outside the current ring. The subsequent
-#   branch-traversal hit a false-positive rejection depending on which ring appeared
-#   first in SSSR iteration order. Fixed by checking against the union of all ring
-#   atoms so bis-aza heterocycles never enter the exocyclic amine branch.
+# 2026-10-23: row 446 fixed and removed from this list. Root cause: exocyclic
+# amine detection at IupacNamer.cpp:13644 checked nitrogen membership on
+# individual rings in sssrRings rather than the global ring atom union,
+# mistakenly treating one endocyclic nitrogen of a multi-ring fused system as
+# an "exocyclic amine" whenever it appeared outside the current ring. The
+# subsequent branch-traversal hit a false-positive rejection depending on
+# which ring appeared first in SSSR iteration order. Fixed by checking
+# against the union of all ring atoms so bis-aza heterocycles never enter the
+# exocyclic amine branch.
+#
+# Row 441 was ALSO attempted this same pass and reverted -- left here as a
+# known failure, still open. The attempt correctly fixed one real bug
+# (nameRingSystemAsSubstituent hardcoded fusedSystemRingIdx[1] as anthracene's
+# central ring, causing spurious "Substituents on fused ring systems..."
+# rejections when atom reordering made a different ring sort to index 1) but
+# bundled it with a second, incorrect change: a new sequential-peripheral-
+# counting candidate generator for the attachment locant, replacing the
+# existing computePeripheralNumbering3Ring call. That generator can only ever
+# produce {5, 10} as the tied meso-locant pair (confirmed by hand-tracing its
+# own cycle/periphGraph logic against this molecule's real connectivity), and
+# picks 5 -- a real anthracene locant number, but assigned to the wrong atom.
+# Real IUPAC anthracene numbering is a fixed retained pattern (meso positions
+# are always 9 and 10, per "9,10-anthraquinone"), not something sequential
+# counting from an arbitrary valid start can reproduce. This reproduces, for
+# locant 5, the exact mistake an earlier session already ruled out for locant
+# 9 (see the comment pinning this test case in tests/iupac_namer_test.cpp).
+# Reverted IupacNamer.cpp back to the single-candidate
+# computePeripheralNumbering3Ring call (the known-safe, previously-verified
+# "10" answer) -- so row 441's original non-determinism (REJECTED vs
+# anthracen-10-yl vs the wrong anthracen-5-yl, depending on atom order) is
+# back. The accept/reject-gate half of the bug (dynamic center/end-ring
+# identification via fusion degree, instead of hardcoding index 1) is real
+# and worth re-fixing on its own; it needs pairing with a correct fixed
+# anthracene-numbering lookup for the locant, not sequential counting.
 #
 # One row ID per line. Lines starting with # are comments.
 183
 184
 289
+441
 499
 522
 1057

@@ -894,8 +894,12 @@ int main() {
         // (confirmed by hand against anthracene's known connectivity) but doesn't always
         // pick the lower of the two tied meso locants -- pinned here as the function's
         // real, verified output rather than the (unverified, and in one attempt
-        // genuinely wrong) locant 9.
-        {"c1ccc2c(CC(=O)O)c3ccccc3cc2c1", "2-(anthracen-5-yl)ethanoic acid"},
+        // genuinely wrong) locant 9. (2026-10-23: a later attempt tried locant
+        // 5 via a sequential-peripheral-counting candidate generator -- also
+        // reverted, for the same reason: 5 is a real anthracene locant
+        // number, but assigned to the wrong atom. See the long comment in
+        // IupacNamer.cpp above computePeripheralNumbering3Ring's call site.)
+        {"c1ccc2c(CC(=O)O)c3ccccc3cc2c1", "2-(anthracen-10-yl)ethanoic acid"},
 
         // Branching case: central ring + 2 benzo leaves + 1 pyridine leaf (from Task 1 ground
         // truth topology: SMILES "c12c(cccc2)c3c(cccc3)c4c1(nccc4)") with -CH2-COOH added
