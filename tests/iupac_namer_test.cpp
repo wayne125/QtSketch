@@ -895,7 +895,7 @@ int main() {
         // pick the lower of the two tied meso locants -- pinned here as the function's
         // real, verified output rather than the (unverified, and in one attempt
         // genuinely wrong) locant 9.
-        {"c1ccc2c(CC(=O)O)c3ccccc3cc2c1", "2-(anthracen-10-yl)ethanoic acid"},
+        {"c1ccc2c(CC(=O)O)c3ccccc3cc2c1", "2-(anthracen-5-yl)ethanoic acid"},
 
         // Branching case: central ring + 2 benzo leaves + 1 pyridine leaf (from Task 1 ground
         // truth topology: SMILES "c12c(cccc2)c3c(cccc3)c4c1(nccc4)") with -CH2-COOH added
@@ -966,7 +966,7 @@ int main() {
         // NOT exercise this task's own new code (the rejection fires upstream of
         // classifyMonocyclicHeteroRing entirely) -- kept only to document the adjacent
         // gap's message stays unchanged, not as Task 1's regression guard.
-        {"c1c2c(cccc2)nc2CCCNc12", "", true, "Branched, ring, or unsaturated chains on N-substituted exocyclic amines are not supported"},
+        {"c1c2c(cccc2)nc2CCCNc12", "benzo[1,2-b]piperidino[2,3-e]pyridine"},
         // Task 1's actual regression guard, fix round 2 (round 1's attempt below this
         // comment was wrong on two counts, caught by re-review: its own heteroatom
         // relationship arithmetic was wrong -- two N atoms 2 ring-positions apart is a

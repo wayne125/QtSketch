@@ -2961,79 +2961,144 @@ QString nameRingSystemAsSubstituent(
     // out of scope for all three systematic-fusion mechanisms (Phase 31
     // requires a heteroatom, and linear-chain/branching both explicitly reject
     // all-carbocyclic systems). It needs its own real locant map, reusing
-    // computePeripheralNumbering3Ring, with symmetry-equivalent numbering
+    // peripheral cycle tracing, with all 4 symmetry-equivalent numbering
     // candidates generated to let Step 2's own lowest-locant selection pick
     // the canonical attachment position.
     if (candidates.empty() && ringCount == 3 && fusedSystemRingIdx.size() == 3) {
-        auto it = fusedSystemRingIdx.begin();
-        const std::set<int> &ring1Nodes = allIndependentRings[*it];
-        const std::set<int> &ring2Nodes = allIndependentRings[*std::next(it)];
-        const std::set<int> &ring3Nodes = allIndependentRings[*std::next(it, 2)];
-        if (ring1Nodes.size() == 6 && ring2Nodes.size() == 6 && ring3Nodes.size() == 6) {
-            // Find bridgeheads: collect ALL distinct atoms shared between any pair of rings
-            std::vector<int> shared12, shared23;
-            for (int n : ring1Nodes) if (ring2Nodes.count(n)) shared12.push_back(n);
-            for (int n : ring2Nodes) if (ring3Nodes.count(n)) shared23.push_back(n);
-            
-            // Anthracene: ring1 shares 2 atoms with ring2, ring2 shares 2 atoms with ring3,
-            // ring1 and ring3 share 0 atoms (linear 3-ring chain). Each fusion has exactly
-            // 2 bridgehead atoms, total 4 bridgeheads for anthracene.
-            if (shared12.size() == 2 && shared23.size() == 2 && shared12 != shared23) {
-                // Collect all 4 bridgeheads
-                std::set<int> bridgeheads;
-                for (int n : shared12) bridgeheads.insert(n);
-                for (int n : shared23) bridgeheads.insert(n);
-                
-                // Verify bridgeheads are bonded (ortho-fusion)
-                bool bh12Bonded = false;
-                for (int nei : g.nodes[shared12[0]].neighbors) {
-                    if (nei == shared12[1]) { bh12Bonded = true; break; }
+        std::vector<int> rIdx(fusedSystemRingIdx.begin(), fusedSystemRingIdx.end());
+        const std::set<int> &nodes0 = allIndependentRings[rIdx[0]];
+        const std::set<int> &nodes1 = allIndependentRings[rIdx[1]];
+        const std::set<int> &nodes2 = allIndependentRings[rIdx[2]];
+        if (nodes0.size() == 6 && nodes1.size() == 6 && nodes2.size() == 6) {
+            auto countShared = [](const std::set<int> &a, const std::set<int> &b) {
+                int cnt = 0;
+                for (int n : a) if (b.count(n)) cnt++;
+                return cnt;
+            };
+            int s01 = countShared(nodes0, nodes1);
+            int s02 = countShared(nodes0, nodes2);
+            int s12 = countShared(nodes1, nodes2);
+
+            // In a linear 3-ring fusion, one ring is center (shares 2 with both others),
+            // and two are ends (each shares 2 with center and 0 with other end).
+            int centerIdx = -1, end1Idx = -1, end2Idx = -1;
+            if (s01 == 2 && s02 == 2 && s12 == 0) {
+                centerIdx = rIdx[0]; end1Idx = rIdx[1]; end2Idx = rIdx[2];
+            } else if (s01 == 2 && s12 == 2 && s02 == 0) {
+                centerIdx = rIdx[1]; end1Idx = rIdx[0]; end2Idx = rIdx[2];
+            } else if (s02 == 2 && s12 == 2 && s01 == 0) {
+                centerIdx = rIdx[2]; end1Idx = rIdx[0]; end2Idx = rIdx[1];
+            }
+
+            if (centerIdx != -1) {
+                const std::set<int> &centerNodes = allIndependentRings[centerIdx];
+                const std::set<int> &end1Nodes = allIndependentRings[end1Idx];
+                const std::set<int> &end2Nodes = allIndependentRings[end2Idx];
+
+                std::vector<int> sharedCenterEnd1, sharedCenterEnd2;
+                for (int n : centerNodes) {
+                    if (end1Nodes.count(n)) sharedCenterEnd1.push_back(n);
+                    if (end2Nodes.count(n)) sharedCenterEnd2.push_back(n);
                 }
-                bool bh23Bonded = false;
-                for (int nei : g.nodes[shared23[0]].neighbors) {
-                    if (nei == shared23[1]) { bh23Bonded = true; break; }
-                }
-                
-                if (bh12Bonded && bh23Bonded) {
-                    std::set<int> anthNodes = ring1Nodes;
-                    for (int n : ring2Nodes) anthNodes.insert(n);
-                    for (int n : ring3Nodes) anthNodes.insert(n);
-                    
-                    // Verify all 14 atoms are carbon and all bonds are aromatic
-                    bool allCarbon = true;
-                    for (int n : anthNodes) {
-                        if (g.nodes[n].atomicNumber != 6) { allCarbon = false; break; }
-                    }
-                    bool allAromatic = true;
-                    for (const auto &gb : g.bonds) {
-                        if (anthNodes.count(gb.u) && anthNodes.count(gb.v)) {
-                            if (gb.order != 4) { allAromatic = false; break; }
+
+                if (sharedCenterEnd1.size() == 2 && sharedCenterEnd2.size() == 2) {
+                    std::set<int> bridgeheads;
+                    for (int n : sharedCenterEnd1) bridgeheads.insert(n);
+                    for (int n : sharedCenterEnd2) bridgeheads.insert(n);
+
+                    auto areNeighbors = [&](int u, int v) {
+                        for (int nei : g.nodes[u].neighbors) if (nei == v) return true;
+                        return false;
+                    };
+
+                    if (areNeighbors(sharedCenterEnd1[0], sharedCenterEnd1[1]) &&
+                        areNeighbors(sharedCenterEnd2[0], sharedCenterEnd2[1])) {
+                        std::set<int> anthNodes = centerNodes;
+                        anthNodes.insert(end1Nodes.begin(), end1Nodes.end());
+                        anthNodes.insert(end2Nodes.begin(), end2Nodes.end());
+
+                        bool allCarbon = true;
+                        for (int n : anthNodes) {
+                            if (g.nodes[n].atomicNumber != 6) { allCarbon = false; break; }
                         }
-                    }
-                    if (allCarbon && allAromatic && anthNodes.size() == 14) {
-                        // computePeripheralNumbering3Ring's own internal numbering search
-                        // is built from the unordered union of ring1/ring2/ring3 (via
-                        // edgeRingCount/periphGraph, both std::set/std::map keyed only by
-                        // atom index) -- permuting which ring is passed as "first" etc.
-                        // provably produces byte-identical output every time, confirmed by
-                        // reading its own implementation. Passing rootAtom as
-                        // substituentBearingNodes (to try nudging its own tie-break toward
-                        // minimizing this atom's locant) was tried and reverted: it does
-                        // influence the tie-break, but towards a DIFFERENT, structurally
-                        // invalid numbering (e.g. placing the attachment -- the meso
-                        // position of the middle ring -- at locant 1, a position that must
-                        // be on an outer ring) rather than picking the lowest-locant option
-                        // within the valid family. The one result this function's own
-                        // unhinted search returns is a real, structurally valid numbering
-                        // (confirmed against anthracene's known connectivity by hand); it
-                        // just isn't always the lowest-locant member of the tied set this
-                        // attachment atom belongs to. Accepted as-is rather than risk a
-                        // wrong-but-lower locant -- Step 3's own pinned test value below
-                        // reflects this function's real, verified output.
-                        std::map<int, QString> locantMap = computePeripheralNumbering3Ring(
-                            g, ring1Nodes, ring2Nodes, ring3Nodes, bridgeheads);
-                        if (!locantMap.empty()) {
-                            candidates.push_back(RingSystemNameResult{true, "", "anthracene", locantMap});
+                        bool allAromatic = true;
+                        for (const auto &gb : g.bonds) {
+                            if (anthNodes.count(gb.u) && anthNodes.count(gb.v)) {
+                                if (gb.order != 4) { allAromatic = false; break; }
+                            }
+                        }
+
+                        if (allCarbon && allAromatic && anthNodes.size() == 14) {
+                            std::map<std::pair<int, int>, int> edgeRingCount;
+                            auto addRingEdges = [&](const std::set<int> &r) {
+                                for (int u : r) {
+                                    for (int v : g.nodes[u].neighbors) {
+                                        if (r.count(v) && u < v) {
+                                            edgeRingCount[{u, v}]++;
+                                        }
+                                    }
+                                }
+                            };
+                            addRingEdges(end1Nodes);
+                            addRingEdges(centerNodes);
+                            addRingEdges(end2Nodes);
+
+                            std::map<int, std::vector<int>> periphGraph;
+                            for (const auto &kv : edgeRingCount) {
+                                if (kv.second == 1) {
+                                    int u = kv.first.first;
+                                    int v = kv.first.second;
+                                    periphGraph[u].push_back(v);
+                                    periphGraph[v].push_back(u);
+                                }
+                            }
+
+                            if (!periphGraph.empty()) {
+                                int startNode = periphGraph.begin()->first;
+                                std::vector<int> cycle;
+                                int curr = startNode;
+                                int prev = -1;
+                                bool validCycle = true;
+                                while (true) {
+                                    cycle.push_back(curr);
+                                    if (periphGraph[curr].size() != 2) { validCycle = false; break; }
+                                    int next = (periphGraph[curr][0] == prev) ? periphGraph[curr][1] : periphGraph[curr][0];
+                                    prev = curr;
+                                    curr = next;
+                                    if (curr == startNode) break;
+                                    if (cycle.size() > 14) { validCycle = false; break; }
+                                }
+                                if (validCycle && cycle.size() == 14) {
+                                    int N = cycle.size();
+                                    for (int dir = -1; dir <= 1; dir += 2) {
+                                        for (int i = 0; i < N; ++i) {
+                                            int firstNode = cycle[i];
+                                            int lastNode = cycle[(i - dir + N) % N];
+                                            if (!bridgeheads.count(firstNode) && bridgeheads.count(lastNode) && !centerNodes.count(firstNode)) {
+                                                std::map<int, QString> locMap;
+                                                int loc = 1;
+                                                int lastNonBhLoc = 0;
+                                                int numBhSince = 0;
+                                                for (int step = 0; step < N; ++step) {
+                                                    int currIdx = (i + step * dir + N * N) % N;
+                                                    int u = cycle[currIdx];
+                                                    if (!bridgeheads.count(u)) {
+                                                        numBhSince = 0;
+                                                        locMap[u] = QString::number(loc);
+                                                        lastNonBhLoc = loc;
+                                                        loc++;
+                                                    } else {
+                                                        numBhSince++;
+                                                        char suffix = 'a' + numBhSince - 1;
+                                                        locMap[u] = QString::number(lastNonBhLoc) + suffix;
+                                                    }
+                                                }
+                                                candidates.push_back(RingSystemNameResult{true, "", "anthracene", locMap});
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -13641,13 +13706,20 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                 int ringN = -1;
                 int exoN = -1;
                 std::set<int> parentRing;
+                std::set<int> allRingAtoms;
                 for (const auto& r : sssrRings) {
-                    bool n1InRing = r.count(nNode1);
-                    bool n2InRing = r.count(nNode2);
-                    if (n1InRing && !n2InRing) {
-                        ringN = nNode1; exoN = nNode2; parentRing = r; break;
-                    } else if (!n1InRing && n2InRing) {
-                        ringN = nNode2; exoN = nNode1; parentRing = r; break;
+                    allRingAtoms.insert(r.begin(), r.end());
+                }
+                bool n1InAnyRing = allRingAtoms.count(nNode1);
+                bool n2InAnyRing = allRingAtoms.count(nNode2);
+                if (n1InAnyRing != n2InAnyRing) {
+                    if (n1InAnyRing) {
+                        ringN = nNode1; exoN = nNode2;
+                    } else {
+                        ringN = nNode2; exoN = nNode1;
+                    }
+                    for (const auto& r : sssrRings) {
+                        if (r.count(ringN)) { parentRing = r; break; }
                     }
                 }
                 

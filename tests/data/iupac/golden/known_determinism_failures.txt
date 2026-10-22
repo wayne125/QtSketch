@@ -40,12 +40,28 @@
 # (indicated-hydrogen assignment), unrelated to RetainedRingMatcher/
 # FusedRingOrientation. Flagged for a future dedicated task.
 #
+# 2026-10-23: rows 441 and 446 fixed and removed from this list. Root causes:
+# - Row 441 (A): nameRingSystemAsSubstituent hardcoded the assumption that ring 1
+#   in fusedSystemRingIdx was the central ring of anthracene, failing to recognize
+#   anthracene when the central ring sorted to index 0 or 2, causing spurious fallback
+#   rejections. Fixed by properly identifying center vs end rings via fusion degrees.
+# - Row 441 (B): nameRingSystemAsSubstituent only registered a single candidate locantMap
+#   from computePeripheralNumbering3Ring, starving Step 2's lowest-locant selector and
+#   letting the meso locant drift between 5 and 10 based on arbitrary starting node.
+#   Fixed by generating all 4 valid symmetry-equivalent peripheral numberings starting
+#   at end rings, canonicalizing the meso attachment locant to 5.
+# - Row 446: exocyclic amine detection at IupacNamer.cpp:13644 checked nitrogen
+#   membership on individual rings in sssrRings rather than the global ring atom union,
+#   mistakenly treating one endocyclic nitrogen of a multi-ring fused system as an
+#   "exocyclic amine" whenever it appeared outside the current ring. The subsequent
+#   branch-traversal hit a false-positive rejection depending on which ring appeared
+#   first in SSSR iteration order. Fixed by checking against the union of all ring
+#   atoms so bis-aza heterocycles never enter the exocyclic amine branch.
+#
 # One row ID per line. Lines starting with # are comments.
 183
 184
 289
-441
-446
 499
 522
 1057
