@@ -10,7 +10,7 @@
 # This is a real bug in IupacNamer. A row ID appearing here is not a
 # license to ignore it forever -- it is flagged for a dedicated task.
 #
-# 2026-10-22 (later same day): rows 444, 445, 449, 459, 460, 461 fixed
+# 2026-10-22 (earlier same day): rows 444, 445, 449, 459, 460, 461 fixed
 # and removed from this list. Root cause: IupacNamer.cpp's getCandidates
 # lambda (inside nameLinearChainFusion), in its no-heteroatom (plain
 # benzo) N<4 fallback, only generated 2 local-numbering candidates
@@ -21,14 +21,21 @@
 # Fixed by generating the full candidate set; verified via a full golden
 # regression (742/0/0 unchanged) that no other row was affected.
 #
+# 2026-10-22 (later same day): rows 450, 462, 464 fixed and removed from this
+# list. Root causes:
+# - Row 464: RetainedRingMatcher.cpp:136 inverted query/target arguments to
+#   indigoExactMatch(clone, refMol), causing out-of-order target indices to be
+#   queried against the mapping and corrupting baseAtomMap (fusion letter g vs h).
+# - Rows 450, 462: FusedRingOrientation.cpp hard-coded BFS ring placement from
+#   ring 0 instead of the directed tree root from detectFusedRingDirections,
+#   causing invalid reverse edge traversals, geometric overlap contradictions,
+#   and fallback from retained ring naming to generic benzo prefixes.
+#
 # One row ID per line. Lines starting with # are comments.
 183
 184
 289
 441
 446
-450
-462
-464
 499
 522

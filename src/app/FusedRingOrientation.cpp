@@ -70,11 +70,25 @@ std::vector<FusedRingOrientationResult> computeAllPreferredOrientations(const Fu
         adj[edge.ring2].push_back({edge.ring1, edge.bondIndex, false});
     }
 
+    std::vector<int> inDegree(num_rings, 0);
+    for (const auto &edge : input.fusions) {
+        if (edge.ring2 >= 0 && edge.ring2 < num_rings) {
+            inDegree[edge.ring2]++;
+        }
+    }
+    int rootRing = 0;
+    for (int i = 0; i < num_rings; ++i) {
+        if (inDegree[i] == 0) {
+            rootRing = i;
+            break;
+        }
+    }
+
     std::vector<PlacedRing> placed(num_rings);
-    placed[0] = {0.0, 0.0, 0.0, true};
+    placed[rootRing] = {0.0, 0.0, 0.0, true};
 
     std::queue<int> q;
-    q.push(0);
+    q.push(rootRing);
     int visited_count = 1;
 
     const double TOLERANCE = 1e-6;

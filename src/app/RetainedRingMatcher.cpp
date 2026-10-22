@@ -133,7 +133,7 @@ static bool matchesRetainedSystem(int mol, const std::set<int> &ringAtoms,
     int clone = indigoClone(sub);
     indigoAromatize(clone);
 
-    int mapping = indigoExactMatch(clone, refMol, "");
+    int mapping = indigoExactMatch(refMol, clone, "");
     bool success = (mapping > 0);
     if (success) {
         outAtomMap.clear();
