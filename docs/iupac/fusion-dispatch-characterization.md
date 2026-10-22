@@ -353,9 +353,9 @@ Other errors cause immediate return (line 23619: `return {false, "", chainResult
 
 | Parameter | Site 1 | Site 2 | Site 3 |
 |-----------|--------|--------|--------|
-| `g` | From function param | From function param | From function param |
-| `mol` | From function param | From function param | From function param |
-| `indigoToGraphIdx` | Built locally from `g.nodes` | From function param | From function param |
+| `g` | From function param (`nameRingSystemAsSubstituent`) | Local to `generateNameImpl` (line 12012) | Local to `generateNameImpl` (line 12012) |
+| `mol` | From function param | From function param (`generateNameImpl`'s own `int mol`) | From function param (`generateNameImpl`'s own `int mol`) |
+| `indigoToGraphIdx` | Built locally from `g.nodes` | Local to `generateNameImpl` (line 11784) | Local to `generateNameImpl` (line 11784) |
 | `ringCount` | BFS-computed fused system size | `realComponentSize` | existing local `ringCount` (set earlier, line 8922) |
 | `freeValenceAtom` | `rootAtom` (explicit) | `freeValAtom` (explicit) | -1 (default) |
 | `ringSubsetOverride` | `nullptr` (default) | `&realComponentIndigo` (explicit) | `nullptr` (default) |
@@ -438,9 +438,12 @@ In contrast, Sites 1 and 3 operate in single-ring-system contexts where:
 Sites 1 and 3 do NOT have the same parameter pattern -- Site 1 explicitly
 passes `rootAtom` as the 5th parameter (`freeValenceAtom`); Site 3 passes
 no 5th parameter and relies on the default (-1). They do agree on params
-6-7 (`ringSubsetOverride`/`extraSubstituents`, both default), and on `g`/
-`indigoToGraphIdx` being locals the caller already has in scope either way
-(see "Key Differences" item 1 above).
+6-7 (`ringSubsetOverride`/`extraSubstituents`, both default). `g`/
+`indigoToGraphIdx` are both already in scope at the call either way --
+Site 1's `g` is a parameter its enclosing function (`nameRingSystemAsSubstituent`)
+receives, with `indigoToGraphIdx` built locally from it; Site 3's enclosing
+function (`generateNameImpl`) builds both as its own locals (see "Key
+Differences" item 1 above).
 
 **The `freeValenceAtom` difference**:
 - Site 1: Passes `rootAtom` -- the attachment point for this ring system as
@@ -495,27 +498,40 @@ that cannot be reconciled without breaking Site 2's multi-component naming logic
 **Sites 1 and 3 have matching contracts in terms of ring detection and substituent
 handling** (both use defaults for `ringSubsetOverride` and `extraSubstituents`),
 but they differ in:
-- The value of `freeValenceAtom` (Site 1: `rootAtom`, Site 3: -1)
-- The construction of `indigoToGraphIdx` (local vs. passed)
+- The value of `freeValenceAtom` (Site 1: `rootAtom`, Site 3: -1) -- a real but
+  non-blocking argument-value difference; a shared entry point could simply take
+  this as a required parameter.
+- Where `indigoToGraphIdx` is held: Site 1's enclosing function
+  (`nameRingSystemAsSubstituent`) builds its own local from a `g` parameter it
+  receives; Sites 2 and 3 share the SAME local `generateNameImpl` already built
+  for itself (line 11784) -- both are locals, neither is "passed in" from
+  outside; this is not itself a blocker either.
+- **Their RESULT-HANDLING logic (the actual blocker, see below).**
 
-These differences are **context-appropriate** rather than arbitrary:
+These first two differences are **context-appropriate** rather than arbitrary:
 - Site 1 needs to exclude the attachment point (`rootAtom`) from substituent detection
 - Site 3 has no attachment point to exclude
 
-A forced unification would require either:
-- Adding a parameter to control whether to skip a free valence atom (but it
-  already exists - it's `freeValenceAtom`)
-- Or always passing -1 and having Site 1's caller filter out `rootAtom` from
-  results (which would break the existing logic)
+But neither is what actually blocks unification. A forced unification of just
+`freeValenceAtom`/`indigoToGraphIdx` handling would be straightforward (pass
+`freeValenceAtom` explicitly everywhere; both sites already share the same
+`indigoToGraphIdx` local shape). **The real blocker is result handling**: Site 1
+collects the entire result vector, filters multiple sentinel strings, and picks
+the best candidate by lowest-locant minimization; Site 3 only ever reads
+`result[0]`, checks one sentinel string, and then runs a separate chain-vs-ring
+seniority fallback that Site 1 has no equivalent of. A shared dispatcher would
+either have to always do Site 1's full collect-and-minimize handling (which
+Site 3 was never designed to need, and might silently change its behavior) or
+take a result-handling strategy as a parameter -- at which point it's two call
+sites with a thin, pointless wrapper, not one real shared entry point.
 
 **Recommendation**: Keep all three call sites separate and documented as-is.
 
-The specific blocking difference is:
+The specific blocking differences are:
 - Site 2's use of `ringSubsetOverride` and `extraSubstituents` creates a fundamentally
   different naming context (multi-component with pre-named substituents) that
   cannot be unified with the single-ring-system contexts of Sites 1 and 3 without
   breaking the multi-component naming functionality.
-
-Even between Sites 1 and 3, the `freeValenceAtom` parameter serves different purposes
-(root atom exclusion vs. no exclusion), making unification awkward and potentially
-confusing without clear benefit.
+- Between Sites 1 and 3, the different RESULT-HANDLING logic (collect-and-
+  minimize vs. `result[0]`-plus-seniority-fallback) is the real obstacle --
+  not the `freeValenceAtom` argument value, which is cosmetic on its own.
