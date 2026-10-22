@@ -152,10 +152,12 @@ auto branchRes = nameBranchingFusion(g, mol, indigoToGraphIdx, NC, freeValAtom,
 
 ### Input Construction
 
-- **`g`**: The `Graph` object passed as parameter to `generateNameImpl`
-- **`mol`**: The molecule handle passed as parameter to `generateNameImpl`
-- **`indigoToGraphIdx`**: Passed as parameter to `generateNameImpl` (built at a higher
-  level, typically from the molecule's atoms)
+- **`g`**: `Graph g`, local to `generateNameImpl` (built at line 12012 from the
+  molecule's heavy atoms), NOT a function parameter -- `generateNameImpl` takes
+  only `int mol` (line 8739).
+- **`mol`**: the `int mol` parameter `generateNameImpl` itself receives.
+- **`indigoToGraphIdx`**: `std::map<int, int> indigoToGraphIdx`, local to
+  `generateNameImpl` (built at line 11784), NOT a parameter.
 - **`NC`**: Set to `realComponentSize` (line 23310), which is the size of
   `realComponentIndigo` vector (line 22825: `int realComponentSize = 
   static_cast<int>(realComponentIndigo.size());`)
@@ -245,17 +247,20 @@ branchResults = nameBranchingFusion(g, mol, indigoToGraphIdx, ringCount);
 
 ### Input Construction
 
-- **`g`**: The `Graph` object passed as parameter to `generateNameImpl`
-- **`mol`**: The molecule handle passed as parameter to `generateNameImpl`
-- **`indigoToGraphIdx`**: Passed as parameter to `generateNameImpl`
-- **`ringCount`**: Computed from `sssrRings.size()` where `sssrRings` is built by
-  iterating SSSR via Indigo (lines 23372-23392):
-  ```cpp
-  int sssrIter = indigoIterateSSSR(mol);
-  std::vector<std::set<int>> sssrRings;
-  // ... iterate and build sssrRings ...
-  int ringCount = static_cast<int>(sssrRings.size());
-  ```
+- **`g`**: `Graph g`, local to `generateNameImpl` (built at line 12012), NOT a
+  parameter -- same local as Site 2 above, since both sites are in the same
+  function.
+- **`mol`**: the `int mol` parameter `generateNameImpl` itself receives.
+- **`indigoToGraphIdx`**: `std::map<int, int> indigoToGraphIdx`, local to
+  `generateNameImpl` (built at line 11784), NOT a parameter.
+- **`ringCount`**: already in scope by this point in the function -- defined
+  at line 8922 as `int ringCount = indigoCountSSSR(mol);`, not recomputed at
+  this call site. The call passes this existing `ringCount`; the guards at
+  this site (`if (ringCount >= 3)` at line 23372) use it directly, and the
+  SSSR-ring SET itself (`sssrRings`, producing `N = sssrRings.size()` at line
+  23409) is a separate local used by the fusion-detection logic inside this
+  block, not by the `nameLinearChainFusion`/`nameBranchingFusion` calls'
+  `ringCount` argument.
 - **`freeValenceAtom` (5th param)**: NOT passed (defaults to -1)
 - **`ringSubsetOverride` (6th param)**: NOT passed (defaults to `nullptr`)
 - **`extraSubstituents` (7th param)**: NOT passed (defaults to `{}`)
@@ -323,8 +328,12 @@ return {true, chainResults[0].baseName, ""};
 For branching, if applies and succeeds (lines 23637-23649), returns the baseName.
 
 Special error handling for exocyclic substituents (lines 23573-23619 for linear,
-23641-23659 for branching): if the error is "Substituents on fused ring systems
-named via this mechanism are not yet supported.", it performs chain-vs-ring
+23641-23659 for branching): for the linear-chain path, if the error is
+"Substituents on fused ring systems named via this mechanism are not yet
+supported."; for the branching path, the equivalent check is against the
+branching-specific string "Substituents on branching fused ring systems are
+not yet supported." (line 23641) -- the two error strings differ, it is not
+the same literal text reused for both mechanisms. Either way it performs chain-vs-ring
 seniority check and may fall back to chain naming.
 
 Other errors cause immediate return (line 23619: `return {false, "", chainResults[0].error};`)
@@ -347,7 +356,7 @@ Other errors cause immediate return (line 23619: `return {false, "", chainResult
 | `g` | From function param | From function param | From function param |
 | `mol` | From function param | From function param | From function param |
 | `indigoToGraphIdx` | Built locally from `g.nodes` | From function param | From function param |
-| `ringCount` | BFS-computed fused system size | `realComponentSize` | `sssrRings.size()` |
+| `ringCount` | BFS-computed fused system size | `realComponentSize` | existing local `ringCount` (set earlier, line 8922) |
 | `freeValenceAtom` | `rootAtom` (explicit) | `freeValAtom` (explicit) | -1 (default) |
 | `ringSubsetOverride` | `nullptr` (default) | `&realComponentIndigo` (explicit) | `nullptr` (default) |
 | `extraSubstituents` | `{}` (default) | `extraSubs` (explicit) | `{}` (default) |
@@ -355,9 +364,17 @@ Other errors cause immediate return (line 23619: `return {false, "", chainResult
 ### Key Differences
 
 1. **`indigoToGraphIdx` construction**:
-   - Site 1: Built locally from `g.nodes` (lines 2812-2815)
-   - Site 2 & 3: Passed from caller (built at higher level)
-   - **Impact**: Site 1 is self-contained; Sites 2 & 3 rely on external construction
+   - Site 1: `g` is a `const Graph &` parameter `nameRingSystemAsSubstituent`
+     itself receives (line 2803); `indigoToGraphIdx` is built locally inside
+     it from `g.nodes` (lines 2812-2815).
+   - Site 2 & 3: `generateNameImpl` receives only `int mol` (line 8739) --
+     both `g` (line 12012) and `indigoToGraphIdx` (line 11784) are locals it
+     builds itself, not parameters. Sites 2 and 3 share the SAME already-
+     built `g`/`indigoToGraphIdx` locals since both calls are inside the
+     same function body.
+   - **Impact**: Site 1's `g` arrives from its caller; Site 1 only builds its
+     own `indigoToGraphIdx` locally. Sites 2 & 3 build (and share) both `g`
+     and `indigoToGraphIdx` themselves, earlier in the same function.
 
 2. **`ringSubsetOverride` usage**:
    - Site 1: Uses `nullptr` → functions compute SSSR from `mol`
@@ -418,52 +435,48 @@ In contrast, Sites 1 and 3 operate in single-ring-system contexts where:
 
 ### Sites 1 and 3: Can They Be Unified?
 
-Sites 1 and 3 have the same parameter pattern (using defaults for params 5-7), but
-they differ in one important way:
+Sites 1 and 3 do NOT have the same parameter pattern -- Site 1 explicitly
+passes `rootAtom` as the 5th parameter (`freeValenceAtom`); Site 3 passes
+no 5th parameter and relies on the default (-1). They do agree on params
+6-7 (`ringSubsetOverride`/`extraSubstituents`, both default), and on `g`/
+`indigoToGraphIdx` being locals the caller already has in scope either way
+(see "Key Differences" item 1 above).
 
-- **Site 1**: `indigoToGraphIdx` is built locally from `g.nodes`
-- **Site 3**: `indigoToGraphIdx` is passed from the caller
+**The `freeValenceAtom` difference**:
+- Site 1: Passes `rootAtom` -- the attachment point for this ring system as
+  a substituent, which `nameLinearChainFusion`/`nameBranchingFusion` then
+  skip during substituent detection so the attachment point itself isn't
+  mistaken for a substituent.
+- Site 3: Passes -1 -- there is no single attachment point to exclude,
+  since Site 3 is naming the whole molecule's ring system as the PARENT,
+  not as a substituent on something else.
 
-However, this difference is superficial: both provide the same mapping, just
-constructed at different scopes. The functions only use `indigoToGraphIdx` for
-looking up graph indices from Indigo atom indices, and the mapping is identical
-in both cases.
+This argument-value difference is real but, on its own, is not a blocking
+structural difference: a single shared entry point could simply take
+`freeValenceAtom` as a required parameter and let each caller supply its
+own value (`rootAtom` or -1) -- that's a cosmetic unification, not a
+functional obstacle.
 
-More importantly, both sites:
-- Use `nullptr` for `ringSubsetOverride`
-- Use `{}` for `extraSubstituents`
-- Pass an explicit value for `freeValenceAtom` (Site 1) or rely on default -1 (Site 3)
-- Operate on a single, coherent ring system
+**The REAL blocking difference is result handling (see "Key Differences"
+item 5 above), not the argument value:**
+- Site 1 collects the ENTIRE result vector, filters out multiple sentinel
+  strings, and picks the best candidate by lowest-locant minimization
+  across however many results come back.
+- Site 3 only ever looks at `result[0]`, checking both `.success` and a
+  specific sentinel error string, then falls through to a separate
+  chain-vs-ring seniority tiebreak and a retained-registry pre-check that
+  Site 1 has no equivalent of.
 
-**The freeValenceAtom difference**:
-- Site 1: Passes `rootAtom` as the free valence atom (the attachment point for
-  this ring system as a substituent)
-- Site 3: Passes -1 (no free valence atom)
+A shared dispatcher would need to either (a) always do Site 1's full
+collect-and-minimize handling, which Site 3's simpler `result[0]`-plus-
+fallback logic was never designed to need and might silently change
+behavior for, or (b) take a result-handling STRATEGY as a parameter,
+which is no longer "one shared entry point" in any meaningful sense --
+it's two call sites with a thin, pointless common wrapper around them.
 
-In `nameLinearChainFusion` and `nameBranchingFusion`, `freeValenceAtom` is used
-to skip that atom during substituent detection (to avoid treating the
-attachment point as a substituent). In Site 1's context (ring-as-substituent),
-this is correct: `rootAtom` is where the ring system attaches to the parent
-molecule, so it should not be treated as a substituent on the ring system itself.
-
-In Site 3's context (whole-molecule naming), there is no single attachment point
--to-skip, so -1 is appropriate.
-
-**Conclusion**: Sites 1 and 3 have **different semantics for freeValenceAtom**.
-Site 1 needs to exclude the attachment point; Site 3 has no attachment point to
-exclude. This is a real, functional difference, not just a parameter-passing
-convention.
-
-However, looking at the actual usage: Site 1 passes `rootAtom` as the 5th positional
-parameter, which maps to `freeValenceAtom`. Site 3 does NOT pass a 5th parameter,
-so it defaults to -1. This is a **parameter count mismatch** that happens to work
-because of default parameters.
-
-If we wanted to unify Sites 1 and 3, we would need to either:
-- Make Site 3 explicitly pass -1 as the 5th parameter, OR
-- Create a wrapper that always passes all parameters explicitly
-
-But this would be a cosmetic change, not a functional unification.
+**Conclusion**: keep Sites 1 and 3 separate. The blocking difference is
+each site's own post-call result-handling logic, not the call's argument
+values.
 
 ---
 
