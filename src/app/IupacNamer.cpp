@@ -8724,6 +8724,7 @@ static FunctionalGroupClassification classifyFunctionalGroups(
 }
 
 // Thin public wrapper that normalizes status for success results (Task C)
+// Public entry point: thin status-normalizing wrapper around generateNameImpl.
 // This applies the SystematicIupacName default to any success result that
 // still has the default Failed status from aggregate initialization.
 IupacResult IupacNamer::generateName(int mol) {
@@ -8735,6 +8736,8 @@ IupacResult IupacNamer::generateName(int mol) {
     return result;
 }
 
+// See docs/iupac/generateName-map.md for the internal structure map of this function
+// (16,061 lines: lines 8739-24799, containing all core naming logic).
 // Implementation - renamed to allow thin wrapper to apply status normalization
 IupacResult IupacNamer::generateNameImpl(int mol) {
     if (mol < 0) {
