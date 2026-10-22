@@ -8736,9 +8736,11 @@ IupacResult IupacNamer::generateName(int mol) {
     return result;
 }
 
-// See docs/iupac/generateName-map.md for the internal structure map of this function
-// (15,222 lines: this definition through its closing brace, ending right
-// before the unrelated computePeripheralNumbering3Ring function).
+// See docs/iupac/generateName-map.md for the internal structure map of this
+// function (this definition through its closing brace, ending right before
+// the unrelated computePeripheralNumbering3Ring function below). The map
+// has been wrong about this function's exact boundaries twice already --
+// re-derive line numbers from the live source, never trust a cached count.
 // Implementation - renamed to allow thin wrapper to apply status normalization
 IupacResult IupacNamer::generateNameImpl(int mol) {
     if (mol < 0) {
