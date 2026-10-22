@@ -5968,11 +5968,26 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                     }
                                 }
                                 if (cands.empty()) {
-                                    // Fallback for N<4, or if periphMap computation failed.
-                                    std::vector<int> fwd(rSize), bwd(rSize);
-                                    for (int i = 0; i < rSize; ++i) { fwd[i] = rCycle[(0 + i) % rSize]; bwd[i] = rCycle[(0 - i + rSize) % rSize]; }
-                                    cands.push_back(fwd);
-                                    cands.push_back(bwd);
+                                    // Fallback for N<4, or if periphMap computation failed. No
+                                    // heteroatom anchors this ring's own numbering start, so
+                                    // every rotation x both windings is a legitimate candidate --
+                                    // the downstream NameScore comparator (FR-4.5 lowest-locants
+                                    // tie-break) picks the canonical one from whatever candidate
+                                    // set it's given. Previously this only tried fwd/bwd anchored
+                                    // at rCycle[0] -- an atom-order-dependent position, since
+                                    // rCycle's own starting atom comes from ring detection over
+                                    // the input atom order -- so the winding/start choice drifted
+                                    // with input atom order instead of being canonicalized. Same
+                                    // "incomplete candidate set" bug class already fixed for
+                                    // whole-system N>=4 orientation (see the walkPeripheryClockwise
+                                    // candidate-rotation fix above); this is the analogous fix for
+                                    // a single plain (no-heteroatom) ring's own local numbering.
+                                    for (int start = 0; start < rSize; ++start) {
+                                        std::vector<int> fwd(rSize), bwd(rSize);
+                                        for (int i = 0; i < rSize; ++i) { fwd[i] = rCycle[(start + i) % rSize]; bwd[i] = rCycle[(start - i + rSize) % rSize]; }
+                                        cands.push_back(fwd);
+                                        cands.push_back(bwd);
+                                    }
                                 }
                             }
                         } else if (t == RingType::FURAN || t == RingType::THIOPHENE || t == RingType::SELENOPHENE || t == RingType::TELLUROPHENE || t == RingType::PHOSPHININE || t == RingType::PYRIDINE || t == RingType::PYRROLE ||

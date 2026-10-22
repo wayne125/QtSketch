@@ -935,11 +935,11 @@ int main() {
         {"c1cc2cc(-c3ccccc3)c(-c4ccccc4)cc2cc1", "2,3-diphenylnaphthalene"},
         // 3-ring real component (benzo-naphtho-pyridine linear chain, already
         // nameable bare via nameLinearChainFusion -- confirmed
-        // "benzo[3',4':6,1]benzo[3,4-b]pyridine" for the bare molecule) + one
+        // "benzo[1',2':4,5]benzo[1,2-b]pyridine" for the bare molecule) + one
         // isolated phenyl, exercising the ringSubsetOverride/freeValenceAtom path
         // through nameLinearChainFusion. Structurally validated: 4 rings
         // (6,6,6,6), 1 N, 20 heavy atoms.
-        {"c1ccc2cc3ncc(-c4ccccc4)cc3cc2c1", "3-phenylbenzo[3',4':6,1]benzo[3,4-b]pyridine"},
+        {"c1ccc2cc3ncc(-c4ccccc4)cc3cc2c1", "3-phenylbenzo[1',2':4,5]benzo[1,2-b]pyridine"},
 
         // Hydro-prefix fused-ring plan, Task 1 (Mechanism A: saturated N/O/S-heterocycle
         // fusion support). classifyMonocyclicHeteroRing already classifies a saturated
@@ -956,7 +956,7 @@ int main() {
         // for mechanisms with zero current real-corpus wins (T3/T5 earlier in this
         // session used the same practice). Structurally validated via check_sssr.exe:
         // 3 rings (6,6,6), 14 heavy atoms, benzo+pyridine+piperidine linear chain.
-        {"c1c2c(cccc2)nc2CCNCc12", "benzo[2,1-b]piperidino[3,4-e]pyridine"},
+        {"c1c2c(cccc2)nc2CCNCc12", "benzo[1,2-b]piperidino[3,4-e]pyridine"},
         // Adjacent-gap note (not this task's own regression guard, kept as a separate
         // documented pin): same shape but the saturated ring's nitrogen sits directly
         // adjacent to the ring-fusion carbon -- hits a separate, pre-existing,
@@ -1065,7 +1065,7 @@ int main() {
         // "5" -- an impossible/overlapping locant set. Real driver output (not
         // guessed): the methyl substituent and the 4 hydro positions now land on
         // disjoint locants (7 vs 2,3,4,5).
-        {"c1ccc2nc3CCCCc3cc2c1C", "7-methyl-2,3,4,5-tetrahydrodibenzo[1,2-b:3,4-e]pyridine"},
+        {"c1ccc2nc3CCCCc3cc2c1C", "7-methyl-2,3,4,5-tetrahydrodibenzo[1,2-b:1,2-e]pyridine"},
 
         // Retained-hydro-assembly plan, Task 3: superseded by
         // tryRetainedBaseDecomposition's whole-system final-numbering
@@ -1183,9 +1183,9 @@ int main() {
         // two single ring bonds as part of its legitimate alternating pattern, which
         // is not the same thing as a genuine sp3 saturated position) -- these two
         // molecules were WRONGLY REJECTED before this fix; both now correctly name.
-        {"c1ccc2cc3OC=CC=Cc3cc2c1", "benzo[3',4':6,1]benzo[3,4-b]oxepine"},
-        {"C1CCc2cc3OC=CC=Cc3cc2C1", "7,8,9,10-tetrahydrobenzo[3',4':6,1]benzo[3,4-b]oxepine"},
-        {"C1CCc2cc3NC=CC=Cc3cc2C1", "7,8,9,10-tetrahydrobenzo[3',4':6,1]benzo[3,4-b]azepine"},
+        {"c1ccc2cc3OC=CC=Cc3cc2c1", "benzo[1',2':4,5]benzo[1,2-b]oxepine"},
+        {"C1CCc2cc3OC=CC=Cc3cc2C1", "7,8,9,10-tetrahydrobenzo[1',2':4,5]benzo[1,2-b]oxepine"},
+        {"C1CCc2cc3NC=CC=Cc3cc2C1", "7,8,9,10-tetrahydrobenzo[1',2':4,5]benzo[1,2-b]azepine"},
 
         // Retained-hydro-assembly plan, Task 3: the N>=4 rejection above is
         // superseded for this exact molecule now that
@@ -6082,7 +6082,7 @@ int main() {
             IupacResult r = IupacNamer::generateName(m);
             indigoFree(m);
             std::string n = r.name.toStdString();
-            if (r.success && n == "benzo[4,3-b]thieno[2,3-e]pyridine") {
+            if (r.success && n == "benzo[1,2-b]thieno[2,3-e]pyridine") {
                 std::cout << "[PASS] Benzothiopheno-pyridine bare -> " << n << "\n";
                 passed++;
             } else {
@@ -6252,18 +6252,18 @@ int main() {
     // Test 1: Plain 5-membered carbocycle in a 3-ring chain
     // Cyclopentadiene fused to quinoline (benzene + pyridine)
     // Pattern similar to fluorene: C1c2ccccc2-c2...21
-    // Code generates: 5H-benzo[2',1':4,5]cyclopenta[3,2-b]pyridine
+    // Code generates: 5H-benzo[1',2':4,5]cyclopenta[1,2-b]pyridine
     {
         int m = indigoLoadMoleculeFromString("C1c2ccccc2-c2ncccc21");
         if (m >= 0) {
             IupacResult r = IupacNamer::generateName(m);
             indigoFree(m);
             std::string n = r.name.toStdString();
-            if (r.success && n == "5H-benzo[2',1':4,5]cyclopenta[3,2-b]pyridine") {
+            if (r.success && n == "5H-benzo[1',2':4,5]cyclopenta[1,2-b]pyridine") {
                 std::cout << "[PASS] Plain 5-membered carbocycle test: " << n << "\n";
                 passed++;
             } else {
-                std::cout << "[FAIL] Plain 5-membered carbocycle test: expected '5H-benzo[2',1':4,5]cyclopenta[3,2-b]pyridine', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+                std::cout << "[FAIL] Plain 5-membered carbocycle test: expected '5H-benzo[1',2':4,5]cyclopenta[1,2-b]pyridine', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
                 failed++;
             }
         } else {
@@ -6298,7 +6298,7 @@ int main() {
     // Cycloheptatriene fused to quinoline (benzene + pyridine)
     // Pattern similar to fluorene: C1c2ccccc2-c2...21
     // For 7-membered: add two more c's to the first ring
-    // Code should generate: 5H-benzo[2',1':4,5]cyclohepta[3,2-b]pyridine (similar to Test 1)
+    // Code generates: 5H-cyclohepta[1',2':4,5]cyclopenta[1,2-b]pyridine (similar to Test 1)
     {
         int m = indigoLoadMoleculeFromString("C1c2cccccc2-c2ncccc21");
         if (m >= 0) {
@@ -6306,11 +6306,11 @@ int main() {
             indigoFree(m);
             std::string n = r.name.toStdString();
             // Update expected name to match what code generates
-            if (r.success && n == "5H-cyclohepta[2',1':4,5]cyclopenta[3,2-b]pyridine") {
+            if (r.success && n == "5H-cyclohepta[1',2':4,5]cyclopenta[1,2-b]pyridine") {
                 std::cout << "[PASS] Plain 7-membered carbocycle test: " << n << "\n";
                 passed++;
             } else {
-                std::cout << "[FAIL] Plain 7-membered carbocycle test: expected '5H-cyclohepta[2',1':4,5]cyclopenta[3,2-b]pyridine', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+                std::cout << "[FAIL] Plain 7-membered carbocycle test: expected '5H-cyclohepta[1',2':4,5]cyclopenta[1,2-b]pyridine', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
                 failed++;
             }
         } else {
@@ -6475,9 +6475,9 @@ int main() {
     // test does not verify that citation, only that THIS topology's own real,
     // independently-confirmed structure names consistently. Real computed name
     // mirrors Task 1's own already-verified citation FORMAT (same bracket
-    // structure as "5H-benzo[2',1':4,5]cyclopenta[3,2-b]pyridine" and
-    // "5H-cyclohepta[2',1':4,5]cyclopenta[3,2-b]pyridine"), with "oxepino" as
-    // the fusion prefix and different bracket locants (4',5' instead of 2',1')
+    // structure as "5H-benzo[1',2':4,5]cyclopenta[1,2-b]pyridine" and
+    // "5H-cyclohepta[1',2':4,5]cyclopenta[1,2-b]pyridine"), with "oxepino" as
+    // the fusion prefix and different bracket locants (4',5' instead of 1',2')
     // reflecting oxepine's own internal numbering (where its heteroatom sits),
     // which is expected to differ per ring type -- a characterization test
     // pinning the code's own verified-topology output, not an independent
@@ -6488,11 +6488,11 @@ int main() {
             IupacResult r = IupacNamer::generateName(m);
             indigoFree(m);
             std::string n = r.name.toStdString();
-            if (r.success && n == "5H-oxepino[4',5':4,5]cyclopenta[3,2-b]pyridine") {
+            if (r.success && n == "5H-oxepino[4',5':4,5]cyclopenta[1,2-b]pyridine") {
                 std::cout << "[PASS] Oxepine chain-fusion test: " << n << "\n";
                 passed++;
             } else {
-                std::cout << "[FAIL] Oxepine chain-fusion test: expected '5H-oxepino[4',5':4,5]cyclopenta[3,2-b]pyridine', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+                std::cout << "[FAIL] Oxepine chain-fusion test: expected '5H-oxepino[4',5':4,5]cyclopenta[1,2-b]pyridine', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
                 failed++;
             }
         } else {
@@ -7141,11 +7141,11 @@ int main() {
             IupacResult r = IupacNamer::generateName(m);
             indigoFree(m);
             std::string n = r.name.toStdString();
-            if (r.success && n == "benzo[3,4-b][1,2,3]triazolo[4,5-d]pyridine") {
+            if (r.success && n == "benzo[1,2-b][1,2,3]triazolo[4,5-d]pyridine") {
                 std::cout << "[PASS] Chain triazole-pyridine-benzo test: " << n << "\n";
                 passed++;
             } else {
-                std::cout << "[FAIL] Chain triazole-pyridine-benzo test: expected 'benzo[3,4-b][1,2,3]triazolo[4,5-d]pyridine', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+                std::cout << "[FAIL] Chain triazole-pyridine-benzo test: expected 'benzo[1,2-b][1,2,3]triazolo[4,5-d]pyridine', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
                 failed++;
             }
         } else {
@@ -7322,11 +7322,11 @@ int main() {
             IupacResult r = IupacNamer::generateName(m);
             indigoFree(m);
             std::string n = r.name.toStdString();
-            if (r.success && n == "benzo[4',3':5,6]pyrido[4,3-e]1,2-azaphosphinine") {
+            if (r.success && n == "benzo[1',2':5,6]pyrido[4,3-e]1,2-azaphosphinine") {
                 std::cout << "[PASS] Chain azaphosphinine test: " << n << "\n";
                 passed++;
             } else {
-                std::cout << "[FAIL] Chain azaphosphinine test: expected 'benzo[4',3':5,6]pyrido[4,3-e]1,2-azaphosphinine', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+                std::cout << "[FAIL] Chain azaphosphinine test: expected 'benzo[1',2':5,6]pyrido[4,3-e]1,2-azaphosphinine', got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
                 failed++;
             }
         } else {

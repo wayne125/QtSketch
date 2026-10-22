@@ -7,26 +7,27 @@
 # different generateName() result -- success vs REJECTED, or a
 # different name -- than the row's own original atom order.
 #
-# This is a real bug in IupacNamer, not a harness artifact. It is NOT
-# fixed here: this plan's global constraints forbid touching naming-
-# correctness logic. These row IDs are tracked as a known baseline so
-# later tasks' determinism runs can gate on "no NEW divergence" instead
-# of being permanently red. A row ID appearing here is not a license to
-# ignore it forever -- it is flagged for a dedicated future task.
+# This is a real bug in IupacNamer. A row ID appearing here is not a
+# license to ignore it forever -- it is flagged for a dedicated task.
+#
+# 2026-10-22 (later same day): rows 444, 445, 449, 459, 460, 461 fixed
+# and removed from this list. Root cause: IupacNamer.cpp's getCandidates
+# lambda (inside nameLinearChainFusion), in its no-heteroatom (plain
+# benzo) N<4 fallback, only generated 2 local-numbering candidates
+# (forward/backward) anchored at rCycle[0] -- an atom-order-dependent
+# position -- instead of the full rotation x direction candidate set,
+# so the already-correct downstream NameScore (FR-4.5 lowest-locants)
+# comparator never saw the canonical option for some atom orderings.
+# Fixed by generating the full candidate set; verified via a full golden
+# regression (742/0/0 unchanged) that no other row was affected.
 #
 # One row ID per line. Lines starting with # are comments.
 183
 184
 289
 441
-444
-445
 446
-449
 450
-459
-460
-461
 462
 464
 499
