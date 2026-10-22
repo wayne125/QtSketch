@@ -49,11 +49,11 @@ special cases, Indigo-to-graph index construction.
 1. **Validation and early reject** (~8745-8749): `if (mol < 0) return {false, "", "Invalid molecule handle."};`
 2. **Sulfoxide normalization** (~8750-8838): charge-separated sulfoxide
    R2S(+1)-O(-1) → neutral R2S=O. Mutates `mol` in place via Indigo calls.
-   Isotope-label handling (`elementIsotope`) appears inside this block,
-   roughly lines 8851-8874.
 3. **Bare inorganic (zero-carbon) ion lookup** (~8840-~8925): exact-match
    lookup for zero-carbon molecules only (halides, oxides, metals,
-   polyatomic ions). Returns immediately on match.
+   polyatomic ions). Returns immediately on match. Contains
+   `elementIsotope`-based isotope handling (~8850-8873), part of this
+   block's own lookup, not the sulfoxide block above it.
 4. **Aromatization and ring count**: `indigoAromatize(mol)`, then
    `int ringCount = indigoCountSSSR(mol);` at line 8928 — computed exactly
    once, read (never recomputed) by every later ring-count-guarded
@@ -62,12 +62,16 @@ special cases, Indigo-to-graph index construction.
    3-component salts starting ~9380. Uses `indigoComponent()`,
    `indigoClone()`, and recursive `generateName()` calls on cloned
    components.
-6. **Standalone, carbon-containing ion blocks** (~9779-11786) — NOT
+6. **Standalone, carbon-containing ion blocks** (~9782-11786) — NOT
    zero-carbon (unlike block 3 above); each is its own guarded lookup:
-   standalone carboxylate anion (~9779, isotope handling also appears
-   here, roughly 9787-9826), alkoxide (~10001), ammonium (~10233),
-   N-oxide (~10424), pyridinium (~10616), saturated N-heterocyclic
-   quaternary ammonium (~10875), symmetric quaternary ammonium (~11162).
+   standalone carboxylate anion (~9782), alkoxide (~10002), ammonium
+   (~10235), N-oxide (~10427), pyridinium (~10620), saturated
+   N-heterocyclic quaternary ammonium (~10880), symmetric quaternary
+   ammonium (~11167). Each of these 7 blocks has its own `hasIsotope`
+   rejection check (via `indigoIsotope`, e.g. line 9799 in the
+   carboxylate block) — this is a reject-if-isotope-present guard common
+   to all 7 blocks, not isotope NAMING, and not unique to any one of
+   them.
 7. **Indigo-to-graph index construction** (line 11790):
    `std::map<int, int> indigoToGraphIdx;` — atom iteration starts ~11786.
 
@@ -84,6 +88,11 @@ mutated) `mol`.
 **Purpose:** Build the `Graph g` object the rest of the function (and
 every function it calls) operates on.
 
+- **Isotope-labeled-atom naming**: `isotopeLabeledAtoms` (declared
+  ~11794-11796, filled ~11907-11910) — the real isotope-naming path
+  (distinct from the reject-if-isotope-present guards in Section 1's
+  standalone-ion blocks). A clone-and-rename block (~11944-12012) handles
+  actually naming a molecule that has one or more isotope-labeled atoms.
 - `Graph g;` — line 12018, nodes built from heavy atoms with implicit +
   explicit hydrogen counts.
 - Bond iteration populates `g.nodes[*].neighbors`/`bondOrders` from
@@ -272,11 +281,15 @@ Only `result[0].success` is checked; returns early on either success.
 
 **Guard (line 23378):** `if (ringCount >= 3)`
 
+**Shared setup before the branch split (lines ~23379-23412):** extract
+SSSR rings via Indigo; build the `shared` matrix and `degree`/
+`validFusion`/`ends`/`centers`/`hasBranching`; determine `allDisjoint`.
+This runs once, regardless of which branch below ends up taken.
+
 **Two branches on `allDisjoint`:**
 
-- **`!allDisjoint` branch** (the fused case, starts ~23414): extract SSSR
-  rings; build the `shared` matrix and `degree`/`validFusion`/`ends`/
-  `centers`/`hasBranching`; call `tryRetainedBaseDecomposition(mol)`
+- **`!allDisjoint` branch** (the fused case, starts ~23414): call
+  `tryRetainedBaseDecomposition(mol)`
   (line ~23498) — on success, check the Task C InChIKey override set and
   return a `PreferredIupacName`-/`SystematicIupacName`-tagged result;
   otherwise fall through to fusion-dispatch **Site 3**'s
@@ -290,7 +303,7 @@ Only `result[0].success` is checked; returns early on either success.
   substituent via `nameRingAsSubstituent` (line ~23769), write
   `phase2ForcedRingSubstituentNames`/`phase2ForcedRingNodeSet`, and call
   `namePhase2Monocyclic()` at **line 23781** — this is the FIRST of that
-  lambda's 5 real call sites, not inside Section 13.
+  lambda's 6 real call sites, not inside Section 13.
 - **Both branches end the same way**: an UNCONDITIONAL
   `return {false, "", "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."};`
   at **line 23785** if nothing above matched. Section 12 therefore ALWAYS
@@ -342,7 +355,8 @@ Content (read in full, re-confirmed across 3 review rounds now):
 |---|---|---|
 | `indigoToGraphIdx` | Line 11790 | Every subsequent section |
 | `Graph g` | Line 12018 | Every subsequent section |
-| `int ringCount` | Line 8928 | Every ring-count-guarded section (3, 6, 7, 8, 9, 10, 11, 12, 13) |
+| `int ringCount` | Line 8928 | Every ring-count-guarded section (3, 5's pre-pass and lambda, 6, 7, 8, 9, 10, 12, 13) — NOT Section 11, which never reads it |
+| `allSSSRNodes` / `allSSSRRings` | Section 5's pre-pass, lines 15479-15480 (filled via `indigoIterateSSSR` at line 15482) | Section 7's guard, Section 9's guards, Section 10's Phase 30.5 guard, `nameRingAsSubstituent` calls in Sections 12/13 — these are the ONE pre-built pair most sections actually read; see the SSSR note below for the sections that instead re-extract their OWN separate local SSSR rings |
 | `ringSubstituentInfos` | Section 5's pre-pass (line 15476) | Section 6's guard; Section 5's `namePhase2Monocyclic` lambda |
 | `phase2ForcedRingNodeSet` / `phase2ForcedRingSubstituentNames` | Declared empty in Section 5's pre-pass (lines 16089-16090); **WRITTEN by BOTH Section 12's disjoint branch (line 23781's surrounding code) AND Section 13** | Read by Section 5's `namePhase2Monocyclic` lambda |
 | `extraSubs`, `realComponentIndigo` | Section 11 | Section 11's own Site 2 calls and its `nameNaphthaleneFusion` call |
@@ -351,9 +365,20 @@ Content (read in full, re-confirmed across 3 review rounds now):
 **Critical dependency:** `mol` is mutated in place by Section 1 (sulfoxide
 normalization, aromatization) before `g`/`indigoToGraphIdx` are built.
 
-**Note on SSSR re-extraction:** SSSR rings are independently re-extracted
-by Indigo in Sections 8, 10, 11, 12, and 13 — each extraction is local to
-its own section, never shared or cached.
+**Note on SSSR data (corrected — a prior round of this document claimed
+SSSR rings are NEVER cached/shared, which is false):** `allSSSRNodes`/
+`allSSSRRings` ARE built once (Section 5's pre-pass, lines 15479-15480,
+via `indigoIterateSSSR` at line 15482) and genuinely shared/read by many
+later sections (Section 7's guard, Section 9's guards, Section 10's
+Phase 30.5 guard, `nameRingAsSubstituent` calls in Sections 12/13) — this
+one pair is cached, not re-extracted each time. SEPARATELY, several
+sections (at least 8, 11, 12, 13, and some of Section 4's individual
+narrow-case blocks) also run their OWN additional, local
+`indigoIterateSSSR` calls for section-specific purposes, independent of
+the shared pair above. This document does not catalog every one of
+those local extractions individually — treat "a section extracts its
+own SSSR rings" as a real possibility to check for in any given section
+rather than assuming the shared pair is always what's being read.
 
 ---
 
@@ -392,10 +417,14 @@ for the full, already-reviewed characterization.
 1. **`g` and `indigoToGraphIdx` are the core shared state** (lines 12018,
    11790), read by virtually every section.
 2. **`mol` is mutated in-place** in Section 1, before `g` is built.
-3. **SSSR rings are independently re-extracted** in Sections 8, 10, 11,
-   12, and 13 — never cached or shared.
+3. **`allSSSRNodes`/`allSSSRRings` ARE cached and shared** (built once in
+   Section 5's pre-pass, read by Sections 7, 9, 10, 12, 13) — but several
+   sections ALSO run their own separate, local, uncached SSSR extractions
+   for section-specific purposes (see the SSSR data-flow note above). Do
+   not assume either "always shared" or "always re-extracted" — check the
+   specific section.
 4. **Section 5 contains the function's two largest reusable units**:
-   `namePhase2Monocyclic` (1,472 lines, 5 call sites across Sections 12
+   `namePhase2Monocyclic` (1,472 lines, 6 call sites across Sections 12
    and 13 plus the function's own final line) and `nameNaphthaleneFusion`
    (804 lines, 2 call sites across Sections 11 and 13). Both are already
    lambda-isolated — the most natural extraction candidates if this
