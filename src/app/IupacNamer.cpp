@@ -9,6 +9,7 @@
 #include "RetainedRingMatcher.h"
 #include "PeripheralNumbering.h"
 #include "FusionGraphContext.h"
+#include "NameAssembly.h"
 #include "indigo.h"
 #include "indigo-inchi.h"
 #include <QStringList>
@@ -493,17 +494,6 @@ bool isPlainBenzeneRing(int mol, const Graph &g, const std::map<int, int> &indig
     return found;
 }
 
-// Chain length root prefixes C1..C20
-QString chainRoot(int len) {
-    static const QString roots[] = {
-        "", "meth", "eth", "prop", "but", "pent", "hex", "hept", "oct", "non", "dec",
-        "undec", "dodec", "tridec", "tetradec", "pentadec", "hexadec", "heptadec",
-        "octadec", "nonadec", "icos"
-    };
-    if (len >= 1 && len <= 20) return roots[len];
-    return "";
-}
-
 // Alphabetization key for substituent-citation sorting and numbering-tiebreak scoring.
 // Strips wrapping brackets a substituent name may carry (from compound-substituent or
 // stereo-prefix wrapping), then a leading stereo-descriptor parenthetical like "(1R)-", then
@@ -529,21 +519,6 @@ QString alphabetizationKey(const QString &pName) {
         s = s.mid(i + 1);
     }
     return s;
-}
-
-// Multiplying prefixes
-QString multiPrefix(int count) {
-    static const QString prefixes[] = {
-        "", "", "di", "tri", "tetra", "penta", "hexa", "hepta", "octa", "nona", "deca"
-    };
-    if (count >= 2 && count <= 10) return prefixes[count];
-    return "";
-}
-
-// Helper: check if character is a vowel
-bool isVowel(QChar c) {
-    c = c.toLower();
-    return (c == 'a' || c == 'e' || c == 'i' || c == 'o' || c == 'u');
 }
 
 // P-22.2.2.1.3 citation-order seniority rank for Hantzsch-Widman naming.

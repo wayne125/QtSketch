@@ -26,6 +26,7 @@ set(IUPAC_NAMING_SOURCES
     src/app/RetainedRingMatcher.h src/app/RetainedRingMatcher.cpp
     src/app/PeripheralNumbering.h src/app/PeripheralNumbering.cpp
     src/app/FusionGraphContext.h src/app/FusionGraphContext.cpp
+    src/app/NameAssembly.h src/app/NameAssembly.cpp
     src/app/retained/HydrocarbonFamily.h src/app/retained/HydrocarbonFamily.cpp
     src/app/retained/QuinolineFamily.h src/app/retained/QuinolineFamily.cpp
     src/app/retained/IndoleFamily.h src/app/retained/IndoleFamily.cpp
