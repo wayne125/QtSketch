@@ -65,17 +65,22 @@ std::vector<GoldenRow> read_baseline_csv(const std::string& path, bool& hadMalfo
         std::string token;
         GoldenRow row;
         
-        // Parse CSV fields (comma-separated, values may be quoted)
+        // Parse CSV fields (comma-separated, values may be quoted, with ""
+        // inside a quoted field representing a literal "). Needs one
+        // character of lookahead to tell an escaped quote pair apart from
+        // the field's real closing quote -- a prev-char-only check can't
+        // distinguish them and corrupts fields ending in an escaped quote.
         std::vector<std::string> fields;
         std::string field;
         bool in_quotes = false;
-        char prev = '\0';
-        
-        for (char ch : line) {
+
+        for (size_t i = 0; i < line.size(); ++i) {
+            char ch = line[i];
             if (ch == '"') {
-                if (in_quotes && prev == '"') {
-                    // Escaped quote
-                    field += ch;
+                if (in_quotes && i + 1 < line.size() && line[i + 1] == '"') {
+                    // Escaped quote: consume both characters of the pair.
+                    field += '"';
+                    ++i;
                 } else {
                     in_quotes = !in_quotes;
                 }
@@ -85,12 +90,13 @@ std::vector<GoldenRow> read_baseline_csv(const std::string& path, bool& hadMalfo
             } else {
                 field += ch;
             }
-            prev = ch;
         }
         fields.push_back(field);
-        
+
+        // id,smiles,pinned_name,pinned_success,actual_name,actual_success,
+        // expected_status are required; notes is optional (8th field).
         if (fields.size() < 7) {
-            std::cerr << "ERROR: Line " << line_num << " has only " << fields.size() << " fields, expected 8 -- treating baseline.csv as corrupt" << std::endl;
+            std::cerr << "ERROR: Line " << line_num << " has only " << fields.size() << " fields, expected at least 7 -- treating baseline.csv as corrupt" << std::endl;
             hadMalformedRow = true;
             continue;
         }
