@@ -31,6 +31,15 @@
 #   causing invalid reverse edge traversals, geometric overlap contradictions,
 #   and fallback from retained ring naming to generic benzo prefixes.
 #
+# 2026-10-22 (same day, later still): row 1057 added. New molecule found during
+# independent stress-testing of the 450/462/464 fix (not a pre-existing golden
+# row -- freshly added to baseline.csv for this purpose). Default atom order
+# names it "benzo[1',2':4,5]benzo[1,2-b]pyrrole" (no indicated-H); all 5
+# verified reorderings name it "1H-benzo[1',2':4,5]benzo[1,2-b]pyrrole" (with
+# indicated-H). Root cause not yet investigated -- distinct subsystem
+# (indicated-hydrogen assignment), unrelated to RetainedRingMatcher/
+# FusedRingOrientation. Flagged for a future dedicated task.
+#
 # One row ID per line. Lines starting with # are comments.
 183
 184
@@ -39,3 +48,4 @@
 446
 499
 522
+1057
