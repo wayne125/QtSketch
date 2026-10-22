@@ -6,6 +6,7 @@
 #include "IupacNamer.h"
 #include "AtomOrderRandomizer.h"
 #include "indigo.h"
+#include "indigo-inchi.h"
 
 #include <iostream>
 #include <fstream>
@@ -15,6 +16,17 @@
 #include <cstdlib>
 #include <map>
 #include <set>
+
+// Helper to convert NamingStatus enum to string (Task C)
+std::string namingStatusToString(NamingStatus status) {
+    switch (status) {
+        case NamingStatus::Failed: return "Failed";
+        case NamingStatus::KnownGapFallback: return "KnownGapFallback";
+        case NamingStatus::SystematicIupacName: return "SystematicIupacName";
+        case NamingStatus::PreferredIupacName: return "PreferredIupacName";
+        default: return "Unknown";
+    }
+}
 
 struct GoldenRow {
     int id;
@@ -176,6 +188,7 @@ int main() {
     
     qword sid = indigoAllocSessionId();
     indigoSetSessionId(sid);
+    indigoInchiInit(sid);
     
     int total_passed = 0;
     int total_failed = 0;
@@ -204,10 +217,18 @@ int main() {
         bool fresh_success = res.success;
         std::string fresh_name = res.name.toStdString();
         std::string fresh_error = res.error.toStdString();
+        // For determinism check and status comparison (Task C)
+        std::string fresh_status = namingStatusToString(res.status);
         
         // For failing results, use error as name
         if (!fresh_success) {
             fresh_name = fresh_error;
+        }
+        
+        // Check 0: Status comparison (Task C)
+        bool status_match = true;
+        if (!row.expected_status.empty()) {
+            status_match = (fresh_status == row.expected_status);
         }
         
         // Check 1: Compare against pinned expectation
@@ -226,8 +247,11 @@ int main() {
         bool fingerprint_match = (fresh_success == row.actual_success && 
                                   fresh_name == row.actual_name);
         
-        if (fingerprint_match) {
-            // Fingerprint matches - this is the critical check
+        // Check 3: Status must match if expected_status is specified (Task C)
+        bool all_checks_pass = fingerprint_match && status_match;
+        
+        if (all_checks_pass) {
+            // All checks pass - this is the critical check
             // Log pin mismatch if present, but still PASS
             if (!pin_match) {
                 std::cout << "[PASS (pin mismatch)] Row " << row.id << " (" << row.smiles << ") -> "
@@ -240,12 +264,19 @@ int main() {
             }
             total_passed++;
         } else {
-            // Fingerprint mismatch - this is a real regression
+            // At least one check failed
             std::cout << "[FAIL] Row " << row.id << " (" << row.smiles << "):" << std::endl;
-            std::cout << "  Fingerprint check: FAIL (expected success=" << row.actual_success
-                      << ", name='" << row.actual_name << "')" << std::endl;
-            std::cout << "  Actual: success=" << fresh_success
-                      << ", name='" << fresh_name << "'" << std::endl;
+            if (!fingerprint_match) {
+                std::cout << "  Fingerprint check: FAIL (expected success=" << row.actual_success
+                          << ", name='" << row.actual_name << "')" << std::endl;
+                std::cout << "  Actual: success=" << fresh_success
+                          << ", name='" << fresh_name << "'" << std::endl;
+            }
+            if (!status_match) {
+                std::string fresh_status = namingStatusToString(res.status);
+                std::cout << "  Status check: FAIL (expected '" << row.expected_status
+                          << "', got '" << fresh_status << "')" << std::endl;
+            }
             if (!pin_match) {
                 std::cout << "  (Pinned check also FAIL)" << std::endl;
             }
@@ -286,19 +317,30 @@ int main() {
                 if (!reorder_success) {
                     reorder_name = reorder_error;
                 }
+                std::string reorder_status = namingStatusToString(res_reorder.status);
 
+                // Check both name AND status for stability (Task C - Step 5a)
                 if (!(reorder_success == fresh_success &&
-                      reorder_name == fresh_name)) {
+                      reorder_name == fresh_name &&
+                      reorder_status == fresh_status)) {
+                    // Determine if this is a name divergence, status divergence, or both
+                    bool name_diverged = !(reorder_success == fresh_success && reorder_name == fresh_name);
+                    bool status_diverged = (reorder_status != fresh_status);
+                    
                     if (row_is_known_failure) {
                         std::cout << "  [DETERMINISM KNOWN FAIL] Row " << row.id << ": seed " << s
                                   << " produced a different result (pre-existing, see known_determinism_failures.txt)" << std::endl;
+                        if (status_diverged) {
+                            std::cout << "    [Status also diverged: expected '" << fresh_status
+                                      << "', got '" << reorder_status << "']" << std::endl;
+                        }
                         total_known_determinism_failures++;
                     } else {
                         std::cout << "  [DETERMINISM FAIL] Row " << row.id << ": seed " << s << " produced a different result" << std::endl;
                         std::cout << "    Expected: success=" << fresh_success
-                                  << " name='" << fresh_name << "'" << std::endl;
+                                  << " name='" << fresh_name << "' status='" << fresh_status << "'" << std::endl;
                         std::cout << "    Got: success=" << reorder_success
-                                  << " name='" << reorder_name << "'" << std::endl;
+                                  << " name='" << reorder_name << "' status='" << reorder_status << "'" << std::endl;
                         total_failed++;
                     }
                     break;

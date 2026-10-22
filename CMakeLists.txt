@@ -244,11 +244,12 @@ target_include_directories(iupac_namer_test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/src/app
     ${CMAKE_CURRENT_SOURCE_DIR}/indigo/api/c/indigo
+    ${CMAKE_CURRENT_SOURCE_DIR}/indigo/api/c/indigo-inchi
 )
 if (MSVC)
-    target_link_libraries(iupac_namer_test PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.lib)
+    target_link_libraries(iupac_namer_test PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.lib ${INDIGO_LIB_DIR}/indigo-inchi.lib)
 else()
-    target_link_libraries(iupac_namer_test PRIVATE ${INDIGO_LIB_DIR}/indigo.dll)
+    target_link_libraries(iupac_namer_test PRIVATE ${INDIGO_LIB_DIR}/indigo.dll ${INDIGO_LIB_DIR}/indigo-inchi.dll)
 endif()
 
 enable_testing()
@@ -262,11 +263,12 @@ target_include_directories(iupac_golden_test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/app
     ${CMAKE_CURRENT_SOURCE_DIR}/tools/iupac
     ${CMAKE_CURRENT_SOURCE_DIR}/indigo/api/c/indigo
+    ${CMAKE_CURRENT_SOURCE_DIR}/indigo/api/c/indigo-inchi
 )
 if (MSVC)
-    target_link_libraries(iupac_golden_test PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.lib)
+    target_link_libraries(iupac_golden_test PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.lib ${INDIGO_LIB_DIR}/indigo-inchi.lib)
 else()
-    target_link_libraries(iupac_golden_test PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.dll)
+    target_link_libraries(iupac_golden_test PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.dll ${INDIGO_LIB_DIR}/indigo-inchi.dll)
 endif()
 add_test(NAME iupac_golden_test COMMAND iupac_golden_test)
 
