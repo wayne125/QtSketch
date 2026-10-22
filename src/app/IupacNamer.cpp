@@ -8737,7 +8737,8 @@ IupacResult IupacNamer::generateName(int mol) {
 }
 
 // See docs/iupac/generateName-map.md for the internal structure map of this function
-// (16,061 lines: lines 8739-24799, containing all core naming logic).
+// (15,222 lines: this definition through its closing brace, ending right
+// before the unrelated computePeripheralNumbering3Ring function).
 // Implementation - renamed to allow thin wrapper to apply status normalization
 IupacResult IupacNamer::generateNameImpl(int mol) {
     if (mol < 0) {

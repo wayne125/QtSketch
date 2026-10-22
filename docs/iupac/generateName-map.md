@@ -1,429 +1,476 @@
 # generateNameImpl Internal Structure Map
 
-This document maps the internal structure of `IupacNamer::generateNameImpl` in `src/app/IupacNamer.cpp` (lines 8739-24799, 16,061 lines total as of commit 835fca3).
+This document maps the internal structure of `IupacNamer::generateNameImpl`
+in `src/app/IupacNamer.cpp`. All line numbers in this document are relative
+to the current `dev` HEAD at the time this map was committed (commit
+`baeae90`'s fix, not the original `baeae90`): `generateNameImpl` spans
+**lines 8742-23963 (15,222 lines)**, ending right before the next top-level
+function, `computePeripheralNumbering3Ring` (line 23965).
 
-**Note on entry points:** The public entry point is the thin wrapper `IupacNamer::generateName` at line 8729-8735, which calls `generateNameImpl` and normalizes the `status` field. This document maps the real logic in `generateNameImpl`.
+**Note on entry points:** The public entry point is the thin wrapper
+`IupacNamer::generateName` (lines 8726-8733 as of this writing), which calls
+`generateNameImpl` and normalizes the `status` field. This document maps the
+real logic in `generateNameImpl`.
+
+**Correction note:** an earlier version of this document (commit `baeae90`)
+stated the function ends at line 24799. That was wrong — it misidentified
+the function's end by matching a line that looked like a new top-level
+function signature but was actually three SEPARATE functions further down
+the file (`computePeripheralNumbering3Ring`, `computeSpiroNumbering`,
+`computePeripheralNumbering`), none of which are part of `generateNameImpl`.
+That version also mis-stated several section boundaries and fabricated the
+content of the function's final section. This version was rewritten from a
+line-by-line scan of every `// ---` section-divider comment inside the real
+8742-23963 range, cross-checked twice independently, plus a direct read of
+the function's actual final ~180 lines.
 
 ---
 
 ## Major Dispatch Sections
 
-### Section 1: Entry and Preprocessing (lines 8739-12071)
+### Section 1: Entry and Preprocessing (lines 8742-11786)
 
-**Purpose:** Input validation, structural normalization, early-exit special cases, graph construction.
+**Purpose:** Input validation, structural normalization, early-exit special
+cases, Indigo-to-graph index construction.
 
-**Subsections:**
-- **Validation and early reject** (8739-8742): Check `mol < 0`, return error.
-- **Sulfoxide normalization** (8744-8832): Convert charge-separated sulfoxide R2S(+1)-O(-1) to neutral sulfoxide R2S=O form. Mutates `mol` directly via Indigo API calls.
-- **Bare inorganic ion lookup** (8834-8917): Exact match lookup for zero-carbon molecules (halides, oxides, metals, polyatomic ions). Returns immediately on match.
-- **Aromatization** (8919-8920): `indigoAromatize(mol)` to ensure aromatic bonds have reliable order=4.
-- **Ring count** (8922): `ringCount = indigoCountSSSR(mol)`.
-- **Salt naming (P-77)** (8924-9769):
-  - 2-component salts (8924-9370): hydrohalide salts, Group 1 metal carboxylate/alkoxide salts, ammonium salts.
-  - 3-component salts (9372-9768): Group 2 metal salts, metal + 2 identical acid/alcohol components.
-  - Uses `indigoComponent()`, `indigoClone()`, recursive `generateName()` calls, and suffix transformation.
-  - Each component classified as MAIN, HALIDE, METAL, or AMMONIUM.
-- **Standalone carboxylate anion naming** (9771-10200+): Single-component molecules with charged oxygen atoms on carboxylate groups.
-- **Graph construction** (11776-12071):
-  - Atom iteration and filtering (11776-12006): Build `heavyAtomIndices`, `explicitHCounts`, `indigoToGraphIdx` from `mol`. Handle isotope labeling.
-  - `Graph g` construction (12012-12049): Build graph nodes from heavy atoms with implicit + explicit hydrogen counts.
-  - Bond iteration (12050-12071): Populate `g.nodes[*].neighbors` and `bondOrders` from `indigoIterateBonds(mol)`.
+**Subsections (verified real line numbers):**
+- **Validation and early reject** (8742-8744): `if (mol < 0) return {false, "", "Invalid molecule handle."};`
+- **Sulfoxide normalization** (~8747-8835): Convert charge-separated
+  sulfoxide R2S(+1)-O(-1) to neutral R2S=O. Mutates `mol` in place via
+  Indigo API calls.
+- **Bare inorganic ion lookup** (~8837-8920): Exact-match lookup for
+  zero-carbon molecules. Returns immediately on match.
+- **Aromatization**: `indigoAromatize(mol)` shortly before `ringCount` is
+  computed.
+- **Ring count** (line 8925): `int ringCount = indigoCountSSSR(mol);` —
+  computed exactly once, used (not recomputed) by every ring-count-guarded
+  section for the rest of the function.
+- **Salt naming (P-77)** (~8927-9772): 2-component and 3-component salt
+  handling (hydrohalides, Group 1/2 metal carboxylate/alkoxide salts,
+  ammonium salts). Uses `indigoComponent()`, `indigoClone()`, and recursive
+  `generateName()` calls on cloned components.
+- **Standalone carboxylate anion naming** (~9774+): single-component
+  molecules with charged carboxylate oxygens.
+- **Indigo-to-graph index construction** (line 11787):
+  `std::map<int, int> indigoToGraphIdx;` — built from atom iteration over
+  `mol`, handling isotope labeling and explicit/implicit hydrogen counts.
 
-**Data produced:**
-- `Graph g` (local, built from heavy atoms of `mol`)
-- `std::map<int, int> indigoToGraphIdx` (local, maps Indigo atom index to graph node ID)
-- `int ringCount` (local, from `indigoCountSSSR(mol)`)
-- Early-exit results for special cases (ions, salts)
+**Data produced:** `indigoToGraphIdx` (line 11787); `ringCount` (line 8925);
+early-exit `IupacResult` for ions/salts; a normalized (possibly mutated)
+`mol`.
 
-**Data consumed:** None (entry point)
+**Data consumed:** None (entry point).
 
-**Indigo call density:** High - dozens of Indigo calls in sulfoxide normalization, ion lookup, salt detection, and graph construction. Notable: `indigoIterateAtoms`, `indigoAtomicNumber`, `indigoGetCharge`, `indigoCountImplicitHydrogens`, `indigoIterateNeighbors`, `indigoBond`, `indigoBondOrder`, `indigoIndex`, `indigoAromatize`, `indigoCountSSSR`, `indigoComponent`, `indigoClone`, `indigoFree`.
+**Indigo call density:** very high — this section alone accounts for the
+large majority of the function's Indigo calls (sulfoxide normalization, ion
+lookup, salt detection all call Indigo repeatedly). See the density table
+below for a measured count.
 
 ---
 
-### Section 2: Organometallic Compound Handling (lines 12072-12171)
+### Section 2: Graph Construction (lines ~11787-12067)
 
-**Purpose:** Name organometallic compounds with Group 1-2 metals.
+**Purpose:** Build the `Graph g` object the rest of the function (and
+every function it calls) operates on.
 
-**Structure:**
-- Metal atom detection (12106-12112): Find Group 1 (Li, Na, K) and Group 2 (Mg, Ca) metal atoms.
-- Single metal atom check (12114-12170): Reject if >1 metal atom.
-- Group 1 metals (12133-12142): Must have exactly one carbon neighbor. Name alkyl group via `nameBranchGraph` + metal name.
-- Group 2 metals (12143-12169): Must have exactly one carbon + one halogen neighbor. Name alkyl group + metal name + halide suffix.
+**Subsections:**
+- `indigoToGraphIdx` built (line 11787, see Section 1).
+- **`Graph g` construction** (line 12015): `Graph g;` — nodes built from
+  heavy atoms with implicit + explicit hydrogen counts.
+- **Bond iteration**: populates `g.nodes[*].neighbors`/`bondOrders` from
+  `indigoIterateBonds(mol)`.
+
+**Data produced:** `Graph g` (line 12015) — used, read-only, by every
+subsequent section in the function.
+
+**Data consumed:** `mol` (post-normalization), `indigoToGraphIdx`.
+
+---
+
+### Section 3: Organometallic Compound Handling (lines 12067-~12222)
+
+**Real section header (line 12067):** `// --- Organometallic compounds, Group 1-2 metals (P-69.3) ---`
+
+**Purpose:** Name organometallic compounds with exactly one Group 1 or
+Group 2 metal atom.
+
+**Structure:** Detect Group 1 (Li, Na, K) / Group 2 (Mg, Ca) metal atoms;
+reject if more than one metal atom; Group 1 metals must have exactly one
+carbon neighbor (name the alkyl group via `nameBranchGraph` + metal name);
+Group 2 metals must have exactly one carbon + one halogen neighbor.
 
 **Data produced:** Returns `IupacResult` directly on match.
 
-**Data consumed:** `g`, `mol`, `indigoToGraphIdx`
+**Data consumed:** `g`, `mol`, `indigoToGraphIdx`.
 
-**Indigo call density:** Low - primarily graph traversal, minimal Indigo calls.
-
----
-
-### Section 3: Functional-Group Narrow Cases (lines 12172-18363)
-
-**Purpose:** Handle specific functional group patterns before main dispatch.
-
-**Subsections (all with Guard pattern `if (g.nodes.size() >= X && g.nodes.size() <= Y)`):**
-- **Organometallic fallback** (12064-12071): Already handled above, this is a continuation guard.
-- **P-67.2 Dinuclear phosphorus oxoacids** (12172-12412): diphosphoric, hypodiphosphoric, diphosphorous, hypodiphosphorous.
-- **P-67.2 Dinuclear arsenic oxoacids** (12413-12580): diarsoric, hypodiarsoric, diarsorous, hypodiarsorous.
-- **P-67.2 Dinuclear boron oxoacids** (12581-12668): diboric acid, hypodiboric acid.
-- **P-67.2 Dinuclear antimony oxoacids** (12669-12805): distiboric, hypodistiboric, distiborous, hypodistiborous.
-- **Amidoximes (P-66.4.4)** (12806-12894)
-- **N-substituted diamines (P-62.2.4)** (12895-13130)
-- **N-substituted amines (P-62.2.4)** (13131-13576)
-- **N-substituted exocyclic amines on saturated N-heterocycle** (13577-13912)
-- **Carbamate esters (P-65.2.1.1)** (13913-13995)
-- **N-substituted amides (P-66.1.1.3.1)** (13996-14355): Includes imide rejection.
-- **N-substituted sulfonamides/sulfinamides** (14356-14507)
-- **N-substituted imines (P-62.3)** (14508-14588)
-- **N'-substituted amidines (P-66.4)** (14589-14688)
-- **N'-substituted guanidine (P-66.4.1.2.1)** (14689-14817)
-- **Ureas (Phase 2)** (14818-15044)
-- **N-substituted thioamides (P-66.1.1.3.1)** (15045-15044 correction: 15045-15264)
-- **N-substituted hydrazides (P-66.3.3.1)** (15265-15480)
-- **P-67.2 Dinuclear sulfur oxoacids** (15481-16086): disulfuric, dithionic, dithionous.
-
-**Data produced:** Returns `IupacResult` directly on match for each narrow case.
-
-**Data consumed:** `g`, `mol`
-
-**Indigo call density:** Low - primarily graph traversal and pattern matching on `g.nodes`, minimal Indigo calls.
+**Indigo call density:** low — primarily graph traversal.
 
 ---
 
-### Section 4: Acyclic Naming Path (Phase 1) (lines 18364-20158)
+### Section 4: Functional-Group Narrow Cases (lines ~12223-15047)
+
+**Purpose:** Handle specific, individually-recognized functional-group
+patterns before the main dispatch chain. Each sub-block is its own
+self-contained guarded check that returns `IupacResult` directly on match
+and falls through otherwise.
+
+**Real sub-block header lines (verified via a full scan of `// ---`
+comments in this range — these are the actual line numbers, not estimates):**
+
+| Sub-block | Real line |
+|---|---|
+| P-67.2 dinuclear phosphorus oxoacids | 12226 |
+| P-67.2 dinuclear arsenic oxoacids | 12321 |
+| P-67.2 dinuclear boron oxoacids | 12416 |
+| P-67.2 dinuclear antimony oxoacids | 12500 |
+| Amidoximes (P-66.4.4) | 12595 |
+| N-substituted diamines (P-62.2.4) | 12672 |
+| N-substituted amines (P-62.2.4) | 13134 |
+| N-substituted exocyclic amines on saturated N-heterocycle | 13580 |
+| Carbamate esters (P-65.2.1.1) | 13916 |
+| N-substituted amides (P-66.1.1.3.1), incl. imide rejection | 13999 |
+| N-substituted sulfonamides/sulfinamides | 14143 |
+| N-substituted imines (P-62.3) | 14359 |
+| N'-substituted amidines (P-66.4) | 14441 |
+| N'-substituted guanidine (P-66.4.1.2.1) | 14511 |
+| Ureas | 14592 |
+| N-substituted thioamides (P-66.1.1.3.1), incl. imide rejection | 14692 |
+| N-substituted hydrazides (P-66.3.3.1) | 14821 |
+| P-67.2 dinuclear sulfur oxoacids | 15048 |
+
+**Data produced:** Returns `IupacResult` directly on match for each case.
+
+**Data consumed:** `g`, `mol`.
+
+**Indigo call density:** low-medium — mostly graph-based pattern matching
+on `g.nodes`.
+
+---
+
+### Section 5: Ring-Substituent Pre-pass, then the `namePhase2Monocyclic` Lambda (lines ~15048-18365)
+
+**This entire section was MISSING from the original version of this
+document** — it was folded incorrectly into "Section 3" and "Section 5"
+labels that didn't match the real code. This is actually one coherent,
+large unit: a short pre-pass, followed by a ~2,277-line lambda that is
+called from FIVE different places later in the function (not inlined
+once).
+
+**Pre-pass (~15048-16088):** builds `ringSubstituentInfos`,
+`allRingSubstituentNodes`, and the forcing variables
+`phase2ForcedRingNodeSet` / `phase2ForcedRingSubstituentNames` (both
+initially empty; later sections — see Section 11 — can populate these to
+force the lambda below to treat a specific ring as the monocyclic parent
+with a specific substituent already named).
+
+**The lambda itself (line 16089):**
+```cpp
+auto namePhase2Monocyclic = [&]() -> IupacResult {
+    // --- Phase 2: Monocyclic Ring Path (ringCount == 1) ---
+    ...
+};
+```
+Closes at line 18365. This is the function's single largest contiguous
+block of ring-naming logic for monocyclic systems.
+
+**Call sites (all within `generateNameImpl`, further down the file):**
+lines 23778, 23872, 23881, 23895, 23905, and the function's own final
+fallback return at line 23963 (`return namePhase2Monocyclic();`).
+
+**Data produced:** `IupacResult` when called; the lambda itself reads
+`phase2ForcedRingNodeSet`/`phase2ForcedRingSubstituentNames` to support
+being invoked with a ring artificially forced into the "monocyclic parent"
+role (used by Section 11, below).
+
+**Data consumed:** `g`, `mol`, `indigoToGraphIdx`, `ringSubstituentInfos`
+(from the pre-pass), `ringCount`.
+
+---
+
+### Section 6: Acyclic Naming Path (Phase 1) (lines 18367-20161)
+
+**Guard (line 18367):** `if (ringCount == 0 || !ringSubstituentInfos.empty())`
 
 **Purpose:** Name acyclic compounds and ring-substituted chains.
 
-**Guard:** `if (ringCount == 0 || !ringSubstituentInfos.empty())` (line 18364)
-
-**Subsections:**
-- **Functional group detection for Phase 1** (18364-18410): Detect nitro, nitroso, isocyanate nitrogen patterns.
-- **Functional-group pattern matching** (18412-20158):
-  - Build `carbonGroup` map (carbon node -> GroupType) by scanning all carbon atoms and their neighbors.
-  - Detect: carboxylic acid (via COOH pattern: C with double O, single O, and H or connection), ester, acyl halide, amide, thioamide, sulfinic acid, sulfonic acid, etc.
-  - Build prefix/suffix via `principalGroupSuffix()` helper.
-  - Handle various functional group classes with `classifyFunctionalGroups` and `nameAcyclicChainParentWithSubstituents`.
-  - Chain parent selection and locant assignment.
-  - Stereochemistry handling for acyclic chains.
+**Structure:** functional-group pattern matching (nitro, nitroso,
+isocyanate, carboxylic acid, ester, acyl halide, amide, thioamide,
+sulfinic/sulfonic acid, etc.) via a `carbonGroup` map; principal-group
+suffix selection; chain parent selection and locant assignment via
+`nameAcyclicChainParentWithSubstituents`; stereochemistry handling.
 
 **Data produced:** Returns `IupacResult` directly for acyclic compounds.
 
-**Data consumed:** `g`, `mol`, `ringCount`, `ringSubstituentInfos`
+**Data consumed:** `g`, `mol`, `ringCount`, `ringSubstituentInfos`.
 
-**Indigo call density:** Medium - uses `indigoGetAtom`, `indigoAtomicNumber`, `indigoCountImplicitHydrogens`, `indigoIterateNeighbors`, `indigoBond`, `indigoBondOrder` for functional group detection. Dozens of Indigo calls throughout.
-
----
-
-### Section 5: Monocyclic Ring Path (Phase 2) (lines 20159-20461)
-
-**Purpose:** Name monocyclic ring compounds (ringCount == 1).
-
-**Guard:** `if ((ringCount == 3 && allSSSRNodes.size() == 10) || (ringCount == 5 && allSSSRNodes.size() == 8))` for adamantane/cubane, but main Phase 2 starts after functional group checks.
-
-**Actually:** Phase 2 marker at line 20159 (`// --- Phase 2: Monocyclic Ring Path (ringCount == 1) ---`) but the guard is for retained names. The actual monocyclic handling is distributed across multiple specialized blocks.
-
-**Subsections:**
-- **Retained Names for Adamantane and Cubane** (20159-20461): Phase 26 marker here, handles cage structures.
-
-**Note:** The monocyclic ring naming is interspersed with functional group handling. The actual Phase 2 content appears to start at line 20159 but is followed by Phase 26, then Phase 27.
+**Indigo call density: measured as ZERO.** `grep -c "indigo[A-Z][A-Za-z]*("`
+over this exact line range returns 0. This section does all of its
+functional-group detection via pure graph traversal on the already-built
+`g` — it makes no direct Indigo API calls at all. (The original version of
+this document claimed "High (~50-70)" for this section — that was
+fabricated; this is actually one of the LEAST Indigo-dependent sections in
+the whole function, the opposite of what was claimed.)
 
 ---
 
-### Section 6: Saturated Unsubstituted Bicyclic Hydrocarbon (Phase 27) (lines 20462-20500)
+### Section 7: Phase 26 — Retained Names for Adamantane and Cubane (lines ~20165-20464)
 
-**Purpose:** Name von Baeyer bicyclo[a.b.c]alkane systems.
+**Real header (line 20162, +3 for comment markers added since = ~20165):**
+`// --- Phase 26: Retained Names for Adamantane and Cubane ---`
 
-**Guard:** `if (ringCount == 2)` (line 20463)
+**Purpose:** Name cage hydrocarbons (adamantane, cubane) by exact
+structural match.
 
-**Logic:**
-- Extract SSSR rings via Indigo.
-- Build shared atom matrix between rings.
-- Check for valid bicyclic topology (exactly 2 shared atoms for von Baeyer).
-- Build bridge size array [a, b, c] from ring pair connectivity.
-- Name as "bicyclo[a.b.c]alkane" with appropriate stem.
-
-**Data produced:** Returns `IupacResult` directly on match.
-
-**Data consumed:** `g`, `mol`, `ringCount`
-
-**Indigo call density:** Medium - uses `indigoIterateSSSR`, `indigoIterateAtoms`, `indigoIndex`, `indigoFree`.
+(The original document mislabeled this whole block as "Section 5:
+Monocyclic Ring Path (Phase 2)" — Phase 2 is the lambda in Section 5
+above, a completely different and much larger piece of code. This
+section is Phase 26 only.)
 
 ---
 
-### Section 7: Spiro Hydrocarbon Paths (Phases 28-29.5) (lines 20501-21240)
+### Section 8: Phase 27 — Saturated Unsubstituted Bicyclic Hydrocarbons (lines ~20465-20655)
 
-**Purpose:** Name spiro compounds.
+**Real header:** `// --- Phase 27: Saturated Unsubstituted Bicyclic Hydrocarbon Path (von Baeyer: bicyclo[a.b.c]alkane) ---`
 
-**Subsections:**
-- **Spirobi[bicyclo[a.b.c]alkane] (Phase 29)** (20501-20590): 4-ring spiro systems.
-- **Spiro[alkane-...] (Phase 28)** (20591-21240): General spiro compound naming.
-- **Dispiroter[bicyclo[a.b.c]alkane] (Phase 29.5)** (21241-...): Multi-spiro systems.
+**Guard:** `if (ringCount == 2)`
 
-**Guards:** Ring count and ring size specific checks.
-
-**Data produced:** Returns `IupacResult` directly on match.
-
-**Data consumed:** `g`, `mol`, `ringCount`, `allSSSRRings`
-
-**Indigo call density:** Medium - SSSR iteration, atom/neighbor traversal.
+**Purpose:** Name von Baeyer bicyclo[a.b.c]alkane systems: extract SSSR
+rings, build the shared-atom matrix, check valid bicyclic topology,
+construct the bridge-size array, assemble the "bicyclo[a.b.c]alkane" name.
 
 ---
 
-### Section 8: Special Narrow Cases (Phases 30.5-35) (lines 21241-23370)
+### Section 9: Spiro and Dispiro Hydrocarbon Paths (Phases 28, 29, 29.5) (lines ~20655-21321)
 
-**Purpose:** Handle specific fused ring systems and special cases.
+**Real header lines, in the order they actually appear (NOT the order the
+original document claimed):**
 
-**Subsections:**
-- **1,4-epoxynaphthalene (Phase 30.5, P-25.4)** (21241-21580): Specific fused heterocycle.
-- **Benzo-fused Heterobicyclic Ring Systems (Phase 31, ringCount == 2)** (21581-22410): Handles benzofused systems like benzofuran, indole, etc.
-- **Purine (Phase 32)** (22411-22800): Imidazole + pyrimidine ortho-fused system.
-- **Pentalene (Phase 33)** (22801-23000): 5-5 fused bicyclic hydrocarbon C8H6.
-- **3H-Pyrrolizine (Phase 34)** (23001-23200): 5-5 fused bicyclic with bridgehead nitrogen.
-- **General Two-Heterocycle Fusion Nomenclature (Phase 35)** (23201-23370): Generic handling for two-heterocycle fused systems.
+| Phase | Real line |
+|---|---|
+| Phase 29.5 (Dispiroter[bicyclo[a.b.c]alkane], P-24.4.1) | 20655 |
+| Phase 29 (Spirobi[bicyclo[a.b.c]alkane]) | 20799 |
+| Phase 28 (general spiro[a.b]alkane) | 20982 |
 
-**Data produced:** Returns `IupacResult` directly on match.
-
-**Data consumed:** `g`, `mol`, `ringCount`, `allSSSRRings`
-
-**Indigo call density:** Medium - SSSR iteration, atom classification, ring pattern matching.
+(The original document had these in a different order with ranges that
+overlapped Section 8's territory — e.g. it placed "Phase 29" before
+"Phase 28" with a range that didn't match either real block.)
 
 ---
 
-### Section 9: Multi-Component Ring Dispatch with Fusion Site 2 (lines 22741-23369)
+### Section 10: Special Fused/Heterocyclic Narrow Cases (Phases 30.5-35) (lines ~21321-23374)
 
-**Purpose:** Handle molecules with exactly one real fused ring system plus isolated single rings (multi-component fused systems). Characterized in Task G as Site 2.
+**Real header lines (verified, in actual file order):**
 
-**Guard:** Implicit - entered when previous specialized phases don't match.
+| Phase | Real line |
+|---|---|
+| Phase 30.5 (1,4-epoxynaphthalene, P-25.4) | 21321 |
+| Detect unsupported fusion topologies (P-25.3.1.1.2, P-25.4, P-25.5) | 21547 |
+| Phase 31 (Benzo-fused Heterobicyclic Ring Systems, ringCount==2) | 21636 |
+| Phase 32 (Purine) | 21777 |
+| Phase 33 (Pentalene) | 21894 |
+| Phase 34 (3H-Pyrrolizine) | 21999 |
+| Phase 35 (General Two-Heterocycle Fusion Nomenclature) | 22118 |
 
-**Structure:**
-- Extract all SSSR rings from `mol` via Indigo (lines 22754-22773).
-- Build ring connectivity graph using union-find (lines 22775-22820).
-- Identify connected components: one "real" component (fused rings) and one or more isolated single rings.
-- For each isolated ring, name it as substituent via `nameRingAsSubstituent` (lines 22896-22910), collecting results into `extraSubs`.
-- Build `realComponentIndigo` (vector of ring sets for the real component) and `realComponentGraphUnion` (graph node set).
-- Compute topology of real component: `sharedC` matrix, `degreeC`, `validFusionC`, `endsC`, `centersC`, `hasBranchingC` (lines 23310-23335).
-- **Fusion Site 2 - Multi-component context** (lines 23343, 23349):
-  - Line 23343: `auto chainRes = nameLinearChainFusion(g, mol, indigoToGraphIdx, NC, freeValAtom, &realComponentIndigo, extraSubs);`
-  - Line 23349: `auto branchRes = nameBranchingFusion(g, mol, indigoToGraphIdx, NC, freeValAtom, &realComponentIndigo, extraSubs);`
-  - Parameters: `g` (local Graph), `mol` (input), `indigoToGraphIdx` (local map), `NC` = `realComponentSize`, `freeValAtom` (first attachment point or -1), `ringSubsetOverride = &realComponentIndigo` (CRITICAL: constrains to real component rings), `extraSubstituents = extraSubs` (CRITICAL: pre-named isolated ring substituents).
-  - Result handling: Uses only `result[0]`, checks `.success` directly (lines 23344-23346, 23350-23352). Returns early if either succeeds (line 23361).
-- Falls through to later checks if neither fusion mechanism succeeds.
-
-**Data produced:**
-- `realComponentIndigo` (vector of ring atom sets for real component)
-- `extraSubs` (vector of pre-named isolated ring substituent names with attachment points)
-- Fusion results that may trigger early return
-
-**Data consumed:**
-- `g` (local Graph)
-- `mol` (input molecule)
-- `indigoToGraphIdx` (local map from graph construction)
-- SSSR rings from Indigo
-
-**Indigo call density:** High - extensive SSSR iteration, atom classification, ring component analysis. ~30-40 Indigo calls in this block.
-
-**Contract notes:** Site 2 has fundamentally different contract from Sites 1 and 3 due to `ringSubsetOverride` and `extraSubstituents` parameters. Cannot be unified without breaking multi-component naming.
+(The original document's line ranges for this group were off by up to
+~1,100 lines in places and had Section 8/9-equivalent ranges overlapping
+each other. These are the real, scanned header positions.)
 
 ---
 
-### Section 10: Fusion Chain Nomenclature with Retained-Registry Pre-Check and Fusion Site 3 (lines 23371-23781)
+### Section 11: Multi-Component Ring Dispatch — Fusion-Dispatch Site 2 (lines ~22744-23374)
 
-**Purpose:** Main fusion chain/branching nomenclature entry point for non-multi-component cases. Includes retained-registry pre-check (Task C) and Fusion Site 3.
+**Real header (line 22744):** `// --- Multi-component ring dispatch: a molecule with exactly one real, ...`
 
-**Guard:** `if (ringCount >= 3)` (line 23372)
+**Purpose:** Handle molecules with exactly one "real" fused ring system
+plus one or more separate, plain single rings elsewhere. Characterized in
+Task G's `docs/iupac/fusion-dispatch-characterization.md` as **Site 2**.
 
-**Subsections:**
-- **Phase 44 & 48 header** (line 23371): N-Heterocycle Fusion Chain Nomenclature.
-- **SSSR extraction and topology checking** (lines 23372-23490):
-  - Extract SSSR rings via Indigo (lines 23373-23392).
-  - Build `shared` matrix counting shared atoms between ring pairs (lines 23393-23405).
-  - Compute `degree`, `validFusion`, `ends`, `centers`, `hasBranching` (lines 23407-23410).
-  - Check ring disjointness (lines 23393-23399).
-- **Retained-registry pre-check** (lines 23492-23559):
-  - Call `tryRetainedBaseDecomposition(mol)` (line 23492).
-  - On success: check for heteroatoms, exocyclic substituents, hydro prefix.
-  - Task C InChIKey override check (lines 23537-23555): match against pinned InChIKeys for specific molecules (1,2,3,4-tetrahydroacridine, octahydrobenz[b]acridine, octahydrotetracene, naphtho[2,3-g]isoquinoline).
-  - Return retained name with `PreferredIupacName` status if InChIKey matches.
-  - Falls through if check fails.
-- **Fusion Site 3 - Retained-registry pre-check context** (lines 23566, 23634):
-  - Line 23566: `chainResults = nameLinearChainFusion(g, mol, indigoToGraphIdx, ringCount);`
-  - Line 23634: `branchResults = nameBranchingFusion(g, mol, indigoToGraphIdx, ringCount);`
-  - Parameters: `g` (local Graph), `mol` (input), `indigoToGraphIdx` (local map), `ringCount` (from line 8922). All optional parameters use defaults: `freeValenceAtom = -1`, `ringSubsetOverride = nullptr`, `extraSubstituents = {}`.
-  - Guarded by topology checks: linear chain only if `validFusion && ends == 2 && centers == N - 2` (line 23565). Branching only if `validFusion && hasBranching` (line 23633).
-  - Result handling: Collects only `result[0]`, checks both `.success` and specific sentinel errors (lines 23567, 23635). Sentinel strings: "Linear chain: no match" and "Branching fusion: no match".
-  - Exocyclic substituent rejection handling (lines 23573-23619 for linear, 23641-23659 for branching): if error is the specific exocyclic substituent rejection, perform chain-vs-ring seniority check via `classifyFunctionalGroups` and potentially fall back to chain naming.
-  - Returns fusion result directly if applies and succeeds (lines 23623, 23638).
-- Falls through to Phase 3 if no fusion match.
+**Structure:** Extract all SSSR rings; build ring connectivity via
+union-find to identify the one "real" (fused) component vs. isolated
+single rings; name each isolated ring as a substituent via
+`nameRingAsSubstituent`, collecting results into `extraSubs`; build
+`realComponentIndigo` (the real component's own ring set) and compute its
+topology (`sharedC`, `degreeC`, `validFusionC`, `endsC`, `centersC`,
+`hasBranchingC`).
 
-**Data produced:**
-- Fusion results that may trigger early return
-- `chainResults`, `branchResults` (std::vector<RingSystemNameResult>)
+**Fusion-dispatch Site 2 calls (lines 23343, 23349 per Task G's
+characterization doc, which already has verified line numbers for this —
+not re-derived here):**
+```cpp
+auto chainRes  = nameLinearChainFusion(g, mol, indigoToGraphIdx, NC, freeValAtom, &realComponentIndigo, extraSubs);
+auto branchRes = nameBranchingFusion(g, mol, indigoToGraphIdx, NC, freeValAtom, &realComponentIndigo, extraSubs);
+```
+Only `result[0].success` is checked; returns early on either success.
 
-**Data consumed:**
-- `g` (local Graph)
-- `mol` (input molecule)
-- `indigoToGraphIdx` (local map from graph construction)
-- `ringCount` (computed at line 8922)
-- `sssrRings` (local SSSR rings extracted in this block)
+**Data produced:** `extraSubs`, `realComponentIndigo`; an early-return
+`IupacResult` on fusion success.
 
-**Indigo call density:** High - SSSR iteration, topology analysis. ~25-35 Indigo calls.
+**Data consumed:** `g`, `mol`, `indigoToGraphIdx`.
 
-**Contract notes:** Site 3 uses default parameters for `freeValenceAtom`, `ringSubsetOverride`, and `extraSubstituents`. Different from Site 2 (multi-component) which passes explicit values. Different result-handling logic from Site 1 (in `nameRingSystemAsSubstituent`).
+**Contract note (from Task G):** Site 2's `ringSubsetOverride`/
+`extraSubstituents` arguments give it a fundamentally different contract
+from Sites 1 and 3 — see `fusion-dispatch-characterization.md` for the
+full analysis; not re-derived here to avoid disagreeing with the
+already-reviewed, already-approved source of truth for this specific
+topic.
 
 ---
 
-### Section 11: Ortho-Fused Bicyclic Aromatic Path (Phase 3) (lines 23782-24799)
+### Section 12: Retained-Registry Pre-Check + Fusion-Dispatch Site 3 (lines ~23374-23785)
 
-**Purpose:** Name ortho-fused bicyclic aromatic systems (e.g., naphthalene, anthracene, phenanthrene).
+**Real header (line 23374):** `// --- Phase 44 & 48: N-Heterocycle Fusion Chain Nomenclature ---`
 
-**Guard:** `if (ringCount == 2)` (line 23783)
+**Guard:** `if (ringCount >= 3)`
 
-**Structure:**
-- Extract SSSR rings via Indigo.
-- Verify exactly 2 rings with ortho-fusion (exactly 2 shared atoms).
-- Build ring node sets, identify fusion atoms.
-- Determine ring sizes and fusion pattern.
-- Name as "naphthalene", "anthracene", "phenanthrene" based on ring size combination.
-- Handle substituents on ortho-fused systems:
-  - Classify functional groups via `classifyFunctionalGroups`.
-  - Build locant map for fusion atoms (shared atoms get letter suffixes: a, b, c, ...).
-  - Handle locant assignment for shared vs. non-shared positions.
-  - Special handling for naphthalene (well-known retained name).
-- Seniority checks between chain and ring parents.
-- Substituent naming via `nameBranchGraph` for each substituent.
-- Assemble final name with proper locants and seniority ordering.
+**Purpose:** Main fusion chain/branching entry point for non-multi-
+component cases. Includes the retained-registry pre-check (Task C's
+InChIKey-override logic) and fusion-dispatch **Site 3** (also
+characterized in Task G's document — not re-derived here).
 
-**Data produced:** Returns `IupacResult` directly on match.
+**Structure:** extract SSSR rings; build the `shared` matrix and compute
+`degree`/`validFusion`/`ends`/`centers`/`hasBranching`; call
+`tryRetainedBaseDecomposition(mol)` — on success, check the Task C
+InChIKey override set (see `src/app/IupacNamer.cpp`'s own comment at that
+call site for the exact 4 molecules) and return a `PreferredIupacName`-
+or `SystematicIupacName`-tagged result; otherwise fall through to Site 3's
+`nameLinearChainFusion`/`nameBranchingFusion` calls (default parameters);
+on no match, fall through to Section 13 below.
 
-**Data consumed:**
-- `g` (local Graph)
-- `mol` (input molecule)
-- `indigoToGraphIdx` (local map)
-- `ringCount`
+**Data produced:** `chainResults`/`branchResults`; an early-return
+`IupacResult` on retained-registry or fusion success.
 
-**Indigo call density:** Medium - SSSR iteration, atom classification. ~20-30 Indigo calls.
+**Data consumed:** `g`, `mol`, `indigoToGraphIdx`, `ringCount`.
+
+---
+
+### Section 13: Ortho-Fused Bicyclic Path — Final Fallback (lines 23785-23963)
+
+**Real header (line 23785):** `// --- Phase 3: Ortho-fused Bicyclic Aromatic Path (ringCount == 2: Naphthalene) ---`
+
+**Guard:** `if (ringCount == 2)`
+
+**This section's real content is substantially different from what the
+original version of this document claimed.** The original claimed this
+section names "naphthalene, anthracene, phenanthrene" directly using
+`classifyFunctionalGroups`, fusion-locant letter assignment, and
+`nameBranchGraph` — none of that appears anywhere in the real 178-line
+body (read in full to write this entry, not inferred). What the code
+actually does:
+
+1. Extract exactly 2 SSSR rings (reject if not exactly 2:
+   `"Fused ring systems other than naphthalene are not supported in this phase."`).
+2. Check whether the two rings are **disjoint** (share zero atoms) or
+   fused (share atoms).
+3. **If disjoint:** determine which ring (if either) is "parent-eligible"
+   (has a heteroatom, or an exocyclic double/triple bond to O/N/S). If
+   exactly one is eligible, name the other as a substituent via
+   `nameRingAsSubstituent`, force that ring into the monocyclic-parent
+   lambda from Section 5 via `phase2ForcedRingNodeSet`/
+   `phase2ForcedRingSubstituentNames`, and call `namePhase2Monocyclic()`.
+   If BOTH are eligible, break the tie via `compareRingSeniority` (P-44.2.1
+   criteria a-g); a complete tie returns
+   `"Two ring systems of equal seniority (P-44.2.1) are not yet supported as parent vs. substituent."`.
+   If NEITHER is eligible, check for the **biphenyl special case**
+   (two unsubstituted all-carbon aromatic 6-rings) and return `"biphenyl"`
+   directly if it matches.
+4. **Fallback for everything else (including the actually-fused case):**
+   `return nameNaphthaleneFusion(ring1Nodes, ring2Nodes);` (line 23960) —
+   the real naphthalene/fused-bicyclic-aromatic naming lives in this
+   separate function, not inline in `generateNameImpl`.
+5. **The function's absolute final line (23963):**
+   `return namePhase2Monocyclic();` — if `ringCount != 2` at all (i.e. none
+   of Sections 1-12 matched and this section's own `if (ringCount == 2)`
+   guard didn't even fire), `generateNameImpl` falls all the way through to
+   calling the Section 5 lambda unconditionally as the last resort.
+
+**Data produced:** Returns `IupacResult` — either directly, or via
+`namePhase2Monocyclic()`/`nameNaphthaleneFusion()`.
+
+**Data consumed:** `g`, `mol`, `indigoToGraphIdx`, `ringCount`,
+`allSSSRRings`, `phase2ForcedRingNodeSet`/`phase2ForcedRingSubstituentNames`
+(written here, read by Section 5's lambda).
 
 ---
 
 ## Cross-Section Data Flow
 
-### Key Local State Produced and Consumed
+| State | Produced at | Consumed by |
+|---|---|---|
+| `indigoToGraphIdx` | Line 11787 | Every subsequent section |
+| `Graph g` | Line 12015 | Every subsequent section |
+| `int ringCount` | Line 8925 | Every ring-count-guarded section (3, 6, 7, 8, 9, 10, 11, 12, 13) |
+| `ringSubstituentInfos` | Section 5's pre-pass (~15048-16088) | Section 6's guard; Section 5's lambda |
+| `phase2ForcedRingNodeSet` / `phase2ForcedRingSubstituentNames` | Declared empty in Section 5's pre-pass; WRITTEN by Section 13 | Read by Section 5's `namePhase2Monocyclic` lambda |
+| `extraSubs`, `realComponentIndigo` | Section 11 | Section 11's own fusion-dispatch Site 2 calls only |
+| `chainResults`/`branchResults` | Section 12 | Section 12's own fusion-dispatch Site 3 handling only |
 
-| State | Produced at | Consumed by | Lifetime |
-|-------|-------------|-------------|----------|
-| `Graph g` | Line 12012 | All subsequent sections | Function scope |
-| `std::map<int, int> indigoToGraphIdx` | Line 11784 | All sections needing Indigo-to-graph mapping | Function scope |
-| `int ringCount` | Line 8922 | All ring-count guarded sections | Function scope |
-| `std::vector<std::set<int>> allSSSRRings` (or `localSSSRRings`) | Lines 12081-12104, 22754-22773, 23373-23392, etc. | Ring analysis sections | Multiple local instances |
-| `std::vector<RingSystemNameResult> chainResults/branchResults` | Lines 23566, 23634 (Site 3); Lines 23343, 23349 (Site 2) | Fusion result handling | Local to fusion blocks |
-| `std::vector<std::pair<int, QString>> extraSubs` | Lines 22903, 22905-22910 | Site 2 fusion calls | Multi-component block scope |
-| `std::vector<std::set<int>> realComponentIndigo` | Lines 22825, 22827-22870 | Site 2 fusion calls | Multi-component block scope |
-| `FunctionalGroupClassification fgc` | Lines 16250, 17703, 23585, 23653 | Substituent-aware naming, seniority checks | Local to each call site |
+**Critical dependency:** `mol` is mutated in place by Section 1's
+sulfoxide normalization and aromatization, before `g`/`indigoToGraphIdx`
+are ever built — every later section's Indigo calls operate on the
+already-normalized molecule.
 
-### Data Flow Between Major Sections
-
-1. **Entry/Preprocessing → All other sections**:
-   - Produces: `g`, `indigoToGraphIdx`, `ringCount`, normalized `mol`
-   - All subsequent sections consume these
-
-2. **Salt handling (Section 1) → Exit**:
-   - Produces: `IupacResult` directly
-   - No data flow to other sections (early return)
-
-3. **Organometallic → Exit**:
-   - Produces: `IupacResult` directly
-   - No data flow to other sections (early return)
-
-4. **Functional-Group Narrow Cases → Exit**:
-   - Produces: `IupacResult` directly on match
-   - Falls through to next check on no match
-
-5. **Acyclic Path → Exit**:
-   - Guarded by: `ringCount == 0 || !ringSubstituentInfos.empty()`
-   - Produces: `IupacResult` for acyclic compounds
-   - Falls through if guard not met
-
-6. **Multi-Component Ring Dispatch (Site 2) → Exit or Phase 44/48**:
-   - Produces: `extraSubs` (pre-named isolated ring substituents)
-   - Produces: `realComponentIndigo` (ring subset for real component)
-   - Calls: `nameLinearChainFusion`/`nameBranchingFusion` with `ringSubsetOverride=&realComponentIndigo, extraSubstituents=extraSubs`
-   - On success: returns `IupacResult` directly (early exit at line 23361)
-   - On failure: falls through to Phase 44/48
-
-7. **Phase 44/48 → Exit or Phase 3**:
-   - Produces: `sssrRings`, topology metrics (`validFusion`, `ends`, `centers`, `hasBranching`)
-   - Retained-registry pre-check: may return early with retained name
-   - Fusion Site 3: calls `nameLinearChainFusion`/`nameBranchingFusion` with default parameters
-   - On fusion match: returns `IupacResult` directly
-   - Falls through to Phase 3
-
-8. **Phase 3 → Exit**:
-   - Produces: `IupacResult` for ortho-fused bicyclic aromatics
-   - No further fallback
-
-### Critical Data Dependencies
-
-- **`g` and `indigoToGraphIdx`**: Built once at lines 12012 and 11784. Shared by all sections that need graph-based analysis. Never modified after construction.
-- **`mol`**: Input parameter. Modified in-place by sulfoxide normalization (lines 8744-8832) and aromatization (line 8920). All subsequent Indigo calls use the modified molecule.
-- **`ringCount`**: Computed once at line 8922. Used by all ring-count guarded sections. Not recomputed.
-- **SSSR rings**: Extracted multiple times in different sections (lines 12081, 22754, 23373, 23495). Each extraction is independent and local to its section.
+**Note on SSSR re-extraction:** SSSR rings are independently re-extracted
+by Indigo in multiple separate places (Sections 8, 10, 11, 12, 13) — each
+extraction is local to its own section and not shared or cached across
+sections.
 
 ---
 
-## Indigo Call-Site Density by Section
+## Indigo Call-Site Density by Section (measured, not estimated)
 
-| Section | Lines | Indigo Call Density | Notes |
-|---------|-------|---------------------|-------|
-| Entry/Preprocessing | 8739-12071 | Very High (~100+) | Sulfoxide norm, ion lookup, salt handling, graph construction |
-| Organometallic | 12072-12171 | Low (~5) | Minimal Indigo, mostly graph traversal |
-| Functional-Group Narrow Cases | 12172-18363 | Low-Medium (~20-30) | Pattern matching on graph, minimal Indigo |
-| Acyclic Path (Phase 1) | 18364-20158 | High (~50-70) | Functional group detection, chain analysis |
-| Monocyclic Ring (Phase 2) | 20159-20461 | Medium (~15-20) | Ring detection, validation |
-| Saturated Bicyclic (Phase 27) | 20462-20500 | Medium (~10-15) | SSSR iteration, ring analysis |
-| Spiro Paths (Phases 28-29.5) | 20501-21240 | Medium (~15-20) | SSSR, ring connectivity |
-| Special Narrow Cases (Phases 30.5-35) | 21241-23370 | Medium (~20-30) | SSSR, atom classification |
-| Multi-Component Ring (Site 2) | 22741-23369 | High (~30-40) | SSSR, union-find, ring component analysis |
-| Fusion Chain + Retained Check (Site 3) | 23371-23781 | High (~25-35) | SSSR, topology analysis, fusion calls |
-| Ortho-Fused Aromatic (Phase 3) | 23782-24799 | Medium (~20-30) | SSSR, functional group classification |
+| Section | Lines | Indigo calls (measured via `grep -c "indigo[A-Z][A-Za-z]*("`) |
+|---|---|---|
+| 1-2 (Entry + graph construction) | 8742-12067 | the large majority of the function's total |
+| 6 (Acyclic, Phase 1) | 18367-20161 | **0** — pure graph traversal, no direct Indigo calls |
+| 13 (Phase 3 final fallback) | 23785-23963 | 9 |
+| **Whole function** | 8742-23963 | **865** |
 
-**Total estimated Indigo calls:** 400-500+ across the entire function.
-
-**Density observation:** The entry/preprocessing and acyclic sections have the highest Indigo call density. The functional-group narrow cases have the lowest (mostly graph-based pattern matching). Fusion-related sections have high density due to SSSR extraction and topology analysis.
+(The original version of this document estimated per-section counts for
+every section without measuring; several of those estimates were
+contradicted by a direct count, most notably claiming the acyclic section
+was one of the HIGHEST-density sections when it is measurably zero. The
+counts above are from an actual `grep -c` over the cited ranges at the
+commit this fix was made, not an estimate — re-run the same command
+yourself if the line ranges shift in a future task.)
 
 ---
 
 ## Fusion-Dispatch Call Sites Summary
 
-This function contains **two of the three** fusion-dispatch call sites characterized in Task G (Site 1 is in `nameRingSystemAsSubstituent`, not in this function).
+This function contains **two of the three** fusion-dispatch call sites
+characterized in Task G (Site 1 is in `nameRingSystemAsSubstituent`, a
+different function entirely). See
+`docs/iupac/fusion-dispatch-characterization.md` for the full, already-
+reviewed characterization — summarized here only for convenience:
 
-| Site | Lines | Context | Key Parameters | Result Handling |
-|------|-------|---------|-----------------|------------------|
-| **Site 2** | 23343, 23349 | Multi-component (one real fused system + isolated rings) | `ringSubsetOverride=&realComponentIndigo`, `extraSubstituents=extraSubs`, `freeValenceAtom=freeValAtom` | Uses `result[0].success` only, early return on success |
-| **Site 3** | 23566, 23634 | Retained-registry pre-check (non-multi-component) | All defaults (`freeValenceAtom=-1`, `ringSubsetOverride=nullptr`, `extraSubstituents={}`) | Uses `result[0]`, checks both `.success` and sentinel errors, exocyclic fallback logic |
-
-See `docs/iupac/fusion-dispatch-characterization.md` (Task G) for complete characterization of all three sites including Site 1 in `nameRingSystemAsSubstituent`.
+| Site | Section (above) | Key parameters | Result handling |
+|---|---|---|---|
+| **Site 2** | Section 11 | `ringSubsetOverride=&realComponentIndigo`, `extraSubstituents=extraSubs` | `result[0].success` only |
+| **Site 3** | Section 12 | all defaults | `result[0]`, checks `.success` + sentinel strings, exocyclic-substituent fallback logic |
 
 ---
 
 ## Key Observations for Future Extraction
 
-1. **`g` and `indigoToGraphIdx` are the core shared state**: Built once at lines 12012 and 11784, used by virtually all subsequent sections. These would be natural parameters for any extracted component.
-
-2. **`mol` is mutated in-place**: Sulfoxide normalization (lines 8744-8832) and aromatization (line 8920) modify the input molecule. Any extraction must either:
-   - Accept that the molecule is pre-normalized
-   - Handle normalization internally
-   - Clone the molecule before normalization
-
-3. **SSSR rings are recomputed multiple times**: Different sections extract SSSR rings independently (lines 12081, 22754, 23373, 23495). A caching mechanism could reduce redundant computation.
-
-4. **Ring-based guards are common**: Many sections guard on `ringCount == X` or `ringCount >= X`. This suggests a natural decomposition point at ring-count dispatch.
-
-5. **Fusion sites have different contracts**: Site 2 (multi-component) cannot be unified with Site 3 (retained-registry pre-check) due to `ringSubsetOverride` and `extraSubstituents` parameters. See Task G characterization.
-
-6. **Functional group classification is reused**: `classifyFunctionalGroups` is called at lines 16250, 17703, 23585, 23653, and 23147. This is a candidate for extraction.
-
-7. **Graph traversal helpers are needed**: `nameBranchGraph` is called extensively throughout. This is a natural candidate for a shared helper service.
-
-8. **Early returns are common**: Most sections return `IupacResult` directly on match, with fall-through on no match. This makes the function a chain of responsibility pattern.
+1. **`g` and `indigoToGraphIdx` are the core shared state** (lines 12015,
+   11787), read by virtually every section. Natural parameters for any
+   future extracted component.
+2. **`mol` is mutated in-place** in Section 1, before `g` is built. Any
+   future extraction must either accept a pre-normalized molecule or
+   handle normalization itself.
+3. **SSSR rings are independently re-extracted** in Sections 8, 10, 11,
+   12, and 13 — never cached or shared. A caching layer could reduce
+   redundant Indigo calls, but is out of scope for this plan.
+4. **Section 5's `namePhase2Monocyclic` lambda is the single largest
+   reusable unit** (2,277 lines), already structured as a self-contained
+   callable with 5 internal call sites plus the function's own final
+   fallback — the most natural extraction candidate if this function is
+   ever decomposed, since it already has lambda-boundary isolation.
+5. **Section 13 and Section 5 are coupled** via
+   `phase2ForcedRingNodeSet`/`phase2ForcedRingSubstituentNames` — any
+   extraction touching either must account for this one shared piece of
+   mutable state crossing the boundary between them.
+6. **Ring-count guards are the dominant dispatch mechanism** (`ringCount
+   == 0`, `== 1` (via the lambda), `== 2` (Sections 8, 10 parts, 13),
+   `>= 3` (Section 12)) — this is the natural axis along which a future
+   decomposition would likely split.
