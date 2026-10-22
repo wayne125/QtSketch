@@ -8,6 +8,7 @@
 #include "NamingValidation.h"
 #include "RetainedRingMatcher.h"
 #include "PeripheralNumbering.h"
+#include "FusionGraphContext.h"
 #include "indigo.h"
 #include "indigo-inchi.h"
 #include <QStringList>
@@ -5622,57 +5623,9 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
         return {RingSystemNameResult{false, "Linear chain: no match", "", {}}};
     }
 
-    std::vector<std::set<int>> sssrRings;
-    bool allDisjoint;
-    if (ringSubsetOverride) {
-        sssrRings = *ringSubsetOverride;
-        allDisjoint = true;
-        for (size_t i = 0; i < sssrRings.size() && allDisjoint; ++i) {
-            for (size_t j = i + 1; j < sssrRings.size(); ++j) {
-                for (int a : sssrRings[i]) {
-                    if (sssrRings[j].count(a)) {
-                        allDisjoint = false;
-                        break;
-                    }
-                }
-                if (!allDisjoint) break;
-            }
-        }
-    } else {
-        int sssrIter = indigoIterateSSSR(mol);
-        allDisjoint = true;
-        if (sssrIter >= 0) {
-            int subMol = 0;
-            while ((subMol = indigoNext(sssrIter)) != 0) {
-                std::set<int> rAtoms;
-                int ringAtomIter = indigoIterateAtoms(subMol);
-                if (ringAtomIter >= 0) {
-                    int ringAtomHandle = 0;
-                    while ((ringAtomHandle = indigoNext(ringAtomIter)) != 0) {
-                        rAtoms.insert(indigoIndex(ringAtomHandle));
-                        indigoFree(ringAtomHandle);
-                    }
-                    indigoFree(ringAtomIter);
-                }
-                sssrRings.push_back(rAtoms);
-                indigoFree(subMol);
-            }
-            indigoFree(sssrIter);
-            for (size_t i = 0; i < sssrRings.size() && allDisjoint; ++i) {
-                for (size_t j = i + 1; j < sssrRings.size(); ++j) {
-                    for (int a : sssrRings[i]) {
-                        if (sssrRings[j].count(a)) {
-                            allDisjoint = false;
-                            break;
-                        }
-                    }
-                    if (!allDisjoint) break;
-                }
-            }
-        } else {
-            allDisjoint = false;
-        }
-    }
+    FusionGraphContext ctx(g, mol, ringSubsetOverride);
+    const auto &sssrRings = ctx.sssrRings();
+    bool allDisjoint = ctx.allDisjoint();
 
     if (!allDisjoint) {
         int N = sssrRings.size();
@@ -7350,57 +7303,9 @@ std::vector<RingSystemNameResult> nameBranchingFusion(
     // new shared-state interfaces between independently-evolving mechanisms).
     
     // SSSR ring computation
-    std::vector<std::set<int>> sssrRings;
-    bool allDisjoint;
-    if (ringSubsetOverride) {
-        sssrRings = *ringSubsetOverride;
-        allDisjoint = true;
-        for (size_t i = 0; i < sssrRings.size() && allDisjoint; ++i) {
-            for (size_t j = i + 1; j < sssrRings.size(); ++j) {
-                for (int a : sssrRings[i]) {
-                    if (sssrRings[j].count(a)) {
-                        allDisjoint = false;
-                        break;
-                    }
-                }
-                if (!allDisjoint) break;
-            }
-        }
-    } else {
-        int sssrIter = indigoIterateSSSR(mol);
-        allDisjoint = true;
-        if (sssrIter >= 0) {
-            int subMol = 0;
-            while ((subMol = indigoNext(sssrIter)) != 0) {
-                std::set<int> rAtoms;
-                int ringAtomIter = indigoIterateAtoms(subMol);
-                if (ringAtomIter >= 0) {
-                    int ringAtomHandle = 0;
-                    while ((ringAtomHandle = indigoNext(ringAtomIter)) != 0) {
-                        rAtoms.insert(indigoIndex(ringAtomHandle));
-                        indigoFree(ringAtomHandle);
-                    }
-                    indigoFree(ringAtomIter);
-                }
-                sssrRings.push_back(rAtoms);
-                indigoFree(subMol);
-            }
-            indigoFree(sssrIter);
-            for (size_t i = 0; i < sssrRings.size() && allDisjoint; ++i) {
-                for (size_t j = i + 1; j < sssrRings.size(); ++j) {
-                    for (int a : sssrRings[i]) {
-                        if (sssrRings[j].count(a)) {
-                            allDisjoint = false;
-                            break;
-                        }
-                    }
-                    if (!allDisjoint) break;
-                }
-            }
-        } else {
-            allDisjoint = false;
-        }
-    }
+    FusionGraphContext ctx(g, mol, ringSubsetOverride);
+    const auto &sssrRings = ctx.sssrRings();
+    bool allDisjoint = ctx.allDisjoint();
 
     if (!allDisjoint) {
         int N = sssrRings.size();
