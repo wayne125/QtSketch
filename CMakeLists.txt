@@ -279,11 +279,12 @@ target_include_directories(randomize_atom_order PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/app
     ${CMAKE_CURRENT_SOURCE_DIR}/tools/iupac
     ${CMAKE_CURRENT_SOURCE_DIR}/indigo/api/c/indigo
+    ${CMAKE_CURRENT_SOURCE_DIR}/indigo/api/c/indigo-inchi
 )
 if (MSVC)
-    target_link_libraries(randomize_atom_order PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.lib)
+    target_link_libraries(randomize_atom_order PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.lib ${INDIGO_LIB_DIR}/indigo-inchi.lib)
 else()
-    target_link_libraries(randomize_atom_order PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.dll)
+    target_link_libraries(randomize_atom_order PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.dll ${INDIGO_LIB_DIR}/indigo-inchi.dll)
 endif()
 
 qt_add_executable(smiles_driver_v72 tools/iupac/smiles_driver.cpp ${IUPAC_NAMING_SOURCES} src/app/BondStereoPerception.h src/app/BondStereoPerception.cpp)
@@ -291,11 +292,12 @@ target_include_directories(smiles_driver_v72 PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/src/app
     ${CMAKE_CURRENT_SOURCE_DIR}/indigo/api/c/indigo
+    ${CMAKE_CURRENT_SOURCE_DIR}/indigo/api/c/indigo-inchi
 )
 if (MSVC)
-    target_link_libraries(smiles_driver_v72 PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.lib)
+    target_link_libraries(smiles_driver_v72 PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.lib ${INDIGO_LIB_DIR}/indigo-inchi.lib)
 else()
-    target_link_libraries(smiles_driver_v72 PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.dll)
+    target_link_libraries(smiles_driver_v72 PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.dll ${INDIGO_LIB_DIR}/indigo-inchi.dll)
 endif()
 
 qt_add_executable(fused_ring_orientation_test tests/fused_ring_orientation_test.cpp src/app/FusedRingOrientation.h src/app/FusedRingOrientation.cpp)
@@ -338,11 +340,12 @@ target_include_directories(retained_ring_registry_test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/src/app
     ${CMAKE_CURRENT_SOURCE_DIR}/indigo/api/c/indigo
+    ${CMAKE_CURRENT_SOURCE_DIR}/indigo/api/c/indigo-inchi
 )
 if (MSVC)
-    target_link_libraries(retained_ring_registry_test PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.lib)
+    target_link_libraries(retained_ring_registry_test PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.lib ${INDIGO_LIB_DIR}/indigo-inchi.lib)
 else()
-    target_link_libraries(retained_ring_registry_test PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.dll)
+    target_link_libraries(retained_ring_registry_test PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.dll ${INDIGO_LIB_DIR}/indigo-inchi.dll)
 endif()
 add_test(NAME retained_ring_registry_test COMMAND retained_ring_registry_test)
 
@@ -351,11 +354,12 @@ target_include_directories(retained_ring_matcher_test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/src/app
     ${CMAKE_CURRENT_SOURCE_DIR}/indigo/api/c/indigo
+    ${CMAKE_CURRENT_SOURCE_DIR}/indigo/api/c/indigo-inchi
 )
 if (MSVC)
-    target_link_libraries(retained_ring_matcher_test PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.lib)
+    target_link_libraries(retained_ring_matcher_test PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.lib ${INDIGO_LIB_DIR}/indigo-inchi.lib)
 else()
-    target_link_libraries(retained_ring_matcher_test PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.dll)
+    target_link_libraries(retained_ring_matcher_test PRIVATE Qt6::Core ${INDIGO_LIB_DIR}/indigo.dll ${INDIGO_LIB_DIR}/indigo-inchi.dll)
 endif()
 add_test(NAME retained_ring_matcher_test COMMAND retained_ring_matcher_test)
 
