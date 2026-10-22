@@ -11,6 +11,7 @@
 #include "GraphTypes.h"
 #include "FusedRingOrientation.h"
 #include "FusedRingDirectionDetector.h"
+#include "PeripheralNumbering.h"
 #include "indigo.h"
 #include <vector>
 #include <set>
@@ -20,44 +21,31 @@
 #include <QStringList>
 
 // Task 3 (whole-system final-numbering assembly, retained-hydro-assembly
-// plan): forward declaration of IupacNamer.cpp's own general peripheral
-// numbering function. Defined at IupacNamer.cpp:24496 (also forward-
-// declared internally there at IupacNamer.cpp:68), with EXTERNAL linkage
-// (not static, not inside either of that file's two anonymous namespaces --
-// confirmed by reading the file before adding this declaration, not
-// guessed). This is the function identified in this task's own Step 3:
-// among computePeripheralNumberingGeneral / computePeripheralNumbering3Ring
-// / a hypothetical 4-ring equivalent, computePeripheralNumberingGeneral is
-// the one IupacNamer.cpp's own nameLinearChainFusion (N>=4 branch, around
-// IupacNamer.cpp:6385-6448) already calls for a plain (non-retained)
-// ortho-fused ring system of 4 or more rings, built from a hand-assembled
-// FusedRingSystemInput exactly the way this file builds one below.
-// computePeripheralNumbering3Ring is for EXACTLY 3 rings with 2 explicit
-// bridgeheads (different, narrower signature) -- not applicable here since
-// both 462 (4 rings: 3-ring acridine base + 1-ring remainder) and 450 (4
-// rings: 2-ring isoquinoline base + 2-ring naphtho remainder) assemble to
-// 4-ring wholes. Default arguments are intentionally omitted here (each
-// call below passes all 5 arguments explicitly) to avoid any cross-TU
-// default-argument mismatch.
+// plan): computePeripheralNumberingGeneral is defined in PeripheralNumbering.cpp
+// (previously in IupacNamer.cpp). Among computePeripheralNumberingGeneral /
+// computePeripheralNumbering3Ring / a hypothetical 4-ring equivalent,
+// computePeripheralNumberingGeneral is the one IupacNamer.cpp's own
+// nameLinearChainFusion (N>=4 branch, around IupacNamer.cpp:6385-6448)
+// already calls for a plain (non-retained) ortho-fused ring system of 4
+// or more rings, built from a hand-assembled FusedRingSystemInput exactly
+// the way this file builds one below. computePeripheralNumbering3Ring is
+// for EXACTLY 3 rings with 2 explicit bridgeheads (different, narrower
+// signature) -- not applicable here since both 462 (4 rings: 3-ring
+// acridine base + 1-ring remainder) and 450 (4 rings: 2-ring isoquinoline
+// base + 2-ring naphtho remainder) assemble to 4-ring wholes. Default
+// arguments are intentionally omitted here (each call below passes all 5
+// arguments explicitly) to avoid any cross-TU default-argument mismatch.
 // restrictStartToPredecessorBridgehead=true (passed explicitly at this
 // file's own call site below, not defaulted -- matches this declaration's
 // own no-default-arguments convention) narrows the candidate numbering
-// starts IupacNamer.cpp's computePeripheralNumberingGeneral tries, to the
+// starts computePeripheralNumberingGeneral tries, to the
 // ones confirmed (Task 3, retained-hydro-assembly plan, benz[b]acridine /
 // test 462) to reproduce the CAS-confirmed name for this whole-system
 // numbering path's own linear/angular chain topology. nameLinearChainFusion's
 // own pre-existing callers in IupacNamer.cpp pass false (via that
 // parameter's default there) and are unaffected -- this file's path is the
 // only caller that needs the narrower rule (confirmed: applying it
-// unconditionally regressed 3 plain branching-fusion tests, see this task's
-// own report).
-std::map<int, QString> computePeripheralNumberingGeneral(
-    const Graph &g,
-    const FusedRingSystemInput &input,
-    const std::set<int> &substituentBearingNodes,
-    const std::set<int> &hydroLocantBearingNodes,
-    std::vector<std::map<int, QString>> *tiedMapsOut,
-    bool restrictStartToPredecessorBridgehead);
+// unconditionally regressed 3 plain branching-fusion tests, see PeripheralNumbering.cpp).
 
 // Build the full registry once, on first use.
 static const std::vector<RetainedRingSystem>& fullRegistry() {
