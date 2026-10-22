@@ -92,7 +92,12 @@ every function it calls) operates on.
   ~11794-11796, filled ~11907-11910) — the real isotope-naming path
   (distinct from the reject-if-isotope-present guards in Section 1's
   standalone-ion blocks). A clone-and-rename block (~11944-12012) handles
-  actually naming a molecule that has one or more isotope-labeled atoms.
+  the EXACTLY-ONE-isotope-labeled-atom case (`size() == 1` at line
+  ~11945): clones `mol`, clears the isotope on the clone, names the clone
+  via a recursive `generateName(clonedMol)` call, then prepends a
+  `[14C]`-style descriptor to a one-word result. Two or more labeled
+  atoms, or a multi-word base name, are rejected with "Isotopic labeling
+  is not supported in Phase 1." (line ~12010).
 - `Graph g;` — line 12018, nodes built from heavy atoms with implicit +
   explicit hydrogen counts.
 - Bond iteration populates `g.nodes[*].neighbors`/`bondOrders` from
@@ -355,8 +360,8 @@ Content (read in full, re-confirmed across 3 review rounds now):
 |---|---|---|
 | `indigoToGraphIdx` | Line 11790 | Every subsequent section |
 | `Graph g` | Line 12018 | Every subsequent section |
-| `int ringCount` | Line 8928 | Every ring-count-guarded section (3, 5's pre-pass and lambda, 6, 7, 8, 9, 10, 12, 13) — NOT Section 11, which never reads it |
-| `allSSSRNodes` / `allSSSRRings` | Section 5's pre-pass, lines 15479-15480 (filled via `indigoIterateSSSR` at line 15482) | Section 7's guard, Section 9's guards, Section 10's Phase 30.5 guard, `nameRingAsSubstituent` calls in Sections 12/13 — these are the ONE pre-built pair most sections actually read; see the SSSR note below for the sections that instead re-extract their OWN separate local SSSR rings |
+| `int ringCount` | Line 8928 | Every ring-count-guarded section (3, 5's pre-pass [3 reads, lines 15481/15512/15548], 6, 7, 8, 9, 10, 12, 13) — NOT Section 11 (never reads it) and NOT `namePhase2Monocyclic`/`nameNaphthaleneFusion` (each declares its own LOCAL `int ringCount` — lines ~16428 and ~17721 respectively — that shadows the outer one for an unrelated carbonyl-group count) |
+| `allSSSRNodes` / `allSSSRRings` | Section 5's pre-pass, lines 15479-15480 (filled via `indigoIterateSSSR` at line 15482) | Section 7's guard, Section 9's guards, Section 10's Phase 30.5 guard, Section 11, `nameRingAsSubstituent` calls in Sections 12/13 — these are the ONE pre-built pair most sections actually read; see the SSSR note below for the sections that instead re-extract their OWN separate local SSSR rings |
 | `ringSubstituentInfos` | Section 5's pre-pass (line 15476) | Section 6's guard; Section 5's `namePhase2Monocyclic` lambda |
 | `phase2ForcedRingNodeSet` / `phase2ForcedRingSubstituentNames` | Declared empty in Section 5's pre-pass (lines 16089-16090); **WRITTEN by BOTH Section 12's disjoint branch (line 23781's surrounding code) AND Section 13** | Read by Section 5's `namePhase2Monocyclic` lambda |
 | `extraSubs`, `realComponentIndigo` | Section 11 | Section 11's own Site 2 calls and its `nameNaphthaleneFusion` call |
