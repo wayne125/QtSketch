@@ -18,8 +18,8 @@ CSV file with the following columns:
 | `pinned_success` | boolean | Whether the existing test expects success (true) or failure (false) |
 | `actual_name` | string | Actual IUPAC name produced by `generateName()` at baseline capture time |
 | `actual_success` | boolean | Whether `generateName()` succeeded at baseline capture time |
-| `expected_status` | string | Reserved for future use (currently empty) |
-| `notes` | string | Any notes or warnings about the test case |
+| `expected_status` | string | Pinned `NamingStatus` (e.g. `PreferredIupacName`, `SystematicIupacName`) for a handful of hand-flagged rows; empty for the rest. When non-empty, the harness fails the row if the fresh run's status doesn't match -- see "Test Harness" below. Regenerating this file via `extract_baseline.py` preserves any existing non-empty values instead of blanking them, since they aren't derivable from `baseline_raw.txt` or the C++ source. |
+| `notes` | string | Any notes or warnings about the test case. 314 rows currently carry `smiles not extracted, needs follow-up` -- their SMILES couldn't be parsed out of the raw test output automatically; they're skipped by the harness rather than compared. |
 
 ### Purpose
 
@@ -45,8 +45,19 @@ python ../tools/iupac/extract_baseline.py --cpp ../tests/iupac_namer_test.cpp --
 The `tests/iupac_golden_test.cpp` program reads this CSV file and verifies that:
 1. Each test's fresh output matches the `pinned_name`/`pinned_success` (existing test semantics)
 2. Each test's fresh output matches the `actual_name`/`actual_success` (behavior fingerprint)
+3. When `expected_status` is non-empty for a row, the fresh run's `NamingStatus` matches it exactly
 
-Both checks are performed separately so that a pin mismatch (expected for known-failing tests) never masks a fingerprint mismatch (a real regression).
+Checks 1/2/3 are performed separately so that a pin mismatch (expected for known-failing tests) never masks a fingerprint or status mismatch (a real regression).
+
+### Known determinism failures
+
+`IUPAC_GOLDEN_DETERMINISM=1` (see below) also cross-checks against
+`tests/data/iupac/golden/known_determinism_failures.txt`, a tracked list
+of pre-existing atom-order non-determinism bugs discovered during this
+plan but deliberately left unfixed (fixing naming-correctness logic was
+out of scope for this plan). A row listed there is expected to produce
+divergent names across seeded atom-order reorderings; the determinism
+check treats that divergence as known rather than a new regression.
 
 ### Determinism Check
 

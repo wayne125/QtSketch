@@ -433,13 +433,40 @@ def parse_additional_formats(raw_path, start_id):
     return extra
 
 
+def load_existing_expected_status(output_path):
+    """
+    Read expected_status values already present in a prior baseline.csv,
+    keyed by id. These are hand-set (e.g. known-determinism-failure
+    markers) and are not derivable from baseline_raw.txt/the C++ source,
+    so regenerating the file must preserve them rather than silently
+    blanking the column back to empty.
+    """
+    existing = {}
+    if not os.path.exists(output_path):
+        return existing
+    with open(output_path, 'r', newline='', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            status = (row.get('expected_status') or '').strip()
+            if status:
+                existing[int(row['id'])] = status
+    return existing
+
+
 def main():
     parser = argparse.ArgumentParser(description='Extract baseline golden data from IUPAC namer tests')
     parser.add_argument('--cpp', default='tests/iupac_namer_test.cpp', help='Path to C++ test file')
     parser.add_argument('--raw', default='baseline_raw.txt', help='Path to raw test output')
     parser.add_argument('--output', default='tests/data/iupac/golden/baseline.csv', help='Path to output CSV')
     args = parser.parse_args()
-    
+
+    # Preserve any hand-set expected_status values from a prior run of this
+    # script before they get overwritten below.
+    existing_expected_status = load_existing_expected_status(args.output)
+    if existing_expected_status:
+        print(f"Preserving {len(existing_expected_status)} existing expected_status value(s) "
+              f"for id(s): {sorted(existing_expected_status.keys())}")
+
     # Parse raw output for MAIN test loop only
     print(f"Parsing raw output: {args.raw}")
     results = parse_raw_output_for_results(args.raw)
@@ -496,7 +523,7 @@ def main():
             'pinned_success': str(pinned_success).lower(),
             'actual_name': actual_name,
             'actual_success': str(actual_success).lower(),
-            'expected_status': '',
+            'expected_status': existing_expected_status.get(test_id, ''),
             'notes': notes
         })
     
@@ -514,7 +541,7 @@ def main():
             'pinned_success': 'true',
             'actual_name': actual_name,
             'actual_success': str(actual_success).lower(),
-            'expected_status': '',
+            'expected_status': existing_expected_status.get(test_id, ''),
             'notes': 'smiles not extracted, needs follow-up' if not smiles else ''
         })
     

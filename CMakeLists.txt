@@ -375,9 +375,9 @@ target_include_directories(iupac_naming PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/indigo/api/c/indigo-inchi
 )
 if (MSVC)
-    target_link_libraries(iupac_naming PUBLIC Qt6::Core ${INDIGO_LIB_DIR}/indigo.lib ${INDIGO_LIB_DIR}/indigo-inchi.lib)
+    target_link_libraries(iupac_naming PUBLIC Qt6::Core molecule_model ${INDIGO_LIB_DIR}/indigo.lib ${INDIGO_LIB_DIR}/indigo-inchi.lib)
 else()
-    target_link_libraries(iupac_naming PUBLIC Qt6::Core ${INDIGO_LIB_DIR}/indigo.dll ${INDIGO_LIB_DIR}/indigo-inchi.dll)
+    target_link_libraries(iupac_naming PUBLIC Qt6::Core molecule_model ${INDIGO_LIB_DIR}/indigo.dll ${INDIGO_LIB_DIR}/indigo-inchi.dll)
 endif()
 target_compile_options(iupac_naming PRIVATE -O2)
 
