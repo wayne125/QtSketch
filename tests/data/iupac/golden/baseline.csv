@@ -1055,4 +1055,4 @@ id,smiles,pinned_name,pinned_success,actual_name,actual_success,expected_status,
 1054,,,true,still rejected with 'No carbon atoms present',true,,"smiles not extracted, needs follow-up"
 1055,,,true,still rejected,true,,"smiles not extracted, needs follow-up"
 1056,,,true,urea,true,,"smiles not extracted, needs follow-up"
-1057,c2cnc1cc4c(cccc4)cc12,"benzo[1',2':4,5]benzo[1,2-b]pyrrole",true,"benzo[1',2':4,5]benzo[1,2-b]pyrrole",true,,
+1057,c2cnc1cc4c(cccc4)cc12,"1H-benzo[1',2':4,5]benzo[1,2-b]pyrrole",true,"1H-benzo[1',2':4,5]benzo[1,2-b]pyrrole",true,,

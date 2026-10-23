@@ -2087,7 +2087,7 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
     }
 
     std::vector<std::vector<int>> ringCandidates;
-    if (rType == RingType::FURAN || rType == RingType::THIOPHENE || rType == RingType::PYRROLE || rType == RingType::PYRIDINE ||
+    if (rType == RingType::FURAN || rType == RingType::THIOPHENE || rType == RingType::SELENOPHENE || rType == RingType::TELLUROPHENE || rType == RingType::PHOSPHININE || rType == RingType::PYRROLE || rType == RingType::PYRIDINE ||
         rType == RingType::PIPERIDINE || rType == RingType::PYRROLIDINE || rType == RingType::TETRAHYDROFURAN || rType == RingType::TETRAHYDROTHIOPHENE ||
         rType == RingType::AZEPINE || rType == RingType::OXEPINE ||
         rType == RingType::THIEPINE || rType == RingType::SELENEPINE ||
@@ -2751,6 +2751,9 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
         }
         else if (rType == RingType::FURAN) stem = "furan";
         else if (rType == RingType::THIOPHENE) stem = "thiophen";
+        else if (rType == RingType::SELENOPHENE) stem = "selenophen";
+        else if (rType == RingType::TELLUROPHENE) stem = "tellurophen";
+        else if (rType == RingType::PHOSPHININE) stem = "phosphinin";
         else if (rType == RingType::PYRROLE) stem = "pyrrol";
         else if (rType == RingType::IMIDAZOLE) stem = "imidazol";
         else if (rType == RingType::PYRAZOLE) stem = "pyrazol";
@@ -2907,6 +2910,7 @@ QString nameRingSystemAsSubstituent(
     if (candidates.empty() && ringCount == 2 && fusedSystemRingIdx.size() == 2) {
         auto it = fusedSystemRingIdx.begin();
         const std::set<int> &ring1Nodes = allIndependentRings[*it];
+
         const std::set<int> &ring2Nodes = allIndependentRings[*std::next(it)];
         if (ring1Nodes.size() == 6 && ring2Nodes.size() == 6) {
             std::vector<int> shared;
@@ -12076,6 +12080,11 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
         int z = indigoAtomicNumber(atomObj);
 
         int implicitH = indigoCountImplicitHydrogens(atomObj);
+        if (implicitH < 0) {
+            indigoCanonicalSmiles(mol);
+            implicitH = indigoCountImplicitHydrogens(atomObj);
+            if (implicitH < 0) implicitH = 0;
+        }
         int expH = explicitHCounts[idx];
 
         GraphNode node;
@@ -16565,7 +16574,7 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
     }
 
     std::vector<std::vector<int>> ringCandidates;
-    if (rType == RingType::FURAN || rType == RingType::THIOPHENE || rType == RingType::PYRROLE || rType == RingType::PYRIDINE ||
+    if (rType == RingType::FURAN || rType == RingType::THIOPHENE || rType == RingType::SELENOPHENE || rType == RingType::TELLUROPHENE || rType == RingType::PHOSPHININE || rType == RingType::PYRROLE || rType == RingType::PYRIDINE ||
         rType == RingType::PYRROLIDINE || rType == RingType::PIPERIDINE || rType == RingType::TETRAHYDROFURAN || rType == RingType::TETRAHYDROTHIOPHENE ||
         rType == RingType::AZEPINE || rType == RingType::OXEPINE ||
         rType == RingType::THIEPINE || rType == RingType::SELENEPINE ||
@@ -24884,6 +24893,11 @@ std::map<int, QString> computePeripheralNumberingForMol(int mol) {
         int aObj = indigoGetAtom(mol, idx);
         int z = indigoAtomicNumber(aObj);
         int implicitH = indigoCountImplicitHydrogens(aObj);
+        if (implicitH < 0) {
+            indigoCanonicalSmiles(mol);
+            implicitH = indigoCountImplicitHydrogens(aObj);
+            if (implicitH < 0) implicitH = 0;
+        }
 
         GraphNode node;
         node.id = static_cast<int>(i);

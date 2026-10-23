@@ -97,7 +97,19 @@
 # Fixed by preserving lowercase "[te]" for aromatic tellurium in AtomOrderRandomizer
 # and adding a round-trip canonical verification before accepting reordered SMILES.
 #
+#
+# 2026-10-23: row 1057 fixed and removed from this list. Root cause:
+# In IupacNamer.cpp (~line 12078), indigoCountImplicitHydrogens(atomObj) returned
+# -1 for the unbracketed aromatic nitrogen in raw SMILES c2cnc1cc4c(cccc4)cc12,
+# setting node.totalH = -1 and preventing the pyrrole ring from detecting its
+# saturated NH position. Under atom reordering, AtomOrderRandomizer's dearomatize/
+# aromatize cycle emitted bracketed [nH], where indigoCountImplicitHydrogens
+# returned 1, correctly identifying the indicated hydrogen. Per IUPAC fusion
+# rules (Blue Book P-25.7.1.3 / P-53.2.2), indicated hydrogen is required to specify
+# the saturation isomer (1H- vs 2H-/3H-). Fixed by calling indigoCanonicalSmiles
+# to standardize implicit hydrogens when indigoCountImplicitHydrogens returns -1,
+# making row 1057 deterministically produce "1H-benzo[1',2':4,5]benzo[1,2-b]pyrrole".
+#
 # One row ID per line. Lines starting with # are comments.
 441
 499
-1057
