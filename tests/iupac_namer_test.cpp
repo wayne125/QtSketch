@@ -7405,6 +7405,46 @@ int main() {
         }
     }
 
+    {
+        int m = indigoLoadMoleculeFromString("Cc1ccc2cc(CCC(=O)Oc3ccccc3)ccc2c1");
+        if (m >= 0) {
+            auto result = IupacNamer::generateName(m);
+            QString expectedName = "phenyl 3-(6-methylnaphthalen-2-yl)propanoate";
+            if (result.success && result.name == expectedName) {
+                std::cout << "[PASS] Fused ring substituent with extra methyl retained: " << result.name.toStdString() << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] Fused ring substituent with extra methyl retained: expected '" << expectedName.toStdString()
+                          << "', got '" << result.name.toStdString() << "' (success=" << result.success << ")\n";
+                failed++;
+            }
+            indigoFree(m);
+        } else {
+            std::cout << "[FAIL] Fused ring substituent with extra methyl retained: SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    {
+        int m = indigoLoadMoleculeFromString("c1ccc2cc(CCC(=O)Oc3ccccc3)ccc2c1");
+        if (m >= 0) {
+            auto result = IupacNamer::generateName(m);
+            QString expectedName = "phenyl 3-(naphthalen-2-yl)propanoate";
+            if (result.success && result.name == expectedName) {
+                std::cout << "[PASS] Fused ring substituent unsubstituted stays byte-identical: " << result.name.toStdString() << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] Fused ring substituent unsubstituted stays byte-identical: expected '" << expectedName.toStdString()
+                          << "', got '" << result.name.toStdString() << "' (success=" << result.success << ")\n";
+                failed++;
+            }
+            indigoFree(m);
+        } else {
+            std::cout << "[FAIL] Fused ring substituent unsubstituted test: SMILES did not load\n";
+            failed++;
+        }
+    }
+
     std::cout << "\nSummary: " << passed << " passed, " << failed << " failed.\n";
     indigoInchiDispose(sid);
     indigoReleaseSessionId(sid);

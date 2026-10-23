@@ -2807,7 +2807,10 @@ QString nameRingSystemAsSubstituent(
     int mol,
     int rootAtom,
     const std::set<int> &ringSystemNodes,
-    const std::vector<std::set<int>> &allIndependentRings) {
+    const std::vector<std::set<int>> &allIndependentRings,
+    const std::set<int> &forbiddenNodes = {},
+    const std::map<int, QChar> &stereoByGraphId = {},
+    int parentIdx = -1) {
     // Step 1: Classify the ring system and try each mechanism
 
     // Build indigoToGraphIdx map locally from g.nodes -- no Indigo API call
@@ -2852,6 +2855,74 @@ QString nameRingSystemAsSubstituent(
     }
     int ringCount = fusedSystemRingIdx.empty() ? 1 : static_cast<int>(fusedSystemRingIdx.size());
 
+    std::set<int> fullSystemNodes;
+    if (!fusedSystemRingIdx.empty()) {
+        for (int idx : fusedSystemRingIdx) {
+            fullSystemNodes.insert(allIndependentRings[idx].begin(), allIndependentRings[idx].end());
+        }
+    } else {
+        fullSystemNodes = ringSystemNodes;
+    }
+
+    std::vector<std::pair<int, QString>> extraBranches;
+    for (int ringAtom : fullSystemNodes) {
+        for (int nei : g.nodes[ringAtom].neighbors) {
+            if (g.nodes[nei].atomicNumber == 1) continue;
+            if (fullSystemNodes.count(nei)) continue;
+            if (nei == parentIdx) continue;
+
+            if (forbiddenNodes.count(nei)) {
+                return "";
+            }
+
+            // Walk connected component of non-ring atoms
+            std::set<int> componentNodes;
+            std::vector<int> q = {nei};
+            componentNodes.insert(nei);
+            size_t head = 0;
+            bool multiPoint = false;
+            while (head < q.size()) {
+                int u = q[head++];
+                for (int v : g.nodes[u].neighbors) {
+                    if (g.nodes[v].atomicNumber == 1) continue;
+                    if (fullSystemNodes.count(v)) {
+                        if (u != nei || v != ringAtom) {
+                            multiPoint = true;
+                            break;
+                        }
+                        continue;
+                    }
+                    if (forbiddenNodes.count(v)) {
+                        multiPoint = true;
+                        break;
+                    }
+                    if (!componentNodes.count(v)) {
+                        componentNodes.insert(v);
+                        q.push_back(v);
+                    }
+                }
+                if (multiPoint) break;
+            }
+            if (multiPoint) return "";
+
+            for (int node : componentNodes) {
+                if (stereoByGraphId.count(node)) {
+                    return "";
+                }
+            }
+
+            std::set<int> branchForbidden = forbiddenNodes;
+            branchForbidden.insert(fullSystemNodes.begin(), fullSystemNodes.end());
+            QString branchName = nameBranchGraph(g, nei, ringAtom, allIndependentRings, branchForbidden, {}, nullptr, mol);
+            if (branchName.isEmpty()) return "";
+            extraBranches.push_back({ringAtom, branchName});
+        }
+    }
+
+    if (extraBranches.size() > 1) {
+        return "";
+    }
+
     std::vector<RingSystemNameResult> candidates;
 
     // Try each mechanism in order, falling through to the next whenever one
@@ -2870,6 +2941,7 @@ QString nameRingSystemAsSubstituent(
     }
 
     if (candidates.empty()) {
+        // Confirmed at lines 7046/7372: empty extraSubstituents leaves prefixPart empty, so baseName has no extra substituent text.
         std::vector<RingSystemNameResult> chainResults = nameLinearChainFusion(g, mol, indigoToGraphIdx, ringCount, rootAtom);
         for (const auto &result : chainResults) {
             if (result.success) {
@@ -2887,6 +2959,7 @@ QString nameRingSystemAsSubstituent(
     }
 
     if (candidates.empty()) {
+        // Confirmed at lines 8169/8260: empty extraSubstituents leaves prefixPart empty, so baseName has no extra substituent text.
         std::vector<RingSystemNameResult> branchResults = nameBranchingFusion(g, mol, indigoToGraphIdx, ringCount, rootAtom);
         for (const auto &result : branchResults) {
             if (result.success) {
@@ -3186,6 +3259,18 @@ QString nameRingSystemAsSubstituent(
             continue;
         }
         
+        bool branchesOk = true;
+        for (const auto &branch : extraBranches) {
+            auto bIt = candidate.locantMap.find(branch.first);
+            if (bIt == candidate.locantMap.end()) { branchesOk = false; break; }
+            const QString &bLocStr = bIt->second;
+            if (bLocStr.isEmpty() || bLocStr.back().isLetter()) { branchesOk = false; break; }
+            bool bOk = false;
+            bLocStr.toInt(&bOk);
+            if (!bOk) { branchesOk = false; break; }
+        }
+        if (!branchesOk) continue;
+
         // Try to parse the locant as an integer
         bool ok = false;
         int locantValue = locantStr.toInt(&ok);
@@ -3209,12 +3294,19 @@ QString nameRingSystemAsSubstituent(
         stem.chop(1);
     }
     
-    // Always wrap in parens, matching nameRingAsSubstituent's own convention
-    // for any locant-hyphenated "-yl" substituent name (every result this
-    // function produces has that shape) -- without this, concatenating onto
-    // a following word (e.g. "ethanoic acid") produces an illegible run-on
-    // like "anthracen-9-ylethanoic acid" instead of "(anthracen-9-yl)ethanoic acid".
-    return "(" + stem + "-" + locantStr + "-yl" + ")";
+    if (extraBranches.empty()) {
+        // Always wrap in parens, matching nameRingAsSubstituent's own convention
+        // for any locant-hyphenated "-yl" substituent name (every result this
+        // function produces has that shape) -- without this, concatenating onto
+        // a following word (e.g. "ethanoic acid") produces an illegible run-on
+        // like "anthracen-9-ylethanoic acid" instead of "(anthracen-9-yl)ethanoic acid".
+        return "(" + stem + "-" + locantStr + "-yl" + ")";
+    }
+
+    auto bIt = bestCandidate->locantMap.find(extraBranches[0].first);
+    if (bIt == bestCandidate->locantMap.end()) return "";
+    QString branchLoc = bIt->second;
+    return "(" + branchLoc + "-" + extraBranches[0].second + stem + "-" + locantStr + "-yl" + ")";
 }
 
 QString nameBranchGraph(const Graph &g, int rootIdx, int parentIdx, const std::vector<std::set<int>> &allIndependentRings, const std::set<int> &forbiddenNodes,
@@ -3241,7 +3333,9 @@ QString nameBranchGraph(const Graph &g, int rootIdx, int parentIdx, const std::v
                     if (isFusedOrBridged) break;
                 }
                 if (isFusedOrBridged) {
-                    return nameRingSystemAsSubstituent(g, mol, rootIdx, rNodes, allIndependentRings);
+                    std::set<int> combinedForbidden = forbiddenNodes;
+                    combinedForbidden.insert(parentIdx);
+                    return nameRingSystemAsSubstituent(g, mol, rootIdx, rNodes, allIndependentRings, combinedForbidden, stereoByGraphId, parentIdx);
                 }
 
                 std::set<int> combinedForbidden = forbiddenNodes;
