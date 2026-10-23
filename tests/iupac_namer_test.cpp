@@ -1,4 +1,5 @@
 #include "IupacNamer.h"
+#include "NamingTypes.h"
 #include "FusedRingOrientation.h"
 #include "FusedRingDirectionDetector.h"
 #include "indigo.h"
@@ -7441,6 +7442,124 @@ int main() {
             indigoFree(m);
         } else {
             std::cout << "[FAIL] Fused ring substituent unsubstituted test: SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    // --- Task 2: Candidate-selection comparator unit tests ---
+    // 1. PicksLowerRootLocantRegardlessOfBranches
+    {
+        RingSystemNameResult cA{true, "", "stem", {{10, "1"}, {20, "7"}}};
+        RingSystemNameResult cB{true, "", "stem", {{10, "2"}, {20, "3"}}};
+        std::vector<std::pair<int, QString>> branches = {{20, "methyl"}};
+        if (compareRingSubstituentCandidates(cA, cB, 10, branches) < 0 &&
+            compareRingSubstituentCandidates(cB, cA, 10, branches) > 0) {
+            std::cout << "[PASS] RingSubstituentCandidateTest: PicksLowerRootLocantRegardlessOfBranches\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] RingSubstituentCandidateTest: PicksLowerRootLocantRegardlessOfBranches\n";
+            failed++;
+        }
+    }
+
+    // 2. TiedRootLocantBreaksOnSortedBranchLocants
+    {
+        RingSystemNameResult cA{true, "", "stem", {{10, "1"}, {20, "3"}, {21, "6"}}};
+        RingSystemNameResult cB{true, "", "stem", {{10, "1"}, {20, "4"}, {21, "5"}}};
+        std::vector<std::pair<int, QString>> branches = {{20, "methyl"}, {21, "ethyl"}};
+        if (compareRingSubstituentCandidates(cA, cB, 10, branches) < 0 &&
+            compareRingSubstituentCandidates(cB, cA, 10, branches) > 0) {
+            std::cout << "[PASS] RingSubstituentCandidateTest: TiedRootLocantBreaksOnSortedBranchLocants\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] RingSubstituentCandidateTest: TiedRootLocantBreaksOnSortedBranchLocants\n";
+            failed++;
+        }
+    }
+
+    // 3. TiedOnBothBreaksOnCitationOrder
+    {
+        RingSystemNameResult cA{true, "", "stem", {{10, "9"}, {20, "2"}, {21, "7"}}};
+        RingSystemNameResult cB{true, "", "stem", {{10, "9"}, {20, "7"}, {21, "2"}}};
+        std::vector<std::pair<int, QString>> branches = {{20, "chloro"}, {21, "methyl"}};
+        if (compareRingSubstituentCandidates(cA, cB, 10, branches) < 0 &&
+            compareRingSubstituentCandidates(cB, cA, 10, branches) > 0) {
+            std::cout << "[PASS] RingSubstituentCandidateTest: TiedOnBothBreaksOnCitationOrder\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] RingSubstituentCandidateTest: TiedOnBothBreaksOnCitationOrder\n";
+            failed++;
+        }
+    }
+
+    // 4. CandidateMissingBranchLocantIsIneligible
+    {
+        RingSystemNameResult cA{true, "", "stem", {{10, "1"}, {20, "2"}, {21, "3"}}};
+        RingSystemNameResult cB{true, "", "stem", {{10, "1"}, {20, "2"}}};
+        std::vector<std::pair<int, QString>> branches = {{20, "methyl"}, {21, "ethyl"}};
+        RingSubstituentCandidateScore sB;
+        bool bEligible = rankRingSubstituentCandidate(cB, 10, branches, sB);
+        if (!bEligible &&
+            compareRingSubstituentCandidates(cA, cB, 10, branches) < 0 &&
+            compareRingSubstituentCandidates(cB, cA, 10, branches) > 0) {
+            std::cout << "[PASS] RingSubstituentCandidateTest: CandidateMissingBranchLocantIsIneligible\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] RingSubstituentCandidateTest: CandidateMissingBranchLocantIsIneligible\n";
+            failed++;
+        }
+    }
+
+    // 5. CandidateMissingRootLocantIsIneligible
+    {
+        RingSystemNameResult cA{true, "", "stem", {{10, "1"}, {20, "2"}}};
+        RingSystemNameResult cB{true, "", "stem", {{20, "2"}}};
+        std::vector<std::pair<int, QString>> branches = {{20, "methyl"}};
+        RingSubstituentCandidateScore sB;
+        bool bEligible = rankRingSubstituentCandidate(cB, 10, branches, sB);
+        if (!bEligible &&
+            compareRingSubstituentCandidates(cA, cB, 10, branches) < 0 &&
+            compareRingSubstituentCandidates(cB, cA, 10, branches) > 0) {
+            std::cout << "[PASS] RingSubstituentCandidateTest: CandidateMissingRootLocantIsIneligible\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] RingSubstituentCandidateTest: CandidateMissingRootLocantIsIneligible\n";
+            failed++;
+        }
+    }
+
+    // 6. OrderOfSuppliedCandidatesDoesNotAffectWinner
+    {
+        RingSystemNameResult cA{true, "", "stem", {{10, "9"}, {20, "2"}}};
+        RingSystemNameResult cB{true, "", "stem", {{10, "9"}, {20, "2"}}};
+        std::vector<std::pair<int, QString>> branches = {{20, "methyl"}};
+        if (compareRingSubstituentCandidates(cA, cB, 10, branches) == 0 &&
+            compareRingSubstituentCandidates(cB, cA, 10, branches) == 0) {
+            std::cout << "[PASS] RingSubstituentCandidateTest: OrderOfSuppliedCandidatesDoesNotAffectWinner\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] RingSubstituentCandidateTest: OrderOfSuppliedCandidatesDoesNotAffectWinner\n";
+            failed++;
+        }
+    }
+
+    // 7. Anthracene meso substituent tie-break
+    {
+        int m = indigoLoadMoleculeFromString("Cc1ccc2c(CCC(=O)Oc3ccccc3)c4ccccc4cc2c1");
+        if (m >= 0) {
+            auto result = IupacNamer::generateName(m);
+            QString expectedName = "phenyl 3-(3-methylanthracen-9-yl)propanoate";
+            if (result.success && result.name == expectedName) {
+                std::cout << "[PASS] Anthracene meso substituent tie-break: " << result.name.toStdString() << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] Anthracene meso substituent tie-break: expected '" << expectedName.toStdString()
+                          << "', got '" << result.name.toStdString() << "' (success=" << result.success << ")\n";
+                failed++;
+            }
+            indigoFree(m);
+        } else {
+            std::cout << "[FAIL] Anthracene meso substituent tie-break: SMILES did not load\n";
             failed++;
         }
     }

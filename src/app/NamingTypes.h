@@ -59,3 +59,42 @@ struct RingSystemNameResult {
     QString baseName;
     std::map<int, QString> locantMap;
 };
+
+#include <climits>
+#include <vector>
+
+struct RingSubstituentCandidateScore {
+    int rootLocant = INT_MAX;
+    std::vector<int> sortedBranchLocants;
+    std::vector<int> citationLocants;
+
+    bool operator<(const RingSubstituentCandidateScore &o) const {
+        if (rootLocant != o.rootLocant) return rootLocant < o.rootLocant;
+        if (sortedBranchLocants != o.sortedBranchLocants) return sortedBranchLocants < o.sortedBranchLocants;
+        return citationLocants < o.citationLocants;
+    }
+    bool operator==(const RingSubstituentCandidateScore &o) const {
+        return rootLocant == o.rootLocant &&
+               sortedBranchLocants == o.sortedBranchLocants &&
+               citationLocants == o.citationLocants;
+    }
+};
+
+bool rankRingSubstituentCandidate(
+    const RingSystemNameResult &candidate,
+    int rootAtom,
+    const std::vector<std::pair<int, QString>> &extraBranches,
+    RingSubstituentCandidateScore &outScore);
+
+bool rankCandidate(
+    const RingSystemNameResult &candidate,
+    int rootAtom,
+    const std::vector<std::pair<int, QString>> &extraBranches,
+    int &outRootLocant,
+    std::vector<int> &outBranchLocants);
+
+int compareRingSubstituentCandidates(
+    const RingSystemNameResult &a,
+    const RingSystemNameResult &b,
+    int rootAtom,
+    const std::vector<std::pair<int, QString>> &extraBranches);

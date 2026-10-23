@@ -2802,6 +2802,84 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
     return res;
 }
 
+} // namespace
+
+bool rankRingSubstituentCandidate(
+    const RingSystemNameResult &candidate,
+    int rootAtom,
+    const std::vector<std::pair<int, QString>> &extraBranches,
+    RingSubstituentCandidateScore &outScore) {
+    if (!candidate.success) return false;
+
+    auto rIt = candidate.locantMap.find(rootAtom);
+    if (rIt == candidate.locantMap.end()) return false;
+    const QString &rLocStr = rIt->second;
+    if (rLocStr.isEmpty() || rLocStr.back().isLetter()) return false;
+    bool rOk = false;
+    int rLoc = rLocStr.toInt(&rOk);
+    if (!rOk) return false;
+
+    std::vector<int> sortedLocs;
+    std::vector<std::pair<QString, int>> citationPairs;
+    for (const auto &branch : extraBranches) {
+        auto bIt = candidate.locantMap.find(branch.first);
+        if (bIt == candidate.locantMap.end()) return false;
+        const QString &bLocStr = bIt->second;
+        if (bLocStr.isEmpty() || bLocStr.back().isLetter()) return false;
+        bool bOk = false;
+        int bLoc = bLocStr.toInt(&bOk);
+        if (!bOk) return false;
+
+        sortedLocs.push_back(bLoc);
+        citationPairs.push_back({alphabetizationKey(branch.second).toLower(), bLoc});
+    }
+
+    std::sort(sortedLocs.begin(), sortedLocs.end());
+    std::sort(citationPairs.begin(), citationPairs.end(), [](const auto &x, const auto &y) {
+        if (x.first != y.first) return x.first < y.first;
+        return x.second < y.second;
+    });
+
+    outScore.rootLocant = rLoc;
+    outScore.sortedBranchLocants = std::move(sortedLocs);
+    outScore.citationLocants.clear();
+    for (const auto &cp : citationPairs) {
+        outScore.citationLocants.push_back(cp.second);
+    }
+    return true;
+}
+
+bool rankCandidate(
+    const RingSystemNameResult &candidate,
+    int rootAtom,
+    const std::vector<std::pair<int, QString>> &extraBranches,
+    int &outRootLocant,
+    std::vector<int> &outBranchLocants) {
+    RingSubstituentCandidateScore s;
+    if (!rankRingSubstituentCandidate(candidate, rootAtom, extraBranches, s)) return false;
+    outRootLocant = s.rootLocant;
+    outBranchLocants = s.sortedBranchLocants;
+    return true;
+}
+
+int compareRingSubstituentCandidates(
+    const RingSystemNameResult &a,
+    const RingSystemNameResult &b,
+    int rootAtom,
+    const std::vector<std::pair<int, QString>> &extraBranches) {
+    RingSubstituentCandidateScore scoreA, scoreB;
+    bool elA = rankRingSubstituentCandidate(a, rootAtom, extraBranches, scoreA);
+    bool elB = rankRingSubstituentCandidate(b, rootAtom, extraBranches, scoreB);
+    if (!elA && !elB) return 0;
+    if (elA && !elB) return -1;
+    if (!elA && elB) return 1;
+    if (scoreA < scoreB) return -1;
+    if (scoreB < scoreA) return 1;
+    return 0;
+}
+
+namespace {
+
 QString nameRingSystemAsSubstituent(
     const Graph &g,
     int mol,
@@ -3244,39 +3322,18 @@ QString nameRingSystemAsSubstituent(
         return "";
     }
 
-    // Step 2: Pick the candidate minimizing rootAtom's own locant
+    // Step 2: Pick the best candidate using the comparator
     RingSystemNameResult *bestCandidate = nullptr;
-    int bestLocant = INT_MAX;
-    
+    RingSubstituentCandidateScore bestScore;
+
     for (auto &candidate : candidates) {
-        // Check if rootAtom has a valid numeric locant (not missing, not letter-suffixed)
-        auto it = candidate.locantMap.find(rootAtom);
-        if (it == candidate.locantMap.end()) continue;
-        
-        QString locantStr = it->second;
-        // Reject letter-suffixed locants (fusion carbons can't be valid attachment points)
-        if (!locantStr.isEmpty() && locantStr.back().isLetter()) {
+        RingSubstituentCandidateScore score;
+        if (!rankRingSubstituentCandidate(candidate, rootAtom, extraBranches, score)) {
             continue;
         }
-        
-        bool branchesOk = true;
-        for (const auto &branch : extraBranches) {
-            auto bIt = candidate.locantMap.find(branch.first);
-            if (bIt == candidate.locantMap.end()) { branchesOk = false; break; }
-            const QString &bLocStr = bIt->second;
-            if (bLocStr.isEmpty() || bLocStr.back().isLetter()) { branchesOk = false; break; }
-            bool bOk = false;
-            bLocStr.toInt(&bOk);
-            if (!bOk) { branchesOk = false; break; }
-        }
-        if (!branchesOk) continue;
-
-        // Try to parse the locant as an integer
-        bool ok = false;
-        int locantValue = locantStr.toInt(&ok);
-        if (ok && locantValue < bestLocant) {
-            bestLocant = locantValue;
+        if (bestCandidate == nullptr || score < bestScore) {
             bestCandidate = &candidate;
+            bestScore = score;
         }
     }
     
