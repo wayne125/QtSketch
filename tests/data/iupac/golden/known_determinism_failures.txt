@@ -75,9 +75,18 @@
 # and worth re-fixing on its own; it needs pairing with a correct fixed
 # anthracene-numbering lookup for the locant, not sequential counting.
 #
+#
+# 2026-10-23: rows 183 and 184 fixed and removed from this list. Root cause:
+# In IupacNamer.cpp (~line 14957, ~line 15012), the acyl carbonyl carbon was
+# located by taking the first non-nitrogen carbon neighbor of nNodeNear. Under
+# input atom reordering, an alkyl substituent on nNodeNear could precede the
+# acyl carbon in the neighbor list, misidentifying the substituent carbon as
+# the acyl carbon and yielding rLen = 0 instead of the real acyl chain length.
+# This caused the carbon conservation check (rLen + rPrimeLenNear + rPrimeLenFar + 1 == countC)
+# to fail and spuriously reject the molecule. Fixed by reusing the acylCarbon
+# index already positively identified during nNodeNear detection.
+#
 # One row ID per line. Lines starting with # are comments.
-183
-184
 289
 441
 499

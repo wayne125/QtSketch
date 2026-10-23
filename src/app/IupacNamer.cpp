@@ -14897,6 +14897,7 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
         if (isAcyclic && countN == 2 && countO == 1 && countOtherHeavy == 0) {
             int nNodeNear = -1;
             int nNodeFar = -1;
+            int acylCarbon = -1;
             for (size_t i = 0; i < g.nodes.size(); ++i) {
                 if (g.nodes[i].atomicNumber == 7) {
                     for (size_t j = 0; j < g.nodes[i].neighbors.size(); ++j) {
@@ -14913,6 +14914,7 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                             }
                             if (isAcyl) {
                                 nNodeNear = static_cast<int>(i);
+                                acylCarbon = nei;
                                 break;
                             }
                         }
@@ -14954,19 +14956,14 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                     
                     if (alkylNeighborsNear.size() > 0 && alkylNeighborsFar.size() > 0) {
                         if (alkylNeighborsNear.size() == 1 && alkylNeighborsFar.size() == 1) {
-                            int c0 = -1;
-                            for (size_t j = 0; j < g.nodes[nNodeNear].neighbors.size(); ++j) {
-                                int nei = g.nodes[nNodeNear].neighbors[j];
-                                if (nei != nNodeFar && g.nodes[nei].atomicNumber == 6) { c0 = nei; break; }
-                            }
                             int rLen = 0;
                             int cR = -1;
-                            if (c0 != -1) {
-                                for (size_t j = 0; j < g.nodes[c0].neighbors.size(); ++j) {
-                                    int nei = g.nodes[c0].neighbors[j];
+                            if (acylCarbon != -1) {
+                                for (size_t j = 0; j < g.nodes[acylCarbon].neighbors.size(); ++j) {
+                                    int nei = g.nodes[acylCarbon].neighbors[j];
                                     if (nei != nNodeNear && g.nodes[nei].atomicNumber == 6) { cR = nei; break; }
                                 }
-                                if (cR != -1) { rLen = countPlainAlkylChain(cR, c0, g); }
+                                if (cR != -1) { rLen = countPlainAlkylChain(cR, acylCarbon, g); }
                             }
                             int subNear = alkylNeighborsNear[0];
                             int subFar = alkylNeighborsFar[0];
@@ -15009,19 +15006,14 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                     } else if (alkylNeighborsNear.size() > 1) {
                         return {false, "", "N,N-disubstituted hydrazides are not supported"};
                     } else if (alkylNeighborsFar.size() > 1) {
-                        int c0 = -1;
-                        for (size_t j = 0; j < g.nodes[nNodeNear].neighbors.size(); ++j) {
-                            int nei = g.nodes[nNodeNear].neighbors[j];
-                            if (nei != nNodeFar && g.nodes[nei].atomicNumber == 6) { c0 = nei; break; }
-                        }
                         int rLen = 0;
                         int cR = -1;
-                        if (c0 != -1) {
-                            for (size_t j = 0; j < g.nodes[c0].neighbors.size(); ++j) {
-                                int nei = g.nodes[c0].neighbors[j];
+                        if (acylCarbon != -1) {
+                            for (size_t j = 0; j < g.nodes[acylCarbon].neighbors.size(); ++j) {
+                                int nei = g.nodes[acylCarbon].neighbors[j];
                                 if (nei != nNodeNear && g.nodes[nei].atomicNumber == 6) { cR = nei; break; }
                             }
-                            if (cR != -1) { rLen = countPlainAlkylChain(cR, c0, g); }
+                            if (cR != -1) { rLen = countPlainAlkylChain(cR, acylCarbon, g); }
                         }
                         int c1 = alkylNeighborsFar[0];
                         int c2 = alkylNeighborsFar[1];
