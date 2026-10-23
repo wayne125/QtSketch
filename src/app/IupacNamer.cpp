@@ -2997,9 +2997,7 @@ QString nameRingSystemAsSubstituent(
         }
     }
 
-    if (extraBranches.size() > 1) {
-        return "";
-    }
+
 
     std::vector<RingSystemNameResult> candidates;
 
@@ -3360,10 +3358,51 @@ QString nameRingSystemAsSubstituent(
         return "(" + stem + "-" + locantStr + "-yl" + ")";
     }
 
-    auto bIt = bestCandidate->locantMap.find(extraBranches[0].first);
-    if (bIt == bestCandidate->locantMap.end()) return "";
-    QString branchLoc = bIt->second;
-    return "(" + branchLoc + "-" + extraBranches[0].second + stem + "-" + locantStr + "-yl" + ")";
+    std::map<QString, std::vector<int>> prefixLocantsMap;
+    for (const auto &b : extraBranches) {
+        auto bIt = bestCandidate->locantMap.find(b.first);
+        if (bIt == bestCandidate->locantMap.end()) return "";
+        bool ok = false;
+        int loc = bIt->second.toInt(&ok);
+        if (!ok) return "";
+        prefixLocantsMap[b.second].push_back(loc);
+    }
+
+    struct PrefixGroup {
+        QString baseName;
+        QString formattedStr;
+    };
+    std::vector<PrefixGroup> pGroups;
+
+    for (auto it = prefixLocantsMap.begin(); it != prefixLocantsMap.end(); ++it) {
+        QString pName = it->first;
+        std::vector<int> locs = it->second;
+        std::sort(locs.begin(), locs.end());
+
+        QStringList locStrs;
+        for (int l : locs) locStrs.append(QString::number(l));
+        QString pStr = locStrs.join(",");
+        if (locs.size() > 1) {
+            pStr += "-" + multiPrefix(static_cast<int>(locs.size())) + pName;
+        } else {
+            pStr += "-" + pName;
+        }
+
+        PrefixGroup pg;
+        pg.baseName = alphabetizationKey(pName);
+        pg.formattedStr = pStr;
+        pGroups.push_back(pg);
+    }
+
+    std::sort(pGroups.begin(), pGroups.end(), [](const PrefixGroup &a, const PrefixGroup &b) {
+        return a.baseName.toLower() < b.baseName.toLower();
+    });
+
+    QStringList pStrs;
+    for (const auto &pg : pGroups) pStrs.append(pg.formattedStr);
+    QString prefixPart = pStrs.join("-");
+
+    return "(" + prefixPart + stem + "-" + locantStr + "-yl" + ")";
 }
 
 QString nameBranchGraph(const Graph &g, int rootIdx, int parentIdx, const std::vector<std::set<int>> &allIndependentRings, const std::set<int> &forbiddenNodes,

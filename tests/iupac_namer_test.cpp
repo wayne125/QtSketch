@@ -7564,6 +7564,48 @@ int main() {
         }
     }
 
+    // Task 3: FusedRingSubstituentAggregatesRepeatedBranches
+    {
+        int m = indigoLoadMoleculeFromString("Cc1c(C)cc2cc(CCC(=O)Oc3ccccc3)ccc2c1");
+        if (m >= 0) {
+            auto result = IupacNamer::generateName(m);
+            QString expectedName = "phenyl 3-(6,7-dimethylnaphthalen-2-yl)propanoate";
+            if (result.success && result.name == expectedName) {
+                std::cout << "[PASS] FusedRingSubstituentAggregatesRepeatedBranches: " << result.name.toStdString() << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] FusedRingSubstituentAggregatesRepeatedBranches: expected '" << expectedName.toStdString()
+                          << "', got '" << result.name.toStdString() << "' (success=" << result.success << ", err='" << result.error.toStdString() << "')\n";
+                failed++;
+            }
+            indigoFree(m);
+        } else {
+            std::cout << "[FAIL] FusedRingSubstituentAggregatesRepeatedBranches: SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    // Task 3: FusedRingSubstituentOrdersDistinctBranchesAlphabetically
+    {
+        int m = indigoLoadMoleculeFromString("Cc1c(Cl)cc2cc(CCC(=O)Oc3ccccc3)ccc2c1");
+        if (m >= 0) {
+            auto result = IupacNamer::generateName(m);
+            QString expectedName = "phenyl 3-(7-chloro-6-methylnaphthalen-2-yl)propanoate";
+            if (result.success && result.name == expectedName) {
+                std::cout << "[PASS] FusedRingSubstituentOrdersDistinctBranchesAlphabetically: " << result.name.toStdString() << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] FusedRingSubstituentOrdersDistinctBranchesAlphabetically: expected '" << expectedName.toStdString()
+                          << "', got '" << result.name.toStdString() << "' (success=" << result.success << ", err='" << result.error.toStdString() << "')\n";
+                failed++;
+            }
+            indigoFree(m);
+        } else {
+            std::cout << "[FAIL] FusedRingSubstituentOrdersDistinctBranchesAlphabetically: SMILES did not load\n";
+            failed++;
+        }
+    }
+
     std::cout << "\nSummary: " << passed << " passed, " << failed << " failed.\n";
     indigoInchiDispose(sid);
     indigoReleaseSessionId(sid);
