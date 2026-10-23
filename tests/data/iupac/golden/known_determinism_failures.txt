@@ -110,6 +110,20 @@
 # to standardize implicit hydrogens when indigoCountImplicitHydrogens returns -1,
 # making row 1057 deterministically produce "1H-benzo[1',2':4,5]benzo[1,2-b]pyrrole".
 #
+#
+# 2026-10-23: row 441 fixed and removed from this list. Root cause:
+# In IupacNamer.cpp nameRingSystemAsSubstituent (~line 3010), central ring of
+# anthracene was hardcoded to fusedSystemRingIdx[1], failing bridgehead checks
+# under atom reorderings where the central ring sorted to index 0 or 2.
+# Furthermore, computePeripheralNumbering3Ring was a general sequential-counting
+# algorithm that assigned arbitrary locants {5, 10} to the two meso carbons
+# depending on input atom order (giving 5 in some reorderings and 10 in others).
+# Real IUPAC anthracene numbering (P-25.1.1) fixes the meso positions as {9, 10}.
+# Per P-14.4 (lowest locants), a single meso substituent must be assigned locant 9.
+# Fixed by dynamically identifying the central ring via fusion degree (degree 2
+# vs degree 1 ends) and generating all 4 symmetry-equivalent valid IUPAC
+# anthracene numberings. Step 2's lowest-locant selector canonically picks locant 9
+# across all atom orderings ("2-(anthracen-9-yl)ethanoic acid").
+#
 # One row ID per line. Lines starting with # are comments.
-441
 499

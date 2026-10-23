@@ -3008,6 +3008,7 @@ QString nameRingSystemAsSubstituent(
     if (candidates.empty() && ringCount == 3 && fusedSystemRingIdx.size() == 3) {
         auto it = fusedSystemRingIdx.begin();
         const std::set<int> &ring1Nodes = allIndependentRings[*it];
+
         const std::set<int> &ring2Nodes = allIndependentRings[*std::next(it)];
         const std::set<int> &ring3Nodes = allIndependentRings[*std::next(it, 2)];
         if (ring1Nodes.size() == 6 && ring2Nodes.size() == 6 && ring3Nodes.size() == 6) {
@@ -3015,24 +3016,42 @@ QString nameRingSystemAsSubstituent(
             std::vector<int> shared12, shared23;
             for (int n : ring1Nodes) if (ring2Nodes.count(n)) shared12.push_back(n);
             for (int n : ring2Nodes) if (ring3Nodes.count(n)) shared23.push_back(n);
+            std::vector<int> shared13;
+            for (int n : ring1Nodes) if (ring3Nodes.count(n)) shared13.push_back(n);
+
+            const std::set<int> *centerRing = nullptr;
+            const std::set<int> *end1Ring = nullptr;
+            const std::set<int> *end2Ring = nullptr;
+            std::vector<int> sharedCenterEnd1, sharedCenterEnd2;
+
+            if (shared12.size() == 2 && shared13.size() == 2 && shared23.empty()) {
+                centerRing = &ring1Nodes; end1Ring = &ring2Nodes; end2Ring = &ring3Nodes;
+                sharedCenterEnd1 = shared12; sharedCenterEnd2 = shared13;
+            } else if (shared12.size() == 2 && shared23.size() == 2 && shared13.empty()) {
+                centerRing = &ring2Nodes; end1Ring = &ring1Nodes; end2Ring = &ring3Nodes;
+                sharedCenterEnd1 = shared12; sharedCenterEnd2 = shared23;
+            } else if (shared13.size() == 2 && shared23.size() == 2 && shared12.empty()) {
+                centerRing = &ring3Nodes; end1Ring = &ring1Nodes; end2Ring = &ring2Nodes;
+                sharedCenterEnd1 = shared13; sharedCenterEnd2 = shared23;
+            }
 
             // Anthracene: ring1 shares 2 atoms with ring2, ring2 shares 2 atoms with ring3,
             // ring1 and ring3 share 0 atoms (linear 3-ring chain). Each fusion has exactly
             // 2 bridgehead atoms, total 4 bridgeheads for anthracene.
-            if (shared12.size() == 2 && shared23.size() == 2 && shared12 != shared23) {
+            if (centerRing != nullptr && sharedCenterEnd1 != sharedCenterEnd2) {
                 // Collect all 4 bridgeheads
                 std::set<int> bridgeheads;
-                for (int n : shared12) bridgeheads.insert(n);
-                for (int n : shared23) bridgeheads.insert(n);
+                for (int n : sharedCenterEnd1) bridgeheads.insert(n);
+                for (int n : sharedCenterEnd2) bridgeheads.insert(n);
 
                 // Verify bridgeheads are bonded (ortho-fusion)
                 bool bh12Bonded = false;
-                for (int nei : g.nodes[shared12[0]].neighbors) {
-                    if (nei == shared12[1]) { bh12Bonded = true; break; }
+                for (int nei : g.nodes[sharedCenterEnd1[0]].neighbors) {
+                    if (nei == sharedCenterEnd1[1]) { bh12Bonded = true; break; }
                 }
                 bool bh23Bonded = false;
-                for (int nei : g.nodes[shared23[0]].neighbors) {
-                    if (nei == shared23[1]) { bh23Bonded = true; break; }
+                for (int nei : g.nodes[sharedCenterEnd2[0]].neighbors) {
+                    if (nei == sharedCenterEnd2[1]) { bh23Bonded = true; break; }
                 }
 
                 if (bh12Bonded && bh23Bonded) {
@@ -3052,29 +3071,91 @@ QString nameRingSystemAsSubstituent(
                         }
                     }
                     if (allCarbon && allAromatic && anthNodes.size() == 14) {
-                        // computePeripheralNumbering3Ring's own internal numbering search
-                        // is built from the unordered union of ring1/ring2/ring3 (via
-                        // edgeRingCount/periphGraph, both std::set/std::map keyed only by
-                        // atom index) -- permuting which ring is passed as "first" etc.
-                        // provably produces byte-identical output every time, confirmed by
-                        // reading its own implementation. Passing rootAtom as
-                        // substituentBearingNodes (to try nudging its own tie-break toward
-                        // minimizing this atom's locant) was tried and reverted: it does
-                        // influence the tie-break, but towards a DIFFERENT, structurally
-                        // invalid numbering (e.g. placing the attachment -- the meso
-                        // position of the middle ring -- at locant 1, a position that must
-                        // be on an outer ring) rather than picking the lowest-locant option
-                        // within the valid family. The one result this function's own
-                        // unhinted search returns is a real, structurally valid numbering
-                        // (confirmed against anthracene's known connectivity by hand); it
-                        // just isn't always the lowest-locant member of the tied set this
-                        // attachment atom belongs to. Accepted as-is rather than risk a
-                        // wrong-but-lower locant -- Step 3's own pinned test value below
-                        // reflects this function's real, verified output.
-                        std::map<int, QString> locantMap = computePeripheralNumbering3Ring(
-                            g, ring1Nodes, ring2Nodes, ring3Nodes, bridgeheads);
-                        if (!locantMap.empty()) {
-                            candidates.push_back(RingSystemNameResult{true, "", "anthracene", locantMap});
+                        // Anthracene retained numbering (IUPAC Blue Book P-25.1.1):
+                        // Ring 1 (end1): positions 1, 2, 3, 4
+                        // Ring 2 (center): meso positions 9, 10
+                        // Ring 3 (end2): positions 5, 6, 7, 8
+                        // Bridgeheads: 4a, 10a, 8a, 9a
+                        // Generate all 4 symmetry-equivalent valid IUPAC numberings so Step 2's
+                        // lowest-locant selector deterministically picks the canonical locant
+                        // (1 for alpha, 2 for beta, 9 for meso per P-14.4).
+                        std::vector<int> mesoAtoms;
+                        for (int n : *centerRing) {
+                            if (!bridgeheads.count(n)) mesoAtoms.push_back(n);
+                        }
+                        if (mesoAtoms.size() == 2) {
+                            int mesoA = mesoAtoms[0];
+                            int mesoB = mesoAtoms[1];
+
+                            int bh1A = -1, bh2A = -1;
+                            for (int nei : g.nodes[mesoA].neighbors) {
+                                if (nei == sharedCenterEnd1[0] || nei == sharedCenterEnd1[1]) bh1A = nei;
+                                if (nei == sharedCenterEnd2[0] || nei == sharedCenterEnd2[1]) bh2A = nei;
+                            }
+                            int bh1B = (bh1A == sharedCenterEnd1[0]) ? sharedCenterEnd1[1] : sharedCenterEnd1[0];
+                            int bh2B = (bh2A == sharedCenterEnd2[0]) ? sharedCenterEnd2[1] : sharedCenterEnd2[0];
+                            if (bh1A != -1 && bh2A != -1 && bh1B != -1 && bh2B != -1) {
+
+                            auto traceEndPath = [&](const std::set<int> &endRing, int bhStart, int bhEnd) -> std::vector<int> {
+                                int first = -1;
+                                for (int nei : g.nodes[bhStart].neighbors) {
+                                    if (endRing.count(nei) && !bridgeheads.count(nei)) { first = nei; break; }
+                                }
+                                if (first == -1) return {};
+                                std::vector<int> path = {first};
+                                int prev = bhStart;
+                                int curr = first;
+                                while (path.size() < 4) {
+                                    int next = -1;
+                                    for (int nei : g.nodes[curr].neighbors) {
+                                        if (endRing.count(nei) && !bridgeheads.count(nei) && nei != prev) {
+                                            next = nei;
+                                            break;
+                                        }
+                                    }
+                                    if (next == -1) return {};
+                                    path.push_back(next);
+                                    prev = curr;
+                                    curr = next;
+                                }
+                                bool connectedToBhEnd = false;
+                                for (int nei : g.nodes[curr].neighbors) {
+                                    if (nei == bhEnd) { connectedToBhEnd = true; break; }
+                                }
+                                if (!connectedToBhEnd) return {};
+                                return path;
+                            };
+
+                            std::vector<int> path1 = traceEndPath(*end1Ring, bh1A, bh1B);
+                            std::vector<int> path2 = traceEndPath(*end2Ring, bh2A, bh2B);
+
+                            if (path1.size() == 4 && path2.size() == 4) {
+                                int e1_1 = path1[0], e1_2 = path1[1], e1_3 = path1[2], e1_4 = path1[3];
+                                int e2_1 = path2[0], e2_2 = path2[1], e2_3 = path2[2], e2_4 = path2[3];
+
+                                auto addCandidate = [&](int a1, int a2, int a3, int a4, int a4a,
+                                                        int a10, int a10a,
+                                                        int a5, int a6, int a7, int a8, int a8a,
+                                                        int a9, int a9a) {
+                                    std::map<int, QString> locMap;
+                                    locMap[a1] = "1"; locMap[a2] = "2"; locMap[a3] = "3"; locMap[a4] = "4";
+                                    locMap[a4a] = "4a"; locMap[a10] = "10"; locMap[a10a] = "10a";
+                                    locMap[a5] = "5"; locMap[a6] = "6"; locMap[a7] = "7"; locMap[a8] = "8";
+                                    locMap[a8a] = "8a"; locMap[a9] = "9"; locMap[a9a] = "9a";
+                                    candidates.push_back(RingSystemNameResult{true, "", "anthracene", locMap});
+                                };
+
+                                // 4 symmetry mappings of anthracene:
+                                // 1. End1 forward, MesoA=9, MesoB=10
+                                addCandidate(e1_1, e1_2, e1_3, e1_4, bh1B, mesoB, bh2B, e2_4, e2_3, e2_2, e2_1, bh2A, mesoA, bh1A);
+                                // 2. End1 reversed, MesoA=10, MesoB=9
+                                addCandidate(e1_4, e1_3, e1_2, e1_1, bh1A, mesoA, bh2A, e2_1, e2_2, e2_3, e2_4, bh2B, mesoB, bh1B);
+                                // 3. End2 forward (swapped), MesoA=9, MesoB=10
+                                addCandidate(e2_1, e2_2, e2_3, e2_4, bh2B, mesoB, bh1B, e1_4, e1_3, e1_2, e1_1, bh1A, mesoA, bh2A);
+                                // 4. End2 reversed (swapped), MesoA=10, MesoB=9
+                                addCandidate(e2_4, e2_3, e2_2, e2_1, bh2A, mesoA, bh1A, e1_1, e1_2, e1_3, e1_4, bh1B, mesoB, bh2B);
+                            }
+                            }
                         }
                     }
                 }
