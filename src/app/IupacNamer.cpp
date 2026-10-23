@@ -4766,28 +4766,9 @@ QString nameChainParentWithRingSubstituent(int mol, const std::map<int, int> &in
         // here may be a fused/branching multi-ring system (e.g. anthracene), which
         // it was never designed to detect. Fall back to nameBranchGraph, which
         // correctly detects a fused system via allSSSRRings and dispatches to
-        // nameRingSystemAsSubstituent. Restricted to the case where the ONLY
-        // exocyclic attachment anywhere on the ring system is this one chain
-        // attachment -- nameRingSystemAsSubstituent only ever names the bare
-        // ring, with no mechanism to also incorporate a second, independent
-        // substituent (e.g. a methyl elsewhere on the same ring); without this
-        // check, a case the original call correctly rejected (an ambiguous
-        // ring with multiple substituents) would silently succeed with that
-        // other substituent dropped instead of staying rejected.
-        bool onlyOneExocyclicAttachment = true;
-        for (int rNode : ringNodeSet) {
-            for (int nei : g.nodes[rNode].neighbors) {
-                if (ringNodeSet.count(nei) || g.nodes[nei].atomicNumber == 1) continue;
-                if (!(rNode == ipsoRingNode && nei == chainAttachCarbon)) {
-                    onlyOneExocyclicAttachment = false;
-                    break;
-                }
-            }
-            if (!onlyOneExocyclicAttachment) break;
-        }
-        if (onlyOneExocyclicAttachment) {
-            ringPrefix = nameBranchGraph(g, ipsoRingNode, chainAttachCarbon, allSSSRRings, {}, stereoByGraphId, handledBranchStereoIds, mol);
-        }
+        // nameRingSystemAsSubstituent. Passing chainSet as forbiddenNodes prevents
+        // ring-substituent branch discovery from wandering back into the chain parent.
+        ringPrefix = nameBranchGraph(g, ipsoRingNode, chainAttachCarbon, allSSSRRings, chainSet, stereoByGraphId, handledBranchStereoIds, mol);
     }
     if (ringPrefix.isEmpty()) return "";
 

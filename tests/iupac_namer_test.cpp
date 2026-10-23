@@ -874,7 +874,7 @@ int main() {
         {"c1ccc2cc(CS)ccc2c1", "(naphthalen-2-yl)methanethiol"},
         {"CCc1cccc2ccccc12", "1-ethylnaphthalene"},
         {"CCc1ccc2ccccc2c1", "2-ethylnaphthalene"},
-        {"Cc1cccc2c(CC(=O)O)cccc12", "", true, "seniority"},
+        {"Cc1cccc2c(CC(=O)O)cccc12", "2-(5-methylnaphthalen-1-yl)ethanoic acid"},
 
         // Task 6: Ring systems as chain substituents with exocyclic functional groups.
         // Asymmetric case (single-ring heterocycle): pyridine with -CH2-COOH at position 3.
@@ -7581,6 +7581,46 @@ int main() {
             indigoFree(m);
         } else {
             std::cout << "[FAIL] FusedRingSubstituentAggregatesRepeatedBranches: SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    // Task 4: ChainParentRingSubstituentRejectsSecondAttachment
+    {
+        int m = indigoLoadMoleculeFromString("COC(=O)CCc1ccc2cc(CCC(=O)OC)ccc2c1");
+        if (m >= 0) {
+            auto result = IupacNamer::generateName(m);
+            if (!result.success) {
+                std::cout << "[PASS] ChainParentRingSubstituentRejectsSecondAttachment: correctly rejected\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] ChainParentRingSubstituentRejectsSecondAttachment: expected rejection, got '" << result.name.toStdString() << "'\n";
+                failed++;
+            }
+            indigoFree(m);
+        } else {
+            std::cout << "[FAIL] ChainParentRingSubstituentRejectsSecondAttachment: SMILES did not load\n";
+            failed++;
+        }
+    }
+
+    // Task 4: FusedRingSubstituentSameRingExtraBranchNowSucceeds
+    {
+        int m = indigoLoadMoleculeFromString("c1ccc2cc(C)c(CCC(=O)OC)cc2c1");
+        if (m >= 0) {
+            auto result = IupacNamer::generateName(m);
+            QString expectedName = "methyl 3-(3-methylnaphthalen-2-yl)propanoate";
+            if (result.success && result.name == expectedName) {
+                std::cout << "[PASS] FusedRingSubstituentSameRingExtraBranchNowSucceeds: " << result.name.toStdString() << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] FusedRingSubstituentSameRingExtraBranchNowSucceeds: expected '" << expectedName.toStdString()
+                          << "', got '" << result.name.toStdString() << "' (success=" << result.success << ", err='" << result.error.toStdString() << "')\n";
+                failed++;
+            }
+            indigoFree(m);
+        } else {
+            std::cout << "[FAIL] FusedRingSubstituentSameRingExtraBranchNowSucceeds: SMILES did not load\n";
             failed++;
         }
     }
