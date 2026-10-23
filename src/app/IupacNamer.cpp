@@ -2999,6 +2999,15 @@ QString nameRingSystemAsSubstituent(
 
 
 
+    std::vector<std::set<int>> systemRingsIndigo;
+    for (int idx : fusedSystemRingIdx) {
+        std::set<int> indigoRing;
+        for (int gIdx : allIndependentRings[idx]) {
+            indigoRing.insert(g.nodes[gIdx].indigoIdx);
+        }
+        systemRingsIndigo.push_back(indigoRing);
+    }
+
     std::vector<RingSystemNameResult> candidates;
 
     // Try each mechanism in order, falling through to the next whenever one
@@ -3008,7 +3017,7 @@ QString nameRingSystemAsSubstituent(
     // itself can tell. A real (non-sentinel) rejection from ANY mechanism
     // means this specific ring system is genuinely out of scope.
     if (ringCount == 2) {
-        RingSystemNameResult p31 = namePhase31BenzoFusion(g, mol, indigoToGraphIdx, ringCount);
+        RingSystemNameResult p31 = namePhase31BenzoFusion(g, mol, indigoToGraphIdx, ringCount, &systemRingsIndigo);
         if (p31.success) {
             candidates.push_back(p31);
         } else if (p31.error != "Phase 31: no match") {
@@ -3018,7 +3027,8 @@ QString nameRingSystemAsSubstituent(
 
     if (candidates.empty()) {
         // Confirmed at lines 7046/7372: empty extraSubstituents leaves prefixPart empty, so baseName has no extra substituent text.
-        std::vector<RingSystemNameResult> chainResults = nameLinearChainFusion(g, mol, indigoToGraphIdx, ringCount, rootAtom);
+        std::vector<RingSystemNameResult> chainResults = nameLinearChainFusion(g, mol, indigoToGraphIdx, ringCount, rootAtom, &systemRingsIndigo);
+
         for (const auto &result : chainResults) {
             if (result.success) {
                 candidates.push_back(result);
@@ -3036,7 +3046,7 @@ QString nameRingSystemAsSubstituent(
 
     if (candidates.empty()) {
         // Confirmed at lines 8169/8260: empty extraSubstituents leaves prefixPart empty, so baseName has no extra substituent text.
-        std::vector<RingSystemNameResult> branchResults = nameBranchingFusion(g, mol, indigoToGraphIdx, ringCount, rootAtom);
+        std::vector<RingSystemNameResult> branchResults = nameBranchingFusion(g, mol, indigoToGraphIdx, ringCount, rootAtom, &systemRingsIndigo);
         for (const auto &result : branchResults) {
             if (result.success) {
                 candidates.push_back(result);
@@ -5886,6 +5896,7 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
     int freeValenceAtom,
     const std::vector<std::set<int>> *ringSubsetOverride,
     const std::vector<std::pair<int, QString>> &extraSubstituents) {
+
     // --- Phase 44 & 48: N-Heterocycle Fusion Chain Nomenclature (linear-chain branch) ---
     if (ringCount < 3) {
         return {RingSystemNameResult{false, "Linear chain: no match", "", {}}};
@@ -7246,6 +7257,7 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                             // numbering directions on a heteroatomLocants tie, producing
                             // locants that overlap/conflict (a substituent and a saturated
                             // position both reported at the same locant).
+                            std::map<int, QString> periphMap;
                             if (N >= 3) {
                                 // Collect ALL indicated-hydrogen positions across all rings
                                 std::vector<int> ihNodes;
@@ -7263,7 +7275,6 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                 // locants agree on the SAME peripheral numbering) instead of
                                 // recomputing via detectFusedRingDirections here.
                                 // For N == 3, use computePeripheralNumbering3Ring (existing logic).
-                                std::map<int, QString> periphMap;
                                 if (N >= 4) {
                                     if (!periphMapN4PrecompValid) {
                                         return {RingSystemNameResult{false, "Failed to compute peripheral numbering for N>=4 system.", "", {}}};
@@ -7356,7 +7367,7 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                 QString prefixPart;
 
                                 // Compute periphMap for N==3 (not already computed for N>=4 above)
-                                if (N == 3 && (!collectedSubstituents.empty() || !ihNodes.empty() || !hydroPositionNodes.empty())) {
+                                if (N == 3 && (!collectedSubstituents.empty() || !ihNodes.empty() || !hydroPositionNodes.empty() || freeValenceAtom != -1)) {
                                     // Build bridgehead set for peripheral numbering
                                     std::set<int> bheads;
                                     for (int i = 0; i < 3; ++i) {
@@ -7561,7 +7572,7 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                             // tie-break among symmetric candidates -- adding
                             // it speculatively now, with no real consumer
                             // to validate it against, would be unverifiable.
-                            return {RingSystemNameResult{true, "", resultName, {}}};
+                            return {RingSystemNameResult{true, "", resultName, periphMap}};
                         }
                     }
                 }
@@ -7580,6 +7591,7 @@ std::vector<RingSystemNameResult> nameBranchingFusion(
     int freeValenceAtom,
     const std::vector<std::set<int>> *ringSubsetOverride,
     const std::vector<std::pair<int, QString>> &extraSubstituents) {
+
     // --- Degree-3+ branching fusion mechanism ---
     // This function duplicates the ring-detection setup from the linear chain
     // mechanism (per this codebase's established preference for duplication over

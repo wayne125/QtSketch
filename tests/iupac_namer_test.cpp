@@ -7646,6 +7646,27 @@ int main() {
         }
     }
 
+    // Task 5: FusedRingSubstituentScopeNotCorruptedByUnrelatedRing
+    {
+        int m = indigoLoadMoleculeFromString("O=C(CCc1ccc2nc3ccsc3cc2c1)Oc4ccccc4");
+        if (m >= 0) {
+            auto result = IupacNamer::generateName(m);
+            QString expectedName = "phenyl 3-(benzo[1,2-b]thieno[2,3-e]pyridin-7-yl)propanoate";
+            if (result.success && result.name == expectedName) {
+                std::cout << "[PASS] FusedRingSubstituentScopeNotCorruptedByUnrelatedRing: " << result.name.toStdString() << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] FusedRingSubstituentScopeNotCorruptedByUnrelatedRing: expected '" << expectedName.toStdString()
+                          << "', got '" << result.name.toStdString() << "' (success=" << result.success << ", err='" << result.error.toStdString() << "')\n";
+                failed++;
+            }
+            indigoFree(m);
+        } else {
+            std::cout << "[FAIL] FusedRingSubstituentScopeNotCorruptedByUnrelatedRing: SMILES did not load\n";
+            failed++;
+        }
+    }
+
     std::cout << "\nSummary: " << passed << " passed, " << failed << " failed.\n";
     indigoInchiDispose(sid);
     indigoReleaseSessionId(sid);
