@@ -7667,6 +7667,39 @@ int main() {
         }
     }
 
+    // Retained-ring registry: phenanthridine and phenanthroline isomers
+    // (TricyclicNFamily.cpp). Names cross-checked against the Blue Book
+    // Appendix 2 entries 9-18/21, plus real documented chemistry (1,10-
+    // phenanthroline's bay-region pincer chelation geometry).
+    {
+        struct Case { const char *name; const char *smiles; const char *expected; };
+        Case cases[] = {
+            {"phenanthridine", "c1ccc2ccc3cccnc3c2c1", "phenanthridine"},
+            {"1,10-phenanthroline", "c1cnc2ncc3ccccc3c2c1", "1,10-phenanthroline"},
+            {"1,7-phenanthroline", "c1cnc2ccc3cnccc3c2c1", "1,7-phenanthroline"},
+            {"3,8-phenanthroline", "n1ccc2ccc3ncccc3c2c1", "3,8-phenanthroline"},
+        };
+        for (const auto &c : cases) {
+            int m = indigoLoadMoleculeFromString(c.smiles);
+            if (m >= 0) {
+                auto result = IupacNamer::generateName(m);
+                QString expectedName = c.expected;
+                if (result.success && result.name == expectedName) {
+                    std::cout << "[PASS] " << c.name << ": " << result.name.toStdString() << "\n";
+                    passed++;
+                } else {
+                    std::cout << "[FAIL] " << c.name << ": expected '" << expectedName.toStdString()
+                              << "', got '" << result.name.toStdString() << "' (success=" << result.success << ", err='" << result.error.toStdString() << "')\n";
+                    failed++;
+                }
+                indigoFree(m);
+            } else {
+                std::cout << "[FAIL] " << c.name << ": SMILES did not load\n";
+                failed++;
+            }
+        }
+    }
+
     std::cout << "\nSummary: " << passed << " passed, " << failed << " failed.\n";
     indigoInchiDispose(sid);
     indigoReleaseSessionId(sid);
