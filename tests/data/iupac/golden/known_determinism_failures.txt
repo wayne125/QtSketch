@@ -125,5 +125,20 @@
 # anthracene numberings. Step 2's lowest-locant selector canonically picks locant 9
 # across all atom orderings ("2-(anthracen-9-yl)ethanoic acid").
 #
+#
+# 2026-10-23: row 499 fixed and removed from this list. Root cause:
+# In IupacNamer.cpp (~line 15880), the ring-substituent classification loop
+# unconditionally overwrote foundAttachChainNode and attachRingNode on every
+# exocyclic neighbor meeting "isChainC && !isDirectExocyclicGroup". For row 499
+# (phenyl 3-(2-methylcyclohexyl)propanoate), the cyclohexane ring has two
+# exocyclic plain-carbon substituents: a bare methyl group and the propanoate ester
+# chain. Under atom reordering, whichever substituent was visited last won, causing
+# the methyl carbon to be misidentified as the parent chain attachment and the real
+# propanoate chain to be treated as a ring substituent ("3-oxo-3-phenoxypropyl").
+# Fixed by collecting all candidate pairs and, when multiple candidates exist on the
+# same ring, performing an acyclic carbon-reachability BFS walk to determine which
+# candidate's chain reaches a principal characteristic group (acid, ester, amide,
+# nitrile, aldehyde, ketone, alcohol, amine, etc.). The unique principal chain is
+# deterministically selected as the parent link across all input atom orderings.
+#
 # One row ID per line. Lines starting with # are comments.
-499

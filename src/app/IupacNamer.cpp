@@ -15799,6 +15799,8 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
         bool hasDirectExoGroup = false;
         int mainChainExoCount = 0;
         bool validSubstituent = true;
+        std::vector<std::pair<int, int>> chainCCandidates;
+        std::vector<std::pair<int, int>> esterOCandidates;
 
         for (int rNode : rNodes) {
             for (size_t j = 0; j < g.nodes[rNode].neighbors.size(); ++j) {
@@ -15878,21 +15880,157 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                             }
 
                             if (!isDirectExocyclicGroup) {
-                                foundAttachChainNode = nei;
-                                attachRingNode = rNode;
+                                chainCCandidates.push_back({rNode, nei});
                                 mainChainExoCount++;
                             } else {
                                 hasDirectExoGroup = true;
                             }
                         } else if (isEsterO) {
-                            foundAttachChainNode = nei;
-                            attachRingNode = rNode;
+                            esterOCandidates.push_back({rNode, nei});
                             mainChainExoCount++;
                         }
                     } else {
                         validSubstituent = false;
                     }
                 }
+            }
+        }
+
+        auto carbonHasPrincipalGroup = [&](int cNode) -> bool {
+            if (g.nodes[cNode].atomicNumber != 6) return false;
+
+            if (carbonSulfonicAcid.count(cNode) ||
+                carbonSulfonamide.count(cNode) ||
+                carbonSulfonylHalide.count(cNode) ||
+                carbonSulfinylHalide.count(cNode) ||
+                carbonSulfinicAcid.count(cNode) ||
+                carbonSulfinamide.count(cNode) ||
+                carbonThiol.count(cNode) ||
+                carbonSelenol.count(cNode) ||
+                carbonTellurol.count(cNode) ||
+                carbonBoronicAcid.count(cNode) ||
+                carbonBorinicAcid.count(cNode) ||
+                carbonPhosphonicAcid.count(cNode) ||
+                carbonPhosphinicAcid.count(cNode) ||
+                carbonPhosphonicDihalide.count(cNode) ||
+                carbonArsonicAcid.count(cNode) ||
+                carbonArsinicAcid.count(cNode) ||
+                carbonArsonicDihalide.count(cNode) ||
+                carbonStibonicAcid.count(cNode) ||
+                carbonStibinicAcid.count(cNode) ||
+                carbonPhosphine.count(cNode)) {
+                return true;
+            }
+
+            const GraphNode &node = g.nodes[cNode];
+            bool hasDoubleO = false, hasDoubleS = false, hasDoubleN = false, hasTripleN = false;
+            bool hasOH = false, hasAmineN = false;
+            bool isAttachedToEsterO = false;
+
+            for (size_t k = 0; k < node.neighbors.size(); ++k) {
+                int nei = node.neighbors[k];
+                int order = node.bondOrders[k];
+                int nZ = g.nodes[nei].atomicNumber;
+
+                if (nZ == 8 && order == 2) hasDoubleO = true;
+                else if (nZ == 16 && order == 2) hasDoubleS = true;
+                else if (nZ == 7 && order == 2) hasDoubleN = true;
+                else if (nZ == 7 && order == 3) hasTripleN = true;
+                else if (nZ == 8 && order == 1) {
+                    if (g.nodes[nei].totalH >= 1 || g.nodes[nei].neighbors.size() == 1) {
+                        hasOH = true;
+                    } else {
+                        for (size_t l = 0; l < g.nodes[nei].neighbors.size(); ++l) {
+                            int acylC = g.nodes[nei].neighbors[l];
+                            if (acylC != cNode && g.nodes[acylC].atomicNumber == 6) {
+                                for (size_t m = 0; m < g.nodes[acylC].neighbors.size(); ++m) {
+                                    if (g.nodes[acylC].bondOrders[m] == 2 && g.nodes[g.nodes[acylC].neighbors[m]].atomicNumber == 8) {
+                                        isAttachedToEsterO = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (isAttachedToEsterO) break;
+                        }
+                    }
+                } else if (nZ == 7 && order == 1) {
+                    bool isNitroIsoOrAzide = false;
+                    if (carbonAzide.count(cNode) && std::find(carbonAzide.at(cNode).begin(), carbonAzide.at(cNode).end(), nei) != carbonAzide.at(cNode).end()) {
+                        isNitroIsoOrAzide = true;
+                    }
+                    if (isIsocyanateNitrogen(nei, cNode, g)) isNitroIsoOrAzide = true;
+                    if (isNitroNitrogen(nei, cNode, g)) isNitroIsoOrAzide = true;
+                    if (isNitrosoNitrogen(nei, cNode, g)) isNitroIsoOrAzide = true;
+                    if (!isNitroIsoOrAzide) {
+                        hasAmineN = true;
+                    }
+                }
+            }
+
+            return (hasDoubleO || hasDoubleS || hasDoubleN || hasTripleN || hasOH || hasAmineN || isAttachedToEsterO);
+        };
+
+        auto chainReachesPrincipalGroup = [&](int rAttachNode, int chainStartNode) -> bool {
+            std::vector<int> stack = {chainStartNode};
+            std::set<int> visited = {rAttachNode, chainStartNode};
+            std::set<int> chainSet;
+
+            while (!stack.empty()) {
+                int cur = stack.back();
+                stack.pop_back();
+                chainSet.insert(cur);
+                for (int nei : g.nodes[cur].neighbors) {
+                    if (g.nodes[nei].atomicNumber == 6 && !rNodes.count(nei) && !allSSSRNodes.count(nei) && !visited.count(nei)) {
+                        visited.insert(nei);
+                        stack.push_back(nei);
+                    }
+                }
+            }
+
+            for (int c : chainSet) {
+                if (carbonHasPrincipalGroup(c)) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        if (esterOCandidates.size() == 1 && chainCCandidates.empty()) {
+            attachRingNode = esterOCandidates[0].first;
+            foundAttachChainNode = esterOCandidates[0].second;
+        } else if (chainCCandidates.size() == 1 && esterOCandidates.empty()) {
+            attachRingNode = chainCCandidates[0].first;
+            foundAttachChainNode = chainCCandidates[0].second;
+        } else if (chainCCandidates.size() > 1 && esterOCandidates.empty()) {
+            std::vector<std::pair<int, int>> principalCandidates;
+            for (const auto &cand : chainCCandidates) {
+                if (chainReachesPrincipalGroup(cand.first, cand.second)) {
+                    principalCandidates.push_back(cand);
+                }
+            }
+            if (principalCandidates.size() == 1) {
+                attachRingNode = principalCandidates[0].first;
+                foundAttachChainNode = principalCandidates[0].second;
+            } else {
+                validSubstituent = false;
+            }
+        } else if (esterOCandidates.size() == 1 && !chainCCandidates.empty()) {
+            bool anyChainHasPrincipal = false;
+            for (const auto &cand : chainCCandidates) {
+                if (chainReachesPrincipalGroup(cand.first, cand.second)) {
+                    anyChainHasPrincipal = true;
+                    break;
+                }
+            }
+            if (!anyChainHasPrincipal) {
+                attachRingNode = esterOCandidates[0].first;
+                foundAttachChainNode = esterOCandidates[0].second;
+            } else {
+                validSubstituent = false;
+            }
+        } else {
+            if (!chainCCandidates.empty() || !esterOCandidates.empty()) {
+                validSubstituent = false;
             }
         }
 
