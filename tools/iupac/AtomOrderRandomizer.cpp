@@ -147,8 +147,40 @@ bool randomizeAtomOrder(const std::string& smiles, int seed, std::string& outSmi
     std::string reorderedCanon = reorderedCanonC ? reorderedCanonC : "";
     indigoFree(newMol);
 
-    // Self-check: must still be the same molecule.
-    if (reordered.empty() || reorderedCanon.empty() || reorderedCanon != origCanon) {
+    // Indigo's SMILES writer emits "[Te]" (capitalized) even for aromatic
+    // tellurium in rings, but Indigo's SMILES parser treats uppercase "[Te]"
+    // as aliphatic, failing aromaticity perception and adding spurious
+    // implicit hydrogens (turning tellurophene into dihydrotellurophene).
+    // If [Te] was emitted in an aromatic structure, lowercase to [te].
+    if (reordered.find("[Te]") != std::string::npos) {
+        std::string candidate = reordered;
+        size_t pos = 0;
+        while ((pos = candidate.find("[Te]", pos)) != std::string::npos) {
+            candidate.replace(pos, 4, "[te]");
+            pos += 4;
+        }
+        int testMol = indigoLoadMoleculeFromString(candidate.c_str());
+        if (testMol >= 0) {
+            const char* testCanonC = indigoCanonicalSmiles(testMol);
+            if (testCanonC && std::string(testCanonC) == origCanon) {
+                reordered = candidate;
+            }
+            indigoFree(testMol);
+        }
+    }
+
+    // Self-check: must still be the same molecule when re-parsed from the emitted SMILES.
+    if (reordered.empty()) {
+        return false;
+    }
+    int reparsedCheck = indigoLoadMoleculeFromString(reordered.c_str());
+    if (reparsedCheck < 0) {
+        return false;
+    }
+    const char* reparsedCanonC = indigoCanonicalSmiles(reparsedCheck);
+    std::string reparsedCanon = reparsedCanonC ? reparsedCanonC : "";
+    indigoFree(reparsedCheck);
+    if (reparsedCanon != origCanon) {
         return false;
     }
 

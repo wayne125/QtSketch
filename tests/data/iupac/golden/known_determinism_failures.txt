@@ -86,9 +86,18 @@
 # to fail and spuriously reject the molecule. Fixed by reusing the acylCarbon
 # index already positively identified during nNodeNear detection.
 #
+#
+# 2026-10-23: rows 289 and 522 fixed and removed from this list. Root cause:
+# In tools/iupac/AtomOrderRandomizer.cpp, indigoSmiles(newMol) serialized aromatic
+# tellurium in tellurophenes as capitalized "[Te]" instead of lowercase "[te]".
+# When re-parsed by Indigo during determinism checking, the uppercase "[Te]" was
+# treated as aliphatic, failing aromaticity perception and adding two spurious
+# implicit hydrogens to adjacent ring carbons (converting tellurophene C4H4Te into
+# 2,5-dihydrotellurophene C4H6Te), triggering IupacNamer's saturation rejection.
+# Fixed by preserving lowercase "[te]" for aromatic tellurium in AtomOrderRandomizer
+# and adding a round-trip canonical verification before accepting reordered SMILES.
+#
 # One row ID per line. Lines starting with # are comments.
-289
 441
 499
-522
 1057
