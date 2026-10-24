@@ -114,6 +114,38 @@ int main() {
         }
     }
 
+    // Dedicated phenomercurazine self-test: confirm entry exists, has 14 atoms,
+    // indicatedHydrogenLocant="2" (2H quinonoid tautomer per Appendix 2 Note d),
+    // and self-consistent.
+    {
+        const RetainedRingSystem *merc = nullptr;
+        for (const auto &sys : registry) {
+            if (sys.name == "phenomercurazine") { merc = &sys; break; }
+        }
+        if (merc == nullptr) {
+            std::cout << "[FAIL] phenomercurazine entry not found in registry\n";
+            ++failed;
+        } else if (merc->peripheralLocants.size() != 14) {
+            std::cout << "[FAIL] phenomercurazine peripheralLocants.size() != 14 (got "
+                       << merc->peripheralLocants.size() << ")\n";
+            ++failed;
+        } else if (merc->indicatedHydrogenLocant != "2") {
+            std::cout << "[FAIL] phenomercurazine indicatedHydrogenLocant != \"2\" (got '"
+                       << merc->indicatedHydrogenLocant.toStdString() << "')\n";
+            ++failed;
+        } else {
+            QString err = validateRetainedRingSystem(0, *merc);
+            if (!err.isEmpty()) {
+                std::cout << "[FAIL] phenomercurazine validateRetainedRingSystem: " << err.toStdString() << "\n";
+                ++failed;
+            } else {
+                std::cout << "[PASS] phenomercurazine entry present with 14 atoms, "
+                              "indicatedHydrogenLocant=\"2\", and self-consistent\n";
+                ++passed;
+            }
+        }
+    }
+
     // Deliberate negative test: a transposed locant must be caught, not
     // just a wrong-length list (this is the Review Focus item -- prove it
     // here, don't just assert it in the plan).

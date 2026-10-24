@@ -194,19 +194,40 @@ void registerPhenoxazineFamily(std::vector<RetainedRingSystem> &registry) {
     });
 
     // 7. phenomercurazine (rank 7) - X = Hg
-    // DEFERRED: Mercury typically forms linear divalent compounds and does NOT
-    // readily participate in aromatic systems the way C/N/O/S/P/As/Se/Te do.
-    // The SMILES 'c1ccc2nc3ccccc3[Hg]c2c1' parses with Hg at atom[11] (deg=2),
-    // but organomercury compounds are generally non-aromatic with Hg in a
-    // non-planar, non-conjugated environment. Without confidence in a chemically
-    // sane aromatic structure for this entry, we defer it.
+    // Appendix 2 entry 7 (formerly phenomercazine); Note d notes CAS calls
+    // 2H-phenomercurazine (3,6-cyclohexadien-1-yl-2-ylidene-nitrilo-1,2-phenylene)mercury.
+    // This is a quinonoid tautomer with indicated hydrogen at locant 2 (sp3 -CH2-),
+    // isolated double bonds at 1=10a and 3=4 in the 3,6-cyclohexadien-1-yl-2-ylidene ring,
+    // an unprotonated =N- bridge at locant 5, divalent 2-coordinate Hg at locant 10,
+    // and an aromatic 1,2-phenylene ring at locants 5a-9a.
     //
-    // To implement later if a valid aromatic Hg structure is confirmed:
-    //   registry.push_back(RetainedRingSystem{
-    //       "phenomercurazine",
-    //       "c1ccc2Nc3ccccc3[Hg]c2c1",
-    //       locants,
-    //       bondLetters,
-    //       7,
-    //   });
+    // Verified via compiled Indigo neighbor dump and valence analysis:
+    //   C1CC=CC2=Nc3ccccc3[Hg]C2=1 parses to 14 atoms, formula C12H9HgN.
+    //   Atoms parse strictly in locant order 1, 2, 3, 4, 4a, 5, 5a, 6, 7, 8, 9, 9a, 10, 10a:
+    //     atom[0]="1" (=CH-), atom[1]="2" (CH2, indicated-H), atom[2]="3" (=CH-),
+    //     atom[3]="4" (-CH=), atom[4]="4a" (>C=), atom[5]="5" (=N-),
+    //     atom[6]="5a" (aromatic C), atom[7]="6" (aromatic CH), atom[8]="7" (aromatic CH),
+    //     atom[9]="8" (aromatic CH), atom[10]="9" (aromatic CH), atom[11]="9a" (aromatic C),
+    //     atom[12]="10" (divalent [Hg]), atom[13]="10a" (=C<)
+    //   All 14 peripheral bonds ('a' through 'n') are consecutively adjacent in this order.
+    const std::vector<QString> mercurazineLocants = {
+        "1", "2", "3", "4", "4a", "5", "5a", "6", "7", "8", "9", "9a", "10", "10a"
+    };
+    const std::map<char, std::pair<QString, QString>> mercurazineBondLetters = {
+        {'a', {"1","2"}}, {'b', {"2","3"}}, {'c', {"3","4"}},
+        {'d', {"4","4a"}}, {'e', {"4a","5"}}, {'f', {"5","5a"}},
+        {'g', {"5a","6"}}, {'h', {"6","7"}}, {'i', {"7","8"}},
+        {'j', {"8","9"}}, {'k', {"9","9a"}}, {'l', {"9a","10"}},
+        {'m', {"10","10a"}}, {'n', {"10a","1"}},
+    };
+
+    registry.push_back(RetainedRingSystem{
+        "phenomercurazine",
+        "C1CC=CC2=Nc3ccccc3[Hg]C2=1",
+        mercurazineLocants,
+        mercurazineBondLetters,
+        7, // Appendix 2 seniority rank
+        "", // fusionPrefix (unverified)
+        "2", // indicatedHydrogenLocant: 2H quinonoid form per Note d
+    });
 }
