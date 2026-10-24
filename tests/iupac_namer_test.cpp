@@ -7702,6 +7702,17 @@ int main() {
             {"dibenzo[a,j]phenazine", "C1=CC=C2C(=C1)C=CC3=NC4=C(N=C32)C5=CC=CC=C5C=C4", "dibenzo[a,j]phenazine"},
             // Retained-ring matcher peri-fused tricycle test
             {"1H-perimidine", "[nH]1cnc2cccc3cccc1c23", "1H-perimidine"},
+            // 2H-phenomercurazine: whole-molecule naming was never actually
+            // exercised when this registry entry was added (only its own
+            // internal self-consistency was checked via
+            // retained_ring_registry_test) -- it was silently blocked the
+            // whole time by an unrelated Phase 1 element whitelist that
+            // didn't include Hg (Z=80). Confirmed via direct testing that
+            // the OLD benzenoid template this entry replaced (same skeleton
+            // phenoxazine/phenothiazine/etc use) does NOT resolve to any
+            // retained name even with the whitelist fixed -- only the real
+            // CAS/Appendix-2-Note-d quinonoid structure below does.
+            {"2H-phenomercurazine", "C1CC=CC2=Nc3ccccc3[Hg]C2=1", "2H-phenomercurazine"},
             // Item 2: whole-molecule ringCount==2 registry fallback (Phase 31
             // "no match" -- both rings carry N, no benzo ring for Phase 31)
             {"pteridine", "c1ncc2nccnc2n1", "pteridine"},

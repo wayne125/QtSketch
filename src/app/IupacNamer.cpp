@@ -12314,7 +12314,7 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                 }
                 indigoFree(neiIter);
             }
-        } else if (z == 6 || z == 7 || z == 8 || z == 16 || z == 15 || z == 33 || z == 51 || z == 5 || z == 9 || z == 17 || z == 35 || z == 53 || z == 34 || z == 52 || z == 3 || z == 11 || z == 19 || z == 12 || z == 20) {
+        } else if (z == 6 || z == 7 || z == 8 || z == 16 || z == 15 || z == 33 || z == 51 || z == 5 || z == 9 || z == 17 || z == 35 || z == 53 || z == 34 || z == 52 || z == 3 || z == 11 || z == 19 || z == 12 || z == 20 || z == 80) {
             heavyAtomIndices.push_back(idx);
         } else {
             indigoFree(atomHandle);
