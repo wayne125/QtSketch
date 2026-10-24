@@ -7694,6 +7694,9 @@ int main() {
             {"1,10-phenanthroline", "c1cnc2ncc3ccccc3c2c1", "1,10-phenanthroline"},
             {"1,7-phenanthroline", "c1cnc2ccc3cnccc3c2c1", "1,7-phenanthroline"},
             {"3,8-phenanthroline", "n1ccc2ccc3ncccc3c2c1", "3,8-phenanthroline"},
+            // Retained-ring matcher bridgehead saturation tests
+            {"5,5a,6,7,8,9,9a,10-octahydrobenzo[g]quinoline", "C1CCC2Cc3ncccc3CC2C1", "5,5a,6,7,8,9,9a,10-octahydrobenzo[g]quinoline"},
+            {"1,2,3,4,4a,5,6,7,8,8a,9,9a,10,10a-tetradecahydroanthracene", "C1CCC2CC3CCCCC3CC2C1", "1,2,3,4,4a,5,6,7,8,8a,9,9a,10,10a-tetradecahydroanthracene"},
         };
         for (const auto &c : cases) {
             int m = indigoLoadMoleculeFromString(c.smiles);

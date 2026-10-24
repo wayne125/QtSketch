@@ -239,6 +239,22 @@ static PerimeterWalkResult walkPeripheryClockwise(
     return {cycle, pos};
 }
 
+// Blue Book "lowest locants" comparison for a single locant string: numeric
+// part first, then letter suffix (e.g. "4" < "4a" < "5").
+static bool locantLess(const QString &a, const QString &b) {
+    auto parse = [](const QString &s) -> std::pair<int, QChar> {
+        int i = 0;
+        while (i < s.size() && s[i].isDigit()) ++i;
+        int num = s.left(i).toInt();
+        QChar letter = (i < s.size()) ? s[i] : QChar(QChar::Null);
+        return {num, letter};
+    };
+    auto pa = parse(a);
+    auto pb = parse(b);
+    if (pa.first != pb.first) return pa.first < pb.first;
+    return pa.second < pb.second;
+}
+
 std::map<int, QString> computePeripheralNumberingGeneral(
     const Graph &g,
     const FusedRingSystemInput &input,
@@ -274,7 +290,7 @@ std::map<int, QString> computePeripheralNumberingGeneral(
         // extending hydro-locant support to N>=4 ring systems through this
         // function's own independent candidate search/comparator -- not a
         // separate call, same reasoning as Task 3's merged-call fix (B1).
-        std::vector<int> hydroLocants;
+        std::vector<QString> hydroLocants;
         int candidateIndex;
     };
 
@@ -380,17 +396,7 @@ std::map<int, QString> computePeripheralNumberingGeneral(
         for (int node : hydroLocantBearingNodes) {
             auto it = cand.locantMap.find(node);
             if (it != cand.locantMap.end()) {
-                QString locStr = it->second;
-                int numLoc = 0;
-                std::string s = locStr.toStdString();
-                for (char c : s) {
-                    if (std::isdigit(static_cast<unsigned char>(c))) {
-                        numLoc = numLoc * 10 + (c - '0');
-                    } else {
-                        break;
-                    }
-                }
-                cand.hydroLocants.push_back(numLoc);
+                cand.hydroLocants.push_back(it->second);
             }
         }
 
@@ -398,7 +404,7 @@ std::map<int, QString> computePeripheralNumberingGeneral(
         std::sort(cand.heteroatomSeniorityAtLocants.begin(), cand.heteroatomSeniorityAtLocants.end());
         std::sort(cand.fusionCarbonLocants.begin(), cand.fusionCarbonLocants.end());
         std::sort(cand.substituentLocants.begin(), cand.substituentLocants.end());
-        std::sort(cand.hydroLocants.begin(), cand.hydroLocants.end());
+        std::sort(cand.hydroLocants.begin(), cand.hydroLocants.end(), locantLess);
 
         return cand;
     };
@@ -561,7 +567,7 @@ std::map<int, QString> computePeripheralNumberingGeneral(
             QStringList het, fus, hyd;
             for (int v : c.heteroatomLocants) het << QString::number(v);
             for (int v : c.fusionCarbonLocants) fus << QString::number(v);
-            for (int v : c.hydroLocants) hyd << QString::number(v);
+            for (const QString &v : c.hydroLocants) hyd << v;
             fprintf(stderr, "CAND idx=%d het=[%s] fus=[%s] hyd=[%s]\n", c.candidateIndex,
                 het.join(",").toUtf8().constData(), fus.join(",").toUtf8().constData(), hyd.join(",").toUtf8().constData());
         }
@@ -592,7 +598,10 @@ std::map<int, QString> computePeripheralNumberingGeneral(
             // so this ordering is inert today but correct for whenever N>=4
             // support is properly re-enabled.
             if (a.hydroLocants != b.hydroLocants)
-                return a.hydroLocants < b.hydroLocants;
+                return std::lexicographical_compare(
+                    a.hydroLocants.begin(), a.hydroLocants.end(),
+                    b.hydroLocants.begin(), b.hydroLocants.end(),
+                    locantLess);
             if (a.substituentLocants != b.substituentLocants)
                 return a.substituentLocants < b.substituentLocants;
             return a.candidateIndex < b.candidateIndex;

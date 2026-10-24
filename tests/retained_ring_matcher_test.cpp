@@ -168,6 +168,59 @@ int main() {
         }
     }
 
+    // Test 7: 5,5a,6,7,8,9,9a,10-octahydrobenzo[g]quinoline
+    // Saturated bridgeheads on plain-benzo remainder side (5a, 9a)
+    {
+        std::cout << "\nTest 7: 5,5a,6,7,8,9,9a,10-octahydrobenzo[g]quinoline" << std::endl;
+        int mol = indigoLoadMoleculeFromString("C1CCC2Cc3ncccc3CC2C1");
+        if (mol < 0) {
+            std::cout << "  [FAIL] Could not parse SMILES" << std::endl;
+            ++failed;
+        } else {
+            auto result = tryRetainedBaseDecomposition(mol);
+            if (result) {
+                if (result->success && result->baseName == "5,5a,6,7,8,9,9a,10-octahydrobenzo[g]quinoline") {
+                    std::cout << "  [PASS] hexahydrobenzo remainder matched, baseName=" << result->baseName.toStdString() << std::endl;
+                    ++passed;
+                } else {
+                    std::cout << "  [FAIL] hexahydrobenzo remainder matched but baseName='" << result->baseName.toStdString()
+                              << "' success=" << result->success << std::endl;
+                    ++failed;
+                }
+            } else {
+                std::cout << "  [FAIL] hexahydrobenzo remainder returned nullopt" << std::endl;
+                ++failed;
+            }
+            indigoFree(mol);
+        }
+    }
+
+    // Test 8: 1,2,3,4,4a,5,6,7,8,8a,9,9a,10,10a-tetradecahydroanthracene
+    // Fully saturated 3-ring system with plain-benzo remainder bridgeheads
+    {
+        std::cout << "\nTest 8: 1,2,3,4,4a,5,6,7,8,8a,9,9a,10,10a-tetradecahydroanthracene" << std::endl;
+        int mol = indigoLoadMoleculeFromString("C1CCC2CC3CCCCC3CC2C1");
+        if (mol < 0) {
+            std::cout << "  [FAIL] Could not parse SMILES" << std::endl;
+            ++failed;
+        } else {
+            auto result = tryRetainedBaseDecomposition(mol);
+            if (result) {
+                if (result->success && result->baseName == "1,2,3,4,4a,5,6,7,8,8a,9,9a,10,10a-tetradecahydroanthracene") {
+                    std::cout << "  [PASS] tetradecahydroanthracene matched, baseName=" << result->baseName.toStdString() << std::endl;
+                    ++passed;
+                } else {
+                    std::cout << "  [FAIL] tetradecahydroanthracene matched but baseName='" << result->baseName.toStdString()
+                              << "' success=" << result->success << std::endl;
+                    ++failed;
+                }
+            } else {
+                std::cout << "  [FAIL] tetradecahydroanthracene returned nullopt" << std::endl;
+                ++failed;
+            }
+            indigoFree(mol);
+        }
+    }
     std::cout << "\n========================================" << std::endl;
     std::cout << "TOTAL PASSED: " << passed << std::endl;
     std::cout << "TOTAL FAILED: " << failed << std::endl;

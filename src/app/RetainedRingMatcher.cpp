@@ -406,7 +406,6 @@ static bool skeletonMatchRetainedSystem(int mol, const std::set<int> &ringAtoms,
         // happened to return.
         std::map<int,int> baseAtomMap;
         std::vector<int> saturatedQPos;
-        bool bridgeheadSaturation = false;
 
         int qIter = indigoIterateAtoms(queryMol);
         int qLocalPos = 0;
@@ -431,14 +430,7 @@ static bool skeletonMatchRetainedSystem(int mol, const std::set<int> &ringAtoms,
             int actualH = indigoCountImplicitHydrogens(tAtom);
             int expectedH = (qPos >= 0 && qPos < static_cast<int>(refTotalH.size())) ? refTotalH[qPos] : -1;
             if (expectedH >= 0 && actualH > expectedH) {
-                const QString &loc = sys.peripheralLocants[qPos];
-                bool numOk = false;
-                loc.toInt(&numOk);
-                if (!numOk) {
-                    bridgeheadSaturation = true;
-                } else {
-                    saturatedQPos.push_back(qPos);
-                }
+                saturatedQPos.push_back(qPos);
             }
 
             ++qLocalPos;
@@ -446,7 +438,6 @@ static bool skeletonMatchRetainedSystem(int mol, const std::set<int> &ringAtoms,
         }
         indigoFree(qIter);
 
-        if (bridgeheadSaturation) success = false;
 
         // Numbering-direction tie-break (Task 2): enumerate every mapping
         // obtainable by composing baseAtomMap with each automorphism of
@@ -704,6 +695,9 @@ static QString buildHydroPrefix(const QStringList &locants, bool &ok) {
         case 4: countWord = "tetra"; break;
         case 6: countWord = "hexa"; break;
         case 8: countWord = "octa"; break;
+        case 10: countWord = "deca"; break;
+        case 12: countWord = "dodeca"; break;
+        case 14: countWord = "tetradeca"; break;
         default: ok = false; return QString();
     }
     return sorted.join(",") + "-" + countWord + "hydro";
@@ -1235,7 +1229,6 @@ std::optional<RingSystemNameResult> tryRetainedBaseDecomposition(int mol) {
             indigoFree(atomHandle);
             int expectedH = isBridgehead ? 0 : 1;
             if (actualH > expectedH) {
-                if (isBridgehead) return std::nullopt; // bridgehead saturation: don't guess
                 remainderPlainBenzoSaturatedAtoms.push_back(a);
             }
         }
