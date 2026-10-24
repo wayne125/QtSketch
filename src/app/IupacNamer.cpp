@@ -22094,6 +22094,37 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
             return {false, "", "three-component ortho- and peri-fused systems (P-25.5) are not yet supported."};
         }
         if (hasPeri) {
+            // Check if this peri-fused system matches a retained polycyclic base (e.g. 1H-perimidine)
+            if (auto retainedResult = tryRetainedBaseDecomposition(mol)) {
+                if (retainedResult->success) {
+                    std::set<int> allRingAtomsForRetainedCheck;
+                    for (const auto &r : allSSSRRings) {
+                        allRingAtomsForRetainedCheck.insert(r.begin(), r.end());
+                    }
+                    bool hasHeteroatom = false;
+                    bool hasExocyclicSubstituent = false;
+                    for (int ringAtomIdx : allRingAtomsForRetainedCheck) {
+                        int atom = indigoGetAtom(mol, ringAtomIdx);
+                        if (atom < 0) continue;
+                        if (indigoAtomicNumber(atom) != 6) hasHeteroatom = true;
+                        int neiIter = indigoIterateNeighbors(atom);
+                        int nei;
+                        while ((nei = indigoNext(neiIter)) != 0) {
+                            int neiIdx = indigoIndex(nei);
+                            if (!allRingAtomsForRetainedCheck.count(neiIdx)) {
+                                hasExocyclicSubstituent = true;
+                            }
+                            indigoFree(nei);
+                        }
+                        indigoFree(neiIter);
+                        if (hasExocyclicSubstituent) break;
+                    }
+                    bool hasHydroPrefix = retainedResult->baseName.contains("hydro");
+                    if ((hasHeteroatom || hasHydroPrefix) && !hasExocyclicSubstituent) {
+                        return {true, retainedResult->baseName, "", NamingStatus::SystematicIupacName};
+                    }
+                }
+            }
             return {false, "", "ortho- and peri-fused ring systems (P-25.3.1.1.2) are not yet supported."};
         }
     }

@@ -332,51 +332,32 @@ void registerTricyclicNFamily(std::vector<RetainedRingSystem> &registry) {
         kPhenanthrenePeripheralLocants, kPhenanthreneBondLetters, 18,
     });
 
+    // --- 15. Perimidine (rank 19) ----------------------------------------
+    // 1H-perimidine (CAS 204-02-4, C11H8N2): peri-fused tricycle with 9b
+    // as a central triple ring junction (shared with 3a, 6a, 9a).
+    // Periphery cycle: 1(N,H)-2-3(N)-3a-4-5-6-6a-7-8-9-9a (12 atoms).
+    // Locants: 1-12 match parse order 0-11, 9b is atom 12 (interior).
+    const std::vector<QString> kPerimidineLocants = {
+        "1","2","3","3a","4","5","6","6a","7","8","9","9a","9b"
+    };
+    const std::map<char, std::pair<QString, QString>> kPerimidineBondLetters = {
+        {'a', {"1","2"}},   {'b', {"2","3"}},   {'c', {"3","3a"}},
+        {'d', {"3a","4"}},  {'e', {"4","5"}},   {'f', {"5","6"}},
+        {'g', {"6","6a"}},  {'h', {"6a","7"}},  {'i', {"7","8"}},
+        {'j', {"8","9"}},   {'k', {"9","9a"}},  {'l', {"9a","1"}},
+    };
+    registry.push_back(RetainedRingSystem{
+        "perimidine",
+        "[nH]1cnc2cccc3cccc1c23",
+        kPerimidineLocants,
+        kPerimidineBondLetters,
+        19, // Appendix 2 seniority rank
+        "", // fusionPrefix: unverified, leave empty
+        "1", // indicatedHydrogenLocant: 1H-perimidine
+        {"9b"}, // interiorLocants
+    });
+
     // =========================================================================
-    // Still deferred -- NOT a chemistry-verification gap, a real registry/
-    // validator limitation, confirmed empirically (not guessed):
-    //
-    // - perimidine (rank 19): peri-fused (naphthalene + an N1-C2-N3 bridge
-    //   sharing 3 atoms with naphthalene, not the usual 2-atom ortho-fusion).
-    //   Structure independently confirmed from two sourced SMILES (ChemScene
-    //   CAS 204-02-4 "N1=CNC2=CC=CC3=CC=CC1=C32"; PubChem 1-methyl-1H-
-    //   perimidine "CN1C=NC2=CC=CC3=C2C1=CC=C3") via dump_rings2.exe's real
-    //   neighbor lists -- both agree on the same connectivity. Full atom-to-
-    //   locant mapping derived and cross-validated from two directions:
-    //   1(N,H)-2-3(N)-3a-4-5-6-6a-7-8-9-9a-9b, where 9b is a genuine TRIPLE
-    //   ring-junction (bonded simultaneously to 3a, 6a, AND 9a -- confirmed
-    //   via dump_rings2.exe on a purpose-built, locant-ordered candidate
-    //   SMILES "[nH]1cnc2cccc3cccc1c23": atom[12] neighbors are exactly
-    //   {atom[11]=9a, atom[3]=3a, atom[7]=6a}, gross formula C11H8N2 matches
-    //   real perimidine exactly).
-    //
-    //   The blocker: validateRetainedRingSystem's bond-letter check is purely
-    //   positional (array-index cyclic adjacency), assuming peripheralLocants
-    //   read in atom-parse order traces ONE simple periphery cycle through
-    //   EVERY atom. Perimidine's periphery is a clean 12-atom cycle
-    //   (1-2-3-3a-4-5-6-6a-7-8-9-9a-1) that does NOT include 9b at all (9b
-    //   sits structurally interior, off that cycle, confirmed by the fact all
-    //   12 of ITS bonds are real chain/closure bonds independent of 9b).
-    //   9b still occupies one of the 13 array slots (peripheralLocants.size()
-    //   must equal atom count), which unavoidably inserts a positional gap of
-    //   2 somewhere in the 12-cycle's wraparound, no matter where 9b is
-    //   placed -- since every one of the 12 real periphery bonds already
-    //   needs its own letter (matching this file's and every other family's
-    //   existing one-letter-per-peripheral-bond convention), there is no
-    //   "free" gap to hide 9b in. Confirmed empirically, not just derived:
-    //   building exactly this candidate and running retained_ring_registry_test
-    //   produced exactly one failure -- "bond letter 'l' pair (9a,1) is not
-    //   cyclically adjacent in peripheralLocants" -- and only that one, every
-    //   other of the 12 real bonds passed. This is a genuine representation
-    //   limitation of the current schema for peri-fused systems specifically
-    //   (every other entry in this registry is simple ortho-fusion, where
-    //   this problem cannot arise), not a derivation error to keep iterating
-    //   on. Needs either a schema extension (e.g. letting a declared bond
-    //   skip over a non-bond-letter-referenced interior atom) or a different
-    //   representation for peri-fused systems -- out of scope to design here;
-    //   left deferred per instruction rather than changing the validator or
-    //   forcing the graph to fit.
-    //
     // NOTE: pteridine (rank 23) was moved to QuinolineFamily.cpp (ITEM 2) --
     // it is bicyclic (pyrazino[2,3-d]pyrimidine), not tricyclic.
     // =========================================================================

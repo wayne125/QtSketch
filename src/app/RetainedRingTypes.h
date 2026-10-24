@@ -68,6 +68,11 @@ struct RetainedRingSystem {
     // existing ihPrefix convention uses (IupacNamer.cpp, the
     // "1H-" / "1H,3H-" format near the indicated-H locant assembly code).
     QString indicatedHydrogenLocant;
+
+    // Locants of interior atoms that do not lie on the simple outer peripheral cycle.
+    // For peri-fused systems (e.g. perimidine's central triple junction "9b").
+    // Empty for all simple ortho-fused systems.
+    std::vector<QString> interiorLocants;
 };
 
 // Parses sys.referenceSmiles standalone, confirms:

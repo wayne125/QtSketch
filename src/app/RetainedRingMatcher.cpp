@@ -857,9 +857,68 @@ std::optional<RingSystemNameResult> tryRetainedBaseDecomposition(int mol) {
     // AND ends==2 AND centers==N-2 (i.e. exactly a straight path through all N rings, no branching).
     // Also, validFusion from buildRingAdjacency must be true (no spiro/bridged fusions).
     bool isLinearChain = (ends == 2 && centers == N - 2 && !hasBranching);
+    bool isPeriFusedTricycle = (N == 3 && ends == 0 && centers == 3 && !hasBranching &&
+                                shared[0][1] == 2 && shared[1][2] == 2 && shared[0][2] == 2);
     // std::cerr << "DEBUG: N=" << N << " ends=" << ends << " centers=" << centers << " hasBranching=" << hasBranching << " isLinearChain=" << isLinearChain << std::endl;
-    if (!isLinearChain) {
+    if (!isLinearChain && !isPeriFusedTricycle) {
         return std::nullopt; // Branching systems fall through to nameBranchingFusion
+    }
+
+    if (isPeriFusedTricycle) {
+        // Peri-fused tricycle (e.g. perimidine): 3 rings sharing a central junction in a delta cycle.
+        // Support whole-molecule exact match (k == N == 3).
+        std::set<int> allRingAtoms;
+        for (const auto &r : sssrRings) {
+            allRingAtoms.insert(r.begin(), r.end());
+        }
+
+        const auto &registry = fullRegistry();
+        const RetainedRingSystem *matchedSys = nullptr;
+        std::map<int, int> matchedAtomMap;
+        QStringList matchedHydroLocants;
+
+        for (const auto &sys : registry) {
+            if (static_cast<int>(allRingAtoms.size()) != static_cast<int>(sys.peripheralLocants.size())) {
+                continue;
+            }
+            std::map<int, int> atomMap;
+            if (matchesRetainedSystem(mol, allRingAtoms, sys, atomMap)) {
+                matchedSys = &sys;
+                matchedAtomMap = atomMap;
+                matchedHydroLocants.clear();
+                break;
+            } else {
+                SkeletonMatchResult skel;
+                if (skeletonMatchRetainedSystem(mol, allRingAtoms, sys, skel)) {
+                    matchedSys = &sys;
+                    matchedAtomMap = skel.atomMap;
+                    matchedHydroLocants = skel.hydroLocants;
+                    break;
+                }
+            }
+        }
+
+        if (!matchedSys) {
+            return std::nullopt;
+        }
+
+        bool hydroOk = false;
+        QString hydroPrefix = buildHydroPrefix(matchedHydroLocants, hydroOk);
+        if (!hydroOk) {
+            return std::nullopt;
+        }
+        QString ihPart;
+        if (!matchedSys->indicatedHydrogenLocant.isEmpty()) {
+            ihPart = matchedSys->indicatedHydrogenLocant + "H-";
+        }
+        QString joiner = (!hydroPrefix.isEmpty() && !ihPart.isEmpty()) ? "-" : "";
+        RingSystemNameResult result;
+        result.success = true;
+        result.baseName = hydroPrefix + joiner + ihPart + matchedSys->name;
+        for (const auto &kv : matchedAtomMap) {
+            result.locantMap[kv.first] = QString::number(kv.second);
+        }
+        return result;
     }
     
     // Step 3: Order rings along the chain

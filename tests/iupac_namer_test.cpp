@@ -7700,6 +7700,8 @@ int main() {
             // Retained-ring matcher two-sided remainder tests
             {"dibenz[a,j]acridine", "C1=CC=C2C(=C1)C=CC3=NC4=C(C=C32)C5=CC=CC=C5C=C4", "dibenz[a,j]acridine"},
             {"dibenzo[a,j]phenazine", "C1=CC=C2C(=C1)C=CC3=NC4=C(N=C32)C5=CC=CC=C5C=C4", "dibenzo[a,j]phenazine"},
+            // Retained-ring matcher peri-fused tricycle test
+            {"1H-perimidine", "[nH]1cnc2cccc3cccc1c23", "1H-perimidine"},
         };
         for (const auto &c : cases) {
             int m = indigoLoadMoleculeFromString(c.smiles);

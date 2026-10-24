@@ -302,6 +302,33 @@ int main() {
             indigoFree(mol);
         }
     }
+    // Test 12: 1H-perimidine (peri-fused tricycle whole-molecule match)
+    {
+        std::cout << "\nTest 12: 1H-perimidine (peri-fused tricycle whole-molecule match)" << std::endl;
+        int mol = indigoLoadMoleculeFromString("[nH]1cnc2cccc3cccc1c23");
+        if (mol < 0) {
+            std::cout << "  [FAIL] Could not parse SMILES" << std::endl;
+            ++failed;
+        } else {
+            indigoAromatize(mol);
+            auto result = tryRetainedBaseDecomposition(mol);
+            if (result) {
+                if (result->success && result->baseName == "1H-perimidine") {
+                    std::cout << "  [PASS] perimidine matched, baseName=" << result->baseName.toStdString() << std::endl;
+                    ++passed;
+                } else {
+                    std::cout << "  [FAIL] perimidine matched but baseName='" << result->baseName.toStdString()
+                              << "' success=" << result->success << std::endl;
+                    ++failed;
+                }
+            } else {
+                std::cout << "  [FAIL] perimidine returned nullopt" << std::endl;
+                ++failed;
+            }
+            indigoFree(mol);
+        }
+    }
+
     std::cout << "\n========================================" << std::endl;
     std::cout << "TOTAL PASSED: " << passed << std::endl;
     std::cout << "TOTAL FAILED: " << failed << std::endl;
