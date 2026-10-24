@@ -7671,6 +7671,22 @@ int main() {
     // (TricyclicNFamily.cpp). Names cross-checked against the Blue Book
     // Appendix 2 entries 9-18/21, plus real documented chemistry (1,10-
     // phenanthroline's bay-region pincer chelation geometry).
+    //
+    // Pteridine (added to QuinolineFamily.cpp, see that file) is NOT tested
+    // here as a bare whole molecule: confirmed via trace that whole-molecule
+    // bicyclic naming (N==2 rings) never consults tryRetainedBaseDecomposition
+    // at all -- it goes through a separate, older hardcoded classifier
+    // (IupacNamer.cpp ~5691-5711, the literal "quinazoline"/"cinnoline"/
+    // "phthalazine" strings) that predates the registry and doesn't know
+    // about it. The N==3 tricyclic path (phenanthridine/phenanthroline above)
+    // DOES consult the registry for whole-molecule naming, which is why
+    // those work here -- this is a real, separate architectural gap specific
+    // to bicyclics, out of scope for this registry-entry addition. Pteridine
+    // currently gets "pyrazino[2,3-d]pyrimidine" (a valid alternate systematic
+    // name) for the bare whole-molecule case; the registry entry itself is
+    // still correct and needed for pteridine's real intended use as a BASE
+    // or ATTACHED COMPONENT of a larger fused system, verified via
+    // retained_ring_registry_test.exe's self-consistency check.
     {
         struct Case { const char *name; const char *smiles; const char *expected; };
         Case cases[] = {

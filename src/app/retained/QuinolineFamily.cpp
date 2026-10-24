@@ -238,13 +238,44 @@ void registerQuinolineFamily(std::vector<RetainedRingSystem> &registry) {
         33, // Appendix 2 seniority rank
     });
 
-    // 13. quinolizine: Bridgehead N - SKIPPED
-    // Quinolizine has a bridgehead nitrogen (N at a ring fusion position),
-    // which means it has a different locant numbering scheme from the 6-6
-    // ortho-fused bicyclics above. The structure is not a simple replacement
-    // of CH positions with N in the naphthalene skeleton; it has N as one of
-    // the two shared atoms between the rings. This requires separate research
-    // to verify the correct numbering. Per the task description, it is
-    // explicitly acceptable to skip entries that cannot be verified confidently.
-    // Skipping quinolizine.
+    // 13. pteridine: BICYCLIC (pyrazino[2,3-d]pyrimidine, rank 23)
+    // Moved from TricyclicNFamily.cpp (where it was incorrectly categorized)
+    // to here, since pteridine is a bicyclic 6-6 ortho-fused system, not
+    // tricyclic. Appendix 2 entry 23 (https://iupac.qmul.ac.uk/fusedring/app2.html).
+    //
+    // CORRECTED: a prior pass placed N at locants 1,2,4,7 and explicitly
+    // noted in its own comment that this did NOT match the real pteridine
+    // positions (1,3,5,8) -- it passed validateRetainedRingSystem's cyclic-
+    // adjacency self-test (which only checks internal array consistency,
+    // not real chemistry) and was committed anyway. Real pteridine N
+    // positions (N1,C2,N3,C4,C4a,N5,C6,C7,N8,C8a -- pyrimidine ring N1/N3,
+    // pyrazine ring N5/N8) confirmed via biochemistry-literature naming
+    // convention ("2-aminopteridin-4(3H)-one" places substituents at C2/C4,
+    // confirming those are carbon, not nitrogen, ruling out the prior
+    // pass's N-at-2 placement).
+    //
+    // Using this file's own established naphthalene atom->locant mapping
+    // (see header comment: atom[0]="2", atom[1]="3", atom[2]="4",
+    // atom[3]="4a", atom[4]="5", atom[5]="6", atom[6]="7", atom[7]="8",
+    // atom[8]="8a", atom[9]="1"), N at real locants {1,3,5,8} maps to atom
+    // indices {9,1,4,7}. SMILES "c1ncc2nccnc2n1" (lowercase 'n' throughout,
+    // per this file's own RETROACTIVE FIX note above -- uppercase N breaks
+    // aromaticity perception). Verified via dump_rings.exe: 10 atoms, N at
+    // exactly atoms 1,4,7,9, bridgeheads atom[3]/atom[8] remain C degree=3,
+    // same two SSSR ring sets as every other entry in this file. Gross
+    // formula C6H4N4, matching real pteridine (MW 132.12).
+    registry.push_back(RetainedRingSystem{
+        "pteridine",
+        "c1ncc2nccnc2n1",
+        {"2","3","4","4a","5","6","7","8","8a","1"},
+        {
+            {'a', {"1","2"}}, {'b', {"2","3"}}, {'c', {"3","4"}},
+            {'d', {"4","4a"}}, {'e', {"4a","5"}}, {'f', {"5","6"}},
+            {'g', {"6","7"}}, {'h', {"7","8"}}, {'i', {"8","8a"}},
+            {'j', {"8a","1"}},
+        },
+        23, // Appendix 2 seniority rank
+    });
+
+    // 14. quinolizine: Bridgehead N - SKIPPED
 }

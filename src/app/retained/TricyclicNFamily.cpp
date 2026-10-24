@@ -339,9 +339,7 @@ void registerTricyclicNFamily(std::vector<RetainedRingSystem> &registry) {
     //   sharing 3 atoms, not a simple ortho-fusion) -- a fundamentally
     //   different topology from every other entry in this file, needs its
     //   own from-scratch Indigo verification.
-    // - pteridine (rank 23): actually BICYCLIC (pyrazino[2,3-d]pyrimidine
-    //   shape), not tricyclic at all -- filed here only because the original
-    //   task comment grouped it with these; belongs in a bicyclic family file,
-    //   not fixed in this pass to avoid conflating two different changes.
+    // NOTE: pteridine (rank 23) was moved to QuinolineFamily.cpp (ITEM 2) --
+    // it is bicyclic (pyrazino[2,3-d]pyrimidine), not tricyclic.
     // =========================================================================
 }
