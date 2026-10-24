@@ -7702,6 +7702,14 @@ int main() {
             {"dibenzo[a,j]phenazine", "C1=CC=C2C(=C1)C=CC3=NC4=C(N=C32)C5=CC=CC=C5C=C4", "dibenzo[a,j]phenazine"},
             // Retained-ring matcher peri-fused tricycle test
             {"1H-perimidine", "[nH]1cnc2cccc3cccc1c23", "1H-perimidine"},
+            // Item 2: whole-molecule ringCount==2 registry fallback (Phase 31
+            // "no match" -- both rings carry N, no benzo ring for Phase 31)
+            {"pteridine", "c1ncc2nccnc2n1", "pteridine"},
+            // Item 1: spiro-as-substituent, bare and with an extra substituent
+            // on the far ring (confirms the fused-case branch-discovery and
+            // aggregation machinery is reused correctly for a spiro junction)
+            {"phenyl 3-(spiro[5.5]undecan-3-yl)propanoate", "O=C(CCC1CCC2(CCCCC2)CC1)Oc1ccccc1", "phenyl 3-(spiro[5.5]undecan-3-yl)propanoate"},
+            {"phenyl 3-(8-methylspiro[5.5]undecan-3-yl)propanoate", "O=C(CCC1CCC2(CCCC(C)C2)CC1)Oc1ccccc1", "phenyl 3-(8-methylspiro[5.5]undecan-3-yl)propanoate"},
         };
         for (const auto &c : cases) {
             int m = indigoLoadMoleculeFromString(c.smiles);

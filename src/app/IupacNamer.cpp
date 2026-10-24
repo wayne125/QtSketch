@@ -2933,9 +2933,46 @@ QString nameRingSystemAsSubstituent(
     }
     int ringCount = fusedSystemRingIdx.empty() ? 1 : static_cast<int>(fusedSystemRingIdx.size());
 
+    // Spiro-as-substituent discovery: the BFS above only follows ortho-fusion
+    // (shared==2) edges, so it finds nothing when rootAtom's ring is instead
+    // joined to exactly one other ring via a single spiro atom (shared==1).
+    // Detect that specific shape here -- exactly 2 rings, sharing exactly 1
+    // atom, with no other ring overlapping either (computeSpiroNumbering's
+    // own contract is monospiro only; reject rather than guess at anything
+    // wider, same discipline as the ortho-fusion path's own scope cuts).
+    std::set<int> spiroSystemRingIdx;
+    if (fusedSystemRingIdx.size() == 1 && startRingIdx != -1) {
+        std::vector<int> sQueue{startRingIdx};
+        spiroSystemRingIdx.insert(startRingIdx);
+        size_t sHead = 0;
+        bool allSingleAtomJunctions = true;
+        while (sHead < sQueue.size()) {
+            int cur = sQueue[sHead++];
+            const auto &curRing = allIndependentRings[cur];
+            for (size_t j = 0; j < allIndependentRings.size(); ++j) {
+                if (spiroSystemRingIdx.count(static_cast<int>(j))) continue;
+                int shared = 0;
+                for (int n : curRing) if (allIndependentRings[j].count(n)) shared++;
+                if (shared == 1) {
+                    spiroSystemRingIdx.insert(static_cast<int>(j));
+                    sQueue.push_back(static_cast<int>(j));
+                } else if (shared > 1) {
+                    allSingleAtomJunctions = false;
+                }
+            }
+        }
+        if (!allSingleAtomJunctions || spiroSystemRingIdx.size() != 2) {
+            spiroSystemRingIdx.clear();
+        }
+    }
+
     std::set<int> fullSystemNodes;
-    if (!fusedSystemRingIdx.empty()) {
+    if (fusedSystemRingIdx.size() > 1) {
         for (int idx : fusedSystemRingIdx) {
+            fullSystemNodes.insert(allIndependentRings[idx].begin(), allIndependentRings[idx].end());
+        }
+    } else if (spiroSystemRingIdx.size() == 2) {
+        for (int idx : spiroSystemRingIdx) {
             fullSystemNodes.insert(allIndependentRings[idx].begin(), allIndependentRings[idx].end());
         }
     } else {
@@ -3010,13 +3047,42 @@ QString nameRingSystemAsSubstituent(
 
     std::vector<RingSystemNameResult> candidates;
 
+    if (spiroSystemRingIdx.size() == 2) {
+        // Try both ring orderings computeSpiroNumbering itself doesn't pick
+        // between (it numbers starting in whichever ring is passed first) --
+        // Step 2's own lowest-locant candidate selection below picks the
+        // winner, same pattern every other mechanism here already relies on.
+        // Only try the swapped order when the rings are the same size: for
+        // unequal ring sizes Blue Book P-24.2.1 already fixes which ring
+        // gets numbered first (the smaller one), so computeSpiroNumbering
+        // itself -- not a second candidate here -- is the right place for
+        // that rule; confirm this is actually true before relying on it if
+        // a real unequal-ring-size substituent case ever needs it.
+        auto sIt = spiroSystemRingIdx.begin();
+        const std::set<int> &sRing1 = allIndependentRings[*sIt];
+        const std::set<int> &sRing2 = allIndependentRings[*std::next(sIt)];
+        std::set<int> spiroSubstituentBearing = {rootAtom};
+        for (const auto &eb : extraBranches) spiroSubstituentBearing.insert(eb.first);
+
+        auto trySpiroOrder = [&](const std::set<int> &rA, const std::set<int> &rB) {
+            SpiroNumberingResult sr = computeSpiroNumbering(g, rA, rB, spiroSubstituentBearing);
+            if (sr.success) {
+                candidates.push_back(RingSystemNameResult{true, "", sr.baseStemName, sr.locantMap});
+            }
+        };
+        trySpiroOrder(sRing1, sRing2);
+        if (sRing1.size() == sRing2.size()) {
+            trySpiroOrder(sRing2, sRing1);
+        }
+    }
+
     // Try each mechanism in order, falling through to the next whenever one
     // reports its own "doesn't apply" sentinel -- never short-circuiting on
     // a shape mismatch, since e.g. a ringCount>=3 system that ISN'T a linear
     // chain may still be a real branching system, and only nameBranchingFusion
     // itself can tell. A real (non-sentinel) rejection from ANY mechanism
     // means this specific ring system is genuinely out of scope.
-    if (ringCount == 2) {
+    if (candidates.empty() && ringCount == 2) {
         RingSystemNameResult p31 = namePhase31BenzoFusion(g, mol, indigoToGraphIdx, ringCount, &systemRingsIndigo);
         if (p31.success) {
             candidates.push_back(p31);
@@ -22268,6 +22334,40 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
         // never start with a digit, so this was never needed before.
         QString sep = (!prefixPart.isEmpty() && !resultName.isEmpty() && resultName[0].isDigit()) ? "-" : "";
         return {true, prefixPart + sep + resultName, ""};
+    }
+    if (ringCount == 2) {
+        // Item 2: Phase 31 only matches benzo-fused heterobicyclics (one
+        // heteroatom-bearing ring + one all-carbon benzo ring) -- it
+        // structurally can't match a 2-ring retained system where BOTH
+        // rings carry heteroatoms (pteridine, the naphthyridine isomers),
+        // so it correctly returns its own "Phase 31: no match" sentinel for
+        // those. Before falling through to generic systematic fusion
+        // naming, try the Appendix 2 retained-ring matcher -- same guard
+        // pattern already proven safe for the N==3 tricyclic cases (linear-
+        // chain and peri-fused) elsewhere in this function: only consume a
+        // match with a real heteroatom or hydro-prefix, and only when there
+        // is no exocyclic substituent (a substituted ring still needs the
+        // existing substituent-handling machinery this short-circuit knows
+        // nothing about). Since Phase 31 already succeeded above for every
+        // case it actually applies to, this never runs for quinazoline,
+        // cinnoline, phthalazine, etc. -- zero regression risk for anything
+        // already working.
+        if (auto retainedResult = tryRetainedBaseDecomposition(mol)) {
+            if (retainedResult->success) {
+                bool hasHeteroatom = false;
+                bool hasExocyclicSubstituent = (g.nodes.size() != allSSSRNodes.size());
+                for (int rn : allSSSRNodes) {
+                    if (g.nodes[rn].atomicNumber != 6) {
+                        hasHeteroatom = true;
+                        break;
+                    }
+                }
+                bool hasHydroPrefix = retainedResult->baseName.contains("hydro");
+                if ((hasHeteroatom || hasHydroPrefix) && !hasExocyclicSubstituent) {
+                    return {true, retainedResult->baseName, "", NamingStatus::SystematicIupacName};
+                }
+            }
+        }
     }
 
     // --- Phase 32: Purine (Imidazole + Pyrimidine Ortho-Fused Bicyclic System) (ringCount == 2) ---
