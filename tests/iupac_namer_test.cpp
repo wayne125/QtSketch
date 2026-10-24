@@ -7721,6 +7721,18 @@ int main() {
             // aggregation machinery is reused correctly for a spiro junction)
             {"phenyl 3-(spiro[5.5]undecan-3-yl)propanoate", "O=C(CCC1CCC2(CCCCC2)CC1)Oc1ccccc1", "phenyl 3-(spiro[5.5]undecan-3-yl)propanoate"},
             {"phenyl 3-(8-methylspiro[5.5]undecan-3-yl)propanoate", "O=C(CCC1CCC2(CCCC(C)C2)CC1)Oc1ccccc1", "phenyl 3-(8-methylspiro[5.5]undecan-3-yl)propanoate"},
+            // Item 1: heteroatom spiro ring (oxaspiro) as substituent --
+            // confirms computeSpiroNumbering's own existing heteroatom
+            // support (N/O/S) carries through the new substituent path too
+            {"phenyl 2-(6-oxaspiro[4.5]decan-2-yl)ethanoate", "O=C(CC1CC2(CCCCO2)CC1)Oc1ccccc1", "phenyl 2-(6-oxaspiro[4.5]decan-2-yl)ethanoate"},
+            // Item 2: naphthyridine isomers -- same Phase 31 "no match"
+            // fallback as pteridine (both rings carry N, no benzo ring)
+            {"1,5-naphthyridine", "c1ccc2ncccc2n1", "1,5-naphthyridine"},
+            {"1,6-naphthyridine", "c1ccc2cnccc2n1", "1,6-naphthyridine"},
+            {"1,7-naphthyridine", "c1ccc2ccncc2n1", "1,7-naphthyridine"},
+            {"1,8-naphthyridine", "c1ccc2cccnc2n1", "1,8-naphthyridine"},
+            {"2,6-naphthyridine", "n1ccc2cnccc2c1", "2,6-naphthyridine"},
+            {"2,7-naphthyridine", "n1ccc2ccncc2c1", "2,7-naphthyridine"},
         };
         for (const auto &c : cases) {
             int m = indigoLoadMoleculeFromString(c.smiles);
