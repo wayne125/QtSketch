@@ -1075,9 +1075,367 @@ std::optional<RingSystemNameResult> tryRetainedBaseDecomposition(int mol) {
     // guess, bail out to the existing nameLinearChainFusion path (same as
     // if no retained match had been found at all).
     if (hasPrefixRemainder && hasSuffixRemainder) {
-        // TODO(Task 10 follow-on): implement two-sided remainder citation
-        // once a real ground-truth molecule needing it is identified.
-        return std::nullopt;
+        auto reverseQPosGeneric = [](const std::map<int,int> &atomMap, int realAtomIdx) -> int {
+            for (const auto &kv : atomMap) {
+                if (kv.second == realAtomIdx) return kv.first;
+            }
+            return -1;
+        };
+
+        struct RemainderInfo {
+            std::vector<int> ringIndices;
+            std::vector<int> fusionAtoms;
+            std::set<int> ringAtoms;
+            const RetainedRingSystem *sys = nullptr;
+            std::map<int, int> atomMap;
+            QStringList hydroLocants;
+            bool isPlainBenzo = false;
+            std::vector<int> plainBenzoSaturatedAtoms;
+            QString fusionPrefix;
+        };
+
+        auto extractRemainder = [&](const std::vector<int> &remRings, int boundaryRemRing, int boundaryBaseRing)
+            -> std::optional<RemainderInfo> {
+            RemainderInfo info;
+            info.ringIndices = remRings;
+            for (int a : sssrRings[boundaryRemRing]) {
+                if (sssrRings[boundaryBaseRing].count(a)) info.fusionAtoms.push_back(a);
+            }
+            if (info.fusionAtoms.size() != 2) return std::nullopt;
+
+            for (int r : info.ringIndices) {
+                for (int a : sssrRings[r]) info.ringAtoms.insert(a);
+            }
+
+            bool remAmbiguous = false;
+            for (const auto &sys : registry) {
+                if (static_cast<int>(info.ringAtoms.size()) != static_cast<int>(sys.peripheralLocants.size())) {
+                    continue;
+                }
+                std::map<int, int> candidateMap;
+                if (matchesRetainedSystem(mol, info.ringAtoms, sys, candidateMap)) {
+                    if (info.sys != nullptr && info.sys->name != sys.name) {
+                        remAmbiguous = true;
+                    }
+                    info.sys = &sys;
+                    info.atomMap = candidateMap;
+                    info.hydroLocants.clear();
+                } else {
+                    SkeletonMatchResult skel;
+                    if (skeletonMatchRetainedSystem(mol, info.ringAtoms, sys, skel)) {
+                        if (info.sys != nullptr && info.sys->name != sys.name) {
+                            remAmbiguous = true;
+                        }
+                        info.sys = &sys;
+                        info.atomMap = skel.atomMap;
+                        info.hydroLocants = skel.hydroLocants;
+                    }
+                }
+            }
+
+            if (info.sys == nullptr && !remAmbiguous &&
+                info.ringIndices.size() == 1 && info.ringAtoms.size() == 6 &&
+                best->system->name != "indole") {
+                bool allCarbon = true;
+                for (int a : info.ringAtoms) {
+                    int atomHandle = indigoGetAtom(mol, a);
+                    if (atomHandle < 0 || indigoAtomicNumber(atomHandle) != 6) {
+                        allCarbon = false;
+                    }
+                    if (atomHandle >= 0) indigoFree(atomHandle);
+                }
+                info.isPlainBenzo = allCarbon;
+            }
+
+            if (!info.isPlainBenzo &&
+                (info.sys == nullptr || remAmbiguous || info.sys->fusionPrefix.isEmpty())) {
+                return std::nullopt;
+            }
+
+            if (info.isPlainBenzo) {
+                info.fusionPrefix = "benzo";
+                for (int a : info.ringAtoms) {
+                    bool isBridgehead = (a == info.fusionAtoms[0] || a == info.fusionAtoms[1]);
+                    int atomHandle = indigoGetAtom(mol, a);
+                    if (atomHandle < 0) return std::nullopt;
+                    int actualH = indigoCountImplicitHydrogens(atomHandle);
+                    indigoFree(atomHandle);
+                    int expectedH = isBridgehead ? 0 : 1;
+                    if (actualH > expectedH) {
+                        info.plainBenzoSaturatedAtoms.push_back(a);
+                    }
+                }
+            } else {
+                info.fusionPrefix = info.sys->fusionPrefix;
+            }
+
+            return info;
+        };
+
+        auto getRemainderCiteLocants = [](const RemainderInfo &rem) -> std::pair<QString, QString> {
+            if (rem.isPlainBenzo) return std::make_pair(QString(), QString());
+            auto reverseQPos = [](const std::map<int,int> &atomMap, int realAtomIdx) -> int {
+                for (const auto &kv : atomMap) {
+                    if (kv.second == realAtomIdx) return kv.first;
+                }
+                return -1;
+            };
+            int remQPos0 = reverseQPos(rem.atomMap, rem.fusionAtoms[0]);
+            int remQPos1 = reverseQPos(rem.atomMap, rem.fusionAtoms[1]);
+            if (remQPos0 < 0 || remQPos1 < 0) return std::make_pair(QString(), QString());
+
+            int remRefMol = indigoLoadMoleculeFromString(rem.sys->referenceSmiles.toUtf8().constData());
+            if (remRefMol < 0) return std::make_pair(QString(), QString());
+            indigoAromatize(remRefMol);
+            std::vector<std::vector<int>> remAutos = computeAutomorphisms(remRefMol);
+            indigoFree(remRefMol);
+
+            QString bestLoc1, bestLoc2;
+            bool found = false;
+            for (const auto &perm : remAutos) {
+                if (remQPos0 >= static_cast<int>(perm.size()) || remQPos1 >= static_cast<int>(perm.size())) continue;
+                int altQ0 = perm[remQPos0];
+                int altQ1 = perm[remQPos1];
+                if (altQ0 < 0 || altQ0 >= static_cast<int>(rem.sys->peripheralLocants.size())) continue;
+                if (altQ1 < 0 || altQ1 >= static_cast<int>(rem.sys->peripheralLocants.size())) continue;
+                QString altLocA = rem.sys->peripheralLocants[altQ0];
+                QString altLocB = rem.sys->peripheralLocants[altQ1];
+                for (const auto &kv : rem.sys->peripheralBondLetters) {
+                    const QString &p1 = kv.second.first;
+                    const QString &p2 = kv.second.second;
+                    if ((p1 == altLocA && p2 == altLocB) || (p1 == altLocB && p2 == altLocA)) {
+                        QString sortedFirst = locantLess(p1, p2) ? p1 : p2;
+                        QString sortedSecond = locantLess(p1, p2) ? p2 : p1;
+                        if (!found) {
+                            bestLoc1 = p1; bestLoc2 = p2;
+                            found = true;
+                        } else {
+                            QString curSortedFirst = locantLess(bestLoc1, bestLoc2) ? bestLoc1 : bestLoc2;
+                            QString curSortedSecond = locantLess(bestLoc1, bestLoc2) ? bestLoc2 : bestLoc1;
+                            bool better = locantLess(sortedFirst, curSortedFirst) ||
+                                          (sortedFirst == curSortedFirst && locantLess(sortedSecond, curSortedSecond));
+                            if (better) { bestLoc1 = p1; bestLoc2 = p2; }
+                        }
+                        break;
+                    }
+                }
+            }
+            return std::make_pair(bestLoc1, bestLoc2);
+        };
+
+        auto primeLocant = [](const QString &loc) -> QString {
+            int idx = 0;
+            while (idx < loc.size() && loc[idx].isDigit()) {
+                ++idx;
+            }
+            QString res = loc;
+            res.insert(idx, QChar('\''));
+            return res;
+        };
+
+        std::vector<int> pRings, sRings;
+        for (int r = 0; r < remPrefixEnd; ++r) pRings.push_back(chainOrder[r]);
+        for (int r = remSuffixStart; r < N; ++r) sRings.push_back(chainOrder[r]);
+        auto pRemOpt = extractRemainder(pRings, chainOrder[remPrefixEnd - 1], chainOrder[remPrefixEnd]);
+        if (!pRemOpt) return std::nullopt;
+        auto sRemOpt = extractRemainder(sRings, chainOrder[remSuffixStart], chainOrder[remSuffixStart - 1]);
+        if (!sRemOpt) return std::nullopt;
+
+        const RemainderInfo &pRem = *pRemOpt;
+        const RemainderInfo &sRem = *sRemOpt;
+
+        int pQ0 = reverseQPosGeneric(best->atomMap, pRem.fusionAtoms[0]);
+        int pQ1 = reverseQPosGeneric(best->atomMap, pRem.fusionAtoms[1]);
+        int sQ0 = reverseQPosGeneric(best->atomMap, sRem.fusionAtoms[0]);
+        int sQ1 = reverseQPosGeneric(best->atomMap, sRem.fusionAtoms[1]);
+        if (pQ0 < 0 || pQ1 < 0 || sQ0 < 0 || sQ1 < 0) return std::nullopt;
+
+        auto pLocs = getRemainderCiteLocants(pRem);
+        auto sLocs = getRemainderCiteLocants(sRem);
+        if (!pRem.isPlainBenzo && pLocs.first.isEmpty()) return std::nullopt;
+        if (!sRem.isPlainBenzo && sLocs.first.isEmpty()) return std::nullopt;
+
+        bool identicalRemainders = (pRem.isPlainBenzo && sRem.isPlainBenzo) ||
+            (!pRem.isPlainBenzo && !sRem.isPlainBenzo && pRem.sys->name == sRem.sys->name);
+
+        int baseRefMol = indigoLoadMoleculeFromString(best->system->referenceSmiles.toUtf8().constData());
+        if (baseRefMol < 0) return std::nullopt;
+        indigoAromatize(baseRefMol);
+        std::vector<std::vector<int>> baseAutos = computeAutomorphisms(baseRefMol);
+        indigoFree(baseRefMol);
+
+        auto getFaceLetter = [&](const std::vector<int> &perm, int q0, int q1) -> char {
+            if (q0 >= static_cast<int>(perm.size()) || q1 >= static_cast<int>(perm.size())) return 0;
+            int altQ0 = perm[q0], altQ1 = perm[q1];
+            if (altQ0 < 0 || altQ0 >= static_cast<int>(best->system->peripheralLocants.size())) return 0;
+            if (altQ1 < 0 || altQ1 >= static_cast<int>(best->system->peripheralLocants.size())) return 0;
+            QString altLocA = best->system->peripheralLocants[altQ0];
+            QString altLocB = best->system->peripheralLocants[altQ1];
+            for (const auto &kv : best->system->peripheralBondLetters) {
+                const QString &p1 = kv.second.first;
+                const QString &p2 = kv.second.second;
+                if ((p1 == altLocA && p2 == altLocB) || (p1 == altLocB && p2 == altLocA)) {
+                    return kv.first;
+                }
+            }
+            return 0;
+        };
+
+        char bestPLetter = 0, bestSLetter = 0;
+        bool foundTwoSided = false;
+
+        for (const auto &perm : baseAutos) {
+            char pL = getFaceLetter(perm, pQ0, pQ1);
+            char sL = getFaceLetter(perm, sQ0, sQ1);
+            if (pL == 0 || sL == 0) continue;
+
+            if (!foundTwoSided) {
+                bestPLetter = pL;
+                bestSLetter = sL;
+                foundTwoSided = true;
+            } else {
+                if (identicalRemainders) {
+                    char curMin = std::min(bestPLetter, bestSLetter);
+                    char curMax = std::max(bestPLetter, bestSLetter);
+                    char newMin = std::min(pL, sL);
+                    char newMax = std::max(pL, sL);
+                    if (std::make_pair(newMin, newMax) < std::make_pair(curMin, curMax)) {
+                        bestPLetter = pL;
+                        bestSLetter = sL;
+                    }
+                } else {
+                    bool pIsFirst = pRem.fusionPrefix < sRem.fusionPrefix;
+                    char curFirst = pIsFirst ? bestPLetter : bestSLetter;
+                    char curSecond = pIsFirst ? bestSLetter : bestPLetter;
+                    char newFirst = pIsFirst ? pL : sL;
+                    char newSecond = pIsFirst ? sL : pL;
+                    char curMin = std::min(curFirst, curSecond);
+                    char curMax = std::max(curFirst, curSecond);
+                    char newMin = std::min(newFirst, newSecond);
+                    char newMax = std::max(newFirst, newSecond);
+                    if (std::make_pair(newMin, newMax) < std::make_pair(curMin, curMax)) {
+                        bestPLetter = pL;
+                        bestSLetter = sL;
+                    } else if (std::make_pair(newMin, newMax) == std::make_pair(curMin, curMax)) {
+                        if (newFirst < curFirst) {
+                            bestPLetter = pL;
+                            bestSLetter = sL;
+                        }
+                    }
+                }
+            }
+        }
+        if (!foundTwoSided) return std::nullopt;
+
+        QString remainderBracketAndBase;
+        if (identicalRemainders) {
+            char minL = std::min(bestPLetter, bestSLetter);
+            char maxL = std::max(bestPLetter, bestSLetter);
+            if (pRem.isPlainBenzo && sRem.isPlainBenzo) {
+                QString fusionWord = "dibenzo";
+                if (!best->system->name.isEmpty()) {
+                    QChar c0 = best->system->name.at(0).toLower();
+                    if (c0 == 'a' || c0 == 'e' || c0 == 'i' || c0 == 'o' || c0 == 'u') {
+                        fusionWord = "dibenz";
+                    }
+                }
+                remainderBracketAndBase = fusionWord + "[" + QString(QChar(minL)) + "," + QString(QChar(maxL)) + "]" + best->system->name;
+            } else {
+                auto locAtMin = (bestPLetter == minL) ? pLocs : sLocs;
+                auto locAtMax = (bestPLetter == minL) ? sLocs : pLocs;
+                QString desc1 = locAtMin.first + "," + locAtMin.second + "-" + QString(QChar(minL));
+                QString desc2 = primeLocant(locAtMax.first) + "," + primeLocant(locAtMax.second) + "-" + QString(QChar(maxL));
+                QString fusionWord = "di" + pRem.sys->fusionPrefix;
+                remainderBracketAndBase = fusionWord + "[" + desc1 + ":" + desc2 + "]" + best->system->name;
+            }
+        } else {
+            bool pIsFirst = pRem.fusionPrefix < sRem.fusionPrefix;
+            const auto &comp1 = pIsFirst ? pRem : sRem;
+            const auto &comp2 = pIsFirst ? sRem : pRem;
+            char letter1 = pIsFirst ? bestPLetter : bestSLetter;
+            char letter2 = pIsFirst ? bestSLetter : bestPLetter;
+            auto loc1 = pIsFirst ? pLocs : sLocs;
+            auto loc2 = pIsFirst ? sLocs : pLocs;
+
+            QString bra1 = comp1.isPlainBenzo ? ("[" + QString(QChar(letter1)) + "]")
+                                              : ("[" + loc1.first + "," + loc1.second + "-" + QString(QChar(letter1)) + "]");
+            QString bra2 = comp2.isPlainBenzo ? ("[" + QString(QChar(letter2)) + "]")
+                                              : ("[" + loc2.first + "," + loc2.second + "-" + QString(QChar(letter2)) + "]");
+            QString pref1 = comp1.fusionPrefix;
+            QString pref2 = comp2.fusionPrefix;
+            if (comp2.isPlainBenzo && !best->system->name.isEmpty()) {
+                QChar c0 = best->system->name.at(0).toLower();
+                if (c0 == 'a' || c0 == 'e' || c0 == 'i' || c0 == 'o' || c0 == 'u') {
+                    pref2 = "benz";
+                }
+            }
+            remainderBracketAndBase = pref1 + bra1 + pref2 + bra2 + best->system->name;
+        }
+
+        std::set<int> baseHydroRealAtoms = hydroLocantsToRealAtoms(best->hydroLocants, *best->system, best->atomMap);
+        if (baseHydroRealAtoms.size() != static_cast<size_t>(best->hydroLocants.size())) return std::nullopt;
+
+        std::set<int> pRemHydroRealAtoms, sRemHydroRealAtoms;
+        if (!pRem.isPlainBenzo && !pRem.hydroLocants.isEmpty()) {
+            pRemHydroRealAtoms = hydroLocantsToRealAtoms(pRem.hydroLocants, *pRem.sys, pRem.atomMap);
+            if (pRemHydroRealAtoms.size() != static_cast<size_t>(pRem.hydroLocants.size())) return std::nullopt;
+        }
+        if (!sRem.isPlainBenzo && !sRem.hydroLocants.isEmpty()) {
+            sRemHydroRealAtoms = hydroLocantsToRealAtoms(sRem.hydroLocants, *sRem.sys, sRem.atomMap);
+            if (sRemHydroRealAtoms.size() != static_cast<size_t>(sRem.hydroLocants.size())) return std::nullopt;
+        }
+
+        std::set<int> hydroLocantBearingNodes = baseHydroRealAtoms;
+        hydroLocantBearingNodes.insert(pRemHydroRealAtoms.begin(), pRemHydroRealAtoms.end());
+        hydroLocantBearingNodes.insert(sRemHydroRealAtoms.begin(), sRemHydroRealAtoms.end());
+        hydroLocantBearingNodes.insert(pRem.plainBenzoSaturatedAtoms.begin(), pRem.plainBenzoSaturatedAtoms.end());
+        hydroLocantBearingNodes.insert(sRem.plainBenzoSaturatedAtoms.begin(), sRem.plainBenzoSaturatedAtoms.end());
+
+        QStringList hydroLocantsFinal;
+        QString ihPart;
+        if (!hydroLocantBearingNodes.empty()) {
+            if (!best->system->indicatedHydrogenLocant.isEmpty()) return std::nullopt;
+            if (!pRem.isPlainBenzo && !pRem.sys->indicatedHydrogenLocant.isEmpty()) return std::nullopt;
+            if (!sRem.isPlainBenzo && !sRem.sys->indicatedHydrogenLocant.isEmpty()) return std::nullopt;
+
+            FusedRingSystemInput wholeInput = detectFusedRingDirections(mol);
+            if (static_cast<int>(wholeInput.ringSizes.size()) != N ||
+                static_cast<int>(wholeInput.ringAtoms.size()) != N) {
+                return std::nullopt;
+            }
+            for (int i = 0; i < N; ++i) {
+                if (wholeInput.ringAtoms[i] != sssrRings[i]) return std::nullopt;
+            }
+
+            Graph wholeGraph = buildGraphForWholeNumbering(mol);
+            std::map<int, QString> finalLocants = computePeripheralNumberingGeneral(
+                wholeGraph, wholeInput, std::set<int>(), hydroLocantBearingNodes, nullptr, true);
+            if (finalLocants.empty()) return std::nullopt;
+            for (int realAtom : hydroLocantBearingNodes) {
+                auto it = finalLocants.find(realAtom);
+                if (it == finalLocants.end()) return std::nullopt;
+                hydroLocantsFinal.push_back(it->second);
+            }
+        }
+
+        bool hydroOk = false;
+        QString hydroPrefix = buildHydroPrefix(hydroLocantsFinal, hydroOk);
+        if (!hydroOk) return std::nullopt;
+        QString joiner = (!hydroPrefix.isEmpty() && !ihPart.isEmpty()) ? "-" : "";
+
+        RingSystemNameResult result;
+        result.success = true;
+        result.baseName = hydroPrefix + joiner + ihPart + remainderBracketAndBase;
+        for (const auto &kv : best->atomMap) {
+            result.locantMap[kv.first] = QString::number(kv.second);
+        }
+        for (const auto &kv : pRem.atomMap) {
+            result.locantMap[100000 + kv.first] = QString::number(kv.second);
+        }
+        for (const auto &kv : sRem.atomMap) {
+            result.locantMap[200000 + kv.first] = QString::number(kv.second);
+        }
+        return result;
     }
 
     // One-sided remainder: exactly one contiguous run of leftover rings,

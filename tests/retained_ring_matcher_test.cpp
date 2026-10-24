@@ -221,6 +221,87 @@ int main() {
             indigoFree(mol);
         }
     }
+
+    // Test 9: Dibenz[a,j]acridine (two-sided remainder, acridine base flanked by 2 benzo remainders)
+    {
+        std::cout << "\nTest 9: Dibenz[a,j]acridine (two-sided remainder)" << std::endl;
+        int mol = indigoLoadMoleculeFromString("C1=CC=C2C(=C1)C=CC3=NC4=C(C=C32)C5=CC=CC=C5C=C4");
+        if (mol < 0) {
+            std::cout << "  [FAIL] Could not parse SMILES" << std::endl;
+            ++failed;
+        } else {
+            indigoAromatize(mol);
+            auto result = tryRetainedBaseDecomposition(mol);
+            if (result) {
+                if (result->success && result->baseName == "dibenz[a,j]acridine") {
+                    std::cout << "  [PASS] dibenz[a,j]acridine matched, baseName=" << result->baseName.toStdString() << std::endl;
+                    ++passed;
+                } else {
+                    std::cout << "  [FAIL] dibenz[a,j]acridine matched but baseName='" << result->baseName.toStdString()
+                              << "' success=" << result->success << std::endl;
+                    ++failed;
+                }
+            } else {
+                std::cout << "  [FAIL] dibenz[a,j]acridine returned nullopt" << std::endl;
+                ++failed;
+            }
+            indigoFree(mol);
+        }
+    }
+
+    // Test 10: Dibenzo[a,h]phenazine (two-sided remainder, phenazine base flanked by 2 benzo remainders)
+    {
+        std::cout << "\nTest 10: Dibenzo[a,h]phenazine (two-sided remainder)" << std::endl;
+        int mol = indigoLoadMoleculeFromString("C1=CC=C2C(=C1)C=CC3=NC4=C(N=C32)C=CC5=CC=CC=C54");
+        if (mol < 0) {
+            std::cout << "  [FAIL] Could not parse SMILES" << std::endl;
+            ++failed;
+        } else {
+            indigoAromatize(mol);
+            auto result = tryRetainedBaseDecomposition(mol);
+            if (result) {
+                if (result->success && result->baseName == "dibenzo[a,h]phenazine") {
+                    std::cout << "  [PASS] dibenzo[a,h]phenazine matched, baseName=" << result->baseName.toStdString() << std::endl;
+                    ++passed;
+                } else {
+                    std::cout << "  [FAIL] dibenzo[a,h]phenazine matched but baseName='" << result->baseName.toStdString()
+                              << "' success=" << result->success << std::endl;
+                    ++failed;
+                }
+            } else {
+                std::cout << "  [FAIL] dibenzo[a,h]phenazine returned nullopt" << std::endl;
+                ++failed;
+            }
+            indigoFree(mol);
+        }
+    }
+
+    // Test 11: Dibenzo[a,j]phenazine (two-sided remainder, phenazine base flanked by 2 benzo remainders)
+    {
+        std::cout << "\nTest 11: Dibenzo[a,j]phenazine (two-sided remainder)" << std::endl;
+        int mol = indigoLoadMoleculeFromString("C1=CC=C2C(=C1)C=CC3=NC4=C(N=C32)C5=CC=CC=C5C=C4");
+        if (mol < 0) {
+            std::cout << "  [FAIL] Could not parse SMILES" << std::endl;
+            ++failed;
+        } else {
+            indigoAromatize(mol);
+            auto result = tryRetainedBaseDecomposition(mol);
+            if (result) {
+                if (result->success && result->baseName == "dibenzo[a,j]phenazine") {
+                    std::cout << "  [PASS] dibenzo[a,j]phenazine matched, baseName=" << result->baseName.toStdString() << std::endl;
+                    ++passed;
+                } else {
+                    std::cout << "  [FAIL] dibenzo[a,j]phenazine matched but baseName='" << result->baseName.toStdString()
+                              << "' success=" << result->success << std::endl;
+                    ++failed;
+                }
+            } else {
+                std::cout << "  [FAIL] dibenzo[a,j]phenazine returned nullopt" << std::endl;
+                ++failed;
+            }
+            indigoFree(mol);
+        }
+    }
     std::cout << "\n========================================" << std::endl;
     std::cout << "TOTAL PASSED: " << passed << std::endl;
     std::cout << "TOTAL FAILED: " << failed << std::endl;

@@ -7697,6 +7697,9 @@ int main() {
             // Retained-ring matcher bridgehead saturation tests
             {"5,5a,6,7,8,9,9a,10-octahydrobenzo[g]quinoline", "C1CCC2Cc3ncccc3CC2C1", "5,5a,6,7,8,9,9a,10-octahydrobenzo[g]quinoline"},
             {"1,2,3,4,4a,5,6,7,8,8a,9,9a,10,10a-tetradecahydroanthracene", "C1CCC2CC3CCCCC3CC2C1", "1,2,3,4,4a,5,6,7,8,8a,9,9a,10,10a-tetradecahydroanthracene"},
+            // Retained-ring matcher two-sided remainder tests
+            {"dibenz[a,j]acridine", "C1=CC=C2C(=C1)C=CC3=NC4=C(C=C32)C5=CC=CC=C5C=C4", "dibenz[a,j]acridine"},
+            {"dibenzo[a,j]phenazine", "C1=CC=C2C(=C1)C=CC3=NC4=C(N=C32)C5=CC=CC=C5C=C4", "dibenzo[a,j]phenazine"},
         };
         for (const auto &c : cases) {
             int m = indigoLoadMoleculeFromString(c.smiles);
