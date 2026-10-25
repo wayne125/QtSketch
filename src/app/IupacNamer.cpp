@@ -1351,11 +1351,6 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
                 }
             }
 
-            if (hasTriple) {
-                outErrorMsg = "Large heterocycles with triple bonds are not supported.";
-                return false;
-            }
-
             bool validMancude = false;
             if (!allSingleInRing && (hasDouble || heteroAromatic)) {
                 std::vector<int> spareValence(ringSize);
@@ -1438,9 +1433,6 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
 
                         if (validBonding && actualDoubleBonds == maxDoubleBonds) {
                             validMancude = true;
-                        } else if (validBonding && actualDoubleBonds > 0) {
-                            outErrorMsg = "Partially saturated large heterocycles are not supported.";
-                            return false;
                         } else if (!validBonding) {
                             outErrorMsg = "Invalid double bond arrangement for mancude form.";
                             return false;
@@ -1452,11 +1444,9 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
                 }
             }
 
-            if (allSingleInRing || validMancude) {
-                outType = RingType::LARGE_HETEROCYCLE;
-                outNameRoot = "cyclo" + chainRoot(ringSize); // Defer the "ane" / "ene" ending
-                return true;
-            }
+            outType = RingType::LARGE_HETEROCYCLE;
+            outNameRoot = "cyclo" + chainRoot(ringSize); // Defer the "ane" / "ene" ending
+            return true;
         }
     }
 
@@ -8640,14 +8630,6 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                             // locant support; callers must not use this for N!=3.
                             for (const auto &es : extraSubstituents) collectedSubstituents.push_back(es);
 
-                            // Reject N==4 chains containing CYCLOPENTADIENE/CYCLOHEPTATRIENE (indicated hydrogen not yet supported)
-                            if (N == 4) {
-                                for (int i = 0; i < N; ++i) {
-                                    if (typesN[i] == RingType::CYCLOPENTADIENE || typesN[i] == RingType::CYCLOHEPTATRIENE) {
-                                        return {RingSystemNameResult{false, "Indicated hydrogen for odd-membered carbocycles in 4-ring chains is not yet supported.", "", {}}};
-                                    }
-                                }
-                            }
 
                             // Hydro-prefix fused-ring plan / P-25.3.3 orientation plan:
                             // N>=4 substituent + hydro-prefix locant citation via
@@ -10188,9 +10170,6 @@ static FunctionalGroupClassification classifyFunctionalGroups(
                 }
                 if (singleC == 0) {
                     { result.hasEarlyResult = true; result.earlyResult = {false, "", "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."}; return result; }
-                }
-                if (!halogens.empty()) {
-                    { result.hasEarlyResult = true; result.earlyResult = {false, "", "Amides with coexisting halogens on the acyl carbon are not supported."}; return result; }
                 }
                 bool isHydrazide = false;
                 for (int sN : singleN) {
@@ -18603,11 +18582,11 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
             }
             std::sort(sig.doubleBondLocants.begin(), sig.doubleBondLocants.end());
         } else if (rType == RingType::LARGE_HETEROCYCLE) {
-            bool hasDoubleOrArom = false;
+            bool hasArom = false;
             for (const auto &rb : ringBonds) {
-                if (rb.order == 2 || rb.order == 4) hasDoubleOrArom = true;
+                if (rb.order == 4) hasArom = true;
             }
-            if (hasDoubleOrArom) {
+            if (hasArom) {
                 std::vector<int> spareValence(ringSize);
                 int zeroSpareCount = 0;
                 for (int i = 0; i < ringSize; ++i) {
@@ -18646,6 +18625,20 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                     }
                 }
                 std::sort(sig.doubleBondLocants.begin(), sig.doubleBondLocants.end());
+            } else {
+                for (const auto &rb : ringBonds) {
+                    int l1 = locantMap[rb.u];
+                    int l2 = locantMap[rb.v];
+                    int bLoc = std::min(l1, l2);
+                    if ((l1 == 1 && l2 == ringSize) || (l1 == ringSize && l2 == 1)) bLoc = ringSize;
+                    if (rb.order == 2) {
+                        sig.doubleBondLocants.push_back(bLoc);
+                    } else if (rb.order == 3) {
+                        sig.tripleBondLocants.push_back(bLoc);
+                    }
+                }
+                std::sort(sig.doubleBondLocants.begin(), sig.doubleBondLocants.end());
+                std::sort(sig.tripleBondLocants.begin(), sig.tripleBondLocants.end());
             }
         }
 
@@ -19151,7 +19144,7 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
             if (z != 6) locantsByZ[z].push_back(static_cast<int>(i + 1));
         }
 
-        bool omitSingle = bestSig.doubleBondLocants.empty();
+        bool omitSingle = bestSig.doubleBondLocants.empty() && bestSig.tripleBondLocants.empty();
         QString heteroPrefix = buildSkeletalReplacementPrefix(locantsByZ, omitSingle);
         if (!heteroPrefix.isEmpty()) {
             parentNameRoot = heteroPrefix + parentNameRoot;
@@ -19231,13 +19224,35 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
         }
     } else if (rType == RingType::LARGE_HETEROCYCLE) {
         std::vector<int> dbLocs = bestSig.doubleBondLocants;
-        if (dbLocs.empty()) {
+        std::vector<int> tbLocs = bestSig.tripleBondLocants;
+        if (dbLocs.empty() && tbLocs.empty()) {
             rootStr += "ane";
+        } else if (!dbLocs.empty() && tbLocs.empty()) {
+            if (dbLocs.size() == 1) {
+                rootStr += QString("-%1-ene").arg(dbLocs[0]);
+            } else {
+                rootStr += "a";
+                QStringList lStrs;
+                for (int l : dbLocs) lStrs.append(QString::number(l));
+                rootStr += QString("-%1-%2ene").arg(lStrs.join(","), multiPrefix(static_cast<int>(dbLocs.size())));
+            }
+        } else if (dbLocs.empty() && !tbLocs.empty()) {
+            if (tbLocs.size() == 1) {
+                rootStr += QString("-%1-yne").arg(tbLocs[0]);
+            } else {
+                rootStr += "a";
+                QStringList lStrs;
+                for (int l : tbLocs) lStrs.append(QString::number(l));
+                rootStr += QString("-%1-%2yne").arg(lStrs.join(","), multiPrefix(static_cast<int>(tbLocs.size())));
+            }
         } else {
-            rootStr += "a";
-            QStringList lStrs;
-            for (int l : dbLocs) lStrs.append(QString::number(l));
-            rootStr += QString("-%1-%2ene").arg(lStrs.join(","), multiPrefix(static_cast<int>(dbLocs.size())));
+            QStringList dStrs, tStrs;
+            for (int l : dbLocs) dStrs.append(QString::number(l));
+            for (int l : tbLocs) tStrs.append(QString::number(l));
+            if (dbLocs.size() > 1) rootStr += "a";
+            QString dPart = (dbLocs.size() > 1) ? QString("%1-%2en").arg(dStrs.join(","), multiPrefix(static_cast<int>(dbLocs.size()))) : QString("%1-en").arg(dStrs[0]);
+            QString tPart = (tbLocs.size() > 1) ? QString("%1-%2yn").arg(tStrs.join(","), multiPrefix(static_cast<int>(tbLocs.size()))) : QString("%1-yn").arg(tStrs[0]);
+            rootStr += QString("-%1-%2e").arg(dPart, tPart);
         }
     }
 
@@ -20698,9 +20713,6 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                     }
                     if (singleC == 0) {
                         return {false, "", "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."};
-                    }
-                    if (!halogens.empty()) {
-                        return {false, "", "Amides with coexisting halogens on the acyl carbon are not supported."};
                     }
                     bool isHydrazide = false;
                     for (int sN : singleN) {

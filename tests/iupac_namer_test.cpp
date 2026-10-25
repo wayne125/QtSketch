@@ -7762,6 +7762,11 @@ int main() {
             {"phenyl 3-(tricyclo[2.2.1.0^{2,6}]heptan-3-yl)propanoate", "O=C(CCC1C2CC3C1C3C2)Oc4ccccc4", "phenyl 3-(tricyclo[2.2.1.0^{2,6}]heptan-3-yl)propanoate"},
             {"(tricyclo[2.2.1.0^{2,6}]heptan-3-yl)methanol", "OCC1C2CC3C1C3C2", "(tricyclo[2.2.1.0^{2,6}]heptan-3-yl)methanol"},
             {"2-(tricyclo[2.2.1.0^{2,6}]heptan-3-yl)ethanoic acid", "OC(=O)CC1C2CC3C1C3C2", "2-(tricyclo[2.2.1.0^{2,6}]heptan-3-yl)ethanoic acid"},
+            // Wave 1 Item A: N==4 odd-membered carbocycle indicated-H
+            {"8H-benzo[1,6-b]benzo[3',2':5,1]cyclopenta[3,2-e]pyridine", "C1c2ccccc2-c2nc3ccccc3cc21", "8H-benzo[1,6-b]benzo[3',2':5,1]cyclopenta[3,2-e]pyridine"},
+            // Wave 1 Item C: large heterocycle with double/triple bond
+            {"Wave 1 Item C double bond", "O1CC=CCCCCCCCCC1", "1-oxacyclotridec-3-ene"},
+            {"Wave 1 Item C triple bond", "O1CC#CCCCCCCCCC1", "1-oxacyclotridec-3-yne"},
         };
         for (const auto &c : cases) {
             int m = indigoLoadMoleculeFromString(c.smiles);
