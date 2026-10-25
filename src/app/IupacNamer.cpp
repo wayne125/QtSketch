@@ -2888,6 +2888,8 @@ struct NumberingCand {
 
     std::vector<int> heteroatomSeniorityLocants;
 
+    std::vector<int> principalLocants;
+
     std::vector<int> doubleBondLocants;
 
     std::vector<int> tripleBondLocants;
@@ -2918,7 +2920,7 @@ struct BicyclicEvalResult {
 
 
 
-BicyclicEvalResult evaluateBicyclicSystem(const Graph& g, const std::set<int>& ringUnionNodes, const std::vector<std::pair<int, QString>>& ringSubstituents) {
+BicyclicEvalResult evaluateBicyclicSystem(const Graph& g, const std::set<int>& ringUnionNodes, const std::vector<std::pair<int, QString>>& ringSubstituents, const std::set<int>& principalRingAtoms = {}) {
 
     BicyclicEvalResult res;
 
@@ -3182,6 +3184,22 @@ BicyclicEvalResult evaluateBicyclicSystem(const Graph& g, const std::set<int>& r
 
 
 
+                    for (int pNode : principalRingAtoms) {
+
+                        auto it = cand.locantOf.find(pNode);
+
+                        if (it != cand.locantOf.end()) {
+
+                            cand.principalLocants.push_back(it->second);
+
+                        }
+
+                    }
+
+                    std::sort(cand.principalLocants.begin(), cand.principalLocants.end());
+
+
+
                     for (const auto &rs : ringSubstituents) {
 
                         auto it = cand.locantOf.find(rs.first);
@@ -3245,6 +3263,8 @@ BicyclicEvalResult evaluateBicyclicSystem(const Graph& g, const std::set<int>& r
                     if (a.heteroatomLocants != b.heteroatomLocants) return a.heteroatomLocants < b.heteroatomLocants;
 
                     if (a.heteroatomSeniorityLocants != b.heteroatomSeniorityLocants) return a.heteroatomSeniorityLocants < b.heteroatomSeniorityLocants;
+
+                    if (a.principalLocants != b.principalLocants) return a.principalLocants < b.principalLocants;
 
                     if (a.doubleBondLocants != b.doubleBondLocants) return a.doubleBondLocants < b.doubleBondLocants;
 
@@ -21641,22 +21661,166 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                     }
                 }
 
-                // Classify every exocyclic branch as a permitted simple substituent
-                // (or fall through). Collect each (ringAtom, subName) pair so the
-                // actual locants can be assigned once the per-atom numbering is chosen.
+                GroupType winningType = GroupType::NONE;
+                std::set<int> principalRingAtoms;
+                std::set<int> principalExocyclicAtoms;
+                std::set<int> principalGroupCarbons;
                 std::vector<std::pair<int, QString>> ringSubstituents;
-                if (validPreconditions) {
-                    for (int n : ringUnionNodes) {
-                        for (size_t j = 0; j < g.nodes[n].neighbors.size(); ++j) {
-                            int nei = g.nodes[n].neighbors[j];
+
+                if (bicyclicSkeletonValid) {
+                    // Detect principal characteristic groups attached to the bicyclic ring skeleton (or 1-bond exocyclic)
+                    auto myGroupRank = [](GroupType gt) -> int {
+                        if (gt == GroupType::ACID) return 1;
+                        if (gt == GroupType::AMIDE) return 2;
+                        if (gt == GroupType::THIOAMIDE) return 3;
+                        if (gt == GroupType::HYDRAZIDE) return 4;
+                        if (gt == GroupType::AMIDINE) return 5;
+                        if (gt == GroupType::NITRILE) return 6;
+                        if (gt == GroupType::ALDEHYDE) return 7;
+                        if (gt == GroupType::THIAL) return 8;
+                        if (gt == GroupType::KETONE) return 9;
+                        if (gt == GroupType::THIONE) return 10;
+                        if (gt == GroupType::ALCOHOL) return 11;
+                        if (gt == GroupType::THIOL) return 12;
+                        if (gt == GroupType::AMINE) return 13;
+                        if (gt == GroupType::IMINE) return 14;
+                        return 99;
+                    };
+
+                    struct DetectedGroup {
+                        GroupType type;
+                        int ringNode;
+                        int exocyclicNode;
+                        int groupCarbon;
+                    };
+                    std::vector<DetectedGroup> detectedGroups;
+
+                    for (int rIdx : ringUnionNodes) {
+                        for (size_t j = 0; j < g.nodes[rIdx].neighbors.size(); ++j) {
+                            int nei = g.nodes[rIdx].neighbors[j];
                             if (ringUnionNodes.count(nei)) continue;
-                            QString subName = simpleRingSubstituentName(g, n, nei, ringUnionNodes, mol);
-                            if (subName.isEmpty()) { validPreconditions = false; break; }
-                            if (subName.startsWith("(") && subName.endsWith(")"))
-                                subName = subName.mid(1, subName.length() - 2);
-                            ringSubstituents.push_back({n, subName});
+                            int order = g.nodes[rIdx].bondOrders[j];
+                            int z = g.nodes[nei].atomicNumber;
+
+                            if (z == 8) {
+                                if (order == 2) {
+                                    detectedGroups.push_back({GroupType::KETONE, rIdx, nei, rIdx});
+                                } else if (order == 1 && (g.nodes[nei].totalH >= 1 || g.nodes[nei].neighbors.size() == 1)) {
+                                    detectedGroups.push_back({GroupType::ALCOHOL, rIdx, nei, rIdx});
+                                }
+                            } else if (z == 7) {
+                                if (order == 1) {
+                                    bool isNitroIsoOrAzide = false;
+                                    if (carbonAzide.count(rIdx) && std::find(carbonAzide[rIdx].begin(), carbonAzide[rIdx].end(), nei) != carbonAzide[rIdx].end()) isNitroIsoOrAzide = true;
+                                    if (isIsocyanateNitrogen(nei, rIdx, g)) isNitroIsoOrAzide = true;
+                                    if (isNitroNitrogen(nei, rIdx, g)) isNitroIsoOrAzide = true;
+                                    if (isNitrosoNitrogen(nei, rIdx, g)) isNitroIsoOrAzide = true;
+                                    auto azoName = tryNameAzoCompound(rIdx, nei, g, allSSSRRings, mol);
+                                    if (azoName.has_value()) {
+                                        if (!azoName->isEmpty()) return {true, *azoName, ""};
+                                        else return {false, "", "Could not generate names for both sides of the azo group, or a competing principal group elsewhere in the molecule is not supported alongside azo naming."};
+                                    }
+                                    auto nitrosoName = tryNameNitrosamine(rIdx, nei, g, allSSSRRings, mol);
+                                    if (nitrosoName.has_value()) {
+                                        if (!nitrosoName->isEmpty()) return {true, *nitrosoName, ""};
+                                        else return {false, "", "Could not generate names for all sides of the nitrosamine, or a competing principal group elsewhere in the molecule is not supported alongside nitrosamine naming."};
+                                    }
+                                    if (!isNitroIsoOrAzide) {
+                                        detectedGroups.push_back({GroupType::AMINE, rIdx, nei, rIdx});
+                                    }
+                                } else if (order == 2 && (g.nodes[nei].totalH >= 1 || g.nodes[nei].neighbors.size() == 1)) {
+                                    detectedGroups.push_back({GroupType::IMINE, rIdx, nei, rIdx});
+                                }
+                            } else if (z == 16) {
+                                if (order == 2) {
+                                    detectedGroups.push_back({GroupType::THIONE, rIdx, nei, rIdx});
+                                } else if (order == 1 && (g.nodes[nei].totalH >= 1 || g.nodes[nei].neighbors.size() == 1)) {
+                                    detectedGroups.push_back({GroupType::THIOL, rIdx, nei, rIdx});
+                                }
+                            } else if (z == 6 && order == 1) {
+                                int otherC = 0;
+                                for (int n2 : g.nodes[nei].neighbors) {
+                                    if (g.nodes[n2].atomicNumber == 6 && n2 != rIdx) otherC++;
+                                }
+                                if (otherC == 0) {
+                                    bool hasDblO = false, hasSglO_OH = false, hasSglN = false, hasDblS = false, hasTrpN = false, hasDblN = false;
+                                    for (size_t k = 0; k < g.nodes[nei].neighbors.size(); ++k) {
+                                        int n2 = g.nodes[nei].neighbors[k];
+                                        if (n2 == rIdx) continue;
+                                        int o2 = g.nodes[nei].bondOrders[k];
+                                        int z2 = g.nodes[n2].atomicNumber;
+                                        if (z2 == 8 && o2 == 2) hasDblO = true;
+                                        if (z2 == 16 && o2 == 2) hasDblS = true;
+                                        if (z2 == 8 && o2 == 1 && (g.nodes[n2].totalH >= 1 || g.nodes[n2].neighbors.size() == 1)) hasSglO_OH = true;
+                                        if (z2 == 7 && o2 == 1) hasSglN = true;
+                                        if (z2 == 7 && o2 == 2) hasDblN = true;
+                                        if (z2 == 7 && o2 == 3) hasTrpN = true;
+                                    }
+                                    if (hasDblO && hasSglO_OH) {
+                                        detectedGroups.push_back({GroupType::ACID, rIdx, nei, nei});
+                                    } else if (hasDblO && hasSglN) {
+                                        bool isHydrazide = false;
+                                        for (size_t k = 0; k < g.nodes[nei].neighbors.size(); ++k) {
+                                            int n2 = g.nodes[nei].neighbors[k];
+                                            if (n2 == rIdx) continue;
+                                            if (g.nodes[n2].atomicNumber == 7 && g.nodes[nei].bondOrders[k] == 1) {
+                                                for (size_t m = 0; m < g.nodes[n2].neighbors.size(); ++m) {
+                                                    int n3 = g.nodes[n2].neighbors[m];
+                                                    if (n3 != nei && g.nodes[n3].atomicNumber == 7 && g.nodes[n2].bondOrders[m] == 1) {
+                                                        isHydrazide = true;
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        detectedGroups.push_back({isHydrazide ? GroupType::HYDRAZIDE : GroupType::AMIDE, rIdx, nei, nei});
+                                    } else if (hasDblS && hasSglN) {
+                                        detectedGroups.push_back({GroupType::THIOAMIDE, rIdx, nei, nei});
+                                    } else if (hasDblN && hasSglN) {
+                                        detectedGroups.push_back({GroupType::AMIDINE, rIdx, nei, nei});
+                                    } else if (hasTrpN) {
+                                        detectedGroups.push_back({GroupType::NITRILE, rIdx, nei, nei});
+                                    } else if (hasDblO && (g.nodes[nei].totalH >= 1 || g.nodes[nei].neighbors.size() <= 2)) {
+                                        detectedGroups.push_back({GroupType::ALDEHYDE, rIdx, nei, nei});
+                                    }
+                                }
+                            }
                         }
-                        if (!validPreconditions) break;
+                    }
+
+                    for (const auto &dg : detectedGroups) {
+                        if (winningType == GroupType::NONE || myGroupRank(dg.type) < myGroupRank(winningType)) {
+                            winningType = dg.type;
+                        }
+                    }
+
+                    if (winningType != GroupType::NONE) {
+                        for (const auto &dg : detectedGroups) {
+                            if (dg.type == winningType) {
+                                principalRingAtoms.insert(dg.ringNode);
+                                principalExocyclicAtoms.insert(dg.exocyclicNode);
+                                principalGroupCarbons.insert(dg.groupCarbon);
+                            }
+                        }
+                    }
+
+                    // Classify every exocyclic branch as a permitted simple substituent
+                    // (or fall through). Collect each (ringAtom, subName) pair so the
+                    // actual locants can be assigned once the per-atom numbering is chosen.
+                    if (validPreconditions) {
+                        for (int n : ringUnionNodes) {
+                            for (size_t j = 0; j < g.nodes[n].neighbors.size(); ++j) {
+                                int nei = g.nodes[n].neighbors[j];
+                                if (ringUnionNodes.count(nei)) continue;
+                                if (principalExocyclicAtoms.count(nei)) continue;
+                                QString subName = simpleRingSubstituentName(g, n, nei, ringUnionNodes, mol);
+                                if (subName.isEmpty()) { validPreconditions = false; break; }
+                                if (subName.startsWith("(") && subName.endsWith(")"))
+                                    subName = subName.mid(1, subName.length() - 2);
+                                ringSubstituents.push_back({n, subName});
+                            }
+                            if (!validPreconditions) break;
+                        }
                     }
                 }
 
@@ -21710,9 +21874,13 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                 }
 
                 if (validPreconditions) {
+                    if (winningType != GroupType::NONE) {
+                        auto hRes = checkPrincipalHeteroatomsUnsubstituted(g, principalGroupCarbons, winningType);
+                        if (hRes.hasError) return {false, "", hRes.msg};
+                    }
                     // Bridgehead identification: ring atoms with ring-degree 3.
                     
-                    BicyclicEvalResult evalRes = evaluateBicyclicSystem(g, ringUnionNodes, ringSubstituents);
+                    BicyclicEvalResult evalRes = evaluateBicyclicSystem(g, ringUnionNodes, ringSubstituents, principalRingAtoms);
                     if (evalRes.valid) {
                     if (true) {
                     if (true) {
@@ -21804,11 +21972,48 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                                             infix = QString("-%1-%2").arg(dPart, tPart);
                                         }
 
+                                        QString sfxWithLocants;
+                                        if (winningType != GroupType::NONE) {
+                                            bool isExocyclic = (winningType == GroupType::ACID ||
+                                                                winningType == GroupType::AMIDE ||
+                                                                winningType == GroupType::THIOAMIDE ||
+                                                                winningType == GroupType::HYDRAZIDE ||
+                                                                winningType == GroupType::AMIDINE ||
+                                                                winningType == GroupType::NITRILE ||
+                                                                winningType == GroupType::ALDEHYDE ||
+                                                                winningType == GroupType::ESTER);
+                                            int pCount = static_cast<int>(best.principalLocants.size());
+                                            if (isExocyclic) {
+                                                QString sfx;
+                                                if (winningType == GroupType::ACID) sfx = (pCount == 1) ? "carboxylic acid" : (multiPrefix(pCount) + "carboxylic acid");
+                                                else if (winningType == GroupType::AMIDE) sfx = (pCount == 1) ? "carboxamide" : (multiPrefix(pCount) + "carboxamide");
+                                                else if (winningType == GroupType::THIOAMIDE) sfx = (pCount == 1) ? "carbothioamide" : (multiPrefix(pCount) + "carbothioamide");
+                                                else if (winningType == GroupType::HYDRAZIDE) sfx = (pCount == 1) ? "carbohydrazide" : (multiPrefix(pCount) + "carbohydrazide");
+                                                else if (winningType == GroupType::AMIDINE) sfx = (pCount == 1) ? "carboximidamide" : (multiPrefix(pCount) + "carboximidamide");
+                                                else if (winningType == GroupType::NITRILE) sfx = (pCount == 1) ? "carbonitrile" : (multiPrefix(pCount) + "carbonitrile");
+                                                else if (winningType == GroupType::ALDEHYDE) sfx = (pCount == 1) ? "carbaldehyde" : (multiPrefix(pCount) + "carbaldehyde");
+                                                else if (winningType == GroupType::ESTER) sfx = (pCount == 1) ? "carboxylate" : (multiPrefix(pCount) + "carboxylate");
+                                                QStringList lStrs;
+                                                for (int l : best.principalLocants) lStrs.append(QString::number(l));
+                                                sfxWithLocants = QString("-%1-%2").arg(lStrs.join(","), sfx);
+                                            } else {
+                                                sfxWithLocants = principalGroupSuffix(winningType, totalCarbons, pCount, best.principalLocants, 0);
+                                            }
+
+                                            QChar checkC;
+                                            for (QChar ch : sfxWithLocants) {
+                                                if (ch.isLetter()) { checkC = ch; break; }
+                                            }
+                                            if (isVowel(checkC) && infix.endsWith('e')) {
+                                                infix.chop(1);
+                                            }
+                                        }
+
                                         StereoResult stereoRes = formatStereoPrefix(stereoByGraphId, best.locantOf, std::set<int>());
                                         if (!stereoRes.ok) return {false, "", stereoRes.error};
 
-                                        QString fullName = stereoRes.prefix + prefixPart + QString("bicyclo[%1.%2.%3]%4%5")
-                                            .arg(lengths[0]).arg(lengths[1]).arg(lengths[2]).arg(root).arg(infix);
+                                        QString fullName = stereoRes.prefix + prefixPart + QString("bicyclo[%1.%2.%3]%4%5%6")
+                                            .arg(lengths[0]).arg(lengths[1]).arg(lengths[2]).arg(root).arg(infix).arg(sfxWithLocants);
 
                                         return {true, fullName, ""};
                                     }

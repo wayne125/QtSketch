@@ -3300,11 +3300,11 @@ int main() {
         int m = indigoLoadMoleculeFromString("OC1CC2CCC1C2");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
-        if (!r.success) {
-            std::cout << "[PASS] Phase 53 hydroxybicyclo rejection -> " << r.error.toStdString() << "\n";
+        if (r.success && r.name == "bicyclo[2.2.1]heptan-2-ol") {
+            std::cout << "[PASS] Phase 53 hydroxybicyclo -> " << r.name.toStdString() << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] Phase 53 hydroxybicyclo rejection -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            std::cout << "[FAIL] Phase 53 hydroxybicyclo -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
             failed++;
         }
     }
@@ -7747,6 +7747,12 @@ int main() {
             {"(adamantan-1-yl)methanol", "OCC12CC3CC(CC(C3)C1)C2", "(adamantan-1-yl)methanol"},
             {"(adamantan-2-yl)methanol", "OCC1C2CC3CC1CC(C2)C3", "(adamantan-2-yl)methanol"},
             {"(cuban-1-yl)methanol", "OCC12C3C4C1C5C2C3C45", "(cuban-1-yl)methanol"},
+            // Item 3: bare von Baeyer bicyclic parent with principal group suffix (P-14.4, P-23.2.3, P-58.2)
+            {"bicyclo[2.2.1]heptan-2-ol", "OC1CC2CCC1C2", "bicyclo[2.2.1]heptan-2-ol"},
+            {"bicyclo[2.2.1]heptan-2-one", "O=C1CC2CCC1C2", "bicyclo[2.2.1]heptan-2-one"},
+            {"bicyclo[2.2.1]heptan-2-amine", "NC1CC2CCC1C2", "bicyclo[2.2.1]heptan-2-amine"},
+            {"bicyclo[2.2.1]heptane-2-carboxylic acid", "O=C(O)C1CC2CCC1C2", "bicyclo[2.2.1]heptane-2-carboxylic acid"},
+            {"bicyclo[2.2.1]hept-5-en-2-ol", "OC1CC2C=CC1C2", "bicyclo[2.2.1]hept-5-en-2-ol"},
         };
         for (const auto &c : cases) {
             int m = indigoLoadMoleculeFromString(c.smiles);
