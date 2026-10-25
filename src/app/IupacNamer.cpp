@@ -2880,9 +2880,21 @@ int compareRingSubstituentCandidates(
 
 namespace {
 
+struct SecondaryBridgeDesc {
+    int length = 0;
+    int locant1 = 0; // lower superscript locant
+    int locant2 = 0; // higher superscript locant
+};
+
 struct NumberingCand {
 
     std::map<int,int> locantOf;
+
+    std::vector<int> secondaryBridgeLocantsSorted;
+
+    std::vector<std::pair<int,int>> secondaryBridgeLocantsCited;
+
+    std::vector<SecondaryBridgeDesc> secondaryBridges;
 
     std::vector<int> heteroatomLocants;
 
@@ -2909,6 +2921,26 @@ struct BicyclicEvalResult {
     QString error;
 
     std::vector<int> lengths;
+
+    int totalCarbons = 0;
+
+    std::vector<NumberingCand> bestCands;
+
+    std::vector<NumberingCand> allCands;
+
+};
+
+struct PolycyclicEvalResult {
+
+    bool valid = false;
+
+    QString error;
+
+    int ringCount = 0;
+
+    std::vector<int> mainRingAndBridgeLengths;
+
+    std::vector<SecondaryBridgeDesc> secondaryBridges;
 
     int totalCarbons = 0;
 
@@ -3260,6 +3292,10 @@ BicyclicEvalResult evaluateBicyclicSystem(const Graph& g, const std::set<int>& r
 
                 auto isLess = [](const NumberingCand &a, const NumberingCand &b) {
 
+                    if (a.secondaryBridgeLocantsSorted != b.secondaryBridgeLocantsSorted) return a.secondaryBridgeLocantsSorted < b.secondaryBridgeLocantsSorted;
+
+                    if (a.secondaryBridgeLocantsCited != b.secondaryBridgeLocantsCited) return a.secondaryBridgeLocantsCited < b.secondaryBridgeLocantsCited;
+
                     if (a.heteroatomLocants != b.heteroatomLocants) return a.heteroatomLocants < b.heteroatomLocants;
 
                     if (a.heteroatomSeniorityLocants != b.heteroatomSeniorityLocants) return a.heteroatomSeniorityLocants < b.heteroatomSeniorityLocants;
@@ -3488,6 +3524,626 @@ QString buildBicyclicBaseName(
 
         .arg(lengths[0]).arg(lengths[1]).arg(lengths[2]).arg(root).arg(infix);
 
+}
+
+struct SecBridgeExtracted {
+    int u; // node in coreNodes
+    int v; // node in coreNodes
+    std::vector<int> internalNodes; // from u to v
+    int length = 0;
+};
+
+static bool extractSecondaryBridges(
+    const std::set<std::pair<int, int>> &remEdges,
+    const std::set<int> &coreNodes,
+    const std::set<int> &remNodes,
+    int expectedCount,
+    std::vector<SecBridgeExtracted> &outBridges)
+{
+    outBridges.clear();
+    if (remEdges.empty()) {
+        return (expectedCount == 0 && remNodes.empty());
+    }
+
+    std::map<int, std::vector<int>> remAdj;
+    for (const auto &e : remEdges) {
+        remAdj[e.first].push_back(e.second);
+        remAdj[e.second].push_back(e.first);
+    }
+
+    for (int rn : remNodes) {
+        auto it = remAdj.find(rn);
+        if (it == remAdj.end() || it->second.size() != 2) return false;
+    }
+
+    std::set<std::pair<int, int>> visitedEdges;
+    int internalNodesAccountedFor = 0;
+
+    for (const auto &e : remEdges) {
+        if (visitedEdges.count(e)) continue;
+
+        if (coreNodes.count(e.first) && coreNodes.count(e.second)) {
+            visitedEdges.insert(e);
+            SecBridgeExtracted sb;
+            sb.u = e.first;
+            sb.v = e.second;
+            sb.length = 0;
+            outBridges.push_back(sb);
+            continue;
+        }
+
+        int startCore = -1;
+        int curr = -1;
+        int prev = -1;
+
+        if (coreNodes.count(e.first)) {
+            startCore = e.first;
+            curr = e.second;
+            prev = e.first;
+        } else if (coreNodes.count(e.second)) {
+            startCore = e.second;
+            curr = e.first;
+            prev = e.second;
+        } else {
+            int walker = e.first;
+            int walkerPrev = e.second;
+            bool foundCore = false;
+            std::set<int> seen;
+            while (!foundCore) {
+                seen.insert(walker);
+                int nextWalker = -1;
+                auto itW = remAdj.find(walker);
+                if (itW != remAdj.end()) {
+                    for (int nei : itW->second) {
+                        if (nei != walkerPrev) { nextWalker = nei; break; }
+                    }
+                }
+                if (nextWalker == -1) break;
+                if (coreNodes.count(nextWalker)) {
+                    startCore = nextWalker;
+                    curr = walker;
+                    prev = nextWalker;
+                    foundCore = true;
+                    break;
+                }
+                if (seen.count(nextWalker)) return false;
+                walkerPrev = walker;
+                walker = nextWalker;
+            }
+            if (!foundCore) return false;
+        }
+
+        SecBridgeExtracted sb;
+        sb.u = startCore;
+        visitedEdges.insert({std::min(prev, curr), std::max(prev, curr)});
+        sb.internalNodes.push_back(curr);
+
+        bool reachedEnd = false;
+        std::set<int> visitedInternal;
+        visitedInternal.insert(curr);
+
+        while (!reachedEnd) {
+            int nextNode = -1;
+            auto itC = remAdj.find(curr);
+            if (itC != remAdj.end()) {
+                for (int nei : itC->second) {
+                    if (nei != prev) {
+                        nextNode = nei;
+                        break;
+                    }
+                }
+            }
+            if (nextNode == -1) return false;
+            visitedEdges.insert({std::min(curr, nextNode), std::max(curr, nextNode)});
+            if (coreNodes.count(nextNode)) {
+                sb.v = nextNode;
+                reachedEnd = true;
+                break;
+            }
+            if (visitedInternal.count(nextNode)) return false;
+            visitedInternal.insert(nextNode);
+            sb.internalNodes.push_back(nextNode);
+            prev = curr;
+            curr = nextNode;
+        }
+
+        sb.length = static_cast<int>(sb.internalNodes.size());
+        internalNodesAccountedFor += sb.length;
+        outBridges.push_back(sb);
+    }
+
+    if (visitedEdges.size() != remEdges.size()) return false;
+    if (internalNodesAccountedFor != static_cast<int>(remNodes.size())) return false;
+    if (static_cast<int>(outBridges.size()) != expectedCount) return false;
+
+    return true;
+}
+
+QString buildPolycyclicBaseName(
+    const Graph &g,
+    const std::set<int> &ringUnionNodes,
+    const PolycyclicEvalResult &evalRes,
+    const NumberingCand &cand,
+    bool &outRejectedAsMancudeFusion) {
+    outRejectedAsMancudeFusion = false;
+    if (!evalRes.valid || evalRes.mainRingAndBridgeLengths.size() != 3) return "";
+
+    std::vector<int> lengths = evalRes.mainRingAndBridgeLengths;
+    std::vector<int> dbLocs = cand.doubleBondLocants;
+    std::vector<int> tbLocs = cand.tripleBondLocants;
+
+    for (const auto &gb : g.bonds) {
+        if (ringUnionNodes.count(gb.u) && ringUnionNodes.count(gb.v)) {
+            if (gb.order == 4) {
+                outRejectedAsMancudeFusion = true;
+                return "";
+            }
+        }
+    }
+
+    int totalCarbons = evalRes.totalCarbons;
+    QString root = chainRoot(totalCarbons);
+    if (root.isEmpty()) return "";
+
+    QString infix;
+    if (dbLocs.empty() && tbLocs.empty()) {
+        infix = "ane";
+    } else if (!dbLocs.empty() && tbLocs.empty()) {
+        if (dbLocs.size() == 1) {
+            infix = QString("-%1-ene").arg(dbLocs[0]);
+        } else {
+            root += "a";
+            QStringList lStrs;
+            for (int l : dbLocs) lStrs.append(QString::number(l));
+            infix = QString("-%1-%2ene").arg(lStrs.join(","), multiPrefix(static_cast<int>(dbLocs.size())));
+        }
+    } else if (dbLocs.empty() && !tbLocs.empty()) {
+        if (tbLocs.size() == 1) {
+            infix = QString("-%1-yne").arg(tbLocs[0]);
+        } else {
+            root += "a";
+            QStringList lStrs;
+            for (int l : tbLocs) lStrs.append(QString::number(l));
+            infix = QString("-%1-%2yne").arg(lStrs.join(","), multiPrefix(static_cast<int>(tbLocs.size())));
+        }
+    } else {
+        QStringList dStrs, tStrs;
+        for (int l : dbLocs) dStrs.append(QString::number(l));
+        for (int l : tbLocs) tStrs.append(QString::number(l));
+        QString dPart = (dbLocs.size() > 1) ? QString("%1-%2en").arg(dStrs.join(","), multiPrefix(static_cast<int>(dbLocs.size()))) : QString("%1-en").arg(dStrs[0]);
+        QString tPart = (tbLocs.size() > 1) ? QString("%1-%2yne").arg(tStrs.join(","), multiPrefix(static_cast<int>(tbLocs.size()))) : QString("%1-yne").arg(tStrs[0]);
+        infix = QString("-%1-%2").arg(dPart, tPart);
+    }
+
+    QString bracket = QString("[%1.%2.%3").arg(lengths[0]).arg(lengths[1]).arg(lengths[2]);
+    for (const auto &sb : cand.secondaryBridges) {
+        bracket += QString(".%1^{%2,%3}").arg(sb.length).arg(sb.locant1).arg(sb.locant2);
+    }
+    bracket += "]";
+
+    QString ringPrefix = multiPrefix(evalRes.ringCount) + "cyclo";
+    return ringPrefix + bracket + root + infix;
+}
+
+PolycyclicEvalResult evaluatePolycyclicVonBaeyerSystem(
+    const Graph& g,
+    const std::set<int>& ringUnionNodes,
+    const std::vector<std::pair<int, QString>>& ringSubstituents,
+    const std::set<int>& principalRingAtoms = {})
+{
+    PolycyclicEvalResult res;
+    int V_ring = static_cast<int>(ringUnionNodes.size());
+    if (V_ring < 3 || V_ring > 20) {
+        res.error = "Ring size out of bounds.";
+        return res;
+    }
+
+    for (int n : ringUnionNodes) {
+        if (g.nodes[n].atomicNumber != 6) {
+            res.error = "Heteroatoms in polycyclic systems are not supported.";
+            return res;
+        }
+        int ringDeg = 0;
+        for (int nei : g.nodes[n].neighbors) {
+            if (ringUnionNodes.count(nei)) ringDeg++;
+        }
+        if (ringDeg < 2) {
+            res.error = "Every ring atom must have ring-degree >= 2.";
+            return res;
+        }
+    }
+
+    int ringBondCount = 0;
+    for (const auto &gb : g.bonds) {
+        if (ringUnionNodes.count(gb.u) && ringUnionNodes.count(gb.v)) {
+            if (gb.order == 4) {
+                res.error = "Aromatic bonds are not supported in von Baeyer systems.";
+                return res;
+            }
+            ringBondCount++;
+        }
+    }
+
+    int R = ringBondCount - V_ring + 1;
+    if (R < 3) {
+        res.error = "Cyclomatic number R < 3.";
+        return res;
+    }
+    res.ringCount = R;
+    res.totalCarbons = V_ring;
+
+    std::vector<int> nodeList(ringUnionNodes.begin(), ringUnionNodes.end());
+    std::map<int, int> nodeToIdx;
+    for (int i = 0; i < V_ring; ++i) nodeToIdx[nodeList[i]] = i;
+
+    std::vector<std::vector<int>> adj(V_ring);
+    std::set<std::pair<int, int>> edgeSet;
+    for (const auto &gb : g.bonds) {
+        if (ringUnionNodes.count(gb.u) && ringUnionNodes.count(gb.v)) {
+            int u = nodeToIdx[gb.u];
+            int v = nodeToIdx[gb.v];
+            adj[u].push_back(v);
+            adj[v].push_back(u);
+            edgeSet.insert({std::min(u, v), std::max(u, v)});
+        }
+    }
+
+    // Enumerate simple cycles
+    std::vector<std::vector<int>> allCycles;
+    std::vector<int> path;
+    std::vector<bool> visited(V_ring, false);
+    std::function<void(int, int)> dfsCycle = [&](int start, int curr) {
+        for (int nxt : adj[curr]) {
+            if (nxt == start && path.size() >= 3) {
+                if (path[1] < path.back()) {
+                    allCycles.push_back(path);
+                }
+            } else if (nxt > start && !visited[nxt]) {
+                visited[nxt] = true;
+                path.push_back(nxt);
+                dfsCycle(start, nxt);
+                path.pop_back();
+                visited[nxt] = false;
+            }
+        }
+    };
+    for (int s = 0; s < V_ring; ++s) {
+        visited[s] = true;
+        path.push_back(s);
+        dfsCycle(s, s);
+        path.pop_back();
+        visited[s] = false;
+    }
+    if (allCycles.empty()) {
+        res.error = "No simple cycles found.";
+        return res;
+    }
+    int maxCycleLen = 0;
+    for (const auto &c : allCycles) {
+        if ((int)c.size() > maxCycleLen) maxCycleLen = (int)c.size();
+    }
+
+    struct DecompCand {
+        int cycleLen;
+        int cLen;
+        int bLen;
+        std::vector<int> sortedSecondaryLengths;
+        std::vector<int> cycleNodes;
+        int b1, b2;
+        std::vector<int> arm1;
+        std::vector<int> arm2;
+        std::vector<int> mainBridgeInternal;
+        std::vector<SecBridgeExtracted> secondaryBridges;
+    };
+    std::vector<DecompCand> decompositions;
+
+    for (const auto &c : allCycles) {
+        if ((int)c.size() != maxCycleLen) continue;
+        std::set<int> cSet(c.begin(), c.end());
+        std::set<std::pair<int, int>> cEdges;
+        for (size_t i = 0; i < c.size(); ++i) {
+            int u = c[i], v = c[(i + 1) % c.size()];
+            cEdges.insert({std::min(u, v), std::max(u, v)});
+        }
+
+        for (size_t i = 0; i < c.size(); ++i) {
+            for (size_t j = i + 1; j < c.size(); ++j) {
+                int b1 = c[i], b2 = c[j];
+                std::vector<int> arm1;
+                size_t k = (i + 1) % c.size();
+                while (k != j) {
+                    arm1.push_back(c[k]);
+                    k = (k + 1) % c.size();
+                }
+                std::vector<int> arm2;
+                k = (j + 1) % c.size();
+                while (k != i) {
+                    arm2.push_back(c[k]);
+                    k = (k + 1) % c.size();
+                }
+
+                int armB_len = std::min(arm1.size(), arm2.size());
+
+                std::vector<std::vector<int>> mainBridges;
+                if (edgeSet.count({std::min(b1, b2), std::max(b1, b2)}) &&
+                    !cEdges.count({std::min(b1, b2), std::max(b1, b2)})) {
+                    mainBridges.push_back({});
+                }
+                std::vector<int> bPath;
+                std::vector<bool> bVisited(V_ring, false);
+                std::function<void(int)> dfsBridge = [&](int curr) {
+                    for (int nxt : adj[curr]) {
+                        if (nxt == b2) {
+                            if (!bPath.empty()) {
+                                mainBridges.push_back(bPath);
+                            }
+                        } else if (!cSet.count(nxt) && !bVisited[nxt]) {
+                            bVisited[nxt] = true;
+                            bPath.push_back(nxt);
+                            dfsBridge(nxt);
+                            bPath.pop_back();
+                            bVisited[nxt] = false;
+                        }
+                    }
+                };
+                dfsBridge(b1);
+
+                for (const auto &mbr : mainBridges) {
+                    int cLen = static_cast<int>(mbr.size());
+                    std::set<std::pair<int, int>> coreEdges = cEdges;
+                    int prev = b1;
+                    for (int node : mbr) {
+                        coreEdges.insert({std::min(prev, node), std::max(prev, node)});
+                        prev = node;
+                    }
+                    coreEdges.insert({std::min(prev, b2), std::max(prev, b2)});
+
+                    std::set<int> coreNodes = cSet;
+                    for (int node : mbr) coreNodes.insert(node);
+
+                    std::set<std::pair<int, int>> remEdges;
+                    for (const auto &e : edgeSet) {
+                        if (!coreEdges.count(e)) remEdges.insert(e);
+                    }
+                    std::set<int> remNodes;
+                    for (int idx = 0; idx < V_ring; ++idx) {
+                        if (!coreNodes.count(idx)) remNodes.insert(idx);
+                    }
+
+                    std::vector<SecBridgeExtracted> secBridges;
+                    if (!extractSecondaryBridges(remEdges, coreNodes, remNodes, R - 2, secBridges)) {
+                        continue;
+                    }
+
+                    std::vector<int> secLengths;
+                    for (const auto &sb : secBridges) secLengths.push_back(sb.length);
+                    std::sort(secLengths.rbegin(), secLengths.rend());
+
+                    DecompCand dc;
+                    dc.cycleLen = maxCycleLen;
+                    dc.cLen = cLen;
+                    dc.bLen = armB_len;
+                    dc.sortedSecondaryLengths = secLengths;
+                    dc.cycleNodes = c;
+                    dc.b1 = b1;
+                    dc.b2 = b2;
+                    dc.arm1 = arm1;
+                    dc.arm2 = arm2;
+                    dc.mainBridgeInternal = mbr;
+                    dc.secondaryBridges = secBridges;
+                    decompositions.push_back(dc);
+                }
+            }
+        }
+    }
+
+    if (decompositions.empty()) {
+        res.error = "No valid polycyclic decomposition found.";
+        return res;
+    }
+
+    auto decompRankLess = [](const DecompCand &a, const DecompCand &b) {
+        if (a.cLen != b.cLen) return a.cLen < b.cLen;
+        if (a.bLen != b.bLen) return a.bLen < b.bLen;
+        return a.sortedSecondaryLengths < b.sortedSecondaryLengths;
+    };
+    auto bestDecompIt = std::max_element(decompositions.begin(), decompositions.end(), decompRankLess);
+
+    std::vector<DecompCand> winningDecomps;
+    for (const auto &dc : decompositions) {
+        if (!decompRankLess(*bestDecompIt, dc) && !decompRankLess(dc, *bestDecompIt)) {
+            winningDecomps.push_back(dc);
+        }
+    }
+
+    auto orientPath = [](const std::vector<int> &p, int startNode, int origU, int origV) -> std::vector<int> {
+        if (startNode == origU) return p;
+        std::vector<int> r = p;
+        std::reverse(r.begin(), r.end());
+        return r;
+    };
+
+    std::vector<NumberingCand> cands;
+
+    for (const auto &dc : winningDecomps) {
+        int b1 = dc.b1, b2 = dc.b2;
+        int aLen = dc.cycleLen - 2 - dc.bLen;
+        int bLen = dc.bLen;
+        int cLen = dc.cLen;
+
+        for (int S : {b1, b2}) {
+            int Other = (S == b1) ? b2 : b1;
+
+            std::vector<std::pair<int, int>> armOrderings;
+            if (dc.arm1.size() == dc.arm2.size()) {
+                armOrderings.push_back({0, 1});
+                armOrderings.push_back({1, 0});
+            } else if (dc.arm1.size() > dc.arm2.size()) {
+                armOrderings.push_back({0, 1});
+            } else {
+                armOrderings.push_back({1, 0});
+            }
+
+            for (const auto &ao : armOrderings) {
+                std::vector<int> pathA = (ao.first == 0) ?
+                    orientPath(dc.arm1, S, b1, b2) :
+                    orientPath(dc.arm2, S, b2, b1);
+
+                std::vector<int> pathB = (ao.second == 1) ?
+                    orientPath(dc.arm2, Other, b2, b1) :
+                    orientPath(dc.arm1, Other, b1, b2);
+
+                std::vector<int> pathC = orientPath(dc.mainBridgeInternal, S, b1, b2);
+
+                std::map<int, int> baseLocantOf;
+                int loc = 1;
+                baseLocantOf[nodeList[S]] = loc;
+                for (int n : pathA) { loc++; baseLocantOf[nodeList[n]] = loc; }
+                loc++; baseLocantOf[nodeList[Other]] = loc;
+                for (int n : pathB) { loc++; baseLocantOf[nodeList[n]] = loc; }
+                for (int n : pathC) { loc++; baseLocantOf[nodeList[n]] = loc; }
+
+                int numSec = static_cast<int>(dc.secondaryBridges.size());
+                std::vector<int> secPerm(numSec);
+                std::iota(secPerm.begin(), secPerm.end(), 0);
+
+                do {
+                    bool validPerm = true;
+                    for (int i = 0; i + 1 < numSec; ++i) {
+                        if (dc.secondaryBridges[secPerm[i]].length < dc.secondaryBridges[secPerm[i + 1]].length) {
+                            validPerm = false;
+                            break;
+                        }
+                    }
+                    if (!validPerm) continue;
+
+                    std::map<int, int> currentLocantOf = baseLocantOf;
+                    int maxLoc = aLen + bLen + cLen + 2;
+                    std::vector<SecondaryBridgeDesc> secDescs;
+                    std::vector<int> sortedSuperscriptLocs;
+                    std::vector<std::pair<int, int>> citedSuperscriptLocs;
+
+                    for (int idx : secPerm) {
+                        const auto &sb = dc.secondaryBridges[idx];
+                        int uNode = nodeList[sb.u];
+                        int vNode = nodeList[sb.v];
+                        int locU = currentLocantOf[uNode];
+                        int locV = currentLocantOf[vNode];
+
+                        int startAttach = (locU > locV) ? sb.u : sb.v;
+                        std::vector<int> internalOriented = orientPath(sb.internalNodes, startAttach, sb.u, sb.v);
+                        for (int atom : internalOriented) {
+                            maxLoc++;
+                            currentLocantOf[nodeList[atom]] = maxLoc;
+                        }
+
+                        SecondaryBridgeDesc desc;
+                        desc.length = sb.length;
+                        desc.locant1 = std::min(locU, locV);
+                        desc.locant2 = std::max(locU, locV);
+                        secDescs.push_back(desc);
+                        sortedSuperscriptLocs.push_back(desc.locant1);
+                        sortedSuperscriptLocs.push_back(desc.locant2);
+                        citedSuperscriptLocs.push_back({desc.locant1, desc.locant2});
+                    }
+
+                    std::sort(sortedSuperscriptLocs.begin(), sortedSuperscriptLocs.end());
+
+                    NumberingCand cand;
+                    cand.locantOf = currentLocantOf;
+                    cand.secondaryBridgeLocantsSorted = sortedSuperscriptLocs;
+                    cand.secondaryBridgeLocantsCited = citedSuperscriptLocs;
+                    cand.secondaryBridges = secDescs;
+
+                    for (const auto &rs : ringSubstituents) {
+                        auto it = cand.locantOf.find(rs.first);
+                        if (it == cand.locantOf.end()) { cand.subLocants.clear(); break; }
+                        cand.subLocants.push_back(it->second);
+                        cand.namedSubs.push_back({rs.second, it->second});
+                    }
+                    std::sort(cand.subLocants.begin(), cand.subLocants.end());
+
+                    for (int pNode : principalRingAtoms) {
+                        auto it = cand.locantOf.find(pNode);
+                        if (it != cand.locantOf.end()) {
+                            cand.principalLocants.push_back(it->second);
+                        }
+                    }
+                    std::sort(cand.principalLocants.begin(), cand.principalLocants.end());
+
+                    for (const auto &gb : g.bonds) {
+                        if (ringUnionNodes.count(gb.u) && ringUnionNodes.count(gb.v)) {
+                            if (gb.order == 2 || gb.order == 3) {
+                                auto itU = cand.locantOf.find(gb.u);
+                                auto itV = cand.locantOf.find(gb.v);
+                                if (itU != cand.locantOf.end() && itV != cand.locantOf.end()) {
+                                    int minLoc = std::min(itU->second, itV->second);
+                                    if (gb.order == 2) cand.doubleBondLocants.push_back(minLoc);
+                                    if (gb.order == 3) cand.tripleBondLocants.push_back(minLoc);
+                                }
+                            }
+                        }
+                    }
+                    std::sort(cand.doubleBondLocants.begin(), cand.doubleBondLocants.end());
+                    std::sort(cand.tripleBondLocants.begin(), cand.tripleBondLocants.end());
+
+                    cands.push_back(cand);
+
+                } while (std::next_permutation(secPerm.begin(), secPerm.end()));
+            }
+        }
+    }
+
+    if (cands.empty()) {
+        res.error = "No valid candidate numbering generated.";
+        return res;
+    }
+
+    auto isLess = [](const NumberingCand &a, const NumberingCand &b) {
+        if (a.secondaryBridgeLocantsSorted != b.secondaryBridgeLocantsSorted)
+            return a.secondaryBridgeLocantsSorted < b.secondaryBridgeLocantsSorted;
+        if (a.secondaryBridgeLocantsCited != b.secondaryBridgeLocantsCited)
+            return a.secondaryBridgeLocantsCited < b.secondaryBridgeLocantsCited;
+        if (a.heteroatomLocants != b.heteroatomLocants) return a.heteroatomLocants < b.heteroatomLocants;
+        if (a.heteroatomSeniorityLocants != b.heteroatomSeniorityLocants) return a.heteroatomSeniorityLocants < b.heteroatomSeniorityLocants;
+        if (a.principalLocants != b.principalLocants) return a.principalLocants < b.principalLocants;
+        if (a.doubleBondLocants != b.doubleBondLocants) return a.doubleBondLocants < b.doubleBondLocants;
+        if (a.tripleBondLocants != b.tripleBondLocants) return a.tripleBondLocants < b.tripleBondLocants;
+        if (a.subLocants != b.subLocants) return a.subLocants < b.subLocants;
+
+        auto firstAlpha = [](const std::vector<std::pair<QString,int>> &nm) {
+            return std::min_element(nm.begin(), nm.end(),
+                [](const auto &x, const auto &y){ return alphabetizationKey(x.first).toLower() < alphabetizationKey(y.first).toLower(); });
+        };
+        if (!a.namedSubs.empty()) {
+            QString alphaName = firstAlpha(a.namedSubs)->first;
+            auto findLoc = [&](const std::vector<std::pair<QString,int>> &nm) {
+                int best = INT_MAX;
+                for (const auto &ns : nm) if (ns.first == alphaName) best = std::min(best, ns.second);
+                return best;
+            };
+            int aLoc = findLoc(a.namedSubs), bLoc = findLoc(b.namedSubs);
+            if (aLoc != bLoc) return aLoc < bLoc;
+        }
+        return false;
+    };
+
+    auto bestIt = std::min_element(cands.begin(), cands.end(), isLess);
+    for (const auto &c : cands) {
+        if (!isLess(*bestIt, c) && !isLess(c, *bestIt)) {
+            res.bestCands.push_back(c);
+        }
+    }
+    res.allCands = cands;
+    res.valid = true;
+    res.mainRingAndBridgeLengths = {
+        bestDecompIt->cycleLen - 2 - bestDecompIt->bLen,
+        bestDecompIt->bLen,
+        bestDecompIt->cLen
+    };
+    res.secondaryBridges = bestIt->secondaryBridges;
+
+    return res;
 }
 
 
@@ -3918,6 +4574,59 @@ QString nameRingSystemAsSubstituent(
                     locMap[cageRes.ringNodesVec[i]] = QString::number(mapping[i] + 1);
                 }
                 candidates.push_back(RingSystemNameResult{true, "", cageRes.baseName, locMap});
+            }
+        }
+    }
+
+    // Polycyclic von Baeyer system (R >= 3 outside retained cages)
+    if (candidates.empty() && !isRetainedCage && startRingIdx != -1) {
+        std::set<int> polyRingIdx;
+        std::vector<int> pQueue{startRingIdx};
+        polyRingIdx.insert(startRingIdx);
+        size_t pHead = 0;
+        while (pHead < pQueue.size()) {
+            int cur = pQueue[pHead++];
+            const auto &curRing = allIndependentRings[cur];
+            for (size_t j = 0; j < allIndependentRings.size(); ++j) {
+                if (polyRingIdx.count(static_cast<int>(j))) continue;
+                int shared = 0;
+                for (int n : curRing) if (allIndependentRings[j].count(n)) shared++;
+                if (shared >= 1) {
+                    polyRingIdx.insert(static_cast<int>(j));
+                    pQueue.push_back(static_cast<int>(j));
+                }
+            }
+        }
+        std::set<int> pUnion;
+        for (int idx : polyRingIdx) {
+            pUnion.insert(allIndependentRings[idx].begin(), allIndependentRings[idx].end());
+        }
+        bool validPoly = true;
+        for (int n : pUnion) {
+            if (g.nodes[n].atomicNumber != 6) { validPoly = false; break; }
+        }
+        if (validPoly) {
+            for (const auto &gb : g.bonds) {
+                if (pUnion.count(gb.u) && pUnion.count(gb.v)) {
+                    if (gb.order == 4) { validPoly = false; break; }
+                    if (gb.order != 1 && gb.order != 2 && gb.order != 3) { validPoly = false; break; }
+                }
+            }
+        }
+        if (validPoly) {
+            PolycyclicEvalResult evalRes = evaluatePolycyclicVonBaeyerSystem(g, pUnion, {});
+            if (evalRes.valid) {
+                for (const auto &cand : evalRes.bestCands) {
+                    bool outRejected = false;
+                    QString baseStemName = buildPolycyclicBaseName(g, pUnion, evalRes, cand, outRejected);
+                    if (!outRejected && !baseStemName.isEmpty()) {
+                        std::map<int, QString> locMap;
+                        for (const auto &kv : cand.locantOf) {
+                            locMap[kv.first] = QString::number(kv.second);
+                        }
+                        candidates.push_back(RingSystemNameResult{true, "", baseStemName, locMap});
+                    }
+                }
             }
         }
     }
@@ -22021,6 +22730,163 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+
+    // --- Phase 27.5: General Polycyclic von Baeyer Systems (IUPAC P-23.2.4-P-23.2.6) ---
+    if (ringCount >= 3 && !allSSSRNodes.empty()) {
+        std::set<int> ringUnionNodes = allSSSRNodes;
+        bool validPreconditions = true;
+
+        if (auto retainedResult = tryRetainedBaseDecomposition(mol)) {
+            if (retainedResult->success) {
+                validPreconditions = false;
+            }
+        }
+
+        for (int n : ringUnionNodes) {
+            if (g.nodes[n].atomicNumber != 6) { validPreconditions = false; break; }
+        }
+        if (validPreconditions) {
+            for (const auto &gb : g.bonds) {
+                if (ringUnionNodes.count(gb.u) && ringUnionNodes.count(gb.v)) {
+                    if (gb.order == 4) { validPreconditions = false; break; }
+                    if (gb.order != 1 && gb.order != 2 && gb.order != 3) { validPreconditions = false; break; }
+                }
+            }
+        }
+
+        // Check connectivity of ringUnionNodes
+        if (validPreconditions) {
+            std::set<int> visitedNodes;
+            std::vector<int> q{*ringUnionNodes.begin()};
+            visitedNodes.insert(*ringUnionNodes.begin());
+            size_t head = 0;
+            while (head < q.size()) {
+                int cur = q[head++];
+                for (int nei : g.nodes[cur].neighbors) {
+                    if (ringUnionNodes.count(nei) && !visitedNodes.count(nei)) {
+                        visitedNodes.insert(nei);
+                        q.push_back(nei);
+                    }
+                }
+            }
+            if (visitedNodes.size() != ringUnionNodes.size()) {
+                validPreconditions = false;
+            }
+        }
+
+        bool polycyclicSkeletonValid = validPreconditions;
+        if (polycyclicSkeletonValid) {
+            PolycyclicEvalResult evalCheck = evaluatePolycyclicVonBaeyerSystem(g, ringUnionNodes, {});
+            if (!evalCheck.valid) {
+                polycyclicSkeletonValid = false;
+            }
+        }
+
+        std::vector<std::pair<int, QString>> ringSubstituents;
+        if (polycyclicSkeletonValid) {
+            for (int n : ringUnionNodes) {
+                for (size_t j = 0; j < g.nodes[n].neighbors.size(); ++j) {
+                    int nei = g.nodes[n].neighbors[j];
+                    if (ringUnionNodes.count(nei)) continue;
+                    QString subName = simpleRingSubstituentName(g, n, nei, ringUnionNodes, mol);
+                    if (subName.isEmpty()) { validPreconditions = false; break; }
+                    if (subName.startsWith("(") && subName.endsWith(")"))
+                        subName = subName.mid(1, subName.length() - 2);
+                    ringSubstituents.push_back({n, subName});
+                }
+                if (!validPreconditions) break;
+            }
+        }
+
+        if (polycyclicSkeletonValid && !validPreconditions) {
+            FunctionalGroupClassification fgc = classifyFunctionalGroups(g, mol, ringUnionNodes, allSSSRRings,
+                carbonAzide, carbonSulfonicAcid, carbonSulfonamide, carbonSulfonylHalide, carbonSulfinylHalide,
+                carbonSulfinicAcid, carbonSulfinamide, carbonThiol, carbonSelenol, carbonTellurol,
+                carbonBoronicAcid, carbonBorinicAcid, carbonPhosphonicAcid, carbonPhosphinicAcid,
+                carbonPhosphonicDihalide, carbonArsonicAcid, carbonArsinicAcid, carbonArsonicDihalide,
+                carbonStibonicAcid, carbonStibinicAcid, carbonPhosphine);
+            if (fgc.hasEarlyResult) return fgc.earlyResult;
+            std::map<int, GroupType> &carbonGroup = fgc.carbonGroup;
+            GroupType combinedWinner = fgc.combinedWinner;
+
+            bool ringCanCarryExocyclic = (combinedWinner == GroupType::ACID ||
+                                          combinedWinner == GroupType::AMIDE ||
+                                          combinedWinner == GroupType::THIOAMIDE ||
+                                          combinedWinner == GroupType::HYDRAZIDE ||
+                                          combinedWinner == GroupType::AMIDINE ||
+                                          combinedWinner == GroupType::NITRILE ||
+                                          combinedWinner == GroupType::ALDEHYDE ||
+                                          combinedWinner == GroupType::ESTER ||
+                                          combinedWinner == GroupType::ACYL_HALIDE);
+            int ringCountWin = 0, chainCountWin = 0, chainDeepCountWin = 0;
+            for (const auto &pair : carbonGroup) {
+                if (pair.second != combinedWinner) continue;
+                int cNode = pair.first;
+                bool isOnOrExocyclic = ringUnionNodes.count(cNode) > 0;
+                if (!isOnOrExocyclic && ringCanCarryExocyclic) {
+                    for (int nei : g.nodes[cNode].neighbors) {
+                        if (ringUnionNodes.count(nei) > 0) { isOnOrExocyclic = true; break; }
+                    }
+                }
+                if (!isOnOrExocyclic) ++chainDeepCountWin;
+                if (isOnOrExocyclic) ++ringCountWin; else ++chainCountWin;
+            }
+            if (chainCountWin > ringCountWin || (chainCountWin == ringCountWin && chainDeepCountWin > 0)) {
+                if (isChainParentWithRingSubstituentSupported(combinedWinner)) {
+                    std::set<int> handledBranchStereoIds;
+                    QString chainName = nameChainParentWithRingSubstituent(mol, indigoToGraphIdx, g, ringUnionNodes, allSSSRRings, carbonGroup, combinedWinner, stereoByGraphId, &handledBranchStereoIds, carbonSulfonamide, carbonSulfinamide);
+                    if (!chainName.isEmpty()) {
+                        return {true, chainName, ""};
+                    }
+                }
+            }
+        }
+
+        if (polycyclicSkeletonValid && validPreconditions) {
+            PolycyclicEvalResult evalRes = evaluatePolycyclicVonBaeyerSystem(g, ringUnionNodes, ringSubstituents);
+            if (evalRes.valid && !evalRes.bestCands.empty()) {
+                NumberingCand best = evalRes.bestCands[0];
+
+                std::map<QString, std::vector<int>> prefixLocantsMap;
+                for (const auto &ns : best.namedSubs)
+                    prefixLocantsMap[ns.first].push_back(ns.second);
+
+                struct PrefixGroup { QString baseName; QString formattedStr; };
+                std::vector<PrefixGroup> pGroups;
+                for (auto it = prefixLocantsMap.begin(); it != prefixLocantsMap.end(); ++it) {
+                    QString pName = it->first;
+                    std::vector<int> locs = it->second;
+                    std::sort(locs.begin(), locs.end());
+                    QStringList locStrs;
+                    for (int l : locs) locStrs.append(QString::number(l));
+                    QString pStr = locStrs.join(",");
+                    if (locs.size() > 1) pStr += "-" + multiPrefix((int)locs.size()) + pName;
+                    else pStr += "-" + pName;
+                    PrefixGroup pg; pg.baseName = pName; pg.formattedStr = pStr;
+                    pGroups.push_back(pg);
+                }
+                std::sort(pGroups.begin(), pGroups.end(),
+                    [](const PrefixGroup &a, const PrefixGroup &b){ return a.baseName.toLower() < b.baseName.toLower(); });
+
+                QString prefixPart;
+                if (!pGroups.empty()) {
+                    QStringList pStrs;
+                    for (const auto &pg : pGroups) pStrs.append(pg.formattedStr);
+                    prefixPart = pStrs.join("-");
+                }
+
+                bool outRejected = false;
+                QString baseName = buildPolycyclicBaseName(g, ringUnionNodes, evalRes, best, outRejected);
+                if (!outRejected && !baseName.isEmpty()) {
+                    StereoResult stereoRes = formatStereoPrefix(stereoByGraphId, best.locantOf, std::set<int>());
+                    if (!stereoRes.ok) return {false, "", stereoRes.error};
+
+                    QString fullName = stereoRes.prefix + prefixPart + baseName;
+                    return {true, fullName, ""};
                 }
             }
         }

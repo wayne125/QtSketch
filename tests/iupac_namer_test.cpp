@@ -7753,6 +7753,15 @@ int main() {
             {"bicyclo[2.2.1]heptan-2-amine", "NC1CC2CCC1C2", "bicyclo[2.2.1]heptan-2-amine"},
             {"bicyclo[2.2.1]heptane-2-carboxylic acid", "O=C(O)C1CC2CCC1C2", "bicyclo[2.2.1]heptane-2-carboxylic acid"},
             {"bicyclo[2.2.1]hept-5-en-2-ol", "OC1CC2C=CC1C2", "bicyclo[2.2.1]hept-5-en-2-ol"},
+            // Tier 2: General polycyclic von Baeyer systems (P-23.2.4-P-23.2.6)
+            {"tricyclo[2.2.1.0^{2,6}]heptane", "C1C2CC3C1C3C2", "tricyclo[2.2.1.0^{2,6}]heptane"},
+            {"tricyclo[5.2.1.0^{2,6}]decane", "C1CC2C3CCC(C3)C2C1", "tricyclo[5.2.1.0^{2,6}]decane"},
+            {"tetracyclo[3.2.0.0^{2,7}.0^{4,6}]heptane", "C1C2C3C2C4C1C34", "tetracyclo[3.2.0.0^{2,7}.0^{4,6}]heptane"},
+            {"tricyclo[4.4.0.0^{3,8}]decane", "C1CC2CC3CCC2CC13", "tricyclo[4.4.0.0^{3,8}]decane"},
+            {"1-methyltricyclo[2.2.1.0^{2,6}]heptane", "CC12CC3CC1C2C3", "1-methyltricyclo[2.2.1.0^{2,6}]heptane"},
+            {"phenyl 3-(tricyclo[2.2.1.0^{2,6}]heptan-3-yl)propanoate", "O=C(CCC1C2CC3C1C3C2)Oc4ccccc4", "phenyl 3-(tricyclo[2.2.1.0^{2,6}]heptan-3-yl)propanoate"},
+            {"(tricyclo[2.2.1.0^{2,6}]heptan-3-yl)methanol", "OCC1C2CC3C1C3C2", "(tricyclo[2.2.1.0^{2,6}]heptan-3-yl)methanol"},
+            {"2-(tricyclo[2.2.1.0^{2,6}]heptan-3-yl)ethanoic acid", "OC(=O)CC1C2CC3C1C3C2", "2-(tricyclo[2.2.1.0^{2,6}]heptan-3-yl)ethanoic acid"},
         };
         for (const auto &c : cases) {
             int m = indigoLoadMoleculeFromString(c.smiles);
