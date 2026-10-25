@@ -7742,6 +7742,11 @@ int main() {
             {"2-(bicyclo[2.2.1]heptan-2-yl)ethanoic acid", "OC(=O)CC1CC2CCC1C2", "2-(bicyclo[2.2.1]heptan-2-yl)ethanoic acid"},
             // Tier 1A: Step 1.4 Site 2 multi-component dispatch
             {"2-phenylbicyclo[2.2.1]heptane", "c1ccccc1C1CC2CCC1C2", "2-phenylbicyclo[2.2.1]heptane"},
+            // Tier 1B: retained cages (adamantane, cubane) as substituent (P-29.3.2.2)
+            {"phenyl 3-(adamantan-1-yl)propanoate", "O=C(CCC12CC3CC(CC(C3)C1)C2)Oc1ccccc1", "phenyl 3-(adamantan-1-yl)propanoate"},
+            {"(adamantan-1-yl)methanol", "OCC12CC3CC(CC(C3)C1)C2", "(adamantan-1-yl)methanol"},
+            {"(adamantan-2-yl)methanol", "OCC1C2CC3CC1CC(C2)C3", "(adamantan-2-yl)methanol"},
+            {"(cuban-1-yl)methanol", "OCC12C3C4C1C5C2C3C45", "(cuban-1-yl)methanol"},
         };
         for (const auto &c : cases) {
             int m = indigoLoadMoleculeFromString(c.smiles);
