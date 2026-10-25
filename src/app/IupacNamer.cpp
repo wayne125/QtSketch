@@ -2880,6 +2880,598 @@ int compareRingSubstituentCandidates(
 
 namespace {
 
+struct NumberingCand {
+
+    std::map<int,int> locantOf;
+
+    std::vector<int> heteroatomLocants;
+
+    std::vector<int> heteroatomSeniorityLocants;
+
+    std::vector<int> doubleBondLocants;
+
+    std::vector<int> tripleBondLocants;
+
+    std::vector<int> subLocants;
+
+    std::vector<std::pair<QString,int>> namedSubs;
+
+};
+
+
+
+struct BicyclicEvalResult {
+
+    bool valid = false;
+
+    QString error;
+
+    std::vector<int> lengths;
+
+    int totalCarbons = 0;
+
+    std::vector<NumberingCand> bestCands;
+
+    std::vector<NumberingCand> allCands;
+
+};
+
+
+
+BicyclicEvalResult evaluateBicyclicSystem(const Graph& g, const std::set<int>& ringUnionNodes, const std::vector<std::pair<int, QString>>& ringSubstituents) {
+
+    BicyclicEvalResult res;
+
+    
+
+    std::vector<int> bridgeheads;
+
+    bool validDegrees = true;
+
+
+
+    for (int n : ringUnionNodes) {
+
+        int ringDegree = 0;
+
+        for (int nei : g.nodes[n].neighbors) {
+
+            if (ringUnionNodes.count(nei)) {
+
+                ringDegree++;
+
+            }
+
+        }
+
+        if (ringDegree == 3) {
+
+            bridgeheads.push_back(n);
+
+        } else if (ringDegree != 2) {
+
+            validDegrees = false;
+
+            break;
+
+        }
+
+    }
+
+
+
+    if (!validDegrees || bridgeheads.size() != 2) {
+
+        res.error = "Invalid bridgeheads.";
+
+        return res;
+
+    }
+
+
+
+    int bhA = bridgeheads[0];
+
+    int bhB = bridgeheads[1];
+
+
+
+    std::vector<int> bhANeighbors;
+
+    for (int nei : g.nodes[bhA].neighbors) {
+
+        if (ringUnionNodes.count(nei)) {
+
+            bhANeighbors.push_back(nei);
+
+        }
+
+    }
+
+
+
+    if (bhANeighbors.size() == 3) {
+
+        struct Bridge { std::vector<int> interior; int length; };
+
+        std::vector<Bridge> bridges;
+
+        bool traceOk = true;
+
+
+
+        for (int startNei : bhANeighbors) {
+
+            Bridge br;
+
+            br.length = 0;
+
+            if (startNei == bhB) {
+
+                bridges.push_back(br); 
+
+                continue;
+
+            }
+
+            int prev = bhA;
+
+            int curr = startNei;
+
+            bool reachedB = false;
+
+            while (true) {
+
+                if (curr == bhB) { reachedB = true; break; }
+
+                if ((int)br.interior.size() > (int)ringUnionNodes.size()) break;
+
+                br.interior.push_back(curr);
+
+                int nextN = -1;
+
+                for (int nei : g.nodes[curr].neighbors) {
+
+                    if (ringUnionNodes.count(nei) && nei != prev) { nextN = nei; break; }
+
+                }
+
+                if (nextN == -1) break;
+
+                prev = curr;
+
+                curr = nextN;
+
+            }
+
+            if (reachedB) { br.length = (int)br.interior.size(); bridges.push_back(br); }
+
+            else { traceOk = false; break; }
+
+        }
+
+
+
+        if (traceOk && bridges.size() == 3) {
+
+            int sumBridges = bridges[0].length + bridges[1].length + bridges[2].length;
+
+            if (sumBridges + 2 != (int)ringUnionNodes.size()) {
+
+                res.error = "Internal error: invalid bicyclic bridge decomposition.";
+
+                return res;
+
+            }
+
+            int totalCarbons = (int)ringUnionNodes.size();
+
+            res.totalCarbons = totalCarbons;
+
+
+
+            std::vector<int> lengths = {bridges[0].length, bridges[1].length, bridges[2].length};
+
+            std::sort(lengths.rbegin(), lengths.rend());
+
+            res.lengths = lengths;
+
+
+
+            std::vector<NumberingCand> cands;
+
+            int starts[2] = { bhA, bhB };
+
+
+
+            for (int sIdx = 0; sIdx < 2; ++sIdx) {
+
+                int S = starts[sIdx];
+
+                int Other = (S == bhA) ? bhB : bhA;
+
+                std::vector<int> perm = {0, 1, 2};
+
+                do {
+
+                    if (!(bridges[perm[0]].length >= bridges[perm[1]].length &&
+
+                          bridges[perm[1]].length >= bridges[perm[2]].length)) continue;
+
+
+
+                    NumberingCand cand;
+
+                    int loc = 1;
+
+                    cand.locantOf[S] = loc; 
+
+
+
+                    {
+
+                        std::vector<int> path = bridges[perm[0]].interior;
+
+                        if (S == bhB) std::reverse(path.begin(), path.end());
+
+                        for (int atom : path) { loc++; cand.locantOf[atom] = loc; }
+
+                        loc++; cand.locantOf[Other] = loc;
+
+                    }
+
+                    {
+
+                        std::vector<int> path = bridges[perm[1]].interior;
+
+                        if (S == bhA) std::reverse(path.begin(), path.end());
+
+                        for (int atom : path) { loc++; cand.locantOf[atom] = loc; }
+
+                    }
+
+                    {
+
+                        std::vector<int> path = bridges[perm[2]].interior;
+
+                        if (S == bhB) std::reverse(path.begin(), path.end());
+
+                        for (int atom : path) { loc++; cand.locantOf[atom] = loc; }
+
+                    }
+
+
+
+                    if ((int)cand.locantOf.size() != totalCarbons) continue;
+
+
+
+                    for (int n : ringUnionNodes) {
+
+                        if (g.nodes[n].atomicNumber != 6) {
+
+                            cand.heteroatomLocants.push_back(cand.locantOf[n]);
+
+                        }
+
+                    }
+
+                    std::sort(cand.heteroatomLocants.begin(), cand.heteroatomLocants.end());
+
+                    
+
+                    std::map<int, std::vector<int>> locsByRank;
+
+                    for (int n : ringUnionNodes) {
+
+                        if (g.nodes[n].atomicNumber != 6) {
+
+                            locsByRank[hwSeniorityRank(g.nodes[n].atomicNumber)].push_back(cand.locantOf[n]);
+
+                        }
+
+                    }
+
+                    for (auto &kv : locsByRank) {
+
+                        std::sort(kv.second.begin(), kv.second.end());
+
+                        for (int l : kv.second) cand.heteroatomSeniorityLocants.push_back(l);
+
+                    }
+
+
+
+                    for (const auto &rs : ringSubstituents) {
+
+                        auto it = cand.locantOf.find(rs.first);
+
+                        if (it == cand.locantOf.end()) { cand.subLocants.clear(); break; }
+
+                        cand.subLocants.push_back(it->second);
+
+                        cand.namedSubs.push_back({rs.second, it->second});
+
+                    }
+
+                    std::sort(cand.subLocants.begin(), cand.subLocants.end());
+
+
+
+                    for (const auto &gb : g.bonds) {
+
+                        if (ringUnionNodes.count(gb.u) && ringUnionNodes.count(gb.v)) {
+
+                            if (gb.order == 2 || gb.order == 3) {
+
+                                auto itU = cand.locantOf.find(gb.u);
+
+                                auto itV = cand.locantOf.find(gb.v);
+
+                                if (itU != cand.locantOf.end() && itV != cand.locantOf.end()) {
+
+                                    int minLoc = std::min(itU->second, itV->second);
+
+                                    if (gb.order == 2) cand.doubleBondLocants.push_back(minLoc);
+
+                                    if (gb.order == 3) cand.tripleBondLocants.push_back(minLoc);
+
+                                }
+
+                            }
+
+                        }
+
+                    }
+
+                    std::sort(cand.doubleBondLocants.begin(), cand.doubleBondLocants.end());
+
+                    std::sort(cand.tripleBondLocants.begin(), cand.tripleBondLocants.end());
+
+
+
+                    cands.push_back(cand);
+
+                } while (std::next_permutation(perm.begin(), perm.end()));
+
+            }
+
+
+
+            if (!cands.empty()) {
+
+                auto isLess = [](const NumberingCand &a, const NumberingCand &b) {
+
+                    if (a.heteroatomLocants != b.heteroatomLocants) return a.heteroatomLocants < b.heteroatomLocants;
+
+                    if (a.heteroatomSeniorityLocants != b.heteroatomSeniorityLocants) return a.heteroatomSeniorityLocants < b.heteroatomSeniorityLocants;
+
+                    if (a.doubleBondLocants != b.doubleBondLocants) return a.doubleBondLocants < b.doubleBondLocants;
+
+                    if (a.tripleBondLocants != b.tripleBondLocants) return a.tripleBondLocants < b.tripleBondLocants;
+
+                    if (a.subLocants != b.subLocants) return a.subLocants < b.subLocants;
+
+                    auto firstAlpha = [](const std::vector<std::pair<QString,int>> &nm) {
+
+                        return std::min_element(nm.begin(), nm.end(),
+
+                            [](const auto &x, const auto &y){ return alphabetizationKey(x.first).toLower() < alphabetizationKey(y.first).toLower(); });
+
+                    };
+
+                    if (!a.namedSubs.empty()) {
+
+                        QString alphaName = firstAlpha(a.namedSubs)->first;
+
+                        auto findLoc = [&](const std::vector<std::pair<QString,int>> &nm) {
+
+                            int best = INT_MAX;
+
+                            for (const auto &ns : nm) if (ns.first == alphaName) best = std::min(best, ns.second);
+
+                            return best;
+
+                        };
+
+                        int aLoc = findLoc(a.namedSubs), bLoc = findLoc(b.namedSubs);
+
+                        if (aLoc != bLoc) return aLoc < bLoc;
+
+                    }
+
+                    return false;
+
+                };
+
+                auto bestIt = std::min_element(cands.begin(), cands.end(), isLess);
+
+                for (const auto& c : cands) {
+
+                    if (!isLess(*bestIt, c) && !isLess(c, *bestIt)) {
+
+                        res.bestCands.push_back(c);
+
+                    }
+
+                }
+
+                res.allCands = cands;
+
+                res.valid = true;
+
+            } else {
+
+                res.error = "No valid numbering found.";
+
+            }
+
+        }
+
+    } else {
+
+        res.error = "Invalid bridgeheads trace.";
+
+    }
+
+    return res;
+
+}
+
+
+
+QString buildBicyclicBaseName(
+
+    const Graph &g,
+
+    const std::set<int> &ringUnionNodes,
+
+    const BicyclicEvalResult &evalRes,
+
+    const NumberingCand &cand,
+
+    bool &outRejectedAsMancudeFusion) {
+
+    outRejectedAsMancudeFusion = false;
+
+    if (!evalRes.valid || evalRes.lengths.size() != 3) return "";
+
+
+
+    std::vector<int> lengths = evalRes.lengths;
+
+    std::vector<int> dbLocs = cand.doubleBondLocants;
+
+    std::vector<int> tbLocs = cand.tripleBondLocants;
+
+
+
+    if (lengths[2] == 0 && (!dbLocs.empty() || !tbLocs.empty())) {
+
+        outRejectedAsMancudeFusion = true;
+
+        return "";
+
+    }
+
+
+
+    for (const auto &gb : g.bonds) {
+
+        if (ringUnionNodes.count(gb.u) && ringUnionNodes.count(gb.v)) {
+
+            if (gb.order == 4) {
+
+                outRejectedAsMancudeFusion = true;
+
+                return "";
+
+            }
+
+        }
+
+    }
+
+
+
+    int totalCarbons = evalRes.totalCarbons;
+
+    QString root = chainRoot(totalCarbons);
+
+    if (root.isEmpty()) return "";
+
+
+
+    std::map<int, std::vector<int>> locantsByZ;
+
+    for (int n : ringUnionNodes) {
+
+        if (g.nodes[n].atomicNumber != 6) {
+
+            auto it = cand.locantOf.find(n);
+
+            if (it != cand.locantOf.end()) {
+
+                locantsByZ[g.nodes[n].atomicNumber].push_back(it->second);
+
+            }
+
+        }
+
+    }
+
+    QString heteroPrefix = buildSkeletalReplacementPrefix(locantsByZ, false);
+
+
+
+    QString infix;
+
+    if (dbLocs.empty() && tbLocs.empty()) {
+
+        infix = "ane";
+
+    } else if (!dbLocs.empty() && tbLocs.empty()) {
+
+        if (dbLocs.size() == 1) {
+
+            infix = QString("-%1-ene").arg(dbLocs[0]);
+
+        } else {
+
+            root += "a";
+
+            QStringList lStrs;
+
+            for (int l : dbLocs) lStrs.append(QString::number(l));
+
+            infix = QString("-%1-%2ene").arg(lStrs.join(","), multiPrefix(static_cast<int>(dbLocs.size())));
+
+        }
+
+    } else if (dbLocs.empty() && !tbLocs.empty()) {
+
+        if (tbLocs.size() == 1) {
+
+            infix = QString("-%1-yne").arg(tbLocs[0]);
+
+        } else {
+
+            root += "a";
+
+            QStringList lStrs;
+
+            for (int l : tbLocs) lStrs.append(QString::number(l));
+
+            infix = QString("-%1-%2yne").arg(lStrs.join(","), multiPrefix(static_cast<int>(tbLocs.size())));
+
+        }
+
+    } else {
+
+        QStringList dStrs, tStrs;
+
+        for (int l : dbLocs) dStrs.append(QString::number(l));
+
+        for (int l : tbLocs) tStrs.append(QString::number(l));
+
+        QString dPart = (dbLocs.size() > 1) ? QString("%1-%2en").arg(dStrs.join(","), multiPrefix(static_cast<int>(dbLocs.size()))) : QString("%1-en").arg(dStrs[0]);
+
+        QString tPart = (tbLocs.size() > 1) ? QString("%1-%2yne").arg(tStrs.join(","), multiPrefix(static_cast<int>(tbLocs.size()))) : QString("%1-yne").arg(tStrs[0]);
+
+        infix = QString("-%1-%2").arg(dPart, tPart);
+
+    }
+
+
+
+    return heteroPrefix + QString("bicyclo[%1.%2.%3]%4%5")
+
+        .arg(lengths[0]).arg(lengths[1]).arg(lengths[2]).arg(root).arg(infix);
+
+}
+
+
+
 QString nameRingSystemAsSubstituent(
     const Graph &g,
     int mol,
@@ -2965,10 +3557,38 @@ QString nameRingSystemAsSubstituent(
             spiroSystemRingIdx.clear();
         }
     }
+    // Von Baeyer 2-ring bicyclic discovery: find all rings connected to startRingIdx
+    // sharing >= 2 atoms (covers both bridged shared>=3 and saturated ortho-fused shared==2).
+    std::set<int> bicycloSystemRingIdx;
+    if (startRingIdx != -1) {
+        std::vector<int> bQueue{startRingIdx};
+        bicycloSystemRingIdx.insert(startRingIdx);
+        size_t bHead = 0;
+        while (bHead < bQueue.size()) {
+            int cur = bQueue[bHead++];
+            const auto &curRing = allIndependentRings[cur];
+            for (size_t j = 0; j < allIndependentRings.size(); ++j) {
+                if (bicycloSystemRingIdx.count(static_cast<int>(j))) continue;
+                int shared = 0;
+                for (int n : curRing) if (allIndependentRings[j].count(n)) shared++;
+                if (shared >= 2) {
+                    bicycloSystemRingIdx.insert(static_cast<int>(j));
+                    bQueue.push_back(static_cast<int>(j));
+                }
+            }
+        }
+        if (bicycloSystemRingIdx.size() != 2) {
+            bicycloSystemRingIdx.clear();
+        }
+    }
 
     std::set<int> fullSystemNodes;
     if (fusedSystemRingIdx.size() > 1) {
         for (int idx : fusedSystemRingIdx) {
+            fullSystemNodes.insert(allIndependentRings[idx].begin(), allIndependentRings[idx].end());
+        }
+    } else if (bicycloSystemRingIdx.size() == 2) {
+        for (int idx : bicycloSystemRingIdx) {
             fullSystemNodes.insert(allIndependentRings[idx].begin(), allIndependentRings[idx].end());
         }
     } else if (spiroSystemRingIdx.size() == 2) {
@@ -3073,6 +3693,50 @@ QString nameRingSystemAsSubstituent(
         trySpiroOrder(sRing1, sRing2);
         if (sRing1.size() == sRing2.size()) {
             trySpiroOrder(sRing2, sRing1);
+        }
+    }
+    if (candidates.empty() && bicycloSystemRingIdx.size() == 2) {
+        auto bIt = bicycloSystemRingIdx.begin();
+        const std::set<int> &bRing1 = allIndependentRings[*bIt];
+        const std::set<int> &bRing2 = allIndependentRings[*std::next(bIt)];
+        int sharedCount = 0;
+        for (int n : bRing1) if (bRing2.count(n)) sharedCount++;
+
+        std::set<int> bUnion = bRing1;
+        bUnion.insert(bRing2.begin(), bRing2.end());
+
+        bool validBicyclo = true;
+        for (int n : bUnion) {
+            if (g.nodes[n].atomicNumber != 6 && hwSeniorityRank(g.nodes[n].atomicNumber) == 99) {
+                validBicyclo = false;
+                break;
+            }
+        }
+        if (validBicyclo) {
+            for (const auto &gb : g.bonds) {
+                if (bUnion.count(gb.u) && bUnion.count(gb.v)) {
+                    if (gb.order == 4) { validBicyclo = false; break; }
+                    if (sharedCount == 2 && gb.order != 1) { validBicyclo = false; break; }
+                    if (gb.order != 1 && gb.order != 2 && gb.order != 3) { validBicyclo = false; break; }
+                }
+            }
+        }
+
+        if (validBicyclo && sharedCount >= 2) {
+            BicyclicEvalResult evalRes = evaluateBicyclicSystem(g, bUnion, {});
+            if (evalRes.valid) {
+                for (const auto &cand : evalRes.bestCands) {
+                    bool outRejected = false;
+                    QString baseStemName = buildBicyclicBaseName(g, bUnion, evalRes, cand, outRejected);
+                    if (!outRejected && !baseStemName.isEmpty()) {
+                        std::map<int, QString> locMap;
+                        for (const auto &kv : cand.locantOf) {
+                            locMap[kv.first] = QString::number(kv.second);
+                        }
+                        candidates.push_back(RingSystemNameResult{true, "", baseStemName, locMap});
+                    }
+                }
+            }
         }
     }
 
@@ -4721,9 +5385,20 @@ QString nameChainParentWithRingSubstituent(int mol, const std::map<int, int> &in
         principalCarbons.insert(cNode);
     }
     if (principalCarbons.empty()) return "";
-    // If only exocyclic chain carbons have the winning type, the ring carries
-    // them (e.g. cyclohexanecarboxylic acid) — chain-as-parent does not apply.
-    {
+    // If only exocyclic chain carbons have the winning type and the ring can carry
+    // them as a suffix (e.g. cyclohexanecarboxylic acid), chain-as-parent does not apply.
+    // For non-carbo suffix classes (ALCOHOL, THIOL, AMINE, etc.), the exocyclic carbon
+    // cannot be absorbed into a ring suffix, so the chain parent wins (e.g. cyclohexylmethanol).
+    bool ringCanCarryExocyclicCarbon = (winningType == GroupType::ACID ||
+                                        winningType == GroupType::AMIDE ||
+                                        winningType == GroupType::THIOAMIDE ||
+                                        winningType == GroupType::HYDRAZIDE ||
+                                        winningType == GroupType::AMIDINE ||
+                                        winningType == GroupType::NITRILE ||
+                                        winningType == GroupType::ALDEHYDE ||
+                                        winningType == GroupType::ESTER ||
+                                        winningType == GroupType::ACYL_HALIDE);
+    if (ringCanCarryExocyclicCarbon) {
         bool hasDeep = false;
         for (int pc : principalCarbons) {
             bool exo = false;
@@ -4734,7 +5409,6 @@ QString nameChainParentWithRingSubstituent(int mol, const std::map<int, int> &in
         }
         if (!hasDeep) return "";
     }
-
     // 2. Determine the acyclic chain component reachable from the principal
     //    carbons (all carbons reachable without crossing the ring).
     std::set<int> chainSet;
@@ -5338,225 +6012,7 @@ std::optional<QString> tryNameNitrosamine(int cNode, int nNode, const Graph &g, 
 }
 
 
-struct NumberingCand {
-    std::map<int,int> locantOf;
-    std::vector<int> heteroatomLocants;
-    std::vector<int> heteroatomSeniorityLocants;
-    std::vector<int> doubleBondLocants;
-    std::vector<int> tripleBondLocants;
-    std::vector<int> subLocants;
-    std::vector<std::pair<QString,int>> namedSubs;
-};
 
-struct BicyclicEvalResult {
-    bool valid = false;
-    QString error;
-    std::vector<int> lengths;
-    int totalCarbons = 0;
-    std::vector<NumberingCand> bestCands;
-    std::vector<NumberingCand> allCands;
-};
-
-BicyclicEvalResult evaluateBicyclicSystem(const Graph& g, const std::set<int>& ringUnionNodes, const std::vector<std::pair<int, QString>>& ringSubstituents) {
-    BicyclicEvalResult res;
-    
-    std::vector<int> bridgeheads;
-    bool validDegrees = true;
-
-    for (int n : ringUnionNodes) {
-        int ringDegree = 0;
-        for (int nei : g.nodes[n].neighbors) {
-            if (ringUnionNodes.count(nei)) {
-                ringDegree++;
-            }
-        }
-        if (ringDegree == 3) {
-            bridgeheads.push_back(n);
-        } else if (ringDegree != 2) {
-            validDegrees = false;
-            break;
-        }
-    }
-
-    if (!validDegrees || bridgeheads.size() != 2) {
-        res.error = "Invalid bridgeheads.";
-        return res;
-    }
-
-    int bhA = bridgeheads[0];
-    int bhB = bridgeheads[1];
-
-    std::vector<int> bhANeighbors;
-    for (int nei : g.nodes[bhA].neighbors) {
-        if (ringUnionNodes.count(nei)) {
-            bhANeighbors.push_back(nei);
-        }
-    }
-
-    if (bhANeighbors.size() == 3) {
-        struct Bridge { std::vector<int> interior; int length; };
-        std::vector<Bridge> bridges;
-        bool traceOk = true;
-
-        for (int startNei : bhANeighbors) {
-            Bridge br;
-            br.length = 0;
-            if (startNei == bhB) {
-                bridges.push_back(br); 
-                continue;
-            }
-            int prev = bhA;
-            int curr = startNei;
-            bool reachedB = false;
-            while (true) {
-                if (curr == bhB) { reachedB = true; break; }
-                if ((int)br.interior.size() > (int)ringUnionNodes.size()) break;
-                br.interior.push_back(curr);
-                int nextN = -1;
-                for (int nei : g.nodes[curr].neighbors) {
-                    if (ringUnionNodes.count(nei) && nei != prev) { nextN = nei; break; }
-                }
-                if (nextN == -1) break;
-                prev = curr;
-                curr = nextN;
-            }
-            if (reachedB) { br.length = (int)br.interior.size(); bridges.push_back(br); }
-            else { traceOk = false; break; }
-        }
-
-        if (traceOk && bridges.size() == 3) {
-            int sumBridges = bridges[0].length + bridges[1].length + bridges[2].length;
-            if (sumBridges + 2 != (int)ringUnionNodes.size()) {
-                res.error = "Internal error: invalid bicyclic bridge decomposition.";
-                return res;
-            }
-            int totalCarbons = (int)ringUnionNodes.size();
-            res.totalCarbons = totalCarbons;
-
-            std::vector<int> lengths = {bridges[0].length, bridges[1].length, bridges[2].length};
-            std::sort(lengths.rbegin(), lengths.rend());
-            res.lengths = lengths;
-
-            std::vector<NumberingCand> cands;
-            int starts[2] = { bhA, bhB };
-
-            for (int sIdx = 0; sIdx < 2; ++sIdx) {
-                int S = starts[sIdx];
-                int Other = (S == bhA) ? bhB : bhA;
-                std::vector<int> perm = {0, 1, 2};
-                do {
-                    if (!(bridges[perm[0]].length >= bridges[perm[1]].length &&
-                          bridges[perm[1]].length >= bridges[perm[2]].length)) continue;
-
-                    NumberingCand cand;
-                    int loc = 1;
-                    cand.locantOf[S] = loc; 
-
-                    {
-                        std::vector<int> path = bridges[perm[0]].interior;
-                        if (S == bhB) std::reverse(path.begin(), path.end());
-                        for (int atom : path) { loc++; cand.locantOf[atom] = loc; }
-                        loc++; cand.locantOf[Other] = loc;
-                    }
-                    {
-                        std::vector<int> path = bridges[perm[1]].interior;
-                        if (S == bhA) std::reverse(path.begin(), path.end());
-                        for (int atom : path) { loc++; cand.locantOf[atom] = loc; }
-                    }
-                    {
-                        std::vector<int> path = bridges[perm[2]].interior;
-                        if (S == bhB) std::reverse(path.begin(), path.end());
-                        for (int atom : path) { loc++; cand.locantOf[atom] = loc; }
-                    }
-
-                    if ((int)cand.locantOf.size() != totalCarbons) continue;
-
-                    for (int n : ringUnionNodes) {
-                        if (g.nodes[n].atomicNumber != 6) {
-                            cand.heteroatomLocants.push_back(cand.locantOf[n]);
-                        }
-                    }
-                    std::sort(cand.heteroatomLocants.begin(), cand.heteroatomLocants.end());
-                    
-                    std::map<int, std::vector<int>> locsByRank;
-                    for (int n : ringUnionNodes) {
-                        if (g.nodes[n].atomicNumber != 6) {
-                            locsByRank[hwSeniorityRank(g.nodes[n].atomicNumber)].push_back(cand.locantOf[n]);
-                        }
-                    }
-                    for (auto &kv : locsByRank) {
-                        std::sort(kv.second.begin(), kv.second.end());
-                        for (int l : kv.second) cand.heteroatomSeniorityLocants.push_back(l);
-                    }
-
-                    for (const auto &rs : ringSubstituents) {
-                        auto it = cand.locantOf.find(rs.first);
-                        if (it == cand.locantOf.end()) { cand.subLocants.clear(); break; }
-                        cand.subLocants.push_back(it->second);
-                        cand.namedSubs.push_back({rs.second, it->second});
-                    }
-                    std::sort(cand.subLocants.begin(), cand.subLocants.end());
-
-                    for (const auto &gb : g.bonds) {
-                        if (ringUnionNodes.count(gb.u) && ringUnionNodes.count(gb.v)) {
-                            if (gb.order == 2 || gb.order == 3) {
-                                auto itU = cand.locantOf.find(gb.u);
-                                auto itV = cand.locantOf.find(gb.v);
-                                if (itU != cand.locantOf.end() && itV != cand.locantOf.end()) {
-                                    int minLoc = std::min(itU->second, itV->second);
-                                    if (gb.order == 2) cand.doubleBondLocants.push_back(minLoc);
-                                    if (gb.order == 3) cand.tripleBondLocants.push_back(minLoc);
-                                }
-                            }
-                        }
-                    }
-                    std::sort(cand.doubleBondLocants.begin(), cand.doubleBondLocants.end());
-                    std::sort(cand.tripleBondLocants.begin(), cand.tripleBondLocants.end());
-
-                    cands.push_back(cand);
-                } while (std::next_permutation(perm.begin(), perm.end()));
-            }
-
-            if (!cands.empty()) {
-                auto isLess = [](const NumberingCand &a, const NumberingCand &b) {
-                    if (a.heteroatomLocants != b.heteroatomLocants) return a.heteroatomLocants < b.heteroatomLocants;
-                    if (a.heteroatomSeniorityLocants != b.heteroatomSeniorityLocants) return a.heteroatomSeniorityLocants < b.heteroatomSeniorityLocants;
-                    if (a.doubleBondLocants != b.doubleBondLocants) return a.doubleBondLocants < b.doubleBondLocants;
-                    if (a.tripleBondLocants != b.tripleBondLocants) return a.tripleBondLocants < b.tripleBondLocants;
-                    if (a.subLocants != b.subLocants) return a.subLocants < b.subLocants;
-                    auto firstAlpha = [](const std::vector<std::pair<QString,int>> &nm) {
-                        return std::min_element(nm.begin(), nm.end(),
-                            [](const auto &x, const auto &y){ return alphabetizationKey(x.first).toLower() < alphabetizationKey(y.first).toLower(); });
-                    };
-                    if (!a.namedSubs.empty()) {
-                        QString alphaName = firstAlpha(a.namedSubs)->first;
-                        auto findLoc = [&](const std::vector<std::pair<QString,int>> &nm) {
-                            int best = INT_MAX;
-                            for (const auto &ns : nm) if (ns.first == alphaName) best = std::min(best, ns.second);
-                            return best;
-                        };
-                        int aLoc = findLoc(a.namedSubs), bLoc = findLoc(b.namedSubs);
-                        if (aLoc != bLoc) return aLoc < bLoc;
-                    }
-                    return false;
-                };
-                auto bestIt = std::min_element(cands.begin(), cands.end(), isLess);
-                for (const auto& c : cands) {
-                    if (!isLess(*bestIt, c) && !isLess(c, *bestIt)) {
-                        res.bestCands.push_back(c);
-                    }
-                }
-                res.allCands = cands;
-                res.valid = true;
-            } else {
-                res.error = "No valid numbering found.";
-            }
-        }
-    } else {
-        res.error = "Invalid bridgeheads trace.";
-    }
-    return res;
-}
 
 // Names an amine nitrogen `nNode` (attached to `fromNode`) as a substituent
 // prefix -- "amino" for plain -NH2, "<R>amino" for secondary -NH-R (P-66.6.1),
@@ -21052,6 +21508,21 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                     }
                 }
 
+                bool bicyclicSkeletonValid = validPreconditions;
+                if (bicyclicSkeletonValid) {
+                    BicyclicEvalResult evalCheck = evaluateBicyclicSystem(g, ringUnionNodes, {});
+                    if (!evalCheck.valid) {
+                        bicyclicSkeletonValid = false;
+                    } else if (evalCheck.lengths.size() == 3 && evalCheck.lengths[2] == 0) {
+                        for (const auto &gb : g.bonds) {
+                            if (ringUnionNodes.count(gb.u) && ringUnionNodes.count(gb.v) && gb.order != 1) {
+                                bicyclicSkeletonValid = false;
+                                break;
+                            }
+                        }
+                    }
+                }
+
                 // Classify every exocyclic branch as a permitted simple substituent
                 // (or fall through). Collect each (ringAtom, subName) pair so the
                 // actual locants can be assigned once the per-atom numbering is chosen.
@@ -21068,6 +21539,55 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                             ringSubstituents.push_back({n, subName});
                         }
                         if (!validPreconditions) break;
+                    }
+                }
+
+                if (bicyclicSkeletonValid && !validPreconditions) {
+                    // Chain-wins handoff (P-44.1.1): exocyclic branch carries a principal functional group
+                    FunctionalGroupClassification fgc = classifyFunctionalGroups(g, mol, ringUnionNodes, allSSSRRings,
+                        carbonAzide, carbonSulfonicAcid, carbonSulfonamide, carbonSulfonylHalide, carbonSulfinylHalide,
+                        carbonSulfinicAcid, carbonSulfinamide, carbonThiol, carbonSelenol, carbonTellurol,
+                        carbonBoronicAcid, carbonBorinicAcid, carbonPhosphonicAcid, carbonPhosphinicAcid,
+                        carbonPhosphonicDihalide, carbonArsonicAcid, carbonArsinicAcid, carbonArsonicDihalide,
+                        carbonStibonicAcid, carbonStibinicAcid, carbonPhosphine);
+                    if (fgc.hasEarlyResult) return fgc.earlyResult;
+                    std::map<int, GroupType> &carbonGroup = fgc.carbonGroup;
+                    GroupType combinedWinner = fgc.combinedWinner;
+
+                    bool ringCanCarryExocyclic = (combinedWinner == GroupType::ACID ||
+                                                  combinedWinner == GroupType::AMIDE ||
+                                                  combinedWinner == GroupType::THIOAMIDE ||
+                                                  combinedWinner == GroupType::HYDRAZIDE ||
+                                                  combinedWinner == GroupType::AMIDINE ||
+                                                  combinedWinner == GroupType::NITRILE ||
+                                                  combinedWinner == GroupType::ALDEHYDE ||
+                                                  combinedWinner == GroupType::ESTER ||
+                                                  combinedWinner == GroupType::ACYL_HALIDE);
+                    int ringCountWin = 0, chainCountWin = 0, chainDeepCountWin = 0;
+                    for (const auto &pair : carbonGroup) {
+                        if (pair.second != combinedWinner) continue;
+                        int cNode = pair.first;
+                        bool isOnOrExocyclic = ringUnionNodes.count(cNode) > 0;
+                        if (!isOnOrExocyclic && ringCanCarryExocyclic) {
+                            for (int nei : g.nodes[cNode].neighbors) {
+                                if (ringUnionNodes.count(nei) > 0) { isOnOrExocyclic = true; break; }
+                            }
+                        }
+                        if (!isOnOrExocyclic) ++chainDeepCountWin;
+                        if (isOnOrExocyclic) ++ringCountWin; else ++chainCountWin;
+                    }
+                    bool ringHasHeteroatom = false;
+                    for (int n : ringUnionNodes) {
+                        if (g.nodes[n].atomicNumber != 6) { ringHasHeteroatom = true; break; }
+                    }
+                    if (!ringHasHeteroatom && (chainCountWin > ringCountWin || (chainCountWin == ringCountWin && chainDeepCountWin > 0))) {
+                        if (isChainParentWithRingSubstituentSupported(combinedWinner)) {
+                            std::set<int> handledBranchStereoIds;
+                            QString chainName = nameChainParentWithRingSubstituent(mol, indigoToGraphIdx, g, ringUnionNodes, allSSSRRings, carbonGroup, combinedWinner, stereoByGraphId, &handledBranchStereoIds, carbonSulfonamide, carbonSulfinamide);
+                            if (!chainName.isEmpty()) {
+                                return {true, chainName, ""};
+                            }
+                        }
                     }
                 }
 
@@ -23894,6 +24414,174 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                                                             mcSuccess = true;
                                                             QString sepSpiro = (!prefixPartSpiro.isEmpty() && !spiroResult.baseStemName.isEmpty() && spiroResult.baseStemName[0].isDigit()) ? "-" : "";
                                                             mcName = prefixPartSpiro + sepSpiro + spiroResult.baseStemName + suffixSpiro;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (!mcSuccess) {
+                                        std::set<int> realComponentGraphUnion;
+                                        realComponentGraphUnion.insert(ring1G.begin(), ring1G.end());
+                                        realComponentGraphUnion.insert(ring2G.begin(), ring2G.end());
+
+                                        bool validBicyclo = true;
+                                        for (int n : realComponentGraphUnion) {
+                                            if (g.nodes[n].atomicNumber != 6 && hwSeniorityRank(g.nodes[n].atomicNumber) == 99) {
+                                                validBicyclo = false; break;
+                                            }
+                                        }
+                                        int sharedCount = 0;
+                                        for (int n : ring1G) if (ring2G.count(n)) sharedCount++;
+                                        if (validBicyclo && sharedCount >= 2) {
+                                            for (const auto &gb : g.bonds) {
+                                                if (realComponentGraphUnion.count(gb.u) && realComponentGraphUnion.count(gb.v)) {
+                                                    if (gb.order == 4) { validBicyclo = false; break; }
+                                                    if (sharedCount == 2 && gb.order != 1) { validBicyclo = false; break; }
+                                                    if (gb.order != 1 && gb.order != 2 && gb.order != 3) { validBicyclo = false; break; }
+                                                }
+                                            }
+                                        } else {
+                                            validBicyclo = false;
+                                        }
+
+                                        if (validBicyclo) {
+                                            std::vector<std::pair<int, QString>> bicycloSubs;
+                                            for (const auto &es : extraSubs) {
+                                                QString subName = es.second;
+                                                if (subName.startsWith("(") && subName.endsWith(")"))
+                                                    subName = subName.mid(1, subName.length() - 2);
+                                                bicycloSubs.push_back({es.first, subName});
+                                            }
+
+                                            BicyclicEvalResult evalRes = evaluateBicyclicSystem(g, realComponentGraphUnion, bicycloSubs);
+                                            if (evalRes.valid && !evalRes.bestCands.empty()) {
+                                                const auto &bestCand = evalRes.bestCands[0];
+
+                                                FunctionalGroupClassification fgcBicyclo = classifyFunctionalGroups(g, mol, realComponentGraphUnion, allSSSRRings,
+                                                    carbonAzide, carbonSulfonicAcid, carbonSulfonamide, carbonSulfonylHalide, carbonSulfinylHalide,
+                                                    carbonSulfinicAcid, carbonSulfinamide, carbonThiol, carbonSelenol, carbonTellurol,
+                                                    carbonBoronicAcid, carbonBorinicAcid, carbonPhosphonicAcid, carbonPhosphinicAcid,
+                                                    carbonPhosphonicDihalide, carbonArsonicAcid, carbonArsinicAcid, carbonArsonicDihalide,
+                                                    carbonStibonicAcid, carbonStibinicAcid, carbonPhosphine);
+
+                                                if (!fgcBicyclo.hasEarlyResult) {
+                                                    GroupType winningType = fgcBicyclo.winningRingGroup;
+                                                    bool suffixTypeSupported = (winningType == GroupType::NONE || winningType == GroupType::KETONE ||
+                                                                                winningType == GroupType::ALCOHOL || winningType == GroupType::AMINE);
+
+                                                    if (suffixTypeSupported) {
+                                                        std::set<int> principalCarbons;
+                                                        if (winningType != GroupType::NONE) {
+                                                            for (const auto &pair : fgcBicyclo.carbonGroup) {
+                                                                if (pair.second == winningType && realComponentGraphUnion.count(pair.first)) principalCarbons.insert(pair.first);
+                                                            }
+                                                        }
+
+                                                        std::vector<int> pLocants;
+                                                        bool suffixOk = true;
+                                                        for (int pc : principalCarbons) {
+                                                            auto it = bestCand.locantOf.find(pc);
+                                                            if (it == bestCand.locantOf.end()) { suffixOk = false; break; }
+                                                            pLocants.push_back(it->second);
+                                                        }
+                                                        std::sort(pLocants.begin(), pLocants.end());
+
+                                                        QString suffixBicyclo;
+                                                        if (suffixOk && winningType != GroupType::NONE && !pLocants.empty()) {
+                                                            int pCount = static_cast<int>(pLocants.size());
+                                                            QString bareSuffix;
+                                                            if (winningType == GroupType::KETONE) bareSuffix = (pCount == 1) ? "one" : "dione";
+                                                            else if (winningType == GroupType::ALCOHOL) bareSuffix = (pCount == 1) ? "ol" : "diol";
+                                                            else if (winningType == GroupType::AMINE) bareSuffix = (pCount == 1) ? "amine" : "diamine";
+                                                            QStringList locStrs;
+                                                            for (int l : pLocants) locStrs.append(QString::number(l));
+                                                            suffixBicyclo = "-" + locStrs.join(",") + "-" + bareSuffix;
+                                                        }
+
+                                                        if (suffixOk) {
+                                                            std::vector<std::pair<QString, int>> allNamedSubsBicyclo;
+                                                            bool scanOk = true;
+                                                            for (int n : realComponentGraphUnion) {
+                                                                auto locIt = bestCand.locantOf.find(n);
+                                                                if (locIt == bestCand.locantOf.end()) continue;
+                                                                int locN = locIt->second;
+                                                                for (size_t j = 0; j < g.nodes[n].neighbors.size(); ++j) {
+                                                                    int nei = g.nodes[n].neighbors[j];
+                                                                    int order = g.nodes[n].bondOrders[j];
+                                                                    if (realComponentGraphUnion.count(nei)) continue;
+                                                                    if (g.nodes[nei].atomicNumber == 1) continue;
+                                                                    if (attachNodesSeen.count(n)) continue;
+                                                                    if (principalCarbons.count(n) && order >= 2) continue;
+
+                                                                    QString subName = nameBranchGraph(g, nei, n, allSSSRRings, realComponentGraphUnion, {}, nullptr, mol);
+                                                                    if (subName.isEmpty()) { scanOk = false; break; }
+                                                                    allNamedSubsBicyclo.push_back({subName, locN});
+                                                                }
+                                                                if (!scanOk) break;
+                                                            }
+
+                                                            if (scanOk) {
+                                                                for (const auto &es : extraSubs) {
+                                                                    auto it = bestCand.locantOf.find(es.first);
+                                                                    if (it == bestCand.locantOf.end()) { scanOk = false; break; }
+                                                                    int locVal = it->second;
+                                                                    allNamedSubsBicyclo.push_back({es.second, locVal});
+                                                                }
+                                                            }
+
+                                                            if (scanOk) {
+                                                                std::map<QString, std::vector<int>> prefixLocantsMapBicyclo;
+                                                                for (const auto &ns : allNamedSubsBicyclo) prefixLocantsMapBicyclo[ns.first].push_back(ns.second);
+
+                                                                struct PrefixGroupBicyclo {
+                                                                    QString baseName;
+                                                                    QString formattedStr;
+                                                                };
+                                                                std::vector<PrefixGroupBicyclo> pGroupsBicyclo;
+                                                                for (auto it = prefixLocantsMapBicyclo.begin(); it != prefixLocantsMapBicyclo.end(); ++it) {
+                                                                    QString pName = it->first;
+                                                                    std::vector<int> locs = it->second;
+                                                                    std::sort(locs.begin(), locs.end());
+
+                                                                    QStringList locStrs;
+                                                                    for (int l : locs) locStrs.append(QString::number(l));
+
+                                                                    QString pStr = locStrs.join(",");
+                                                                    if (locs.size() > 1) {
+                                                                        pStr += "-" + multiPrefix(static_cast<int>(locs.size())) + pName;
+                                                                    } else {
+                                                                        pStr += "-" + pName;
+                                                                    }
+
+                                                                    PrefixGroupBicyclo pg;
+                                                                    pg.baseName = alphabetizationKey(pName);
+                                                                    pg.formattedStr = pStr;
+                                                                    pGroupsBicyclo.push_back(pg);
+                                                                }
+
+                                                                std::sort(pGroupsBicyclo.begin(), pGroupsBicyclo.end(), [](const PrefixGroupBicyclo &a, const PrefixGroupBicyclo &b) {
+                                                                    return a.baseName.toLower() < b.baseName.toLower();
+                                                                });
+
+                                                                QString prefixPartBicyclo;
+                                                                if (!pGroupsBicyclo.empty()) {
+                                                                    QStringList pStrs;
+                                                                    for (const auto &pg : pGroupsBicyclo) pStrs.append(pg.formattedStr);
+                                                                    prefixPartBicyclo = pStrs.join("-");
+                                                                }
+
+                                                                bool outRejected = false;
+                                                                QString baseStemName = buildBicyclicBaseName(g, realComponentGraphUnion, evalRes, bestCand, outRejected);
+                                                                if (!outRejected && !baseStemName.isEmpty()) {
+                                                                    if (!suffixBicyclo.isEmpty() && baseStemName.endsWith('e')) {
+                                                                        baseStemName.chop(1);
+                                                                    }
+                                                                    mcSuccess = true;
+                                                                    QString sepBicyclo = (!prefixPartBicyclo.isEmpty() && !baseStemName.isEmpty() && baseStemName[0].isDigit()) ? "-" : "";
+                                                                    mcName = prefixPartBicyclo + sepBicyclo + baseStemName + suffixBicyclo;
+                                                                }
+                                                            }
                                                         }
                                                     }
                                                 }

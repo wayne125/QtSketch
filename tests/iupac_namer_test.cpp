@@ -7733,6 +7733,15 @@ int main() {
             {"1,8-naphthyridine", "c1ccc2cccnc2n1", "1,8-naphthyridine"},
             {"2,6-naphthyridine", "n1ccc2cnccc2c1", "2,6-naphthyridine"},
             {"2,7-naphthyridine", "n1ccc2ccncc2c1", "2,7-naphthyridine"},
+            // Tier 1A: von Baeyer bicyclic as substituent (P-23.2.1-P-23.2.3, P-29.3.2.2)
+            {"phenyl 3-(bicyclo[2.2.1]heptan-2-yl)propanoate", "O=C(CCC1CC2CCC1C2)Oc1ccccc1", "phenyl 3-(bicyclo[2.2.1]heptan-2-yl)propanoate"},
+            {"phenyl 3-(bicyclo[2.2.1]heptan-1-yl)propanoate", "O=C(CCC12CCC(CC1)C2)Oc1ccccc1", "phenyl 3-(bicyclo[2.2.1]heptan-1-yl)propanoate"},
+            {"phenyl 2-(7-oxabicyclo[2.2.1]heptan-2-yl)ethanoate", "O=C(CC1CC2CCC1O2)Oc1ccccc1", "phenyl 2-(7-oxabicyclo[2.2.1]heptan-2-yl)ethanoate"},
+            // Tier 1A: Step 1.3 chain-wins handoff (P-44.1.1)
+            {"(bicyclo[2.2.1]heptan-2-yl)methanol", "OCC1CC2CCC1C2", "(bicyclo[2.2.1]heptan-2-yl)methanol"},
+            {"2-(bicyclo[2.2.1]heptan-2-yl)ethanoic acid", "OC(=O)CC1CC2CCC1C2", "2-(bicyclo[2.2.1]heptan-2-yl)ethanoic acid"},
+            // Tier 1A: Step 1.4 Site 2 multi-component dispatch
+            {"2-phenylbicyclo[2.2.1]heptane", "c1ccccc1C1CC2CCC1C2", "2-phenylbicyclo[2.2.1]heptane"},
         };
         for (const auto &c : cases) {
             int m = indigoLoadMoleculeFromString(c.smiles);
