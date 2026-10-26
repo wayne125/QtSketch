@@ -7767,6 +7767,10 @@ int main() {
             // Wave 1 Item C: large heterocycle with double/triple bond
             {"Wave 1 Item C double bond", "O1CC=CCCCCCCCCC1", "1-oxacyclotridec-3-ene"},
             {"Wave 1 Item C triple bond", "O1CC#CCCCCCCCCC1", "1-oxacyclotridec-3-yne"},
+            // Item B: Systematic numeral chain roots (C21-C100) and lifting >20 guard
+            {"plain C21 alkane", "CCCCCCCCCCCCCCCCCCCCC", "henicosane"},
+            {"C21 carboxylic acid", "CCCCCCCCCCCCCCCCCCCCC(=O)O", "henicosanoic acid"},
+            {"symmetric C21 acid anhydride", "CCCCCCCCCCCCCCCCCCCCC(=O)OC(=O)CCCCCCCCCCCCCCCCCCCC", "henicosanoic anhydride"},
         };
         for (const auto &c : cases) {
             int m = indigoLoadMoleculeFromString(c.smiles);

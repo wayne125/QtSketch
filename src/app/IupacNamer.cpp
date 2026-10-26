@@ -5834,7 +5834,7 @@ QString nameAcyclicChainParentWithSubstituents(
         }
     }
 
-    if (maxLength > 20 || maxLength < 1) return "";
+    if (maxLength > 100 || maxLength < 1) return "";
 
     std::vector<std::vector<int>> topPaths;
     for (const auto &p : candidatePaths) {
@@ -20454,7 +20454,7 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                             if (len1 != -1 && len2 != -1 && len1 == len2) {
                                 QString rootStr = chainRoot(len1);
                                 if (rootStr.isEmpty()) {
-                                    return {false, "", "Acid anhydrides with chain length > 20 are not supported."};
+                                    return {false, "", "Acid anhydrides with chain length > 100 are not supported."};
                                 }
                                 QString infix = "an";
                                 QString stem = rootStr + infix;
@@ -21066,8 +21066,8 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
             }
         }
 
-        if (maxLength > 20) {
-            return {false, "", "Carbon chain length exceeds the C20 cap for Phase 1."};
+        if (maxLength > 100) {
+            return {false, "", "Carbon chain length exceeds the C100 cap for Phase 1."};
         }
 
         std::vector<std::vector<int>> topPaths;

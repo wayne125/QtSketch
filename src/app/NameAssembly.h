@@ -88,10 +88,10 @@ here to point at the real current code instead.
 
 #include <QString>
 
-// Chain length root prefixes C1..C20
+// Chain length root prefixes C1..C100
 QString chainRoot(int len);
 
-// Multiplying prefixes (2..10)
+// Multiplying prefixes (2..20)
 QString multiPrefix(int count);
 
 // Helper: check if character is a vowel
