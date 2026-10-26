@@ -1789,6 +1789,8 @@ QString nameAmineSubstituentPrefix(int nNode, int fromNode, const Graph &g,
                                     const std::set<int> &forbiddenNodes = {},
                                     int mol = -1);
 
+QString tryNameDiazenylSubstituent(int nNode, int fromNode, const Graph &g, const std::vector<std::set<int>> &allIndependentRings, const std::set<int> &forbiddenNodes = {}, int mol = -1);
+
 QString nameAcyclicChainParentWithSubstituents(
     const Graph &g,
     const std::set<int> &seedCarbons,
@@ -2347,6 +2349,8 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                     }
                 } else if (nZ == 7 && order == 1 && isAzideNitrogen(nei, rNode, g)) {
                     subName = "azido";
+                } else if (nZ == 7 && order == 1 && isAzoNitrogen(nei, rNode, g)) {
+                    subName = tryNameDiazenylSubstituent(nei, rNode, g, allIndependentRings, combinedForbidden, mol);
                 } else if (nZ == 7 && order == 1 && isIsocyanateNitrogen(nei, rNode, g)) {
                     subName = "isocyanato";
                 } else if (nZ == 7 && order == 1 && isNitroNitrogen(nei, rNode, g)) {
@@ -2655,10 +2659,33 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
         for (int l : locs) locStrs.append(QString::number(l));
 
         QString pStr = locStrs.join(",");
+        // Wrap pName in enclosing marks if it contains internal enclosure but
+        // is not already wrapped (IUPAC P-16.3.3 nesting: () -> [] -> {})
+        // Skip wrapping for standard bis-/di-/tri- forms like "bis(2-chloroethyl)amino"
+        // which are already unambiguous and don't need an extra enclosure level.
+        QString wrappedPName = pName;
+        bool skipWrap = pName.startsWith("bis(") || pName.startsWith("di") ||
+                       pName.startsWith("tri") || pName.startsWith("tetra") ||
+                       pName.startsWith("penta") || pName.startsWith("hexa") ||
+                       pName.startsWith("hepta") || pName.startsWith("octa") ||
+                       pName.startsWith("nona") || pName.startsWith("deca");
+        if (!skipWrap && !((pName.startsWith("(") && pName.endsWith(")")) ||
+              (pName.startsWith("[") && pName.endsWith("]")) ||
+              (pName.startsWith("{") && pName.endsWith("}")))) {
+            if (pName.contains('(') || pName.contains('[') || pName.contains('{')) {
+                if (pName.contains('{')) {
+                    wrappedPName = "{" + pName + "}";
+                } else if (pName.contains('[')) {
+                    wrappedPName = "[" + pName + "]";
+                } else if (pName.contains('(')) {
+                    wrappedPName = "[" + pName + "]";
+                }
+            }
+        }
         if (locs.size() > 1) {
-            pStr += "-" + multiPrefix(static_cast<int>(locs.size())) + pName;
+            pStr += "-" + multiPrefix(static_cast<int>(locs.size())) + wrappedPName;
         } else {
-            pStr += "-" + pName;
+            pStr += "-" + wrappedPName;
         }
 
         PrefixGroup pg;
@@ -2780,14 +2807,47 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
     }
 
     if (rType != RingType::BENZENE && rType != RingType::CYCLOALKANE) {
-        if (res.contains("[")) return "{" + res + "}";
-        if (res.contains("(")) return "[" + res + "]";
-        return "(" + res + ")";
+        // Determine appropriate enclosure for ring name when used as substituent
+        if (res.startsWith("{") && res.endsWith("}")) {
+            return "(" + res + ")";
+        } else if (res.startsWith("[") && res.endsWith("]")) {
+            return "{" + res + "}";
+        } else if (res.startsWith("(") && res.endsWith(")")) {
+            return "[" + res + "]";
+        } else {
+            // Not already wrapped: check if it contains enclosure and wrap at next level
+            if (res.contains('{') || res.contains('[') || res.contains('(')) {
+                if (res.contains('{')) {
+                    return "(" + res + ")";
+                } else if (res.contains('[')) {
+                    return "{" + res + "}";
+                } else {
+                    return "[" + res + "]";
+                }
+            }
+            return "(" + res + ")";
+        }
     }
     if (!prefixPart.isEmpty()) {
-        if (res.contains("[")) return "{" + res + "}";
-        if (res.contains("(")) return "[" + res + "]";
-        return "(" + res + ")";
+        // Same logic for CYCLOALKANE/BENZENE with prefix
+        if (res.startsWith("{") && res.endsWith("}")) {
+            return "(" + res + ")";
+        } else if (res.startsWith("[") && res.endsWith("]")) {
+            return "{" + res + "}";
+        } else if (res.startsWith("(") && res.endsWith(")")) {
+            return "[" + res + "]";
+        } else {
+            if (res.contains('{') || res.contains('[') || res.contains('(')) {
+                if (res.contains('{')) {
+                    return "(" + res + ")";
+                } else if (res.contains('[')) {
+                    return "{" + res + "}";
+                } else {
+                    return "[" + res + "]";
+                }
+            }
+            return "(" + res + ")";
+        }
     }
     return res;
 }
@@ -5110,10 +5170,19 @@ QString nameBranchGraph(const Graph &g, int rootIdx, int parentIdx, const std::v
     }
 
     if (rZ == 7) {
+        // Check for azo nitrogen first (before azide) - try to name as diazenyl
+        if (isAzoNitrogen(rootIdx, parentIdx, g)) {
+            QString diazenylName = tryNameDiazenylSubstituent(rootIdx, parentIdx, g, allIndependentRings, forbiddenNodes, mol);
+            if (!diazenylName.isEmpty()) {
+                return diazenylName;
+            }
+            // If diazenyl naming failed, fall through to other checks
+        }
+        
         bool isAzide = false;
         for (size_t k = 0; k < g.nodes[rootIdx].neighbors.size(); ++k) {
             int nNei = g.nodes[rootIdx].neighbors[k];
-            if (g.nodes[nNei].atomicNumber == 7 && g.nodes[rootIdx].bondOrders[k] >= 2) {
+            if (g.nodes[rootIdx].bondOrders[k] >= 2 && isAzideNitrogen(nNei, rootIdx, g)) {
                 isAzide = true;
                 break;
             }
@@ -5306,14 +5375,26 @@ QString nameBranchGraph(const Graph &g, int rootIdx, int parentIdx, const std::v
                 // (e.g. "(thiophen-2-yl)"). Per the enclosing-marks rule, that
                 // wrap is only actually needed when the name STARTS with a
                 // locant digit (e.g. "(4-methoxyphenyl)", which would be
-                // ambiguous if concatenated bare) -- a name that starts with a
-                // letter is unambiguous even with an internal locant and merges
-                // directly ("thiophen-2-yl" + "methyl" = "thiophen-2-ylmethyl",
-                // not "(thiophen-2-yl)methyl").
+                // ambiguous if concatenated bare). However, a name that starts
+                // with a letter BUT contains no locant digits (e.g. "methyldiazenyl")
+                // still needs enclosure when used as a substituent to avoid
+                // ambiguity (e.g. "(methyldiazenyl)methyl", not "methyldiazenylmethyl"),
+                // so we only unwrap if the inner name contains at least one digit
+                // (indicating an internal locant that makes it unambiguous).
                 if ((pName.startsWith("(") && pName.endsWith(")")) || (pName.startsWith("[") && pName.endsWith("]"))) {
                     QString inner = pName.mid(1, pName.length() - 2);
                     if (!inner.isEmpty() && !inner[0].isDigit()) {
-                        pName = inner;
+                        // Only unwrap if inner contains a digit (has an internal locant)
+                        bool hasDigit = false;
+                        for (QChar c : inner) {
+                            if (c.isDigit()) {
+                                hasDigit = true;
+                                break;
+                            }
+                        }
+                        if (hasDigit) {
+                            pName = inner;
+                        }
                     }
                 }
                 prefixStr = (locs.size() > 1) ? (multiPrefix(static_cast<int>(locs.size())) + pName) : pName;
@@ -5932,7 +6013,7 @@ QString nameAcyclicChainParentWithSubstituents(
                         bool hasFurtherSubstituent = false;
                         for (size_t k = 0; k < g.nodes[nei].neighbors.size(); ++k) {
                             int nNei = g.nodes[nei].neighbors[k];
-                            if (g.nodes[nNei].atomicNumber == 7 && g.nodes[nei].bondOrders[k] >= 2) {
+                            if (g.nodes[nei].bondOrders[k] >= 2 && isAzideNitrogen(nNei, nei, g)) {
                                 isAzide = true; break;
                             }
                             if (nNei != c && g.nodes[nNei].atomicNumber > 1) hasFurtherSubstituent = true;
@@ -6719,11 +6800,17 @@ QString nameAmineSubstituentPrefix(int nNode, int fromNode, const Graph &g,
     }
     if (heavyNeighbors.empty()) return "amino";
     if (heavyNeighbors.size() > 2) return "";
+    
+    // Check that all heavy neighbors are either carbon or nitroso nitrogen
     for (int r : heavyNeighbors) {
-        if (g.nodes[r].atomicNumber != 6) return "";
+        if (g.nodes[r].atomicNumber != 6 && !isNitrosoNitrogen(r, nNode, g)) return "";
     }
 
     auto nameOne = [&](int r) -> QString {
+        // Handle nitroso nitrogen specially
+        if (isNitrosoNitrogen(r, nNode, g)) {
+            return "nitroso";
+        }
         for (const auto &ring : allIndependentRings) {
             if (ring.count(r)) {
                 return nameRingAsSubstituent(g, ring, r, nNode, allIndependentRings, forbiddenNodes, {}, nullptr, {}, {}, nullptr, mol);
@@ -6752,17 +6839,96 @@ QString nameAmineSubstituentPrefix(int nNode, int fromNode, const Graph &g,
     QString clean1 = stripWrap(r1Name), clean2 = stripWrap(r2Name);
 
     if (clean1 == clean2) {
+        // Check if the substituent name needs enclosing (contains a digit/locant)
         bool needsWrap = r1Name.startsWith("(") || r1Name.startsWith("[");
+        if (!needsWrap) {
+            // Even if not already enclosed, check if it contains a locant digit
+            for (QChar c : clean1) {
+                if (c.isDigit()) {
+                    needsWrap = true;
+                    break;
+                }
+            }
+        }
         return (needsWrap ? "bis(" + clean1 + ")" : "di" + clean1) + "amino";
     }
 
     QString a = alphabetizationKey(clean1).toLower() < alphabetizationKey(clean2).toLower() ? r1Name : r2Name;
     QString b = alphabetizationKey(clean1).toLower() < alphabetizationKey(clean2).toLower() ? r2Name : r1Name;
+    // Only the second-cited substituent needs enclosing marks to separate it
+    // from the first (matching the established "butyl(ethyl)..." convention
+    // used elsewhere in this file, e.g. nitrous-amide naming) -- wrapping the
+    // first one too (as this used to) produces "(methyl)(nitroso)amino"
+    // instead of "methyl(nitroso)amino", and the leading '(' then fools
+    // downstream substituent-wrapping logic into thinking this whole prefix
+    // is already enclosed, silently dropping the enclosure it should have
+    // gotten when attached to its own parent substituent.
     auto ensureWrapped = [](const QString &s) -> QString {
         if ((s.startsWith("(") && s.endsWith(")")) || (s.startsWith("[") && s.endsWith("]"))) return s;
         return "(" + s + ")";
     };
-    return ensureWrapped(a) + ensureWrapped(b) + "amino";
+    return a + ensureWrapped(b) + "amino";
+}
+
+// Names a diazenyl substituent (-N=N-R) reached as a substituent at `nNode`
+// (an azo nitrogen singly bonded to `fromNode`). Per IUPAC P-68.3.1.3.2,
+// the -N=N-R group is named as "<R>diazenyl" (e.g., methyldiazenyl, phenyldiazenyl).
+// Returns "" on failure.
+QString tryNameDiazenylSubstituent(int nNode, int fromNode, const Graph &g, const std::vector<std::set<int>> &allIndependentRings, const std::set<int> &forbiddenNodes, int mol) {
+    if (!isAzoNitrogen(nNode, fromNode, g)) return "";
+    
+    // Find the far nitrogen (the double-bonded nitrogen neighbor of nNode)
+    int farNNode = -1;
+    for (size_t k = 0; k < g.nodes[nNode].neighbors.size(); ++k) {
+        int nn = g.nodes[nNode].neighbors[k];
+        if (nn != fromNode && g.nodes[nn].atomicNumber == 7 && g.nodes[nNode].bondOrders[k] == 2) {
+            farNNode = nn;
+            break;
+        }
+    }
+    if (farNNode == -1) return "";
+    
+    // Find the far carbon (the single-bonded carbon neighbor of farNNode)
+    int farCNode = -1;
+    for (size_t k = 0; k < g.nodes[farNNode].neighbors.size(); ++k) {
+        int nn = g.nodes[farNNode].neighbors[k];
+        if (nn != nNode && g.nodes[nn].atomicNumber == 6 && g.nodes[farNNode].bondOrders[k] == 1) {
+            farCNode = nn;
+            break;
+        }
+    }
+    if (farCNode == -1) return "";
+    
+    // Build forbidden set including fromNode, nNode, and farNNode
+    std::set<int> combinedForbidden = forbiddenNodes;
+    combinedForbidden.insert(fromNode);
+    combinedForbidden.insert(nNode);
+    combinedForbidden.insert(farNNode);
+    
+    // Name the far side (R in -N=N-R)
+    QString farName = nameBranchGraph(g, farCNode, farNNode, allIndependentRings, combinedForbidden, {}, nullptr, mol);
+    if (farName.isEmpty()) return "";
+    
+    // Strip outer parentheses/brackets if present and simple
+    auto stripOuter = [](QString s) -> QString {
+        if (s.startsWith("(") && s.endsWith(")")) return s.mid(1, s.length() - 2);
+        if (s.startsWith("[") && s.endsWith("]")) return s.mid(1, s.length() - 2);
+        return s;
+    };
+    QString cleanFarName = stripOuter(farName);
+    
+    // Format: if farName is already parenthesized/bracketed, just append "diazenyl" inside
+    // Otherwise, wrap in parentheses
+    QString result;
+    if (farName.startsWith("(") && farName.endsWith(")")) {
+        result = "(" + cleanFarName + "diazenyl)";
+    } else if (farName.startsWith("[") && farName.endsWith("]")) {
+        result = "[" + cleanFarName + "diazenyl]";
+    } else {
+        result = "(" + farName + "diazenyl)";
+    }
+    
+    return result;
 }
 
 } // anonymous namespace
@@ -6785,6 +6951,128 @@ QString nameAmineSubstituentPrefix(int nNode, int fromNode, const Graph &g,
 // carboxylic acid chain). This is deliberately conservative -- an unrelated
 // extra plain amine/alcohol elsewhere would also (over-)trigger it -- but
 // never produces a wrong name, only an honest rejection.
+
+// Helper to detect if the molecule has any senior principal characteristic group
+// (acid, ester, amide, sulfonic acid, etc.) that would outrank azo/nitrosamine as parent.
+// This is used to decide whether tryNameAzoCompound/tryNameNitrosamine should return nullopt
+// (allowing a senior group to be named as parent) or "" (genuine naming failure).
+bool hasSeniorPrincipalGroup(const Graph &g) {
+    // Check for carboxylic acid: C(=O)OH pattern
+    for (size_t i = 0; i < g.nodes.size(); ++i) {
+        const GraphNode &node = g.nodes[i];
+        if (node.atomicNumber != 6) continue;
+        
+        bool hasDoubleO = false;
+        bool hasSingleOH = false;
+        
+        for (size_t j = 0; j < node.neighbors.size(); ++j) {
+            int nei = node.neighbors[j];
+            int nz = g.nodes[nei].atomicNumber;
+            if (nz == 8 && node.bondOrders[j] == 2 && g.nodes[nei].neighbors.size() == 1) {
+                hasDoubleO = true;
+            }
+            if (nz == 8 && node.bondOrders[j] == 1) {
+                // Check if this O has H (hydroxyl) or is connected to something else
+                const GraphNode &oNode = g.nodes[nei];
+                if (oNode.totalH >= 1 || (oNode.neighbors.size() == 1)) {
+                    hasSingleOH = true;
+                }
+            }
+        }
+        
+        if (hasDoubleO && hasSingleOH) {
+            return true; // Carboxylic acid found
+        }
+    }
+    
+    // Check for ester: C(=O)OR pattern (R is not H)
+    for (size_t i = 0; i < g.nodes.size(); ++i) {
+        const GraphNode &node = g.nodes[i];
+        if (node.atomicNumber != 6) continue;
+        
+        bool hasDoubleO = false;
+        bool hasSingleOAlkyl = false;
+        
+        for (size_t j = 0; j < node.neighbors.size(); ++j) {
+            int nei = node.neighbors[j];
+            int nz = g.nodes[nei].atomicNumber;
+            if (nz == 8 && node.bondOrders[j] == 2 && g.nodes[nei].neighbors.size() == 1) {
+                hasDoubleO = true;
+            }
+            if (nz == 8 && node.bondOrders[j] == 1) {
+                // Check if this O is connected to a carbon (ester), not just H (acid)
+                const GraphNode &oNode = g.nodes[nei];
+                for (int oNei : oNode.neighbors) {
+                    if (g.nodes[oNei].atomicNumber == 6) {
+                        hasSingleOAlkyl = true;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        if (hasDoubleO && hasSingleOAlkyl) {
+            return true; // Ester found
+        }
+    }
+    
+    // Check for amide: C(=O)N pattern
+    for (size_t i = 0; i < g.nodes.size(); ++i) {
+        const GraphNode &node = g.nodes[i];
+        if (node.atomicNumber != 6) continue;
+        
+        bool hasDoubleO = false;
+        bool hasSingleN = false;
+        
+        for (size_t j = 0; j < node.neighbors.size(); ++j) {
+            int nei = node.neighbors[j];
+            int nz = g.nodes[nei].atomicNumber;
+            if (nz == 8 && node.bondOrders[j] == 2 && g.nodes[nei].neighbors.size() == 1) {
+                hasDoubleO = true;
+            }
+            if (nz == 7 && node.bondOrders[j] == 1) {
+                hasSingleN = true;
+            }
+        }
+        
+        if (hasDoubleO && hasSingleN) {
+            return true; // Amide found
+        }
+    }
+    
+    // Check for sulfonic acid: S(=O)2OH pattern
+    for (size_t i = 0; i < g.nodes.size(); ++i) {
+        const GraphNode &node = g.nodes[i];
+        if (node.atomicNumber != 16) continue;
+        
+        int doubleOCount = 0;
+        bool hasSingleOH = false;
+        
+        for (size_t j = 0; j < node.neighbors.size(); ++j) {
+            int nei = node.neighbors[j];
+            int nz = g.nodes[nei].atomicNumber;
+            if (nz == 8 && node.bondOrders[j] == 2) {
+                doubleOCount++;
+            }
+            if (nz == 8 && node.bondOrders[j] == 1) {
+                const GraphNode &oNode = g.nodes[nei];
+                if (oNode.totalH >= 1 || oNode.neighbors.size() == 1) {
+                    hasSingleOH = true;
+                }
+            }
+        }
+        
+        if (doubleOCount >= 2 && hasSingleOH) {
+            return true; // Sulfonic acid found
+        }
+    }
+    
+    // Check for nitrile: C#N pattern (though this is often not senior to azo in practice)
+    // Check for phosphonic acid, etc.
+    
+    return false;
+}
+
 int countHeteroatoms(const Graph &g) {
     int count = 0;
     for (const auto &node : g.nodes) {
@@ -6810,7 +7098,12 @@ std::optional<QString> tryNameAzoCompound(int cNode, int nNode, const Graph &g, 
     }
     if (farCNode == -1) return std::nullopt;
     if (countHeteroatoms(g) != 2) {
-        return ""; // azo core confirmed, but a competing group may exist elsewhere
+        // Azo core has exactly 2 N atoms. If there are more heteroatoms,
+        // check if there's a senior principal group elsewhere
+        if (hasSeniorPrincipalGroup(g)) {
+            return std::nullopt; // Step aside for senior group to be named as parent
+        }
+        return ""; // Extra heteroatoms exist but no senior group detected - genuine failure
     }
 
     QString name1 = nameBranchGraph(g, cNode, nNode, allSSSRRings, {}, {}, nullptr, mol);
@@ -6855,7 +7148,12 @@ std::optional<QString> tryNameNitrosamine(int cNode, int nNode, const Graph &g, 
          return std::nullopt;
     }
     if (countHeteroatoms(g) != 3) {
-        return ""; // nitrosamine core confirmed, but a competing group may exist elsewhere
+        // Nitrosamine core has exactly 3 heteroatoms (2 N, 1 O). If there are more,
+        // check if there's a senior principal group elsewhere
+        if (hasSeniorPrincipalGroup(g)) {
+            return std::nullopt; // Step aside for senior group to be named as parent
+        }
+        return ""; // Extra heteroatoms exist but no senior group detected - genuine failure
     }
 
     if (cNeighbors.size() == 1 && cNeighbors[0] == cNode) {
@@ -6891,7 +7189,6 @@ std::optional<QString> tryNameNitrosamine(int cNode, int nNode, const Graph &g, 
     }
     return std::nullopt;
 }
-
 
 
 
@@ -18736,7 +19033,7 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                     bool isAzide = false;
                     for (size_t k = 0; k < g.nodes[nei].neighbors.size(); ++k) {
                         int nNei = g.nodes[nei].neighbors[k];
-                        if (g.nodes[nNei].atomicNumber == 7 && g.nodes[nei].bondOrders[k] >= 2) {
+                        if (g.nodes[nei].bondOrders[k] >= 2 && isAzideNitrogen(nNei, nei, g)) {
                             isAzide = true; break;
                         }
                     }
@@ -19788,7 +20085,7 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                         bool isAzide = false;
                         for (size_t k = 0; k < g.nodes[nei].neighbors.size(); ++k) {
                             int nNei = g.nodes[nei].neighbors[k];
-                            if (g.nodes[nNei].atomicNumber == 7 && g.nodes[nei].bondOrders[k] >= 2) {
+                            if (g.nodes[nei].bondOrders[k] >= 2 && isAzideNitrogen(nNei, nei, g)) {
                                 isAzide = true; break;
                             }
                         }

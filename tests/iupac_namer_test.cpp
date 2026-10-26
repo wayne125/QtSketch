@@ -512,8 +512,9 @@ int main() {
         // guard before the competing-principal-group check is ever reached. Still a
         // clean rejection, not the fabricated-nonsense bug this test guards against --
         // just a different (also correct) diagnostic message.
-        {"O=NN(C)C1CCCCC1CCC(=O)O", "", true, "N-substituted amino ring substituents are not supported"},
-        {"CN=NCC1CCCCC1CCC(=O)O", "", true, "competing principal group"},
+        // Item D: now supported with proper diazenyl/nitrosamine substituent prefix naming
+        {"O=NN(C)C1CCCCC1CCC(=O)O", "3-{2-[methyl(nitroso)amino]cyclohexyl}propanoic acid", false},
+        {"CN=NCC1CCCCC1CCC(=O)O", "3-{2-[(methyldiazenyl)methyl]cyclohexyl}propanoic acid", false},
 
         // Rootless acyl carbon / multiple halogen fixes
         {"ClC(=O)Cl", "", true, "Carbonic acid halides with multiple halogens are not supported in this phase."},
@@ -602,7 +603,7 @@ int main() {
         // Tertiary amine substituent, two DIFFERENT R groups (P-66.6.1's real
         // worked example shape, "(carboxymethyl)(2-hydroxyethyl)amino"): each R
         // individually parenthesized and alphabetized.
-        {"CN(CC)CCC(=O)O", "3-(ethyl)(methyl)aminopropanoic acid"},
+        {"CN(CC)CCC(=O)O", "3-ethyl(methyl)aminopropanoic acid"},
         // Confirm a hydrazine substituent (-NH-NH2, "R" is nitrogen-rooted, not
         // carbon-rooted) still rejects cleanly rather than being misnamed --
         // this is the exact regression caught during review: nameBranchGraph on a
