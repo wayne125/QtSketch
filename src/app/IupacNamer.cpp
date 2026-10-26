@@ -628,6 +628,68 @@ static int p44_2_1_g_rank(int z) {
     }
 }
 
+// P-44.2.1 / P-44.4.1 / FR-2.3 tie-break: reconstructs cyclic traversal order for a simple
+// monocyclic ring and computes its canonical (lowest) heteroatom locant set under all
+// 2 * ringSize candidate numberings.
+static std::vector<int> getCanonicalHeteroatomLocants(const Graph &g, const std::set<int> &ringNodes) {
+    int ringSize = static_cast<int>(ringNodes.size());
+    if (ringSize < 3) return {};
+
+    // Validate simple monocycle: every ring atom must have exactly 2 ring-internal neighbors
+    for (int n : ringNodes) {
+        int deg = 0;
+        for (int nei : g.nodes[n].neighbors) {
+            if (ringNodes.count(nei)) deg++;
+        }
+        if (deg != 2) return {};
+    }
+
+    // Reconstruct cyclic traversal order
+    std::vector<int> ringCycle;
+    int startNode = *ringNodes.begin();
+    int current = startNode;
+    int previous = -1;
+    for (int step = 0; step < ringSize; ++step) {
+        ringCycle.push_back(current);
+        int nextNode = -1;
+        for (int nei : g.nodes[current].neighbors) {
+            if (ringNodes.count(nei) && nei != previous) {
+                nextNode = nei;
+                break;
+            }
+        }
+        if (nextNode == -1) return {};
+        previous = current;
+        current = nextNode;
+    }
+    if (static_cast<int>(ringCycle.size()) != ringSize) return {};
+    if (current != startNode) return {};
+
+    std::set<int> visited(ringCycle.begin(), ringCycle.end());
+    if (static_cast<int>(visited.size()) != ringSize) return {};
+
+    // Try all 2 * ringSize candidate numberings (rotations & directions)
+    bool hasBest = false;
+    std::vector<int> bestLocs;
+    for (int st = 0; st < ringSize; ++st) {
+        for (int dir = 0; dir < 2; ++dir) {
+            std::vector<int> candLocs;
+            for (int i = 0; i < ringSize; ++i) {
+                int pos = (dir == 0) ? (st + i) % ringSize : (st - i + ringSize) % ringSize;
+                int node = ringCycle[pos];
+                if (g.nodes[node].atomicNumber != 6) {
+                    candLocs.push_back(i + 1);
+                }
+            }
+            if (!hasBest || candLocs < bestLocs) {
+                bestLocs = candLocs;
+                hasBest = true;
+            }
+        }
+    }
+    return bestLocs;
+}
+
 // P-44.2.1 tie-break comparison for two candidate rings.
 // Returns: 1 if ring1 wins (is senior), -1 if ring2 wins, 0 if tied through all criteria.
 // Both rings are assumed to be parent-eligible (pass isParentEligible) for this use case.
@@ -741,6 +803,16 @@ static int compareRingSeniority(const Graph &g, const std::set<int> &ring1, cons
         if (r1_heteroAtRank[rank] != r2_heteroAtRank[rank]) {
             return (r1_heteroAtRank[rank] > r2_heteroAtRank[rank]) ? 1 : -1;
         }
+    }
+
+    // Criterion (h): lowest locants for heteroatoms as a set (P-44.2.1 / P-44.4.1 / FR-2.3)
+    // The ring whose heteroatoms occupy the lowest locant set (first point of difference,
+    // ascending) is senior.
+    std::vector<int> r1_locs = getCanonicalHeteroatomLocants(g, ring1);
+    std::vector<int> r2_locs = getCanonicalHeteroatomLocants(g, ring2);
+    if (!r1_locs.empty() && !r2_locs.empty()) {
+        if (r1_locs < r2_locs) return 1;
+        if (r2_locs < r1_locs) return -1;
     }
 
     // All criteria exhausted, still tied
@@ -10585,7 +10657,20 @@ static FunctionalGroupClassification classifyFunctionalGroups(
             } else if (!singleN.empty()) {
                 bool hasNonRingN = false;
                 for (int nNode : singleN) {
-                    if (ringNodeSet.count(nNode) == 0) hasNonRingN = true;
+                    if (ringNodeSet.count(nNode) == 0) {
+                        bool isRingRingJunction = false;
+                        if (ringNodeSet.count(i) > 0) {
+                            for (const auto &r : allSSSRRings) {
+                                if (r != ringNodeSet && r.count(nNode)) {
+                                    isRingRingJunction = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (!isRingRingJunction) {
+                            hasNonRingN = true;
+                        }
+                    }
                     auto azoName = tryNameAzoCompound(static_cast<int>(i), nNode, g, allSSSRRings, mol);
                     if (azoName.has_value()) {
                         if (!azoName->isEmpty()) { result.hasEarlyResult = true; result.earlyResult = {true, *azoName, ""}; return result; }
@@ -18991,7 +19076,19 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
 
                 int nz = g.nodes[nei].atomicNumber;
                 QString subName;
-                if (nz == 9 || nz == 17 || nz == 35 || nz == 53) {
+                if (phase2ForcedRingSubstituentNames.count(nei)) {
+                    subName = phase2ForcedRingSubstituentNames[nei];
+                } else if (phase2ForcedRingSubstituentNames.count(rNode)) {
+                    subName = phase2ForcedRingSubstituentNames[rNode];
+                }
+                if (!subName.isEmpty()) {
+                    if (subName.startsWith("(") && subName.endsWith(")")) {
+                        QString inner = subName.mid(1, subName.length() - 2);
+                        if (!inner.isEmpty() && !inner[0].isDigit()) {
+                            subName = inner;
+                        }
+                    }
+                } else if (nz == 9 || nz == 17 || nz == 35 || nz == 53) {
                     subName = halogenPrefix(nz);
                 } else if (nz == 8) {
                     if (order == 1) {
@@ -19243,8 +19340,10 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                             subName = "carbamimidoyl";
                         }
                     }
-                    if (phase2ForcedRingSubstituentNames.count(nei)) {
+                    if (subName.isEmpty() && phase2ForcedRingSubstituentNames.count(nei)) {
                         subName = phase2ForcedRingSubstituentNames[nei];
+                    } else if (subName.isEmpty() && phase2ForcedRingSubstituentNames.count(rNode)) {
+                        subName = phase2ForcedRingSubstituentNames[rNode];
                     } else if (subName.isEmpty()) {
                         subName = nameBranchGraph(g, nei, rNode, allSSSRRings, ringNodeSet, {}, nullptr, mol);
                         if (!subName.isEmpty()) {
@@ -26651,6 +26750,7 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                     if (!subName.isEmpty()) {
                         phase2ForcedRingNodeSet = ring1Nodes;
                         phase2ForcedRingSubstituentNames[attach1] = subName;
+                        phase2ForcedRingSubstituentNames[attach2] = subName;
                         return namePhase2Monocyclic();
                     }
                     return {false, "", "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."};
@@ -26659,6 +26759,7 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                     QString subName = nameRingAsSubstituent(g, ring1Nodes, attach1, attach2, allSSSRRings, ring2Nodes, {}, nullptr, {}, {}, nullptr, mol);
                     if (!subName.isEmpty()) {
                         phase2ForcedRingNodeSet = ring2Nodes;
+                        phase2ForcedRingSubstituentNames[attach1] = subName;
                         phase2ForcedRingSubstituentNames[attach2] = subName;
                         return namePhase2Monocyclic();
                     }
@@ -26674,6 +26775,7 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                         if (!subName.isEmpty()) {
                             phase2ForcedRingNodeSet = ring1Nodes;
                             phase2ForcedRingSubstituentNames[attach1] = subName;
+                            phase2ForcedRingSubstituentNames[attach2] = subName;
                             return namePhase2Monocyclic();
                         }
                         // nameRingAsSubstituent failed - reject cleanly
@@ -26683,6 +26785,7 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                         QString subName = nameRingAsSubstituent(g, ring1Nodes, attach1, attach2, allSSSRRings, ring2Nodes, {}, nullptr, {}, {}, nullptr, mol);
                         if (!subName.isEmpty()) {
                             phase2ForcedRingNodeSet = ring2Nodes;
+                            phase2ForcedRingSubstituentNames[attach1] = subName;
                             phase2ForcedRingSubstituentNames[attach2] = subName;
                             return namePhase2Monocyclic();
                         }

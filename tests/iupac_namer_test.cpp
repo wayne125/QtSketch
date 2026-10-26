@@ -7772,6 +7772,10 @@ int main() {
             {"plain C21 alkane", "CCCCCCCCCCCCCCCCCCCCC", "henicosane"},
             {"C21 carboxylic acid", "CCCCCCCCCCCCCCCCCCCCC(=O)O", "henicosanoic acid"},
             {"symmetric C21 acid anhydride", "CCCCCCCCCCCCCCCCCCCCC(=O)OC(=O)CCCCCCCCCCCCCCCCCCCC", "henicosanoic anhydride"},
+            // Item F: Disjoint ring systems of equal P-44.2.1 seniority (heteroatom locant set tiebreak)
+            {"pyrimidine-pyridazine assembly", "c1ccncn1-c1ccnnc1", "4-pyrimidin-1-ylpyridazine"},
+            {"pyrimidine-pyrazine assembly", "c1ccncn1-c1cnccn1", "1-pyrazin-2-ylpyrimidine"},
+            {"pyridazine-pyrazine assembly", "c1ccnnc1-c1cnccn1", "3-pyrazin-2-ylpyridazine"},
         };
         for (const auto &c : cases) {
             int m = indigoLoadMoleculeFromString(c.smiles);
