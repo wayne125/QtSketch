@@ -2186,11 +2186,11 @@ int main() {
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
         std::string n = r.name.toStdString();
-        if (r.success && n == "2,2-bipyridine") {
-            std::cout << "[PASS] 2,2-bipyridine -> " << n << "\n";
+        if (r.success && n == "2,2'-bipyridine") {
+            std::cout << "[PASS] 2,2'-bipyridine -> " << n << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] 2,2-bipyridine -> got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+            std::cout << "[FAIL] 2,2'-bipyridine -> got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
             failed++;
         }
     }
@@ -2200,11 +2200,11 @@ int main() {
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
         std::string n = r.name.toStdString();
-        if (r.success && n == "2,3-bifuran") {
-            std::cout << "[PASS] 2,3-bifuran -> " << n << "\n";
+        if (r.success && n == "2,3'-bifuran") {
+            std::cout << "[PASS] 2,3'-bifuran -> " << n << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] 2,3-bifuran -> got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+            std::cout << "[FAIL] 2,3'-bifuran -> got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
             failed++;
         }
     }
@@ -2214,11 +2214,11 @@ int main() {
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
         std::string n = r.name.toStdString();
-        if (r.success && n == "3,3-bithiophene") {
-            std::cout << "[PASS] 3,3-bithiophene -> " << n << "\n";
+        if (r.success && n == "3,3'-bithiophene") {
+            std::cout << "[PASS] 3,3'-bithiophene -> " << n << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] 3,3-bithiophene -> got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
+            std::cout << "[FAIL] 3,3'-bithiophene -> got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
             failed++;
         }
     }

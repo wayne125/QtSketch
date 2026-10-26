@@ -17729,7 +17729,9 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                     } else {
                         int loc1 = std::min(res1.second, res2.second);
                         int loc2 = std::max(res1.second, res2.second);
-                        return {true, QString("%1,%2-bi%3").arg(loc1).arg(loc2).arg(res1.first), ""};
+                        // P-28.2.1: one component is numbered unprimed, the identical second
+                        // component numbered primed (e.g. Blue Book's own "2,3'-bifuran").
+                        return {true, QString("%1,%2'-bi%3").arg(loc1).arg(loc2).arg(res1.first), ""};
                     }
                 }
             }
