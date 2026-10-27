@@ -441,8 +441,9 @@ int main() {
         {"CC(=O)N", "ethanamide"},
         {"CC(=O)N(C)C", "N,N-dimethylethanamide"},
         {"CCN(C)C(C)=O", "N-ethyl-N-methylethanamide"},
-        {"CC(=O)NC(C)C", "", true, "Branched or ring N-substituents on amides are not supported"},
-        {"CC(=O)N(C)C(C)C", "", true, "Branched or ring N-substituents on amides are not supported"},
+        {"CC(=O)NC(C)C", "N-(1-methylethyl)ethanamide"},
+        {"CC(=O)N(C)C(C)C", "N-methyl-N-(1-methylethyl)ethanamide"},
+        {"CC(C)C(=O)NC", "N-methyl-2-methylpropanamide"}, // branched acyl parent (Wave 2, Item 1B)
         {"O=CN(C)C", "N,N-dimethylmethanamide"},
         {"CC(=O)NC(C)=O", "", true, "Acyclic imides (N-acylamides) are not supported"},
         {"CC(=O)Nc1ccccc1", "N-phenylacetamide", false, ""},
@@ -454,8 +455,9 @@ int main() {
         {"CC(=S)N", "ethanethioamide"},
         {"CC(=S)N(C)C", "N,N-dimethylethanethioamide"},
         {"CCN(C)C(C)=S", "N-ethyl-N-methylethanethioamide"},
-        {"CC(=S)NC(C)C", "", true, "Branched or ring N-substituents on thioamides are not supported"},
-        {"CC(=S)N(C)C(C)C", "", true, "Branched or ring N-substituents on thioamides are not supported"},
+        {"CC(=S)NC(C)C", "N-(1-methylethyl)ethanethioamide"},
+        {"CC(=S)N(C)C(C)C", "N-methyl-N-(1-methylethyl)ethanethioamide"},
+        {"CC(C)C(=S)NC", "N-methyl-2-methylpropanethioamide"}, // branched acyl parent (Wave 2, Item 1B)
         {"CC(=S)NC(C)=S", "", true, "Acyclic imides (N-acylamides) are not supported"},
         {"S=CN(C)C", "N,N-dimethylmethanethioamide"},
 
@@ -467,7 +469,8 @@ int main() {
         {"CC(=O)N(C)NCC", "N'-ethyl-N-methylethanehydrazide"}, // near=1(methyl), far=1(ethyl) - DIFFERENT (ethyl > methyl alphabetically)
         {"CC(=O)NN(C)C", "N',N'-dimethylethanehydrazide"}, // N',N'-dimethyl on FAR nitrogen
         {"CC(=O)NN(C)CC", "N'-ethyl-N'-methylethanehydrazide"}, // N'-ethyl-N'-methyl on FAR nitrogen
-        {"CC(=O)NN(C)C(C)C", "", true, "Branched or ring substituents on hydrazides are not supported"}, // Branched far-N substituent
+        {"CC(=O)NN(C)C(C)C", "N'-methyl-N'-(1-methylethyl)ethanehydrazide"}, // Branched far-N substituent
+        {"CC(C)C(=O)NN", "2-methylpropanehydrazide"}, // branched acyl parent (Wave 2, Item 1B)
         {"CC(=O)N(C)N(C)C", "", true, "Hydrazides with substituents on both nitrogens are not supported"}, // near=1, far=2 - regression test
 
 
@@ -570,6 +573,7 @@ int main() {
         // PHASE 67: N-substituted imines (P-62.3) narrow case
         {"CC=NC", "N-methylethanimine"},
         {"CCC=NC", "N-methylpropan-1-imine"},
+        {"CC(C)C=NC", "N-methyl-2-methylpropan-1-imine"}, // branched parent (Wave 2, Item 1B)
         // N-substituted imine rejection (branched/bis-substituted on imine carbon)
         {"CC(C)=NC", "", true, "N-substituted imines, oximes, hydrazones, and amidines are not supported in this phase"},
         // PHASE 64: HYDROPEROXIDE (peroxol)
@@ -779,6 +783,9 @@ int main() {
         {"CS(=O)(=O)N(C)C", "N,N-dimethylmethanesulfonamide"},  // N,N-dimethyl
         {"CS(=O)(=O)N(C)CC", "N-ethyl-N-methylmethanesulfonamide"},  // N,N-di different substituents, alphabetized
         {"CS(=O)N(C)C", "N,N-dimethylmethanesulfinamide"},  // sulfinamide analogue
+        {"CS(=O)(=O)NC(C)C", "N-(1-methylethyl)methanesulfonamide"}, // branched N-sub (Wave 2, Item 1A)
+        {"CC(C)S(=O)(=O)NC", "N-methylpropane-2-sulfonamide"}, // branched alkyl parent (Wave 2, Item 1B)
+        {"CC(C)S(=O)NC", "N-methylpropane-2-sulfinamide"}, // branched alkyl parent, sulfinamide (Wave 2, Item 1B)
         {"CS(=O)(=O)N1CCCCC1", "", true, "Sulfur-containing groups other than thiols, thioethers, and sulfonic/sulfinic acids are not supported in this phase."},  // N-cyclopentyl (ring - still rejected)
         {"CS(=O)(=O)Cl", "methanesulfonyl chloride"},
         {"c1ccccc1S(=O)(=O)Cl", "benzenesulfonyl chloride"},
@@ -1480,7 +1487,7 @@ int main() {
         {"NC(=N)N", "guanidine"},
         {"NC(=N)NC", "N'-methylguanidine"},
         {"NC(=N)NCC", "N'-ethylguanidine"},
-        {"NC(=N)NC(C)C", "", true, "Branched or ring N'-substituents on guanidine are not supported"},
+        {"NC(=N)NC(C)C", "N'-(1-methylethyl)guanidine"},
         // Both amino nitrogens substituted -- out of scope for this new block;
         // falls through to a pre-existing, unrelated rootless-carbon rejection.
         {"CNC(=N)NC", "", true, "Carbonimidic/carbamimidic acid halide derivatives (rootless imine carbons) are not supported in this phase."},
@@ -1490,7 +1497,7 @@ int main() {
         {"CNC(=O)N", "methylurea"},
         {"CNC(=O)NC", "N,N-dimethylurea"},
         {"CCNC(=O)NC", "N-ethyl-N-methylurea"},
-        {"CC(C)NC(=O)N", "", true, "Branched or ring N-substituents on ureas are not supported"},
+        {"CC(C)NC(=O)N", "(1-methylethyl)urea"},
         // Both substituents on ONE nitrogen (same-nitrogen disubstitution)
         // Out of scope for the new block; falls through to general classification.
         {"CN(C)C(=O)N", "", true, "Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase."},
@@ -1499,8 +1506,8 @@ int main() {
         {"CCOC(=O)N", "ethyl carbamate"},
         {"COC(=O)N", "methyl carbamate"},
         {"CCOC(=O)NC", "ethyl methylcarbamate"},
-        {"CC(C)OC(=O)N", "", true, "Branched or ring substituents on carbamate esters are not supported"},
-        {"CCOC(=O)NC(C)C", "", true, "Branched or ring substituents on carbamate esters are not supported"},
+        {"CC(C)OC(=O)N", "(1-methylethyl) carbamate"},
+        {"CCOC(=O)NC(C)C", "ethyl (1-methylethyl)carbamate"},
         // Free carbamic acid (no ester alkyl) must NOT be swallowed by the new
         // block (it requires esterOOtherCount == 1, which a bare -OH oxygen
         // never satisfies) -- confirms it still falls through to the

@@ -1923,6 +1923,48 @@ int countPlainAlkylChain(int startNode, int fromNode, const Graph &g) {
     }
 }
 
+// Counts every carbon atom in the connected carbon-only subtree reachable
+// from `startNode`, walking away from `fromNode` (the single back-edge is
+// never re-crossed). Unlike countPlainAlkylChain, branching and unsaturation
+// are both fine here -- this exists purely as an atom-accounting cross-check
+// alongside nameBranchGraph / nameAcyclicChainParentWithSubstituents, which
+// already reject (return "") anything they can't actually name, so a
+// mismatch here can only mean a genuinely separate, unnamed functional
+// group elsewhere in the molecule.
+static int countCarbonSubtree(int startNode, int fromNode, const Graph &g) {
+    if (startNode < 0 || g.nodes[startNode].atomicNumber != 6) return 0;
+    std::vector<bool> visited(g.nodes.size(), false);
+    visited[startNode] = true;
+    if (fromNode >= 0 && fromNode < static_cast<int>(g.nodes.size())) visited[fromNode] = true;
+    std::vector<int> stack = {startNode};
+    int count = 0;
+    while (!stack.empty()) {
+        int cur = stack.back();
+        stack.pop_back();
+        ++count;
+        for (int nei : g.nodes[cur].neighbors) {
+            if (visited[nei]) continue;
+            if (g.nodes[nei].atomicNumber != 6) continue;
+            visited[nei] = true;
+            stack.push_back(nei);
+        }
+    }
+    return count;
+}
+
+// Joins an N-/N'-substituent prefix directly against a chain-parent name
+// built by nameAcyclicChainParentWithSubstituents. That parent name may
+// itself start with a locant digit (e.g. "2-methylpropanamide", when the
+// acyl/alkyl chain carries its own branch) -- IUPAC always separates a
+// locant from an adjoining letter/substituent name with a hyphen, so a
+// digit-led parent needs one inserted; a letter-led parent (the common
+// unbranched case, e.g. "ethanamide") is fused directly, matching existing
+// pinned output.
+static QString joinPrefixAndParent(const QString &prefix, const QString &parentName) {
+    if (!parentName.isEmpty() && parentName.at(0).isDigit()) return prefix + "-" + parentName;
+    return prefix + parentName;
+}
+
 // Structural check + construction for an acyloxy substituent (-O-CO-R)
 // singly bonded to `fromNode`. Returns an empty string if `oNode` is not an
 // unsubstituted acyloxy oxygen. Mirrors the equivalent logic already used
@@ -16047,20 +16089,20 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                         nSubCarbon = nei;
                     }
                     if (nOk && nExtraCount <= 1) {
-                        int esterLen = countPlainAlkylChain(esterAlkylRoot, esterO, g);
-                        int nSubLen = (nSubCarbon != -1) ? countPlainAlkylChain(nSubCarbon, nNode, g) : 0;
+                        QString esterName = nameBranchGraph(g, esterAlkylRoot, esterO, {}, {}, {}, nullptr, mol);
+                        QString nSubName = (nSubCarbon != -1) ? nameBranchGraph(g, nSubCarbon, nNode, {}, {}, {}, nullptr, mol) : QString();
 
-                        if (esterLen == -1 || nSubLen == -1) {
+                        if (esterName.isEmpty() || (nSubCarbon != -1 && nSubName.isEmpty())) {
                             return {false, "", "Branched or ring substituents on carbamate esters are not supported"};
                         }
-                        int expectedC = 1 + esterLen + (nSubCarbon != -1 ? nSubLen : 0);
+                        int expectedC = 1 + countCarbonSubtree(esterAlkylRoot, esterO, g) + (nSubCarbon != -1 ? countCarbonSubtree(nSubCarbon, nNode, g) : 0);
                         if (expectedC != countC) {
                             return {false, "", "Carbamate esters with additional substituents or functional groups are not supported in this phase"};
                         }
 
-                        QString name = chainRoot(esterLen) + "yl ";
+                        QString name = esterName + " ";
                         if (nSubCarbon != -1) {
-                            name += chainRoot(nSubLen) + "yl";
+                            name += nSubName;
                         }
                         name += "carbamate";
                         return {true, name, ""};
@@ -16121,40 +16163,26 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                             int c0 = acylNeighbors[0];
                             int c1 = alkylNeighbors[0];
                             int c2 = alkylNeighbors[1];
-                            
-                            int rLen = 0;
-                            int cR = -1;
-                            for (size_t j = 0; j < g.nodes[c0].neighbors.size(); ++j) {
-                                int nei = g.nodes[c0].neighbors[j];
-                                if (nei != nNode && g.nodes[nei].atomicNumber == 6) {
-                                    cR = nei;
-                                    break;
-                                }
+
+                            QString parentName = nameAcyclicChainParentWithSubstituents(g, {c0}, {c0}, {nNode}, {}, GroupType::AMIDE, -1, mol);
+                            QString sub1 = nameBranchGraph(g, c1, nNode, {}, {}, {}, nullptr, mol);
+                            QString sub2 = nameBranchGraph(g, c2, nNode, {}, {}, {}, nullptr, mol);
+
+                            if (sub1.isEmpty() || sub2.isEmpty()) {
+                                return {false, "", "Branched or ring N-substituents on amides are not supported"};
                             }
-                            if (cR != -1) {
-                                rLen = countPlainAlkylChain(cR, c0, g);
+                            if (parentName.isEmpty()) {
+                                return {false, "", "Ring or branched acyl parents on amides are not supported"};
                             }
-                            
-                            int rPrimeLen1 = countPlainAlkylChain(c1, nNode, g);
-                            int rPrimeLen2 = countPlainAlkylChain(c2, nNode, g);
-                            
-                            if (rLen == -1 || rPrimeLen1 == -1 || rPrimeLen2 == -1) {
-                                if (rPrimeLen1 == -1 || rPrimeLen2 == -1) {
-                                    return {false, "", "Branched or ring N-substituents on amides are not supported"};
-                                } else {
-                                    return {false, "", "Ring or branched acyl parents on amides are not supported"};
-                                }
-                            }
-                            
-                            if (rLen + rPrimeLen1 + rPrimeLen2 + 1 != countC) {
+
+                            int rPrimeLen1 = countCarbonSubtree(c1, nNode, g);
+                            int rPrimeLen2 = countCarbonSubtree(c2, nNode, g);
+                            if (countCarbonSubtree(c0, nNode, g) + rPrimeLen1 + rPrimeLen2 != countC) {
                                 return {false, "", "Amides with additional substituents or functional groups are not supported in this phase"};
                             }
-                            
-                            QString sub1 = chainRoot(rPrimeLen1) + "yl";
-                            QString sub2 = chainRoot(rPrimeLen2) + "yl";
-                            
+
                             QString prefix;
-                            if (rPrimeLen1 == rPrimeLen2) {
+                            if (rPrimeLen1 == rPrimeLen2 && sub1 == sub2) {
                                 prefix = "N,N-" + multiPrefix(2) + sub1;
                             } else {
                                 QString first = sub1;
@@ -16165,43 +16193,28 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                                 }
                                 prefix = "N-" + first + "-N-" + second;
                             }
-                            
-                            QString name = prefix + chainRoot(rLen + 1) + "anamide";
-                            if (rLen == 0) name = prefix + "methanamide";
+
+                            QString name = joinPrefixAndParent(prefix, parentName);
                             return {true, name, ""};
                         } else if (alkylNeighbors.size() == 1) {
                             int c0 = acylNeighbors[0];
                             int c1 = alkylNeighbors[0];
-                            
-                            int rLen = 0;
-                            int cR = -1;
-                            for (size_t j = 0; j < g.nodes[c0].neighbors.size(); ++j) {
-                                int nei = g.nodes[c0].neighbors[j];
-                                if (nei != nNode && g.nodes[nei].atomicNumber == 6) {
-                                    cR = nei;
-                                    break;
-                                }
+
+                            QString parentName = nameAcyclicChainParentWithSubstituents(g, {c0}, {c0}, {nNode}, {}, GroupType::AMIDE, -1, mol);
+                            QString subName = nameBranchGraph(g, c1, nNode, {}, {}, {}, nullptr, mol);
+
+                            if (subName.isEmpty()) {
+                                return {false, "", "Branched or ring N-substituents on amides are not supported"};
                             }
-                            if (cR != -1) {
-                                rLen = countPlainAlkylChain(cR, c0, g);
+                            if (parentName.isEmpty()) {
+                                return {false, "", "Ring or branched acyl parents on amides are not supported"};
                             }
-                            
-                            int rPrimeLen = countPlainAlkylChain(c1, nNode, g);
-                            
-                            if (rLen == -1 || rPrimeLen == -1) {
-                                if (rPrimeLen == -1) {
-                                    return {false, "", "Branched or ring N-substituents on amides are not supported"};
-                                } else {
-                                    return {false, "", "Ring or branched acyl parents on amides are not supported"};
-                                }
-                            }
-                            
-                            if (rLen + rPrimeLen + 1 != countC) {
+
+                            if (countCarbonSubtree(c0, nNode, g) + countCarbonSubtree(c1, nNode, g) != countC) {
                                 return {false, "", "Amides with additional substituents or functional groups are not supported in this phase"};
                             }
-                            
-                            QString name = "N-" + chainRoot(rPrimeLen) + "yl" + chainRoot(rLen + 1) + "anamide";
-                            if (rLen == 0) name = "N-" + chainRoot(rPrimeLen) + "ylmethanamide";
+
+                            QString name = joinPrefixAndParent("N-" + subName, parentName);
                             return {true, name, ""};
                         }
                     } else {
@@ -16308,33 +16321,31 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                         }
                         
                         // Walk the alkyl chain from the sulfur's carbon neighbor (parent side)
-                        int rLen = countPlainAlkylChain(cR, sNode, g);
-                        
+                        GroupType sWinType = (sDblO == 2) ? GroupType::SULFONAMIDE : GroupType::SULFINAMIDE;
+                        QString parentName = nameAcyclicChainParentWithSubstituents(g, {cR}, {cR}, {sNode}, {}, sWinType, -1, mol);
+
                         // Walk the two N-alkyl substituents
-                        int rPrimeLen1 = countPlainAlkylChain(alkylNeighbors[0], nNode, g);
-                        int rPrimeLen2 = countPlainAlkylChain(alkylNeighbors[1], nNode, g);
-                        
-                        // Check that all chains are valid (not branched, not ring)
-                        if (rLen == -1 || rPrimeLen1 == -1 || rPrimeLen2 == -1) {
-                            if (rPrimeLen1 == -1 || rPrimeLen2 == -1) {
-                                return {false, "", "Branched or ring N-substituents on sulfonamides/sulfinamides are not supported"};
-                            } else {
-                                return {false, "", "Ring or branched alkyl parents on sulfonamides/sulfinamides are not supported"};
-                            }
+                        QString sub1 = nameBranchGraph(g, alkylNeighbors[0], nNode, {}, {}, {}, nullptr, mol);
+                        QString sub2 = nameBranchGraph(g, alkylNeighbors[1], nNode, {}, {}, {}, nullptr, mol);
+
+                        // Check that all chains are nameable
+                        if (sub1.isEmpty() || sub2.isEmpty()) {
+                            return {false, "", "Branched or ring N-substituents on sulfonamides/sulfinamides are not supported"};
                         }
-                        
-                        // Atom accounting: rLen (parent C chain) + rPrimeLen1 + rPrimeLen2 (N-alkyl C chains) should equal countC
-                        if (rLen + rPrimeLen1 + rPrimeLen2 != countC) {
+                        if (parentName.isEmpty()) {
+                            return {false, "", "Ring or branched alkyl parents on sulfonamides/sulfinamides are not supported"};
+                        }
+
+                        // Atom accounting: parent C chain + N-alkyl C chains should equal countC
+                        int rPrimeLen1 = countCarbonSubtree(alkylNeighbors[0], nNode, g);
+                        int rPrimeLen2 = countCarbonSubtree(alkylNeighbors[1], nNode, g);
+                        if (countCarbonSubtree(cR, sNode, g) + rPrimeLen1 + rPrimeLen2 != countC) {
                             return {false, "", "N,N-disubstituted sulfonamides/sulfinamides with additional substituents or functional groups are not supported in this phase"};
                         }
-                        
+
                         // Construct the name
-                        QString suffix = (sDblO == 2) ? "sulfonamide" : "sulfinamide";
-                        QString sub1 = chainRoot(rPrimeLen1) + "yl";
-                        QString sub2 = chainRoot(rPrimeLen2) + "yl";
-                        
                         QString prefix;
-                        if (rPrimeLen1 == rPrimeLen2) {
+                        if (rPrimeLen1 == rPrimeLen2 && sub1 == sub2) {
                             prefix = "N,N-" + multiPrefix(2) + sub1;
                         } else {
                             QString first = sub1;
@@ -16345,8 +16356,8 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                             }
                             prefix = "N-" + first + "-N-" + second;
                         }
-                        
-                        QString name = prefix + chainRoot(rLen) + "ane" + suffix;
+
+                        QString name = joinPrefixAndParent(prefix, parentName);
                         return {true, name, ""};
                     }
                     if (n.totalH == 1) {
@@ -16401,28 +16412,27 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                         }
                         
                         // Walk the alkyl chain from the sulfur's carbon neighbor (parent side)
-                        int rLen = countPlainAlkylChain(cR, sNode, g);
-                        
+                        GroupType sWinType = (sDblO == 2) ? GroupType::SULFONAMIDE : GroupType::SULFINAMIDE;
+                        QString parentName = nameAcyclicChainParentWithSubstituents(g, {cR}, {cR}, {sNode}, {}, sWinType, -1, mol);
+
                         // Walk the N-alkyl substituent
-                        int rPrimeLen = countPlainAlkylChain(alkylNeighbors[0], nNode, g);
-                        
-                        // Check that both chains are valid (not branched, not ring)
-                        if (rLen == -1 || rPrimeLen == -1) {
-                            if (rPrimeLen == -1) {
-                                return {false, "", "Branched or ring N-substituents on sulfonamides/sulfinamides are not supported"};
-                            } else {
-                                return {false, "", "Ring or branched alkyl parents on sulfonamides/sulfinamides are not supported"};
-                            }
+                        QString subName = nameBranchGraph(g, alkylNeighbors[0], nNode, {}, {}, {}, nullptr, mol);
+
+                        // Check that both sides are nameable
+                        if (subName.isEmpty()) {
+                            return {false, "", "Branched or ring N-substituents on sulfonamides/sulfinamides are not supported"};
                         }
-                        
-                        // Atom accounting: rLen (parent C chain) + rPrimeLen (N-alkyl C chain) should equal countC
-                        if (rLen + rPrimeLen != countC) {
+                        if (parentName.isEmpty()) {
+                            return {false, "", "Ring or branched alkyl parents on sulfonamides/sulfinamides are not supported"};
+                        }
+
+                        // Atom accounting: parent C chain + N-alkyl C chain should equal countC
+                        if (countCarbonSubtree(cR, sNode, g) + countCarbonSubtree(alkylNeighbors[0], nNode, g) != countC) {
                             return {false, "", "N-substituted sulfonamides/sulfinamides with additional substituents or functional groups are not supported in this phase"};
                         }
-                        
+
                         // Construct the name
-                        QString suffix = (sDblO == 2) ? "sulfonamide" : "sulfinamide";
-                        QString name = "N-" + chainRoot(rPrimeLen) + "yl" + chainRoot(rLen) + "ane" + suffix;
+                        QString name = joinPrefixAndParent("N-" + subName, parentName);
                         return {true, name, ""};
                     }
                     // else: totalH != 1, so it's unsubstituted NH2 - fall through to existing detection
@@ -16476,36 +16486,26 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                     // nNode). Reject if imineCarbon has more than one other carbon
                     // neighbor (an internal/branched imine like propan-2-imine is a
                     // different, unhandled shape -- do not guess).
-                    int cR = -1;
                     int otherCarbonCount = 0;
                     for (size_t j = 0; j < g.nodes[imineCarbon].neighbors.size(); ++j) {
                         int nei = g.nodes[imineCarbon].neighbors[j];
                         if (nei != nNode && g.nodes[nei].atomicNumber == 6) {
                             otherCarbonCount++;
-                            if (cR == -1) cR = nei;
                         }
                     }
                     if (otherCarbonCount <= 1) {
-                        int rLen = 0;
-                        if (cR != -1) rLen = countPlainAlkylChain(cR, imineCarbon, g);
-                        int rPrimeLen = countPlainAlkylChain(nSubCarbon, nNode, g);
+                        QString parentName = nameAcyclicChainParentWithSubstituents(g, {imineCarbon}, {imineCarbon}, {nNode}, {}, GroupType::IMINE, -1, mol);
+                        QString subName = nameBranchGraph(g, nSubCarbon, nNode, {}, {}, {}, nullptr, mol);
 
-                        if (rLen == -1 || rPrimeLen == -1) {
+                        if (subName.isEmpty() || parentName.isEmpty()) {
                             return {false, "", "Branched or ring substituents on imines are not supported"};
                         }
 
-                        if (rLen + 1 + rPrimeLen != countC) {
+                        if (countCarbonSubtree(imineCarbon, nNode, g) + countCarbonSubtree(nSubCarbon, nNode, g) != countC) {
                             return {false, "", "Imines with additional substituents or functional groups are not supported in this phase"};
                         }
 
-                        QString prefix = "N-" + chainRoot(rPrimeLen) + "yl";
-                        QString parentStem = chainRoot(rLen + 1);
-                        QString name;
-                        if (rLen + 1 <= 2) {
-                            name = prefix + parentStem + "animine";
-                        } else {
-                            name = prefix + parentStem + "an-1-imine";
-                        }
+                        QString name = joinPrefixAndParent("N-" + subName, parentName);
                         return {true, name, ""};
                     }
                 }
@@ -16568,14 +16568,14 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                     }
 
                     if (structureOk && aminoSubCarbon != -1) {
-                        int rPrimeLen = countPlainAlkylChain(aminoSubCarbon, aminoN, g);
-                        if (rPrimeLen == -1) {
+                        QString subName = nameBranchGraph(g, aminoSubCarbon, aminoN, {}, {}, {}, nullptr, mol);
+                        if (subName.isEmpty()) {
                             return {false, "", "Branched or ring N'-substituents on amidines are not supported"};
                         }
-                        if (1 + rPrimeLen != countC) {
+                        if (1 + countCarbonSubtree(aminoSubCarbon, aminoN, g) != countC) {
                             return {false, "", "Amidines with additional substituents or functional groups are not supported in this phase"};
                         }
-                        QString name = "N-" + chainRoot(rPrimeLen) + "yl" + chainRoot(1) + "animidamide";
+                        QString name = "N-" + subName + chainRoot(1) + "animidamide";
                         return {true, name, ""};
                     }
                 }
@@ -16648,14 +16648,14 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                                 return {true, "guanidine", ""};
                             }
                         } else {
-                            int subLen = countPlainAlkylChain(subCarbon, subN, g);
-                            if (subLen == -1) {
+                            QString subName = nameBranchGraph(g, subCarbon, subN, {}, {}, {}, nullptr, mol);
+                            if (subName.isEmpty()) {
                                 return {false, "", "Branched or ring N'-substituents on guanidine are not supported"};
                             }
-                            if (1 + subLen != countC) {
+                            if (1 + countCarbonSubtree(subCarbon, subN, g) != countC) {
                                 return {false, "", "Guanidines with additional substituents or functional groups are not supported in this phase"};
                             }
-                            QString name = "N'-" + chainRoot(subLen) + "ylguanidine";
+                            QString name = "N'-" + subName + "guanidine";
                             return {true, name, ""};
                         }
                     }
@@ -16717,12 +16717,14 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
 
                 int sub1 = -1, sub2 = -1;
                 if (classifyN(n1, sub1) && classifyN(n2, sub2)) {
-                    int len1 = (sub1 != -1) ? countPlainAlkylChain(sub1, n1, g) : 0;
-                    int len2 = (sub2 != -1) ? countPlainAlkylChain(sub2, n2, g) : 0;
+                    QString subName1 = (sub1 != -1) ? nameBranchGraph(g, sub1, n1, {}, {}, {}, nullptr, mol) : QString();
+                    QString subName2 = (sub2 != -1) ? nameBranchGraph(g, sub2, n2, {}, {}, {}, nullptr, mol) : QString();
 
-                    if (len1 == -1 || len2 == -1) {
+                    if ((sub1 != -1 && subName1.isEmpty()) || (sub2 != -1 && subName2.isEmpty())) {
                         return {false, "", "Branched or ring N-substituents on ureas are not supported"};
                     }
+                    int len1 = (sub1 != -1) ? countCarbonSubtree(sub1, n1, g) : 0;
+                    int len2 = (sub2 != -1) ? countCarbonSubtree(sub2, n2, g) : 0;
                     if (len1 + len2 != countC - 1) {
                         return {false, "", "Ureas with additional substituents or functional groups are not supported in this phase"};
                     }
@@ -16731,13 +16733,13 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                     if (sub1 == -1 && sub2 == -1) {
                         name = "urea";
                     } else if (sub1 != -1 && sub2 == -1) {
-                        name = chainRoot(len1) + "ylurea";
+                        name = subName1 + "urea";
                     } else if (sub1 == -1 && sub2 != -1) {
-                        name = chainRoot(len2) + "ylurea";
+                        name = subName2 + "urea";
                     } else {
-                        QString name1 = chainRoot(len1) + "yl";
-                        QString name2 = chainRoot(len2) + "yl";
-                        if (len1 == len2) {
+                        QString name1 = subName1;
+                        QString name2 = subName2;
+                        if (name1 == name2) {
                             // Real Blue Book text (P-66.1.6.1.1.1): urea's two nitrogens are
                             // BOTH cited as plain "N", never primed "N'" -- "Numerical locants
                             // for urea are no longer used... locants N and N" (confirmed real
@@ -16814,29 +16816,26 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                             int c0 = acylNeighbors[0];
                             int c1 = alkylNeighbors[0];
                             int c2 = alkylNeighbors[1];
-                            int rLen = 0;
-                            int cR = -1;
-                            for (size_t j = 0; j < g.nodes[c0].neighbors.size(); ++j) {
-                                int nei = g.nodes[c0].neighbors[j];
-                                if (nei != nNode && g.nodes[nei].atomicNumber == 6) { cR = nei; break; }
+
+                            QString parentName = nameAcyclicChainParentWithSubstituents(g, {c0}, {c0}, {nNode}, {}, GroupType::THIOAMIDE, -1, mol);
+                            QString sub1 = nameBranchGraph(g, c1, nNode, {}, {}, {}, nullptr, mol);
+                            QString sub2 = nameBranchGraph(g, c2, nNode, {}, {}, {}, nullptr, mol);
+
+                            if (sub1.isEmpty() || sub2.isEmpty()) {
+                                return {false, "", "Branched or ring N-substituents on thioamides are not supported"};
                             }
-                            if (cR != -1) { rLen = countPlainAlkylChain(cR, c0, g); }
-                            int rPrimeLen1 = countPlainAlkylChain(c1, nNode, g);
-                            int rPrimeLen2 = countPlainAlkylChain(c2, nNode, g);
-                            if (rLen == -1 || rPrimeLen1 == -1 || rPrimeLen2 == -1) {
-                                if (rPrimeLen1 == -1 || rPrimeLen2 == -1) {
-                                    return {false, "", "Branched or ring N-substituents on thioamides are not supported"};
-                                } else {
-                                    return {false, "", "Ring or branched acyl parents on thioamides are not supported"};
-                                }
+                            if (parentName.isEmpty()) {
+                                return {false, "", "Ring or branched acyl parents on thioamides are not supported"};
                             }
-                            if (rLen + rPrimeLen1 + rPrimeLen2 + 1 != countC) {
+
+                            int rPrimeLen1 = countCarbonSubtree(c1, nNode, g);
+                            int rPrimeLen2 = countCarbonSubtree(c2, nNode, g);
+                            if (countCarbonSubtree(c0, nNode, g) + rPrimeLen1 + rPrimeLen2 != countC) {
                                 return {false, "", "Thioamides with additional substituents or functional groups are not supported in this phase"};
                             }
-                            QString sub1 = chainRoot(rPrimeLen1) + "yl";
-                            QString sub2 = chainRoot(rPrimeLen2) + "yl";
+
                             QString prefix;
-                            if (rPrimeLen1 == rPrimeLen2) {
+                            if (rPrimeLen1 == rPrimeLen2 && sub1 == sub2) {
                                 prefix = "N,N-" + multiPrefix(2) + sub1;
                             } else {
                                 QString first = sub1;
@@ -16844,42 +16843,27 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                                 if (alphabetizationKey(sub2) < alphabetizationKey(sub1)) { first = sub2; second = sub1; }
                                 prefix = "N-" + first + "-N-" + second;
                             }
-                            QString name = prefix + chainRoot(rLen + 1) + "anethioamide";
-                            if (rLen == 0) name = prefix + "methanethioamide";
+                            QString name = joinPrefixAndParent(prefix, parentName);
                             return {true, name, ""};
                         } else if (alkylNeighbors.size() == 1) {
                             int c0 = acylNeighbors[0];
                             int c1 = alkylNeighbors[0];
-                            
-                            int rLen = 0;
-                            int cR = -1;
-                            for (size_t j = 0; j < g.nodes[c0].neighbors.size(); ++j) {
-                                int nei = g.nodes[c0].neighbors[j];
-                                if (nei != nNode && g.nodes[nei].atomicNumber == 6) {
-                                    cR = nei;
-                                    break;
-                                }
+
+                            QString parentName = nameAcyclicChainParentWithSubstituents(g, {c0}, {c0}, {nNode}, {}, GroupType::THIOAMIDE, -1, mol);
+                            QString subName = nameBranchGraph(g, c1, nNode, {}, {}, {}, nullptr, mol);
+
+                            if (subName.isEmpty()) {
+                                return {false, "", "Branched or ring N-substituents on thioamides are not supported"};
                             }
-                            if (cR != -1) {
-                                rLen = countPlainAlkylChain(cR, c0, g);
+                            if (parentName.isEmpty()) {
+                                return {false, "", "Ring or branched acyl parents on thioamides are not supported"};
                             }
-                            
-                            int rPrimeLen = countPlainAlkylChain(c1, nNode, g);
-                            
-                            if (rLen == -1 || rPrimeLen == -1) {
-                                if (rPrimeLen == -1) {
-                                    return {false, "", "Branched or ring N-substituents on thioamides are not supported"};
-                                } else {
-                                    return {false, "", "Ring or branched acyl parents on thioamides are not supported"};
-                                }
-                            }
-                            
-                            if (rLen + rPrimeLen + 1 != countC) {
+
+                            if (countCarbonSubtree(c0, nNode, g) + countCarbonSubtree(c1, nNode, g) != countC) {
                                 return {false, "", "Thioamides with additional substituents or functional groups are not supported in this phase"};
                             }
-                            
-                            QString name = "N-" + chainRoot(rPrimeLen) + "yl" + chainRoot(rLen + 1) + "anethioamide";
-                            if (rLen == 0) name = "N-" + chainRoot(rPrimeLen) + "ylmethanethioamide";
+
+                            QString name = joinPrefixAndParent("N-" + subName, parentName);
                             return {true, name, ""};
                         }
                     } else {
@@ -16969,33 +16953,24 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                     
                     if (alkylNeighborsNear.size() > 0 && alkylNeighborsFar.size() > 0) {
                         if (alkylNeighborsNear.size() == 1 && alkylNeighborsFar.size() == 1) {
-                            int rLen = 0;
-                            int cR = -1;
-                            if (acylCarbon != -1) {
-                                for (size_t j = 0; j < g.nodes[acylCarbon].neighbors.size(); ++j) {
-                                    int nei = g.nodes[acylCarbon].neighbors[j];
-                                    if (nei != nNodeNear && g.nodes[nei].atomicNumber == 6) { cR = nei; break; }
-                                }
-                                if (cR != -1) { rLen = countPlainAlkylChain(cR, acylCarbon, g); }
-                            }
+                            QString parentName = (acylCarbon != -1) ? nameAcyclicChainParentWithSubstituents(g, {acylCarbon}, {acylCarbon}, {nNodeNear}, {}, GroupType::HYDRAZIDE, -1, mol) : QString();
                             int subNear = alkylNeighborsNear[0];
                             int subFar = alkylNeighborsFar[0];
-                            int rPrimeLenNear = countPlainAlkylChain(subNear, nNodeNear, g);
-                            int rPrimeLenFar = countPlainAlkylChain(subFar, nNodeFar, g);
-                            if (rLen == -1 || rPrimeLenNear == -1 || rPrimeLenFar == -1) {
-                                if (rPrimeLenNear == -1 || rPrimeLenFar == -1) {
-                                    return {false, "", "Branched or ring substituents on hydrazides are not supported"};
-                                } else {
-                                    return {false, "", "Ring or branched acyl parents on hydrazides are not supported"};
-                                }
+                            QString subNearName = nameBranchGraph(g, subNear, nNodeNear, {}, {}, {}, nullptr, mol);
+                            QString subFarName = nameBranchGraph(g, subFar, nNodeFar, {}, {}, {}, nullptr, mol);
+                            if (subNearName.isEmpty() || subFarName.isEmpty()) {
+                                return {false, "", "Branched or ring substituents on hydrazides are not supported"};
                             }
-                            if (rLen + rPrimeLenNear + rPrimeLenFar + 1 != countC) {
+                            if (parentName.isEmpty()) {
+                                return {false, "", "Ring or branched acyl parents on hydrazides are not supported"};
+                            }
+                            int rPrimeLenNear = countCarbonSubtree(subNear, nNodeNear, g);
+                            int rPrimeLenFar = countCarbonSubtree(subFar, nNodeFar, g);
+                            if (countCarbonSubtree(acylCarbon, nNodeNear, g) + rPrimeLenNear + rPrimeLenFar != countC) {
                                 return {false, "", "Hydrazides with additional substituents or functional groups are not supported in this phase"};
                             }
-                            QString subNearName = chainRoot(rPrimeLenNear) + "yl";
-                            QString subFarName = chainRoot(rPrimeLenFar) + "yl";
                             QString prefix;
-                            if (rPrimeLenNear == rPrimeLenFar) {
+                            if (rPrimeLenNear == rPrimeLenFar && subNearName == subFarName) {
                                 prefix = "N,N'-" + multiPrefix(2) + subNearName;
                             } else {
                                 QString firstName = subNearName;
@@ -17010,8 +16985,7 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                                 }
                                 prefix = locantFirst + firstName + "-" + locantSecond + secondName;
                             }
-                            QString name = prefix + chainRoot(rLen + 1) + "anehydrazide";
-                            if (rLen == 0) name = prefix + "methanehydrazide";
+                            QString name = joinPrefixAndParent(prefix, parentName);
                             return {true, name, ""};
                         } else {
                             return {false, "", "Hydrazides with substituents on both nitrogens are not supported"};
@@ -17019,33 +16993,24 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                     } else if (alkylNeighborsNear.size() > 1) {
                         return {false, "", "N,N-disubstituted hydrazides are not supported"};
                     } else if (alkylNeighborsFar.size() > 1) {
-                        int rLen = 0;
-                        int cR = -1;
-                        if (acylCarbon != -1) {
-                            for (size_t j = 0; j < g.nodes[acylCarbon].neighbors.size(); ++j) {
-                                int nei = g.nodes[acylCarbon].neighbors[j];
-                                if (nei != nNodeNear && g.nodes[nei].atomicNumber == 6) { cR = nei; break; }
-                            }
-                            if (cR != -1) { rLen = countPlainAlkylChain(cR, acylCarbon, g); }
-                        }
+                        QString parentName = (acylCarbon != -1) ? nameAcyclicChainParentWithSubstituents(g, {acylCarbon}, {acylCarbon}, {nNodeNear}, {}, GroupType::HYDRAZIDE, -1, mol) : QString();
                         int c1 = alkylNeighborsFar[0];
                         int c2 = alkylNeighborsFar[1];
-                        int rPrimeLen1 = countPlainAlkylChain(c1, nNodeFar, g);
-                        int rPrimeLen2 = countPlainAlkylChain(c2, nNodeFar, g);
-                        if (rLen == -1 || rPrimeLen1 == -1 || rPrimeLen2 == -1) {
-                            if (rPrimeLen1 == -1 || rPrimeLen2 == -1) {
-                                return {false, "", "Branched or ring substituents on hydrazides are not supported"};
-                            } else {
-                                return {false, "", "Ring or branched acyl parents on hydrazides are not supported"};
-                            }
+                        QString sub1 = nameBranchGraph(g, c1, nNodeFar, {}, {}, {}, nullptr, mol);
+                        QString sub2 = nameBranchGraph(g, c2, nNodeFar, {}, {}, {}, nullptr, mol);
+                        if (sub1.isEmpty() || sub2.isEmpty()) {
+                            return {false, "", "Branched or ring substituents on hydrazides are not supported"};
                         }
-                        if (rLen + rPrimeLen1 + rPrimeLen2 + 1 != countC) {
+                        if (parentName.isEmpty()) {
+                            return {false, "", "Ring or branched acyl parents on hydrazides are not supported"};
+                        }
+                        int rPrimeLen1 = countCarbonSubtree(c1, nNodeFar, g);
+                        int rPrimeLen2 = countCarbonSubtree(c2, nNodeFar, g);
+                        if (countCarbonSubtree(acylCarbon, nNodeNear, g) + rPrimeLen1 + rPrimeLen2 != countC) {
                             return {false, "", "Hydrazides with additional substituents or functional groups are not supported in this phase"};
                         }
-                        QString sub1 = chainRoot(rPrimeLen1) + "yl";
-                        QString sub2 = chainRoot(rPrimeLen2) + "yl";
                         QString prefix;
-                        if (rPrimeLen1 == rPrimeLen2) {
+                        if (rPrimeLen1 == rPrimeLen2 && sub1 == sub2) {
                             prefix = "N',N'-" + multiPrefix(2) + sub1;
                         } else {
                             QString first = sub1;
@@ -17053,8 +17018,7 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                             if (alphabetizationKey(sub2) < alphabetizationKey(sub1)) { first = sub2; second = sub1; }
                             prefix = "N'-" + first + "-N'-" + second;
                         }
-                        QString name = prefix + chainRoot(rLen + 1) + "anehydrazide";
-                        if (rLen == 0) name = prefix + "methanehydrazide";
+                        QString name = joinPrefixAndParent(prefix, parentName);
                         return {true, name, ""};
                     } else if (alkylNeighborsNear.size() == 1 || alkylNeighborsFar.size() == 1) {
                         bool isNear = (alkylNeighborsNear.size() == 1);
@@ -17073,38 +17037,23 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                             }
                         }
                         
-                        int rLen = 0;
-                        if (acylCarbon != -1) {
-                            int cR = -1;
-                            for (size_t j = 0; j < g.nodes[acylCarbon].neighbors.size(); ++j) {
-                                int nei = g.nodes[acylCarbon].neighbors[j];
-                                if (nei != nNodeNear && g.nodes[nei].atomicNumber == 6) {
-                                    cR = nei;
-                                    break;
-                                }
-                            }
-                            if (cR != -1) {
-                                rLen = countPlainAlkylChain(cR, acylCarbon, g);
-                            }
+                        QString parentName = (acylCarbon != -1) ? nameAcyclicChainParentWithSubstituents(g, {acylCarbon}, {acylCarbon}, {nNodeNear}, {}, GroupType::HYDRAZIDE, -1, mol) : QString();
+                        int subAnchor = isNear ? nNodeNear : nNodeFar;
+                        QString subName = nameBranchGraph(g, subNode, subAnchor, {}, {}, {}, nullptr, mol);
+
+                        if (subName.isEmpty()) {
+                            return {false, "", "Branched or ring substituents on hydrazides are not supported"};
                         }
-                        
-                        int rPrimeLen = countPlainAlkylChain(subNode, isNear ? nNodeNear : nNodeFar, g);
-                        
-                        if (rLen == -1 || rPrimeLen == -1) {
-                            if (rPrimeLen == -1) {
-                                return {false, "", "Branched or ring substituents on hydrazides are not supported"};
-                            } else {
-                                return {false, "", "Ring or branched acyl parents on hydrazides are not supported"};
-                            }
+                        if (parentName.isEmpty()) {
+                            return {false, "", "Ring or branched acyl parents on hydrazides are not supported"};
                         }
-                        
-                        if (rLen + rPrimeLen + 1 != countC) {
+
+                        if (countCarbonSubtree(acylCarbon, nNodeNear, g) + countCarbonSubtree(subNode, subAnchor, g) != countC) {
                             return {false, "", "Hydrazides with additional substituents or functional groups are not supported in this phase"};
                         }
-                        
+
                         QString locant = isNear ? "N-" : "N'-";
-                        QString name = locant + chainRoot(rPrimeLen) + "yl" + chainRoot(rLen + 1) + "anehydrazide";
-                        if (rLen == 0) name = locant + chainRoot(rPrimeLen) + "ylmethanehydrazide";
+                        QString name = joinPrefixAndParent(locant + subName, parentName);
                         return {true, name, ""};
                     }
                 }
