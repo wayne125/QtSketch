@@ -6975,22 +6975,27 @@ int main() {
         }
     }
 
-    // Test: Branching molecule with substituent on bridgehead atom - regression test
+    // Test: Branching molecule with substituent on bridgehead atom (Wave 3, Item
+    // toInt->locantLess fix) - a bridgehead (fusion carbon) substituent is now
+    // named instead of honestly rejected. Also a regression guard against a
+    // real double-citation bug this fix exposed and had to fix alongside it:
+    // the substituent-collection loop visited a bridgehead atom once per ring
+    // it's shared between, so this single methyl was initially coming out as
+    // "9b,9b-dimethyl...", not "9b-methyl...".
     {
-        // Create a molecule with a substituent on a bridgehead atom (fusion carbon)
         // In the base molecule c12c(cccc2)c3c(cccc3)c4c1(nccc4), atoms c1, c2, c3, c4 are fusion atoms
         // (bridgeheads). By adding a methyl to one of these using branch notation c(C), we create
-        // a substituent on a bridgehead. This should be rejected with the specific message.
+        // a substituent on a bridgehead.
         int m = indigoLoadMoleculeFromString("c12c(cccc2)c3c(cccc3)c(C)4c1(nccc4)");
         if (m >= 0) {
             auto result = IupacNamer::generateName(m);
-            QString expectedError = "Substituents on bridgehead atoms of fused ring systems are not yet supported.";
-            if (!result.success && result.error == expectedError) {
-                std::cout << "[PASS] Branching molecule with bridgehead substituent: correctly rejected with: " << result.error.toStdString() << "\n";
+            QString expectedName = "9b-methyldibenzo[1b,5a:5b,9a]benzo[b]pyridine";
+            if (result.success && result.name == expectedName) {
+                std::cout << "[PASS] Branching molecule with bridgehead substituent: " << result.name.toStdString() << "\n";
                 passed++;
             } else {
-                std::cout << "[FAIL] Branching molecule with bridgehead substituent: expected error '" << expectedError.toStdString() 
-                          << "', got success=" << result.success << ", error='" << result.error.toStdString() << "'\n";
+                std::cout << "[FAIL] Branching molecule with bridgehead substituent: expected name '" << expectedName.toStdString()
+                          << "', got success=" << result.success << " name='" << result.name.toStdString() << "' error='" << result.error.toStdString() << "'\n";
                 failed++;
             }
             indigoFree(m);

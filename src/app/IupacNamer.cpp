@@ -8440,8 +8440,14 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                     }
                     std::vector<std::pair<int, QString>> collectedSubstituents;
                     bool hasUnsupportedSubstituentPre = false;
+                    std::set<int> scannedNodesPre;
                     for (int i = 0; i < N; ++i) {
                         for (int node : nodesN[i]) {
+                            // A bridgehead atom belongs to more than one ring's nodesN[i] set;
+                            // scan its exocyclic neighbors only once (confirmed real double-
+                            // citation otherwise -- a single substituent on a bridgehead was
+                            // being collected once per ring it's shared between).
+                            if (!scannedNodesPre.insert(node).second) continue;
                             const GraphNode &n = g.nodes[node];
                             for (size_t j = 0; j < n.neighbors.size(); ++j) {
                                 int nei = n.neighbors[j];
@@ -8548,8 +8554,12 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                             }
                             collectedSubstituents.clear();
                             hasUnsupportedSubstituent = false;
+                            std::set<int> scannedNodes2;
                             for (int i = 0; i < N; ++i) {
                                 for (int node : nodesN[i]) {
+                                    // See scannedNodesPre above: a bridgehead atom must only be
+                                    // scanned once, not once per ring it's shared between.
+                                    if (!scannedNodes2.insert(node).second) continue;
                                     const GraphNode &n = g.nodes[node];
                                     for (size_t j = 0; j < n.neighbors.size(); ++j) {
                                         int nei = n.neighbors[j];
@@ -9207,11 +9217,6 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                             return {RingSystemNameResult{false, "Failed to compute peripheral locant for substituent.", "", {}}};
                                         }
                                         QString locStr = periphMap[ringNode];
-                                        bool okInt = false;
-                                        locStr.toInt(&okInt);
-                                        if (!okInt) {
-                                            return {RingSystemNameResult{false, "Substituents on bridgehead atoms of fused ring systems are not yet supported.", "", {}}};
-                                        }
                                         namedSubstituents.push_back({subName, locStr});
                                     }
 
@@ -9262,16 +9267,9 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                             return {RingSystemNameResult{false, "Failed to compute peripheral locant for indicated hydrogen.", "", {}}};
                                         }
                                         QString locStr = periphMap[node];
-                                        bool ok = false;
-                                        locStr.toInt(&ok);
-                                        if (!ok) {
-                                            return {RingSystemNameResult{false, "Indicated hydrogen locant is letter-suffixed.", "", {}}};
-                                        }
                                         ihLocants.push_back(locStr);
                                     }
-                                    std::sort(ihLocants.begin(), ihLocants.end(), [](const QString &a, const QString &b) {
-                                        return a.toInt() < b.toInt();
-                                    });
+                                    std::sort(ihLocants.begin(), ihLocants.end(), locantLess);
                                     // Format: EACH locant gets its own "H", joined by commas.
                                     // Verified real PIN at BlueBookV2.md:9580: "1H,3H-thieno[3,4-c]thiophene"
                                     // -- the format is "1H,3H-", NOT "1,3H-" (a single trailing H would be wrong).
@@ -9286,16 +9284,9 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                             return {RingSystemNameResult{false, "Failed to compute peripheral locant for hydro-prefix.", "", {}}};
                                         }
                                         QString locStr = periphMap[node];
-                                        bool ok = false;
-                                        locStr.toInt(&ok);
-                                        if (!ok) {
-                                            return {RingSystemNameResult{false, "Hydro-prefix locant is letter-suffixed; bridgehead saturation is not yet supported.", "", {}}};
-                                        }
                                         hydroLocStrs.push_back(locStr);
                                     }
-                                    std::sort(hydroLocStrs.begin(), hydroLocStrs.end(), [](const QString &a, const QString &b) {
-                                        return a.toInt() < b.toInt();
-                                    });
+                                    std::sort(hydroLocStrs.begin(), hydroLocStrs.end(), locantLess);
 
                                     // P-31 hydro-prefix format: "<locants>-<count-word>hydro", e.g.
                                     // "4a,5,8,8a-tetrahydro". Count word by position count: 2->di,
@@ -9677,9 +9668,15 @@ std::vector<RingSystemNameResult> nameBranchingFusion(
             }
             std::vector<std::pair<int, QString>> collectedSubstituents;
             bool hasUnsupportedSubstituent = false;
-            
+            std::set<int> scannedNodesBranching;
+
             for (int i = 0; i < N_d; ++i) {
                 for (int node : nodesN_d[i]) {
+                    // A bridgehead atom belongs to more than one ring's nodesN_d[i] set;
+                    // scan its exocyclic neighbors only once (see the identical fix in
+                    // nameLinearChainFusion -- otherwise a single bridgehead substituent
+                    // gets collected once per ring it's shared between).
+                    if (!scannedNodesBranching.insert(node).second) continue;
                     const GraphNode &n = g.nodes[node];
                     for (size_t j = 0; j < n.neighbors.size(); ++j) {
                         int nei = n.neighbors[j];
@@ -10153,12 +10150,6 @@ std::vector<RingSystemNameResult> nameBranchingFusion(
                         return {RingSystemNameResult{false, "Failed to compute peripheral locant for substituent.", "", {}}};
                     }
                     QString locStr = periphMapWithSubs[ringNode];
-                    // Reject letter-suffixed locants (bridgehead atoms)
-                    bool okInt = false;
-                    locStr.toInt(&okInt);
-                    if (!okInt) {
-                        return {RingSystemNameResult{false, "Substituents on bridgehead atoms of fused ring systems are not yet supported.", "", {}}};
-                    }
                     namedSubstituents.push_back({subName, locStr});
                 }
                 
