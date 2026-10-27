@@ -9523,7 +9523,15 @@ std::vector<RingSystemNameResult> nameBranchingFusion(
                        t == RingType::PYRROLE || t == RingType::IMIDAZOLE ||
                        t == RingType::PYRAZOLE || t == RingType::SELENOPHENE ||
                        t == RingType::TELLUROPHENE || t == RingType::PHOSPHININE ||
-                       t == RingType::GENERAL_HETEROCYCLE;
+                       t == RingType::CYCLOPENTADIENE || t == RingType::CYCLOHEPTATRIENE ||
+                       t == RingType::AZEPINE || t == RingType::OXEPINE ||
+                       t == RingType::THIEPINE || t == RingType::SELENEPINE ||
+                       t == RingType::TELLUREPINE || t == RingType::GENERAL_HETEROCYCLE ||
+                       t == RingType::PIPERIDINE || t == RingType::PYRROLIDINE ||
+                       t == RingType::TETRAHYDROFURAN || t == RingType::TETRAHYDROTHIOPHENE ||
+                       t == RingType::PYRAZOLIDINE || t == RingType::ISOXAZOLIDINE ||
+                       t == RingType::ISOTHIAZOLIDINE || t == RingType::IMIDAZOLIDINE ||
+                       t == RingType::OXAZOLIDINE || t == RingType::THIAZOLIDINE;
             };
 
             for (int i = 0; i < N_d; ++i) {
@@ -9651,28 +9659,7 @@ std::vector<RingSystemNameResult> nameBranchingFusion(
             }
             
             // Helper functions
-            auto getBaseName = [](RingType t) -> QString {
-                if (t == RingType::BENZENE) return "benzene";
-                if (t == RingType::FURAN) return "furan";
-                if (t == RingType::THIOPHENE) return "thiophene";
-                if (t == RingType::SELENOPHENE) return "selenophene";
-                if (t == RingType::TELLUROPHENE) return "tellurophene";
-                if (t == RingType::PHOSPHININE) return "phosphinine";
-                if (t == RingType::PYRIDINE) return "pyridine";
-                if (t == RingType::PYRIMIDINE) return "pyrimidine";
-                if (t == RingType::PYRIDAZINE) return "pyridazine";
-                if (t == RingType::PYRAZINE) return "pyrazine";
-                if (t == RingType::OXAZOLE) return "oxazole";
-                if (t == RingType::ISOXAZOLE) return "isoxazole";
-                if (t == RingType::THIAZOLE) return "thiazole";
-                if (t == RingType::ISOTHIAZOLE) return "isothiazole";
-                if (t == RingType::SELENAZOLE) return "selenazole";
-                if (t == RingType::ISOSELENAZOLE) return "isoselenazole";
-                if (t == RingType::PYRROLE) return "pyrrole";
-                if (t == RingType::IMIDAZOLE) return "imidazole";
-                if (t == RingType::PYRAZOLE) return "pyrazole";
-                return "";
-            };
+            auto getBaseName = [](RingType t) -> QString { return getBaseNameShared(t); };
             
             // Get side letter from numeric locants
             auto getSideLetter = [](int loc1, int loc2) -> char {
@@ -9740,28 +9727,7 @@ std::vector<RingSystemNameResult> nameBranchingFusion(
             // Walk the fusion tree from parent and build name components
             
             // Get fusion prefix for a ring type (reusing existing linear-chain logic)
-            auto getFusionPrefix = [](RingType t) -> QString {
-                if (t == RingType::BENZENE) return "benzo";
-                if (t == RingType::FURAN) return "furo";
-                if (t == RingType::THIOPHENE) return "thieno";
-                if (t == RingType::SELENOPHENE) return "selenolo";
-                if (t == RingType::TELLUROPHENE) return "tellurolo";
-                if (t == RingType::PHOSPHININE) return "phosphinino";
-                if (t == RingType::PYRIDINE) return "pyrido";
-                if (t == RingType::PYRIMIDINE) return "pyrimido";
-                if (t == RingType::PYRIDAZINE) return "pyridazino";
-                if (t == RingType::PYRAZINE) return "pyrazino";
-                if (t == RingType::OXAZOLE) return "oxazolo";
-                if (t == RingType::ISOXAZOLE) return "isoxazolo";
-                if (t == RingType::THIAZOLE) return "thiazolo";
-                if (t == RingType::ISOTHIAZOLE) return "isothiazolo";
-                if (t == RingType::SELENAZOLE) return "selenazolo";
-                if (t == RingType::ISOSELENAZOLE) return "isoselenazolo";
-                if (t == RingType::PYRROLE) return "pyrrolo";
-                if (t == RingType::IMIDAZOLE) return "imidazo";
-                if (t == RingType::PYRAZOLE) return "pyrazolo";
-                return "";
-            };
+            auto getFusionPrefix = [](RingType t) -> QString { return getFusionPrefixShared(t); };
             
             // Check if a ring type is a plain symmetric monocyclic hydrocarbon (P-25.3.8.1: locants omitted)
             auto isPlainSymmetricHydrocarbon = [](RingType t) -> bool {

@@ -6936,6 +6936,38 @@ int main() {
         }
     }
     
+    // Test: Branching molecule with a non-hexagonal leaf (CYCLOPENTADIENE) --
+    // regression test for nameBranchingFusion's isAllowedType/getBaseName/
+    // getFusionPrefix whitelist, which previously only covered aromatic 5/6-
+    // membered heterocycles + benzene and rejected everything else (including
+    // CYCLOPENTADIENE/CYCLOHEPTATRIENE/AZEPINE-family/saturated heterocycles)
+    // with "Ring type not supported in branching system.", even though the
+    // sibling nameLinearChainFusion mechanism's own whitelist (and the shared
+    // getBaseNameShared/getFusionPrefixShared helpers) already covered them.
+    // Swapping leaf A for a CYCLOPENTADIENE ring now passes that whitelist
+    // gate and reaches the separate, pre-existing, correctly-scoped "Fusion
+    // of a non-hydrocarbon component to another attached component (level 2)"
+    // limitation instead -- proving the gate itself no longer blocks it.
+    {
+        int m = indigoLoadMoleculeFromString("c12c(C=CC2)c3c(cccc3)c4c1(nccc4)");
+        if (m >= 0) {
+            auto result = IupacNamer::generateName(m);
+            QString expectedError = "Fusion of a non-hydrocarbon component to another attached component (level 2) is not yet supported.";
+            if (!result.success && result.error == expectedError) {
+                std::cout << "[PASS] Branching molecule with CYCLOPENTADIENE leaf: correctly reaches level-2 limit (whitelist gate passed): " << result.error.toStdString() << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] Branching molecule with CYCLOPENTADIENE leaf: expected error '" << expectedError.toStdString()
+                          << "', got success=" << result.success << " name='" << result.name.toStdString() << "' error='" << result.error.toStdString() << "'\n";
+                failed++;
+            }
+            indigoFree(m);
+        } else {
+            std::cout << "[FAIL] Branching molecule with CYCLOPENTADIENE leaf SMILES did not load\n";
+            failed++;
+        }
+    }
+
     // Test: Branching molecule with substituent on bridgehead atom - regression test
     {
         // Create a molecule with a substituent on a bridgehead atom (fusion carbon)
