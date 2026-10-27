@@ -5548,6 +5548,19 @@ QString nameBranchGraph(const Graph &g, int rootIdx, int parentIdx, const std::v
 // scope (heteroatom other than a terminal halogen, unsaturation, a ring closed
 // back into the branch, or a principal-characteristic-group-bearing atom) so the
 // caller falls through to the generic rejection below rather than guessing.
+//
+// Deliberately NOT extended to hydroxy/oxo/amino/mercapto (attempted once,
+// reverted): unlike a halogen or plain alkyl branch, each of those is capable
+// of being the molecule's SOLE/senior principal characteristic group, which
+// IUPAC requires expressed as a suffix (-ol/-one/-amine/-thiol), not a prefix.
+// nameLinearChainFusion/nameBranchingFusion are also reached when the fused
+// ring system itself is the whole molecule's parent (not just cited as a
+// substituent elsewhere), so blindly citing a bare -NH2/-OH/=O/-SH as a prefix
+// is wrong whenever nothing else competes for the suffix -- confirmed live
+// against IMIQUIMOD (real name imidazo[4,5-c]quinolin-4-amine, amine as
+// suffix; this engine currently has no retained name for that ring system and
+// would need the suffix-vs-prefix decision threaded through here before this
+// could be safely added, a separate, larger task).
 QString simpleRingSubstituentName(const Graph &g, int ringAtom, int exoNei,
                                   const std::set<int> &ringUnionNodes, int mol = -1) {
     if (exoNei < 0 || exoNei >= static_cast<int>(g.nodes.size())) return "";
