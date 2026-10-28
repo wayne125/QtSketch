@@ -15227,9 +15227,16 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                                                     }
                                                 }
                                             }
+                                            // Which single ring is this branch rooted on (reject a
+                                            // fused/multi-ring reachable set), and is it the matched
+                                            // ring alone or does it carry extra substituents? Whether
+                                            // those extra substituents are nameable is nameBranchGraph's
+                                            // job below, not re-validated here -- a hand-rolled
+                                            // halogen/single-carbon/ether whitelist used to duplicate
+                                            // and under-approximate what nameBranchGraph already does
+                                            // correctly (confirmed live: it names a doubly-substituted
+                                            // or differently-shaped ring substituent fine on its own).
                                             int ringsInHeavy = 0;
-                                            bool isSimpleUnsubstituted = false;
-                                            bool isAllowedSubstitutedRing = false;
                                             std::set<int> matchedRing;
                                             for (const auto& r : sssrRings) {
                                                 bool isSubset = true;
@@ -15238,64 +15245,11 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                                                 }
                                                 if (isSubset) {
                                                     ringsInHeavy++;
-                                                    if (r == reachableHeavy) {
-                                                        isSimpleUnsubstituted = true;
-                                                        matchedRing = r;
-                                                    } else if (len == 0 || len == 1) {
-                                                        std::set<int> extraAtoms;
-                                                        for (int h : reachableHeavy) {
-                                                            if (!r.count(h)) extraAtoms.insert(h);
-                                                        }
-                                                        if (extraAtoms.size() == 1) {
-                                                            int ext = *extraAtoms.begin();
-                                                            int atNum = g.nodes[ext].atomicNumber;
-                                                            bool attachedToRingC = false;
-                                                            for (int nn : g.nodes[ext].neighbors) {
-                                                                if (r.count(nn) && g.nodes[nn].atomicNumber == 6) attachedToRingC = true;
-                                                            }
-                                                            if (attachedToRingC) {
-                                                                if (atNum == 9 || atNum == 17 || atNum == 35 || atNum == 53) {
-                                                                    isAllowedSubstitutedRing = true;
-                                                                    matchedRing = r;
-                                                                } else if (atNum == 6) {
-                                                                    int heavyDegree = 0;
-                                                                    for (int nn : g.nodes[ext].neighbors) {
-                                                                        if (g.nodes[nn].atomicNumber > 1) heavyDegree++;
-                                                                    }
-                                                                    if (heavyDegree == 1) {
-                                                                        isAllowedSubstitutedRing = true;
-                                                                        matchedRing = r;
-                                                                    }
-                                                                }
-                                                            }
-                                                        } else if (extraAtoms.size() == 2) {
-                                                            int oxygenNode = -1, carbonNode = -1;
-                                                            for (int ext : extraAtoms) {
-                                                                if (g.nodes[ext].atomicNumber == 8) oxygenNode = ext;
-                                                                else if (g.nodes[ext].atomicNumber == 6) carbonNode = ext;
-                                                            }
-                                                            if (oxygenNode != -1 && carbonNode != -1) {
-                                                                bool oAttachedToRingC = false;
-                                                                bool cAttachedToO = false;
-                                                                int cHeavyDegree = 0;
-                                                                for (int nn : g.nodes[oxygenNode].neighbors) {
-                                                                    if (r.count(nn) && g.nodes[nn].atomicNumber == 6) oAttachedToRingC = true;
-                                                                    if (nn == carbonNode) cAttachedToO = true;
-                                                                }
-                                                                for (int nn : g.nodes[carbonNode].neighbors) {
-                                                                    if (g.nodes[nn].atomicNumber > 1) cHeavyDegree++;
-                                                                }
-                                                                if (oAttachedToRingC && cAttachedToO && cHeavyDegree == 1) {
-                                                                    isAllowedSubstitutedRing = true;
-                                                                    matchedRing = r;
-                                                                }
-                                                            }
-                                                        }
-                                                    }
+                                                    matchedRing = r;
                                                 }
                                             }
-                                            if (ringsInHeavy != 1 || (!isSimpleUnsubstituted && !isAllowedSubstitutedRing)) { invalidBranch = true; return false; }
-                                            
+                                            if (ringsInHeavy != 1) { invalidBranch = true; return false; }
+
                                             if (matchedRing.size() != 6) { invalidBranch = true; return false; }
                                             int ringNitrogens = 0;
                                             int ringCarbons = 0;
@@ -15348,15 +15302,14 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                                                 c = nxt;
                                             }
                                             totalBranchAtoms += len;
-                                            if (len == 1) subNames.push_back("methyl");
-                                            else if (len == 2) subNames.push_back("ethyl");
-                                            else if (len == 3) subNames.push_back("propyl");
-                                            else if (len == 4) subNames.push_back("butyl");
-                                            else if (len == 5) subNames.push_back("pentyl");
-                                            else if (len == 6) subNames.push_back("hexyl");
-                                            else if (len == 7) subNames.push_back("heptyl");
-                                            else if (len == 8) subNames.push_back("octyl");
-                                            else { invalidBranch = true; return false; }
+                                            // Name via the shared branch namer instead of a hand-rolled
+                                            // methyl..octyl table -- removes the arbitrary C8 ceiling
+                                            // (the chain-length walk above already rejects any branching
+                                            // on this substituent, so this is a pure duplication fix, not
+                                            // a scope widening).
+                                            QString plainName = nameBranchGraph(g, nei, nNode, sssrRings, {}, {}, nullptr, mol);
+                                            if (plainName.isEmpty()) { invalidBranch = true; return false; }
+                                            subNames.push_back(plainName);
                                         }
                                     }
                                 }
@@ -15584,16 +15537,19 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                             b.ringNode = curr;
                             b.ringAttachCarbon = prev;
                         } else {
+                            bool unsaturated = false;
                             while (true) {
                                 b.len++;
                                 int heavyCount = 0;
                                 int nextC = -1;
                                 int rNei = -1;
                                 int halogenNei = -1;
-                                
-                                for (int nei : g.nodes[curr].neighbors) {
+
+                                for (size_t j = 0; j < g.nodes[curr].neighbors.size(); ++j) {
+                                    int nei = g.nodes[curr].neighbors[j];
                                     if (nei == prev) continue;
                                     if (g.nodes[nei].atomicNumber > 1) {
+                                        if (g.nodes[curr].bondOrders[j] != 1) { unsaturated = true; }
                                         heavyCount++;
                                         bool isR = false;
                                         for (const auto& r : sssrRings) {
@@ -15601,13 +15557,20 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                                         }
                                         if (isR) rNei = nei;
                                         else if (g.nodes[nei].atomicNumber == 6) nextC = nei;
-                                        else if (g.nodes[nei].atomicNumber == 9 || g.nodes[nei].atomicNumber == 17 || 
+                                        else if (g.nodes[nei].atomicNumber == 9 || g.nodes[nei].atomicNumber == 17 ||
                                                  g.nodes[nei].atomicNumber == 35 || g.nodes[nei].atomicNumber == 53) {
                                             halogenNei = nei;
                                         }
                                     }
                                 }
-                                
+
+                                // A double/triple bond anywhere in this branch's chain is an
+                                // unsupported shape -- matches the diamine and exocyclic-amine
+                                // walkers' own unsaturation guard (this walker previously had
+                                // none, so an N-allyl-type substituent silently walked through
+                                // as if saturated).
+                                if (unsaturated) { b.len = -1; break; }
+
                                 if (heavyCount == 0) {
                                     break;
                                 } else if (heavyCount == 1) {
@@ -15662,25 +15625,24 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                                 }
                             }
                             
-                            bool isSimpleUnsubstitutedRing = false;
-                            bool isAllowedSubstitutedPhenyl = false;
+                            // Reject a fused/multi-ring reachable set; whether any extra
+                            // substituents on the single matched ring are nameable is
+                            // nameBranchGraph's job below, not re-validated here with a
+                            // hand-rolled whitelist (confirmed live: it already names a
+                            // differently-substituted or differently-sized ring fine on
+                            // its own -- the old whitelist also only ever special-cased
+                            // 6-membered rings, rejecting an equally valid substituted
+                            // 5-membered ring directly on N for no real reason).
                             int ringsInHeavy = 0;
                             for (const auto& r : sssrRings) {
                                 bool isSubset = true;
                                 for (int node : r) {
                                     if (!reachableHeavy.count(node)) { isSubset = false; break; }
                                 }
-                                if (isSubset) {
-                                    ringsInHeavy++;
-                                    if (r == reachableHeavy) {
-                                        isSimpleUnsubstitutedRing = true;
-                                    } else if (b.len == 0 && r.size() == 6) {
-                                        isAllowedSubstitutedPhenyl = true;
-                                    }
-                                }
+                                if (isSubset) ringsInHeavy++;
                             }
-                            
-                            if (ringsInHeavy != 1 || (!isSimpleUnsubstitutedRing && !isAllowedSubstitutedPhenyl)) {
+
+                            if (ringsInHeavy != 1) {
                                 invalidBranch = true;
                                 break;
                             }
@@ -15696,29 +15658,19 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                     }
 
                     // A ring bonded DIRECTLY to N (a branch with len == 0, e.g. the phenyl of
-                    // N-methylaniline, or the cyclohexyl of N,N-dimethylcyclohexan-1-amine) can
-                    // never correctly be reduced to "just another N-substituent" the way a
-                    // chain-then-ring branch (e.g. alverine's 3-phenylpropyl, len >= 1) can --
-                    // real IUPAC parent selection between a ring and a competing chain follows
-                    // P-44 ring-vs-chain seniority (a ring generally outranks a short chain as
-                    // parent), and for the specific "aniline" shape (a ring's own -NH2/-NHR/-NR2)
-                    // the real Blue Book rule is stronger still: "the retained name 'aniline'
-                    // must be used for all its N derivatives" (BlueBookV2.md, confirmed against
-                    // the real quoted PIN "N-methylaniline (PIN)") -- a MANDATORY retained parent
-                    // this codebase does not implement anywhere. A length-only "longest chain
-                    // wins" comparison can never make either of these calls correctly, and a
-                    // direct-ring branch's length is always 0, so it can never even be considered
-                    // as a candidate parent by that comparison -- confirmed producing wrong
-                    // parent-choice output for both shapes (N-methylaniline -> wrongly
-                    // "N-phenylmethanamine"; N,N-dimethylcyclohexan-1-amine -> wrongly
-                    // "N-cyclohexyl-N-methylmethanamine", silently overriding the correct,
-                    // already-existing "chain-as-parent seniority (P-44.1.1)... not yet
-                    // supported" honest rejection for that exact molecule). Bail out of this
-                    // whole narrow block for any such case rather than guess: falls through to
-                    // whatever this codebase's separate, existing ring-vs-chain seniority
-                    // machinery already does for the molecule (an honest rejection today; real
-                    // support for either the general seniority comparison or the mandatory
-                    // aniline case is a distinct, larger, separate feature).
+                    // N-methylaniline, or the cyclohexyl of N,N-dimethylcyclohexan-1-amine)
+                    // can never correctly be reduced to "just another N-substituent" the way
+                    // a chain-then-ring branch (e.g. alverine's 3-phenylpropyl, len >= 1)
+                    // can -- a length-only "longest chain wins" comparison can never make
+                    // this call, and a direct-ring branch's length is always 0, so it can
+                    // never even be considered a candidate parent by that comparison.
+                    // Below, a direct ring on N is handled as its own case: a plain phenyl
+                    // or an ordinary "-yl"-ending ring name becomes the retained "aniline"/
+                    // "...anamine" parent directly; anything that doesn't fit that shape
+                    // bails out of this whole narrow block to whatever this codebase's
+                    // separate, existing ring-vs-chain seniority machinery already does for
+                    // the molecule (an honest rejection today for the cases that machinery
+                    // doesn't yet cover).
                     bool hasDirectRingOnN = false;
                     int directRingIdx = -1;
                     for (size_t i = 0; i < branches.size(); ++i) {
@@ -16184,8 +16136,14 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                                         }
                                         if (isDigit) {
                                             QString remainder = bareParent.mid(dashPos + 1);
-                                            std::vector<QString> knownAlkyls = {"methyl", "ethyl", "propyl", "butyl", "pentyl", "hexyl", "heptyl", "octyl"};
-                                            for (const QString& alkyl : knownAlkyls) {
+                                            // Built from chainRoot (same as every plain-alkyl name in
+                                            // this file) instead of a fixed methyl..octyl list, so a
+                                            // longer ring substituent isn't silently left un-split from
+                                            // the bare parent name. Longest n first: a shorter root is
+                                            // never a prefix of a longer one here, but checking long-to-
+                                            // short keeps that invariant explicit rather than assumed.
+                                            for (int n = 20; n >= 1; --n) {
+                                                QString alkyl = chainRoot(n) + "yl";
                                                 if (remainder.startsWith(alkyl)) {
                                                     substituents.push_back({locantStr + "-" + alkyl, alkyl});
                                                     bareParent = remainder.mid(alkyl.length());

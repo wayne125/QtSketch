@@ -253,6 +253,18 @@ int main() {
         {"CNC(C)C", "", true, "Branched, ring, or unsaturated chains on N-substituted amines are not supported"},
         {"CNC1(C)C2CCC(C2)C1(C)C", "", true, "Branched, ring, or unsaturated chains on N-substituted amines are not supported"}, // MECAMYLAMINE-shaped
         {"CN(C)C1CCCCC1", "N,N-dimethylcyclohexanamine"}, // existing passing test
+        // Unsaturated N-substituent (N-allyl-type): the branch-walk's bond-order
+        // check used to be missing here (present in the sibling diamine/
+        // exocyclic-amine walkers), so this silently walked through as if
+        // saturated instead of hitting the rejection its own message claims.
+        {"CC=CNC", "", true, "Branched, ring, or unsaturated chains on N-substituted amines are not supported"},
+        // A substituted ring directly on N used to only tolerate extra
+        // substituents on a 6-membered ring (an arbitrary size special-case);
+        // an equally valid substituted 5-membered ring was rejected for no
+        // real reason. Now trusts nameBranchGraph (which already names this
+        // fine) instead of a hand-rolled whitelist.
+        {"CNC1CC(C)CC1", "N-methyl-3-methylcyclopentanamine"},
+        {"CNC1CC(C)CC(C)C1", "N-methyl-3,5-dimethylcyclohexanamine"},
         {"CNCCNC", "N1,N2-dimethylethane-1,2-diamine"},
         {"CN(C)CCN(C)C", "N1,N1,N2,N2-tetramethylethane-1,2-diamine"},
         {"CNCCCNC", "N1,N3-dimethylpropane-1,3-diamine"},
@@ -262,6 +274,11 @@ int main() {
         {"CN(C)CCN", "N1,N1-dimethylethane-1,2-diamine"},
         {"NCCN(C)C", "N1,N1-dimethylethane-1,2-diamine"},
         {"CN(C)CCNC", "N1,N1,N2-trimethylethane-1,2-diamine"},
+        // A plain unbranched N-substituent longer than C8 used to hit a
+        // hand-rolled methyl..octyl lookup table (instead of the shared
+        // nameBranchGraph the ring-branch case two lines above it already
+        // used) and reject outright past octyl. Nonyl (C9) now names fine.
+        {"CCCCCCCCCNCCCCN", "N1-nonylbutane-1,4-diamine"},
         {"c1ccccc1N", "aniline"},
         {"Nc1ccc(Cl)cc1", "4-chloroaniline"},
         {"c1ccccc1NC", "N-methylaniline"},
@@ -281,6 +298,13 @@ int main() {
         {"CN1CCC(N)CC1", "1-methylpiperidin-4-amine"},
         {"CN1CCC(CC1)N(CC2=CC=CS2)C3=CC=CC=C3", "1-methyl-N-phenyl-N-(thiophen-2-ylmethyl)piperidin-4-amine"},
         {"CN(C)C1CCNCC1", "N,N-dimethylpiperidin-4-amine"},
+        // The ring's own substituent (reached by re-splitting a recursively
+        // generated bare-parent name string) used to be matched against a
+        // fixed methyl..octyl list, silently leaving a longer substituent
+        // un-split from the parent name. Built from chainRoot now, so a
+        // ring-borne nonyl plus an exocyclic N-methyl combine and alphabetize
+        // correctly.
+        {"CCCCCCCCCC1CCC(NC)CN1", "N-methyl-6-nonylpiperidin-3-amine"},
 
         // Saturated 1,4-diazinane (piperazine): the saturated analogue of
         // PYRAZINE, added as a new RingType/classification case (the only
