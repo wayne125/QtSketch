@@ -59,13 +59,22 @@ Item {
 
             if (!canvas.sketch.primitives || !canvas.sketch.primitives.bonds || !canvas.sketch.primitives.atoms) return
 
+            // Atoms with their own outgoing wedge/hash bond get their CIP label drawn
+            // beside that bond (LabelLayer.qml), not centered on the vertex -- so
+            // none of their bonds need retraction for it. Mirrors LabelLayer.qml's
+            // chiralBondDir pre-pass (the stereocenter is always the begin end).
+            const chiralBesideBondAtoms = {}
+            for (let sbi = 0; sbi < canvas.sketch.primitives.bonds.length; sbi++) {
+                const sbb = canvas.sketch.primitives.bonds[sbi]
+                if (sbb.stereo === 1 || sbb.stereo === 6) chiralBesideBondAtoms[sbb.begin] = true
+            }
+
             // Helper: check if an atom has a visible label (needs bond retraction)
             function atomHasLabel(a) {
                 if (!a) return false
                 if (a.isSgroup) return true
                 if (a.element !== "C") return true
                 if (a.charge !== 0) return true
-                if (a.stereoLabel && a.stereoLabel !== "") return true
                 if (a.cipLabel && a.cipLabel !== "") return true
                 if (a.aam && a.aam > 0) return true
                 if (canvas.showExplicitH) return true
@@ -83,14 +92,27 @@ Item {
                 if (a.isSgroup) {
                     return (root.measureCached(ctx, a.label) / 2) + 6 * root.scale
                 }
-                let textStr = a.label
-                if (a.isotope && a.isotope > 0) textStr = a.isotope.toString() + textStr
-                let retract = (root.measureCached(ctx, textStr) / 2) + 2 * root.scale
-                // Account for stereo label and CIP label (subscript-sized)
+                // Chiral centers on a plain carbon don't draw the "C" element symbol
+                // (LabelLayer.qml's isChiralCarbon) -- match that here so retraction
+                // isn't sized for text that never gets painted.
+                const isChiralCarbon = a.element === "C" && (a.charge || 0) === 0 &&
+                        !(a.isotope > 0) && !(a.radical > 0) &&
+                        !(a.explicitValence !== undefined && a.explicitValence >= 0) &&
+                        !(a.attachmentPoints > 0) && a.cipLabel
+                if (isChiralCarbon && (a.implicitHCount || 0) === 0 && !canvas.showExplicitH &&
+                        chiralBesideBondAtoms[a.id]) {
+                    return 0
+                }
+                let retract = 2 * root.scale
+                if (!isChiralCarbon) {
+                    let textStr = a.label
+                    if (a.isotope && a.isotope > 0) textStr = a.isotope.toString() + textStr
+                    retract += root.measureCached(ctx, textStr) / 2
+                }
+                // Account for CIP label (subscript-sized)
                 const subSize = Math.max(7, 10 * root.scale)
                 ctx.font = "bold " + subSize + "px " + Theme.fontFamilyCss
-                if (a.stereoLabel) retract += root.measureCached(ctx, " " + a.stereoLabel) / 2
-                if (a.cipLabel) retract += root.measureCached(ctx, " " + a.cipLabel) / 2
+                if (a.cipLabel) retract += root.measureCached(ctx, isChiralCarbon ? a.cipLabel : " " + a.cipLabel) / 2
                 return retract
             }
 
@@ -120,10 +142,22 @@ Item {
                 if (bondLen > 0) {
                     const ux = dx_full / bondLen
                     const uy = dy_full / bondLen
-                    
-                    const retract1 = getLabelRetraction(a1, fontSize)
-                    const retract2 = getLabelRetraction(a2, fontSize)
-                    
+
+                    let retract1 = getLabelRetraction(a1, fontSize)
+                    let retract2 = getLabelRetraction(a2, fontSize)
+                    // Cap combined retraction so a bond between two labeled atoms (e.g. a
+                    // CIP-labeled stereocenter next to a multi-character halogen symbol)
+                    // never fully vanishes -- always leave at least 40% of the bond visible,
+                    // scaling both ends down proportionally so neither pill's clearance is
+                    // favored over the other's.
+                    const maxTotalRetract = bondLen * 0.6
+                    const totalRetract = retract1 + retract2
+                    if (totalRetract > maxTotalRetract) {
+                        const factor = maxTotalRetract / totalRetract
+                        retract1 *= factor
+                        retract2 *= factor
+                    }
+
                     if (retract1 > 0) {
                         p1 = { x: p1.x + ux * retract1, y: p1.y + uy * retract1 }
                     }
@@ -457,6 +491,22 @@ Item {
                             drawCondText(ar.conditionsText.below, midX - perpX * condOffset, midY - perpY * condOffset, condFontSize)
                         }
                     }
+                }
+            }
+
+            // 3. Draw Reaction Plus signs
+            if (canvas.sketch.primitives.rxnPluses) {
+                for (let i = 0; i < canvas.sketch.primitives.rxnPluses.length; ++i) {
+                    const rp = canvas.sketch.primitives.rxnPluses[i]
+                    const p = canvas.chemToCanvas(rp.x, rp.y)
+                    const isSelected = canvas.sketch.selection.rxnPlus_ids && canvas.sketch.selection.rxnPlus_ids.indexOf(rp.id) >= 0
+                    const color = isSelected ? Theme.accent : Theme.textPrimary
+                    const fontSize = Math.max(14, 20 * root.scale)
+                    ctx.font = "bold " + fontSize + "px " + Theme.fontDisplayCss
+                    ctx.textAlign = "center"
+                    ctx.textBaseline = "middle"
+                    ctx.fillStyle = color
+                    ctx.fillText("+", p.x, p.y)
                 }
             }
 

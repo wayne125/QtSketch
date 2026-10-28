@@ -5,12 +5,47 @@ import QtQuick.Layouts
 Rectangle {
     id: root
     property Item canvas
+    // Set true only on the instance living inside floatingPropertyWindow
+    // (MainWindow.qml). Purely cosmetic -- swaps which icon/tooltip/target-
+    // state this panel's float/dock button shows; both instances otherwise
+    // behave identically.
+    property bool isFloating: false
     // Null-safe accessors: `canvas` is bound to activeCanvas, which is null for a
     // moment at startup before the per-document Repeater instantiates. Every binding
     // below reads these instead of dereferencing canvas directly.
     readonly property var selAtom: canvas ? canvas.selectedAtom : null
     readonly property var selBond: canvas ? canvas.selectedBond : null
     readonly property var selArrow: canvas ? canvas.selectedRxnArrow : null
+
+    readonly property bool hasMultiSelection: {
+        if (!canvas || !canvas.sketch) return false
+        let atomCount = canvas.sketch.selection.atom_ids ? canvas.sketch.selection.atom_ids.length : 0
+        let bondCount = canvas.sketch.selection.bond_ids ? canvas.sketch.selection.bond_ids.length : 0
+        return (atomCount + bondCount) > 1
+    }
+    readonly property bool hasContextSelection: selAtom !== null || selBond !== null || selArrow !== null || hasMultiSelection
+    readonly property var matchedRing: {
+        if (!canvas || !canvas.sketch || !canvas.sketch.primitives || !canvas.sketch.primitives.rings) return null
+        if (!canvas.sketch.selection || !canvas.sketch.selection.atom_ids) return null
+        let selAtoms = canvas.sketch.selection.atom_ids
+        let selBonds = canvas.sketch.selection.bond_ids || []
+        if (selAtoms.length < 3) return null
+        let selSet = {}
+        for (let i = 0; i < selAtoms.length; i++) selSet[selAtoms[i]] = true
+        let rings = canvas.sketch.primitives.rings
+        for (let r = 0; r < rings.length; r++) {
+            let ring = rings[r]
+            if (!ring.atoms || ring.atoms.length !== selAtoms.length) continue
+            if (selBonds.length !== ring.atoms.length) continue
+            let match = true
+            for (let j = 0; j < ring.atoms.length; j++) {
+                if (!selSet[ring.atoms[j]]) { match = false; break }
+            }
+            if (match) return ring
+        }
+        return null
+    }
+    property bool drugPropertiesExpanded: true
 
     property string molName: ""
     property var sdfProps: ({})
@@ -63,6 +98,19 @@ Rectangle {
     }
     function _fmtInt(v) { return (root.calcFailed || v < 0) ? "—" : v.toString() }
     function _formulaHtml(f) { return f.replace(/([0-9]+)/g, "<sub>$1</sub>") }
+    function _panelTitle() {
+        if (root.selAtom !== null) return "Atom \u00b7 " + (root.selAtom.label || "?") + root.selAtom.id
+        if (root.selBond !== null) return "Bond \u00b7 #" + root.selBond.id
+        if (root.selArrow !== null) return "Reaction"
+        if (root.matchedRing !== null) return "Ring \u00b7 " + root.matchedRing.atoms.length + "-membered"
+        if (root.hasMultiSelection) {
+            let atomCount = (root.canvas && root.canvas.sketch && root.canvas.sketch.selection.atom_ids) ? root.canvas.sketch.selection.atom_ids.length : 0
+            let bondCount = (root.canvas && root.canvas.sketch && root.canvas.sketch.selection.bond_ids) ? root.canvas.sketch.selection.bond_ids.length : 0
+            return "Selection \u00b7 " + (atomCount + bondCount) + " objects"
+        }
+        if (root.molAtoms > 0) return "Molecule"
+        return "Properties"
+    }
 
     // Indigo reports check types as raw keys ("ambiguous_h", "overlap_atom").
     // Shown verbatim they read as defects in the drawing rather than what they
@@ -93,17 +141,65 @@ Rectangle {
         }
         spacing: Theme.spacingLarge
 
-        Text {
-            textFormat: Text.PlainText
-            text: "Properties"
-            color: Theme.textSecondary
-            font {
-                pixelSize: Theme.fontSizeCaption
-                bold: true
-                letterSpacing: 2
-                family: Theme.fontFamily
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.spacingSmall
+
+            Text {
+                textFormat: Text.PlainText
+                text: root._panelTitle()
+                color: Theme.textSecondary
+                font {
+                    pixelSize: Theme.fontSizeCaption
+                    bold: true
+                    letterSpacing: 2
+                    family: Theme.fontFamily
+                }
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignHCenter
             }
-            Layout.alignment: Qt.AlignHCenter
+
+            // Collapse: reclaims this panel's full width back to the canvas.
+            // Re-expand happens via the slim tab MainWindow shows in its place
+            // (Step 3) or the bottom bar's issue badge (Task 2).
+            ToolButton {
+                // Theme.fontIcons (Segoe Fluent Icons) private-use-area glyphs
+                // do not reliably survive every editing path -- confirmed by
+                // screenshot that this exact pattern renders empty elsewhere
+                // in this codebase (MainWindow.qml's density toggle, same
+                // issue, pre-existing). Plain font + a standard BMP arrow
+                // avoids the whole class of bug; matches the re-expand tab's
+                // "◀" below, which is already proven to render correctly.
+                text: "▶"
+                font { family: Theme.fontFamily; pixelSize: Theme.iconSize }
+                implicitWidth: Theme.controlHeight
+                implicitHeight: Theme.controlHeight
+                Accessible.name: "Collapse properties panel"
+                ToolTip.text: "Collapse"
+                ToolTip.visible: hovered
+                ToolTip.delay: 500
+                onClicked: uiSettings.panelState = "collapsed"
+                visible: !root.isFloating
+            }
+            // Float: detaches this panel's content into its own draggable
+            // window (floatingPropertyWindow in MainWindow.qml). The SAME
+            // button, shown in BOTH the docked and floating instances, docks
+            // back when clicked while already floating -- root.isFloating
+            // (set by MainWindow when instantiating the floating instance)
+            // tells each instance which state to toggle TO on click.
+            ToolButton {
+                // Same private-use-glyph issue as the collapse button above --
+                // plain font + standard arrows instead.
+                text: root.isFloating ? "↙" : "↗"
+                font { family: Theme.fontFamily; pixelSize: Theme.iconSize }
+                implicitWidth: Theme.controlHeight
+                implicitHeight: Theme.controlHeight
+                Accessible.name: root.isFloating ? "Dock properties panel" : "Float properties panel"
+                ToolTip.text: root.isFloating ? "Dock" : "Float"
+                ToolTip.visible: hovered
+                ToolTip.delay: 500
+                onClicked: uiSettings.panelState = root.isFloating ? "docked" : "floating"
+            }
         }
 
         Rectangle {
@@ -115,7 +211,7 @@ Rectangle {
         // Molecular Properties (auto-updated)
         ColumnLayout {
             Layout.fillWidth: true
-            visible: root.molAtoms > 0
+            visible: root.molAtoms > 0 && !root.hasContextSelection
             spacing: 6
 
             TextField {
@@ -156,14 +252,22 @@ Rectangle {
                 Button {
                     Layout.alignment: Qt.AlignRight
                     text: root.iupacLoading ? "Generating…" : "Generate"
-                    enabled: !root.iupacLoading && root.canvas && root.canvas.sketch
+                    // ChemDraw's "Structure to Name" convention: selection required, named
+                    // only when something is selected (never silently names the whole
+                    // document -- a multi-structure canvas would otherwise be ambiguous
+                    // about which structure the name even describes).
+                    enabled: !root.iupacLoading && root.canvas && root.canvas.sketch &&
+                             root.canvas.sketch.selection && root.canvas.sketch.selection.atom_ids &&
+                             root.canvas.sketch.selection.atom_ids.length > 0
                     font { pixelSize: Theme.fontSizeCaption; family: Theme.fontFamily }
+                    ToolTip.visible: hovered && !enabled && !root.iupacLoading
+                    ToolTip.text: "Select the structure to name first"
                     onClicked: {
                         if (root.canvas && root.canvas.sketch) {
                             root.iupacLoading = true
                             root.iupacName = ""
                             root.iupacError = ""
-                            root.canvas.sketch.requestSerialize("iupac_name")
+                            root.canvas.sketch.requestMolfileForNamingSelection("iupac_name")
                         }
                     }
                 }
@@ -221,11 +325,29 @@ Rectangle {
 
             Rectangle { Layout.fillWidth: true; height: 1; color: Theme.outline; opacity: 0.5 }
 
-            Text {
-                textFormat: Text.PlainText
-                text: "Drug Properties"
-                color: Theme.textSecondary
-                font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontFamily }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 4
+
+                Text {
+                    textFormat: Text.PlainText
+                    text: "Drug Properties"
+                    color: Theme.textSecondary
+                    font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontFamily }
+                    Layout.fillWidth: true
+                }
+                Text {
+                    textFormat: Text.PlainText
+                    text: root.drugPropertiesExpanded ? "\u25be" : "\u25b8"
+                    color: Theme.textSecondary
+                    font { pixelSize: Theme.fontSizeCaption; family: Theme.fontFamily }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.drugPropertiesExpanded = !root.drugPropertiesExpanded
+                }
             }
 
             Grid {
@@ -233,6 +355,7 @@ Rectangle {
                 columnSpacing: 12
                 rowSpacing: 4
                 Layout.fillWidth: true
+                visible: root.drugPropertiesExpanded
 
                 Text { textFormat: Text.PlainText; text: "TPSA";   color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontFamily } }
                 Text { textFormat: Text.PlainText; text: root._fmtNum(root.molTPSA, 2, " Å²");  color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
@@ -326,12 +449,7 @@ Rectangle {
         // Multi-select summary
         ColumnLayout {
             Layout.fillWidth: true
-            visible: {
-                if (!root.canvas || !root.canvas.sketch) return false;
-                let atomCount = root.canvas.sketch.selection.atom_ids ? root.canvas.sketch.selection.atom_ids.length : 0;
-                let bondCount = root.canvas.sketch.selection.bond_ids ? root.canvas.sketch.selection.bond_ids.length : 0;
-                return (atomCount + bondCount) > 1;
-            }
+            visible: root.hasMultiSelection && root.matchedRing === null
             spacing: Theme.spacingMedium
 
             Text {
@@ -353,6 +471,36 @@ Rectangle {
                 }
                 color: Theme.textPrimary
                 font { pixelSize: Theme.fontSizeBody; family: Theme.fontFamily }
+            }
+        }
+
+        // Ring Properties
+        ColumnLayout {
+            Layout.fillWidth: true
+            visible: root.matchedRing !== null
+            spacing: Theme.spacingMedium
+
+            Text {
+                textFormat: Text.PlainText
+                text: "Ring"
+                color: Theme.textSecondary
+                font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontFamily }
+            }
+
+            Grid {
+                columns: 2
+                columnSpacing: 12
+                rowSpacing: 4
+                Layout.fillWidth: true
+
+                Text { textFormat: Text.PlainText; text: "Size";     color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontFamily } }
+                Text { textFormat: Text.PlainText; text: root.matchedRing ? (root.matchedRing.atoms.length + "-membered") : ""; color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
+
+                Text { textFormat: Text.PlainText; text: "Aromatic"; color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontFamily } }
+                Text { textFormat: Text.PlainText; text: (root.matchedRing && root.matchedRing.isAromatic) ? "Yes" : "No"; color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
+
+                Text { textFormat: Text.PlainText; text: "Atoms";    color: Theme.textSecondary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontFamily } }
+                Text { textFormat: Text.PlainText; text: root.matchedRing ? root.matchedRing.atoms.length.toString() : ""; color: Theme.textPrimary; font { pixelSize: Theme.fontSizeLabel; family: Theme.fontMono } }
             }
         }
 
@@ -457,11 +605,21 @@ Rectangle {
                 color: Theme.textSecondary
                 font { pixelSize: Theme.fontSizeCaption; bold: true; letterSpacing: 1; family: Theme.fontFamily }
             }
-            Text {
-                textFormat: Text.PlainText
+            TextField {
+                id: sgroupLabelInput
+                Layout.fillWidth: true
                 text: root.selAtom ? root.selAtom.label : ""
-                color: Theme.textPrimary
                 font { pixelSize: Theme.fontSizeHeadline; bold: true; family: Theme.fontFamily }
+                onEditingFinished: {
+                    if (root.selAtom && root.selAtom.isSgroup) {
+                        canvas.applyPropertyChange("sgroupLabel", root.selAtom.id, text)
+                    }
+                    focus = false
+                }
+                Keys.onEscapePressed: {
+                    text = root.selAtom ? root.selAtom.label : ""
+                    focus = false
+                }
             }
         }
 
@@ -682,7 +840,7 @@ Rectangle {
             Layout.fillHeight: true
             StatusPlaceholder {
                 anchors.centerIn: parent
-                visible: root.selAtom === null && root.selBond === null && root.selArrow === null
+                visible: !root.hasContextSelection && root.molAtoms === 0
                 mode: "empty"
                 message: "Nothing selected"
                 detail: "Click an atom, bond, or arrow\nto edit its properties"

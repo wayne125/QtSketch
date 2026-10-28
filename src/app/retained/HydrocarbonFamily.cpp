@@ -1,0 +1,127 @@
+#include "HydrocarbonFamily.h"
+
+void registerHydrocarbonFamily(std::vector<RetainedRingSystem> &registry) {
+    // Naphthalene -- THE motivating entry (naphtho[2,3-g]isoquinoline).
+    // SMILES 'c1ccc2ccccc2c1' parsed by Indigo produces atoms in order:
+    // atom 0: C beta (neighbors 1, 9) -> locant "2"
+    // atom 1: C beta (neighbors 0, 2) -> locant "3"
+    // atom 2: C alpha (neighbors 1, 3) -> locant "4"
+    // atom 3: C bridgehead (neighbors 2, 4, 8) -> locant "4a"
+    // atom 4: C alpha (neighbors 3, 5) -> locant "5"
+    // atom 5: C beta (neighbors 4, 6) -> locant "6"
+    // atom 6: C beta (neighbors 5, 7) -> locant "7"
+    // atom 7: C alpha (neighbors 6, 8) -> locant "8"
+    // atom 8: C bridgehead (neighbors 3, 7, 9) -> locant "8a"
+    // atom 9: C alpha (neighbors 0, 8) -> locant "1"
+    registry.push_back(RetainedRingSystem{
+        "naphthalene",
+        "c1ccc2ccccc2c1",
+        {"2","3","4","4a","5","6","7","8","8a","1"},
+        {
+            {'a', {"1","2"}}, {'b', {"2","3"}}, {'c', {"3","4"}},
+            {'d', {"4","4a"}}, {'e', {"4a","5"}}, {'f', {"5","6"}},
+            {'g', {"6","7"}}, {'h', {"7","8"}}, {'i', {"8","8a"}},
+            {'j', {"8a","1"}},
+        },
+        56, // Appendix 1 seniority position
+        "naphtho", // Task 10: fusion prefix, for citing naphthalene as an
+                   // attached component (e.g. "naphtho[2,3-g]isoquinoline")
+    });
+
+    // Anthracene -- 14 carbons; 9 and 10 are the two unique "meso" positions.
+    // SMILES 'c1ccc2cc3ccccc3cc2c1' parsed by Indigo produces atoms in order:
+    // atom 0: C beta (neighbors 1, 13) -> locant "2"
+    // atom 1: C beta (neighbors 0, 2) -> locant "3"
+    // atom 2: C alpha (neighbors 1, 3) -> locant "4"
+    // atom 3: C bridgehead (neighbors 2, 4, 12) -> locant "4a"
+    // atom 4: C meso (neighbors 3, 5) -> locant "10"
+    // atom 5: C bridgehead (neighbors 4, 6, 10) -> locant "10a"
+    // atom 6: C alpha (neighbors 5, 7) -> locant "5"
+    // atom 7: C beta (neighbors 6, 8) -> locant "6"
+    // atom 8: C beta (neighbors 7, 9) -> locant "7"
+    // atom 9: C alpha (neighbors 8, 10) -> locant "8"
+    // atom 10: C bridgehead (neighbors 5, 9, 11) -> locant "8a"
+    // atom 11: C meso (neighbors 10, 12) -> locant "9"
+    // atom 12: C bridgehead (neighbors 3, 11, 13) -> locant "9a"
+    // atom 13: C alpha (neighbors 0, 12) -> locant "1"
+    registry.push_back(RetainedRingSystem{
+        "anthracene",
+        "c1ccc2cc3ccccc3cc2c1",
+        {"2","3","4","4a","10","10a","5","6","7","8","8a","9","9a","1"},
+        {}, // bond letters added in a later task once an attached-component
+            // use case for "anthra-" actually needs them -- empty map is
+            // valid (base-component-only use still works without it)
+        46,
+    });
+
+    // Tetracene (also called naphthacene) -- 4 linearly-fused all-carbon
+    // aromatic 6-membered rings, 18 carbons. Locant numbering independently
+    // triangulated from three real external facts (no single source gave
+    // the full locant list directly, so this was cross-checked rather than
+    // taken from one place):
+    //   1. Rubrene's real IUPAC name is "5,6,11,12-tetraphenyltetracene"
+    //      (confirmed via a fresh web search of supplier/catalog listings
+    //      giving this exact name) -- fixes the two meso-pair locants.
+    //   2. "Tetracene-5,12-dione" is the standard/major tetracene quinone
+    //      (ChEBI:51287, analogous to anthracene-9,10-dione) -- confirms
+    //      5 and 12 are the two meso positions of the SAME inner ring
+    //      (diagonally opposite within it), not of different rings.
+    //   3. PubChem CID 12446083's IUPACName is
+    //      "1,2,3,4,7,8,9,10-octahydrotetracene" (already independently
+    //      confirmed this session for the ground-truth molecule) --
+    //      confirms the two OUTER rings carry locants 1,2,3,4 and 7,8,9,10.
+    //   4. IUPAC's own fused-ring-nomenclature Appendix 1 listing
+    //      (iupac.qmul.ac.uk/fusedring/app1.html) places tetracene at
+    //      table position 39, anthracene at 47, and naphthalene at 57 --
+    //      consistently ONE MORE than this registry's own seniorityRank
+    //      values for anthracene (46) and naphthalene (56), confirming
+    //      the registry's seniorityRank = (that table position - 1), so
+    //      tetracene's seniorityRank = 39 - 1 = 38 (more senior than
+    //      anthracene/naphthalene, consistent with FR-2.3(b) "greater
+    //      number of rings" -- 4 rings outranks 3 or 2).
+    // These three facts, plus the standard ortho-fused-acene periphery-walk
+    // pattern already used for naphthalene/anthracene above (each bridgehead
+    // gets the previous number's own letter suffix), together fully pin
+    // down the numbering below -- independently re-derived from first
+    // principles AND cross-checked against all three facts simultaneously
+    // (they are only mutually consistent with ONE locant assignment).
+    //
+    // SMILES 'c1ccc2cc3cc4ccccc4cc3cc2c1' parsed by Indigo (confirmed via a
+    // fresh scratch Indigo run) produces atoms in order:
+    // atom 0: C (neighbors 1, 17) -> locant "2"
+    // atom 1: C (neighbors 0, 2) -> locant "3"
+    // atom 2: C (neighbors 1, 3) -> locant "4"
+    // atom 3: C bridgehead (neighbors 2, 4, 16) -> locant "4a"
+    // atom 4: C meso, ring-B top (neighbors 3, 5) -> locant "5"
+    // atom 5: C bridgehead (neighbors 4, 6, 14) -> locant "5a"
+    // atom 6: C meso, ring-C top (neighbors 5, 7) -> locant "6"
+    // atom 7: C bridgehead (neighbors 6, 8, 12) -> locant "6a"
+    // atom 8: C (neighbors 7, 9) -> locant "7"
+    // atom 9: C (neighbors 8, 10) -> locant "8"
+    // atom 10: C (neighbors 9, 11) -> locant "9"
+    // atom 11: C (neighbors 10, 12) -> locant "10"
+    // atom 12: C bridgehead (neighbors 11, 7, 13) -> locant "10a"
+    // atom 13: C meso, ring-C bottom (neighbors 12, 14) -> locant "11"
+    // atom 14: C bridgehead (neighbors 13, 5, 15) -> locant "11a"
+    // atom 15: C meso, ring-B bottom (neighbors 14, 16) -> locant "12"
+    // atom 16: C bridgehead (neighbors 15, 3, 17) -> locant "12a"
+    // atom 17: C (neighbors 16, 0) -> locant "1"
+    registry.push_back(RetainedRingSystem{
+        "tetracene",
+        "c1ccc2cc3cc4ccccc4cc3cc2c1",
+        {"2","3","4","4a","5","5a","6","6a","7","8","9","10","10a","11","11a","12","12a","1"},
+        {}, // bond letters not yet needed by any confirmed use case as an
+            // attached component -- same empty-map convention as anthracene
+        38,
+        // fusionPrefix: verified directly against Blue Book FR-2.1.2
+        // (fetched iupac.qmul.ac.uk/fusedring/FR21.html this session):
+        // "In an attached component prefix the ending '-acene' is changed
+        // to '-aceno'." Tetracene is NOT one of FR-2.1.9's four irregular
+        // stems (naphtho/anthra/benzo/phenanthro only cover
+        // naphthalene/anthracene/benzene/phenanthrene), so the regular
+        // rule applies: tetracene -> tetraceno. (A prior guess of
+        // "naphthaceno" here, by loose analogy with naphtho/anthra, was
+        // never independently verified and is superseded by this check.)
+        "tetraceno",
+    });
+}

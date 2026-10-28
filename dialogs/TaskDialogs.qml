@@ -180,7 +180,21 @@ Item {
             const smi = smilesInput.text.trim()
             if (smi) {
                 win.isProcessing = true
-                win.indigoSvc.layout(smi)
+                const isRxn = smi.startsWith("$RXN") || (smi.split(">").length - 1) === 2
+                if (isRxn && win.activeSketch) {
+                    if (win.activeCanvas) win.activeCanvas.clearCanvas()
+                    const ok = win.activeSketch.importReaction(smi)
+                    win.isProcessing = false
+                    if (ok) {
+                        win.centerViewOnPage()
+                    } else {
+                        win.messageDialogsGroup.workerErrorDialog.errorText = "Load from SMILES: the text does not describe a valid reaction. The canvas was cleared before the import attempt -- press Ctrl+Z to restore your previous content."
+                        win.messageDialogsGroup.workerErrorDialog.severe = false
+                        win.messageDialogsGroup.workerErrorDialog.open()
+                    }
+                } else {
+                    win.indigoSvc.layout(smi)
+                }
             }
         }
     }

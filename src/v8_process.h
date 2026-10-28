@@ -6,7 +6,10 @@
 #include <QByteArray>
 #include <QtQml/qqml.h>
 #include <memory>
-#include "qjs_engine.h"
+#include "app/molecule/DocumentState.h"
+#include "app/molecule/TemplateLibrary.h"
+#include "app/molecule/SdfBatch.h"
+#include "app/PlacementEngines.h"
 
 class V8Process : public QObject {
     Q_OBJECT
@@ -17,7 +20,12 @@ class V8Process : public QObject {
     Q_PROPERTY(QVariantMap overlayState READ overlayState WRITE setOverlayState NOTIFY overlayStateChanged)
 
 public:
-    explicit V8Process(QObject *parent = nullptr);
+    // Every document runs on DocumentState; there is no other engine.
+    // templateLibrary is non-owning: DocumentManager owns the real instance and outlives
+    // every V8Process it creates. Defaulted to nullptr so any hypothetical future
+    // construction site that doesn't need template insertion (e.g. a test) still
+    // compiles unchanged.
+    explicit V8Process(QObject *parent = nullptr, TemplateLibrary* templateLibrary = nullptr);
     ~V8Process();
 
     QVariantMap primitives() const { return m_primitives; }
@@ -31,8 +39,17 @@ public:
     Q_INVOKABLE void addBondAndAtom(int beginAtomId, const QString& endAtomLabel, double x, double y, int bondType, int stereo);
     Q_INVOKABLE void addBondBetweenCoords(double x1, double y1, double x2, double y2, int type, int stereo);
     Q_INVOKABLE void addBond(int beginAtomId, int endAtomId, int bondType, int stereoDir = 0);
+    // Read-only: for a plain click (no drag) with a bond tool starting on an existing atom,
+    // suggests where the new atom should land -- reusing AtomPlacementEngine's own
+    // existing-neighbor-aware angle snap (the same engine the ATOM_/FG_ tools' click-to-extend
+    // gesture already uses), so the new bond doesn't land directly on top of one that's
+    // already there. Returns {} if fromAtomId doesn't exist.
+    Q_INVOKABLE QVariantMap suggestBondEndpoint(int fromAtomId, double bondLength);
+    Q_INVOKABLE QVariantMap suggestFragmentAttachPoint(int fromAtomId, double bondLength);
     Q_INVOKABLE void addRing(const QVariantList& coords, bool aromatic = true);
     Q_INVOKABLE QVariantList getRingPreviewCoords(int n, double cx, double cy, const QVariant& hoverAtomId, const QVariant& hoverBondId);
+    PlacementResult getFunctionalGroupPlacementResult(const QString& toolId, double cx, double cy, int targetAtomId);
+    Q_INVOKABLE QVariantList getFunctionalGroupPreview(const QString& toolId, double cx, double cy, const QVariant& hoverAtomId);
     Q_INVOKABLE void deleteAtomById(int id);
     Q_INVOKABLE void deleteBondById(int id);
     Q_INVOKABLE void deleteSelection();
@@ -48,9 +65,17 @@ public:
     Q_INVOKABLE void requestStructure(const QString& fmt, const QString& reqId);
     Q_INVOKABLE void requestSelectionStructure(const QString& reqId);
     Q_INVOKABLE void requestSerialize(const QString& reqId);
+    Q_INVOKABLE void requestMolfileForNaming(const QString& reqId);
+    // Selection-scoped variant: names only the currently selected fragment
+    // (ChemDraw's "Structure to Name" behavior -- selection required, only
+    // the selection is named, not the whole document). Emits structureReady
+    // with an empty string if the selection is empty.
+    Q_INVOKABLE void requestMolfileForNamingSelection(const QString& reqId);
     Q_INVOKABLE QString getStructure(const QString& fmt);
     Q_INVOKABLE QString serializeMol();
+    Q_INVOKABLE QString getMolfileForNaming();
     Q_INVOKABLE void loadStructure(const QString& format, const QString& data, bool centerOnPage = false);
+    Q_INVOKABLE bool importReaction(const QString& text);
     Q_INVOKABLE void insertFunctionalGroup(const QString& fgName, double cx, double cy, int targetAtomId = -1, bool fullStructure = true);
     Q_INVOKABLE void insertLibraryTemplateFused(const QString& fgName, double cx, double cy, int targetBondId);
     Q_INVOKABLE void requestSaltsAndSolventsList();
@@ -132,12 +157,36 @@ signals:
     void errorOccurred(const QString& error);
 
 private:
-    // Replaces the old QProcess-based onReadyReadStandardOutput: called once per
-    // JSON line the worker emits via console.log, whether that line came from
-    // QjsEngine's synchronous native_log callback (see qjs_engine.cpp).
-    void handleWorkerLine(const QString &line);
+    // Turns m_docState's current molecule/selection into the exact QVariantMap shape and
+    // signal set QML already consumes from the JS path -- the single place that makes a
+    // C++-mode document indistinguishable from a JS-mode one at the QML boundary. Always
+    // renders with showExplicitH=false; the setShowExplicitH toggle is out of scope for this
+    // pilot (see the approved spec's Scope section).
+    void applyLocalState(const QString &resultTag = QString());
 
-    std::unique_ptr<QjsEngine> m_engine;
+    // Ports 40-serialize.js's _buildBatchRecordsFromStructs: builds the {count, records:
+    // [{index, label, thumb: {atoms, bonds}}]} JSON shape shared by deserializeRdfBatch/
+    // deserializeIndigoBatch/deserializeSdfBatch/realignSdfBatch. `count` is m_sdfBatch's true,
+    // uncapped record count; the `records` array itself is capped at the first 500 entries,
+    // matching the real code's own Math.min(count, 500) exactly.
+    QString buildSdfBatchListJson() const;
+
+    // Shared by deserializeRdfBatch/deserializeIndigoBatch, whose real JS bodies are byte-
+    // identical (confirmed by direct source read) -- avoids literally duplicating the branch
+    // body twice the way the real JS does. recordsJson is JSON.stringify([{molfile: "..."}, ...]).
+    void handleDeserializeBatchFromMolfiles(const QString& recordsJson);
+
+    std::unique_ptr<DocumentState> m_docState;   // always non-null; every document is C++-engine now
+    TemplateLibrary* m_templateLibrary = nullptr;   // non-owning; null unless passed in at construction
+    QString m_docClipboardMol;   // C++-engine-only clipboard cache: set by copySelection/cutSelection,
+                                  // read by pasteSelection. Mirrors the JS worker's module-level
+                                  // _clipboard (90-dispatch.js:133-141, 40-serialize.js:120-123).
+    SdfBatch m_sdfBatch;          // C++-engine-only staged batch, mirrors the JS worker's module-level
+                                  // _sdfBatchRecords (40-serialize.js). Chemistry/Indigo work is
+                                  // already fully implemented and tested in SdfBatch itself.
+    QHash<QString, QString> m_sdfProps;   // mirrors _sdfProps (40-serialize.js:2, starts as {}),
+                                            // populated by loadSdfBatchRecord, read by getSdfProps.
+
     QVariantMap m_primitives;
     QVariantMap m_selection;
     QVariantMap m_overlayState;

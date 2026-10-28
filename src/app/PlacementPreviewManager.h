@@ -3,6 +3,7 @@
 #include <QPointF>
 #include <QString>
 #include <QVariantMap>
+#include <QHash>
 #include "PlacementEngines.h"
 
 class V8Process;
@@ -26,11 +27,14 @@ public:
     QPointF startPixelPos() const { return m_startPixelPos; }
     QPointF startChemPos() const { return m_startChemPos; }
     QString toolId() const { return m_toolId; }
+    QPointF lastChemPos() const { return m_lastChemPos; }
 private:
     QPointF m_startPixelPos;
     QPointF m_startChemPos;
+    QPointF m_lastChemPos;
     QString m_toolId;
     PlacementResult m_lastResult;
+    QHash<int, QList<double>> m_cachedAngles; // atomId -> neighbor-bond angles, snapshotted once per gesture in beginPreview()
 
     QList<double> getExistingAngles(int atomId) const;
     void publishToOverlay();

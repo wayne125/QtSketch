@@ -1,5 +1,6 @@
 #include "IndigoService.h"
 #include "IupacNamer.h"
+#include "BondStereoPerception.h"
 #include <cmath>
 #include <QDebug>
 #include <QGuiApplication>
@@ -14,6 +15,7 @@
 #include "indigo-renderer.h"
 #include <QtConcurrent>
 #include <QPointer>
+#include <QPointF>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -73,7 +75,14 @@ static QString sanitizeMolfileForAnalysis(const QString &molfile) {
 // value for a whole multi-molecule reaction scheme, so these are skipped
 // gracefully here rather than attempted — same treatment as an empty molfile.
 static bool isReactionFormat(const QString &data) {
-    return data.trimmed().startsWith(QLatin1String("$RXN"));
+    QString trimmed = data.trimmed();
+    // ">>" is reaction-SMILES's reactant/product separator. A real molfile's first four
+    // lines are a fixed structural header (never containing ">>"), and real molecule
+    // SMILES/InChI text essentially never contains a literal ">>" substring, so this check
+    // is safe as a pure widening -- every caller of isReactionFormat (checkStructure,
+    // calcProperties, renderReactionGridToFile, layout, and this task's new importReaction
+    // path) benefits identically.
+    return trimmed.startsWith(QLatin1String("$RXN")) || trimmed.contains(QLatin1String(">>"));
 }
 
 // The vendored indigo.dll silently crashes the whole process (not a catchable C++ exception --
@@ -155,6 +164,63 @@ static QString indigoBioExpand(int mol) {
     return result;
 }
 
+// indigoLayout/indigoClean2d relayout atoms around whatever origin the algorithm
+// picks internally (typically near 0,0), which silently relocates the whole
+// structure on the page even though only its geometry, not its position, was
+// asked to change. Averages atom xyz (molecule) or every reaction molecule's
+// atoms (reaction) into one centroid so callers can shift the result back.
+static QPointF indigoCentroid(int mol, bool isRxn) {
+    double sumX = 0, sumY = 0;
+    int count = 0;
+    auto accumulate = [&](int m) {
+        int it = indigoIterateAtoms(m);
+        if (it < 0) return;
+        int a;
+        while ((a = indigoNext(it)) > 0) {
+            float* xyz = indigoXYZ(a);
+            if (!xyz) continue;
+            sumX += xyz[0];
+            sumY += xyz[1];
+            count++;
+        }
+    };
+    if (isRxn) {
+        int mit = indigoIterateMolecules(mol);
+        if (mit >= 0) {
+            int m;
+            while ((m = indigoNext(mit)) > 0) accumulate(m);
+        }
+    } else {
+        accumulate(mol);
+    }
+    if (count == 0) return QPointF(0, 0);
+    return QPointF(sumX / count, sumY / count);
+}
+
+// Shifts every atom (and, for reactions, every molecule's atoms) by (dx, dy).
+static void indigoShiftAll(int mol, bool isRxn, double dx, double dy) {
+    if (dx == 0.0 && dy == 0.0) return;
+    auto shift = [&](int m) {
+        int it = indigoIterateAtoms(m);
+        if (it < 0) return;
+        int a;
+        while ((a = indigoNext(it)) > 0) {
+            float* xyz = indigoXYZ(a);
+            if (!xyz) continue;
+            indigoSetXYZ(a, xyz[0] + static_cast<float>(dx), xyz[1] + static_cast<float>(dy), xyz[2]);
+        }
+    };
+    if (isRxn) {
+        int mit = indigoIterateMolecules(mol);
+        if (mit >= 0) {
+            int m;
+            while ((m = indigoNext(mit)) > 0) shift(m);
+        }
+    } else {
+        shift(mol);
+    }
+}
+
 IndigoService::IndigoService(QObject *parent) : QObject(parent) {
     m_sessionId = indigoAllocSessionId();
 }
@@ -167,7 +233,7 @@ IndigoService::~IndigoService() {
 
 void IndigoService::layout(const QString &molfile) {
     if (molfile.isEmpty()) {
-        emit layoutFinished("");
+        emit layoutFinished("", "");
         return;
     }
     
@@ -175,6 +241,7 @@ void IndigoService::layout(const QString &molfile) {
     
     (void)QtConcurrent::run([self, molfile]() {
         QString resultMol = molfile;
+        QString errorMsg;
         unsigned long long threadSessionId = indigoAllocSessionId();
         
         try {
@@ -183,27 +250,41 @@ void IndigoService::layout(const QString &molfile) {
             int mol = isRxn ? indigoLoadReactionFromString(molfile.toUtf8().constData())
                             : indigoLoadMoleculeFromString(molfile.toUtf8().constData());
             if (mol >= 0) {
+                const QPointF oldCenter = indigoCentroid(mol, isRxn);
                 if (indigoLayout(mol) >= 0) {
+                    const QPointF newCenter = indigoCentroid(mol, isRxn);
+                    indigoShiftAll(mol, isRxn, oldCenter.x() - newCenter.x(), oldCenter.y() - newCenter.y());
                     const char* result = isRxn ? indigoRxnfile(mol) : indigoMolfile(mol);
                     if (result) {
                         resultMol = QString::fromUtf8(result);
+                    } else {
+                        resultMol = "";
+                        errorMsg = QString::fromUtf8(indigoGetLastError());
                     }
                 } else {
                     qWarning() << "Indigo: Layout failed:" << indigoGetLastError();
+                    resultMol = "";
+                    errorMsg = QString("Layout failed: %1").arg(indigoGetLastError());
                 }
                 indigoFree(mol);
             } else {
                 qWarning() << "Indigo: Failed to load molecule for layout:" << indigoGetLastError();
+                resultMol = "";
+                errorMsg = QString("Failed to load molecule for layout: %1").arg(indigoGetLastError());
             }
         } catch (const std::exception& e) {
             qWarning() << "Indigo C++ Exception in layout:" << e.what();
+            resultMol = "";
+            errorMsg = QString::fromUtf8(e.what());
         } catch (...) {
             qWarning() << "Indigo C++ Unknown Exception in layout";
+            resultMol = "";
+            errorMsg = "Unknown exception in layout";
         }
         
         indigoReleaseSessionId(threadSessionId);
         
-        emitOnGuiThread(self, [resultMol](IndigoService *s) { emit s->layoutFinished(resultMol); });
+        emitOnGuiThread(self, [resultMol, errorMsg](IndigoService *s) { emit s->layoutFinished(resultMol, errorMsg); });
     });
 }
 
@@ -225,7 +306,10 @@ void IndigoService::clean2d(const QString &molfile) {
             int mol = isRxn ? indigoLoadReactionFromString(molfile.toUtf8().constData())
                             : indigoLoadMoleculeFromString(molfile.toUtf8().constData());
             if (mol >= 0) {
+                const QPointF oldCenter = indigoCentroid(mol, isRxn);
                 if (indigoClean2d(mol) >= 0) {
+                    const QPointF newCenter = indigoCentroid(mol, isRxn);
+                    indigoShiftAll(mol, isRxn, oldCenter.x() - newCenter.x(), oldCenter.y() - newCenter.y());
                     const char* result = isRxn ? indigoRxnfile(mol) : indigoMolfile(mol);
                     if (result) {
                         resultMol = QString::fromUtf8(result);
@@ -607,6 +691,7 @@ void IndigoService::renderToFile(const QString &molfile, const QUrl &fileUrl, co
     if (molfile.isEmpty()) { emit renderFinished(false, "No structure to render."); return; }
     QPointer<IndigoService> self = this;
     QString path = fileUrl.toLocalFile();
+    if (path.isEmpty()) { emit renderFinished(false, "Invalid file path."); return; }
     (void)QtConcurrent::run([self, molfile, path, format]() {
         bool ok = false;
         QString error;
@@ -697,13 +782,18 @@ void IndigoService::exportBatchGridToFile(const QStringList &molfiles, const QUr
         try {
             int arr = indigoCreateArray();
             QList<int> loadedMols;
-            for (const QString &mf : molfiles) {
-                int mol = indigoLoadMoleculeFromString(mf.toUtf8().constData());
-                if (mol >= 0) {
-                    indigoLayout(mol);
-                    indigoArrayAdd(arr, mol);
-                    loadedMols.append(mol);
+            try {
+                for (const QString &mf : molfiles) {
+                    int mol = indigoLoadMoleculeFromString(mf.toUtf8().constData());
+                    if (mol >= 0) {
+                        indigoLayout(mol);
+                        indigoArrayAdd(arr, mol);
+                        loadedMols.append(mol);
+                    }
                 }
+            } catch (...) {
+                for (int m : loadedMols) indigoFree(m);
+                throw;
             }
             if (!loadedMols.isEmpty()) {
                 int nColumns = static_cast<int>(std::ceil(std::sqrt(static_cast<double>(loadedMols.size()))));
@@ -859,6 +949,7 @@ void IndigoService::exportBatchToFile(const QStringList &molfiles, const QUrl &f
                     }
                 }
                 indigoClose(saver);
+                if (written == 0) QFile::remove(path);
                 if (written > 0) ok = true;
                 else error = "No valid structures could be written.";
             } else {
@@ -1082,22 +1173,37 @@ void IndigoService::calcProperties(const QString &molfile) {
         try {
             int mol = indigoLoadMoleculeFromString(sanitizeMolfileForAnalysis(molfile).toUtf8().constData());
             if (mol >= 0) {
-                mw       = indigoMolecularWeight(mol);
-                mono     = indigoMonoisotopicMass(mol);
-                atoms    = indigoCountAtoms(mol);
-                bonds    = indigoCountBonds(mol);
-                tpsa     = indigoTPSA(mol, 1);
-                logp     = indigoLogP(mol);
-                hba      = indigoNumHydrogenBondAcceptors(mol);
-                hbd      = indigoNumHydrogenBondDonors(mol);
-                rotBonds = indigoNumRotatableBonds(mol);
-                molarRefractivity = indigoMolarRefractivity(mol);
-                pka      = indigoPka(mol);
-                heavyAtoms = indigoCountHeavyAtoms(mol);
+                double mwCalc = indigoMolecularWeight(mol);
+                if (!std::isnan(mwCalc)) mw = mwCalc;
+                double monoCalc = indigoMonoisotopicMass(mol);
+                if (!std::isnan(monoCalc)) mono = monoCalc;
+                int atomsCalc = indigoCountAtoms(mol);
+                if (atomsCalc >= 0) atoms = atomsCalc;
+                int bondsCalc = indigoCountBonds(mol);
+                if (bondsCalc >= 0) bonds = bondsCalc;
+                double tpsaCalc = indigoTPSA(mol, 1);
+                if (!std::isnan(tpsaCalc)) tpsa = tpsaCalc;
+                double logpCalc = indigoLogP(mol);
+                if (!std::isnan(logpCalc)) logp = logpCalc;
+                int hbaCalc = indigoNumHydrogenBondAcceptors(mol);
+                if (hbaCalc >= 0) hba = hbaCalc;
+                int hbdCalc = indigoNumHydrogenBondDonors(mol);
+                if (hbdCalc >= 0) hbd = hbdCalc;
+                int rotBondsCalc = indigoNumRotatableBonds(mol);
+                if (rotBondsCalc >= 0) rotBonds = rotBondsCalc;
+                double molarRefractivityCalc = indigoMolarRefractivity(mol);
+                if (!std::isnan(molarRefractivityCalc)) molarRefractivity = molarRefractivityCalc;
+                double pkaCalc = indigoPka(mol);
+                if (!std::isnan(pkaCalc)) pka = pkaCalc;
+                int heavyAtomsCalc = indigoCountHeavyAtoms(mol);
+                if (heavyAtomsCalc >= 0) heavyAtoms = heavyAtomsCalc;
                 isChiral = indigoIsChiral(mol) != 0;
-                mostAbundantMass = indigoMostAbundantMass(mol);
-                fragmentCount = indigoCountComponents(mol);
-                ringCount = indigoCountSSSR(mol);
+                double mostAbundantMassCalc = indigoMostAbundantMass(mol);
+                if (!std::isnan(mostAbundantMassCalc)) mostAbundantMass = mostAbundantMassCalc;
+                int fragmentCountCalc = indigoCountComponents(mol);
+                if (fragmentCountCalc >= 0) fragmentCount = fragmentCountCalc;
+                int ringCountCalc = indigoCountSSSR(mol);
+                if (ringCountCalc >= 0) ringCount = ringCountCalc;
                 int fmHandle = indigoMolecularFormula(mol);
                 if (fmHandle >= 0) {
                     const char* fmStr = indigoToString(fmHandle);
@@ -1164,42 +1270,20 @@ void IndigoService::calcStereoDescriptors(const QString &molfile) {
                     indigoFree(iter);
                 }
 
-                // E/Z bond descriptors: no C API exposes Indigo's bond-indexed CIP
-                // map directly. The only public path is to have the JSON/KET saver
-                // embed them as DAT sgroups (fieldName "INDIGO_CIP_DESC", a
-                // two-atom "atoms" list, fieldData "(E)"/"(Z)") and read them back
-                // out of the serialized structure.
+                // E/Z bond descriptors: read via the same direct KET JSON "cip" bond-field
+                // helper IupacNamer.cpp's name generation already uses successfully. The
+                // previous DAT-sgroup search here was dead code -- indigoAddCIPSgroups
+                // (which emits "INDIGO_CIP_DESC" DAT sgroups) is only ever invoked from
+                // Indigo's molfile-save path, never from indigoJson/KET, so it never
+                // populated anything for this app's actual call pattern (confirmed
+                // 2026-08-08 during the IUPAC namer's P-93.4 CIP-reuse fix; DAT-sgroup
+                // hunt removed 2026-08-18 -- see IUPAC Blue Book Coverage.md item 8).
                 QJsonObject bondMap;
-                indigoSetOptionBool("json-saving-add-stereo-desc", 1);
-                const char* ketStr = indigoJson(mol);
-                if (ketStr) {
-                    QJsonDocument ketDoc = QJsonDocument::fromJson(QByteArray(ketStr));
-                    QJsonObject ketRoot = ketDoc.object();
-                    QJsonArray nodes = ketRoot.value("root").toObject().value("nodes").toArray();
-                    for (const QJsonValue &nodeVal : nodes) {
-                        QString ref = nodeVal.toObject().value("$ref").toString();
-                        if (ref.isEmpty()) continue;
-                        QJsonObject molObj = ketRoot.value(ref).toObject();
-                        if (molObj.value("type").toString() != "molecule") continue;
-                        const QJsonArray sgroups = molObj.value("sgroups").toArray();
-                        for (const QJsonValue &sgVal : sgroups) {
-                            QJsonObject sg = sgVal.toObject();
-                            if (sg.value("type").toString() != "DAT") continue;
-                            if (sg.value("fieldName").toString() != "INDIGO_CIP_DESC") continue;
-                            QJsonArray sgAtoms = sg.value("atoms").toArray();
-                            if (sgAtoms.size() != 2) continue; // atom (R/S) entries already covered above
-                            QString label = sg.value("fieldData").toString();
-                            label.remove('(');
-                            label.remove(')');
-                            if (label != "E" && label != "Z") continue;
-                            int a1 = sgAtoms.at(0).toInt();
-                            int a2 = sgAtoms.at(1).toInt();
-                            QString key = QString("%1-%2").arg(qMin(a1, a2)).arg(qMax(a1, a2));
-                            QJsonObject entry;
-                            entry["cipLabel"] = label;
-                            bondMap[key] = entry;
-                        }
-                    }
+                for (const auto &entry : computeIndigoBondCIP(mol)) {
+                    QString key = QString("%1-%2").arg(entry.first.first).arg(entry.first.second);
+                    QJsonObject bondEntry;
+                    bondEntry["cipLabel"] = QString(entry.second);
+                    bondMap[key] = bondEntry;
                 }
 
                 indigoFree(mol);
@@ -1363,6 +1447,7 @@ void IndigoService::generateIupacName(const QString &molfile) {
         QString name, error;
         unsigned long long sid = indigoAllocSessionId();
         indigoSetSessionId(sid);
+        indigoInchiInit(sid);
         try {
             int mol = indigoLoadMoleculeFromString(sanitizeMolfileForAnalysis(molfile).toUtf8().constData());
             if (mol >= 0) {
@@ -1381,6 +1466,7 @@ void IndigoService::generateIupacName(const QString &molfile) {
         } catch (...) {
             error = "Unknown exception during IUPAC name generation.";
         }
+        indigoInchiDispose(sid);
         indigoReleaseSessionId(sid);
         emitOnGuiThread(self, [name, error](IndigoService *s) {
             emit s->iupacNameReady(name, error);
@@ -1864,26 +1950,25 @@ void IndigoService::decomposeToRGroupsPerMolecule(const QStringList &molfiles, c
                             int idx = 0;
                             while (indigoHasNext(iter)) {
                                 int item = indigoNext(iter);
-                                if (item >= 0) {
-                                    int withR = indigoDecomposedMoleculeWithRGroups(item);
-                                    if (withR > 0) {
-                                        indigoLayout(withR);
-                                        const char* mf = indigoMolfile(withR);
-                                        if (mf) {
-                                            QJsonObject obj;
-                                            obj["index"] = idx;
-                                            obj["label"] = (idx < labels.size() && !labels[idx].isEmpty()) ? labels[idx] : QString("Record %1").arg(idx + 1);
-                                            obj["molfile"] = QString::fromUtf8(mf);
-                                            resultsArray.append(obj);
-                                        } else {
-                                            qWarning() << "Indigo: decomposeToRGroupsPerMolecule molfile null for item" << idx << ":" << indigoGetLastError();
-                                        }
-                                        indigoFree(withR);
+                                if (item < 0) break;
+                                int withR = indigoDecomposedMoleculeWithRGroups(item);
+                                if (withR > 0) {
+                                    indigoLayout(withR);
+                                    const char* mf = indigoMolfile(withR);
+                                    if (mf) {
+                                        QJsonObject obj;
+                                        obj["index"] = idx;
+                                        obj["label"] = (idx < labels.size() && !labels[idx].isEmpty()) ? labels[idx] : QString("Record %1").arg(idx + 1);
+                                        obj["molfile"] = QString::fromUtf8(mf);
+                                        resultsArray.append(obj);
                                     } else {
-                                        qWarning() << "Indigo: decomposeToRGroupsPerMolecule withRGroups failed for item" << idx << ":" << indigoGetLastError();
+                                        qWarning() << "Indigo: decomposeToRGroupsPerMolecule molfile null for item" << idx << ":" << indigoGetLastError();
                                     }
-                                    indigoFree(item);
+                                    indigoFree(withR);
+                                } else {
+                                    qWarning() << "Indigo: decomposeToRGroupsPerMolecule withRGroups failed for item" << idx << ":" << indigoGetLastError();
                                 }
+                                indigoFree(item);
                                 idx++;
                             }
                             indigoFree(iter);

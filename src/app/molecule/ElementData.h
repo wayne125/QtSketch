@@ -1,0 +1,306 @@
+// src/app/molecule/ElementData.h
+#ifndef ELEMENTDATA_H
+#define ELEMENTDATA_H
+
+// Embedded periodic-table data transcribed verbatim from chem-core.js (sub-project 4 of the
+// chem-core.js migration; see docs/superpowers/specs/2026-08-02-render-primitives-cpp-design.md).
+// Indigo's own indigoAtomicNumber covers atomic number for a real loaded atom, but title and
+// standard atomic mass are not exposed by Indigo's C API at all -- this table is authoritative
+// for those two fields regardless of whether the caller has a live Indigo atom handle.
+//
+// Source: chem-core.js:6265-6384 (element -> hex color, 118 entries) and chem-core.js:6388-7676
+// (elementsArray: number/label/title/mass, 118 entries). Both tables' entry counts and several
+// spot-checked values (C, O, Fe, Au) were confirmed against the source during plan preparation.
+
+#include <QString>
+#include <QHash>
+
+class ElementData {
+public:
+    struct ElementInfo {
+        int number;
+        QString label;
+        QString title;
+        double mass;
+    };
+
+    static QString colorFor(const QString& symbol) {
+        static const QHash<QString, QString> table = buildColorTable();
+        return table.value(symbol, QString());
+    }
+
+    static const ElementInfo* infoFor(const QString& symbol) {
+        static const QHash<QString, ElementInfo> table = buildInfoTable();
+        auto it = table.constFind(symbol);
+        return it == table.constEnd() ? nullptr : &it.value();
+    }
+
+    static QString symbolForNumber(int number) {
+        static const QHash<int, QString> table = buildNumberTable();
+        return table.value(number, QString());
+    }
+
+private:
+    static QHash<QString, QString> buildColorTable() {
+        static const struct { const char* symbol; const char* hex; } kColors[] = {
+            {"H", "#000000"},
+            {"He", "#89a1a1"},
+            {"Li", "#bd77ed"},
+            {"Be", "#8fbc00"},
+            {"B", "#c18989"},
+            {"C", "#000000"},
+            {"N", "#304ff7"},
+            {"O", "#ff0d0d"},
+            {"F", "#78bc42"},
+            {"Ne", "#80a2af"},
+            {"Na", "#ab5cf2"},
+            {"Mg", "#6fcd00"},
+            {"Al", "#a99393"},
+            {"Si", "#b29478"},
+            {"P", "#ff8000"},
+            {"S", "#c99a19"},
+            {"Cl", "#1fd01f"},
+            {"Ar", "#69acba"},
+            {"K", "#8f40d4"},
+            {"Ca", "#3dff00"},
+            {"Sc", "#e6e6e6"},
+            {"Ti", "#bfc2c7"},
+            {"V", "#a6a6ab"},
+            {"Cr", "#8a99c7"},
+            {"Mn", "#9c7ac7"},
+            {"Fe", "#e06633"},
+            {"Co", "#f090a0"},
+            {"Ni", "#50d050"},
+            {"Cu", "#c88033"},
+            {"Zn", "#7d80b0"},
+            {"Ga", "#c28f8f"},
+            {"Ge", "#668f8f"},
+            {"As", "#bd80e3"},
+            {"Se", "#ffa100"},
+            {"Br", "#a62929"},
+            {"Kr", "#59b1c9"},
+            {"Rb", "#702eb0"},
+            {"Sr", "#00ff00"},
+            {"Y", "#66afaf"},
+            {"Zr", "#71abab"},
+            {"Nb", "#67aeb4"},
+            {"Mo", "#54b5b5"},
+            {"Tc", "#3b9e9e"},
+            {"Ru", "#248f8f"},
+            {"Rh", "#0a7d8c"},
+            {"Pd", "#006985"},
+            {"Ag", "#9a9a9a"},
+            {"Cd", "#b29764"},
+            {"In", "#a67573"},
+            {"Sn", "#668080"},
+            {"Sb", "#9e63b5"},
+            {"Te", "#d47a00"},
+            {"I", "#940094"},
+            {"Xe", "#429eb0"},
+            {"Cs", "#57178f"},
+            {"Ba", "#00c900"},
+            {"La", "#5caed1"},
+            {"Ce", "#9d9d7b"},
+            {"Pr", "#8ca581"},
+            {"Nd", "#84a984"},
+            {"Pm", "#71b18a"},
+            {"Sm", "#66b68e"},
+            {"Eu", "#4ac298"},
+            {"Gd", "#37cb9e"},
+            {"Tb", "#28d1a4"},
+            {"Dy", "#1bd7a8"},
+            {"Ho", "#00e98f"},
+            {"Er", "#00e675"},
+            {"Tm", "#00d452"},
+            {"Yb", "#00bf38"},
+            {"Lu", "#00ab24"},
+            {"Hf", "#47b3ec"},
+            {"Ta", "#4da6ff"},
+            {"W", "#2194d6"},
+            {"Re", "#267dab"},
+            {"Os", "#266696"},
+            {"Ir", "#175487"},
+            {"Pt", "#d0d0e0"},
+            {"Au", "#c19e1c"},
+            {"Hg", "#b8b8d0"},
+            {"Tl", "#a6544d"},
+            {"Pb", "#575961"},
+            {"Bi", "#9e4fb5"},
+            {"Po", "#ab5c00"},
+            {"At", "#754f45"},
+            {"Rn", "#428296"},
+            {"Fr", "#420066"},
+            {"Ra", "#007d00"},
+            {"Ac", "#70abfa"},
+            {"Th", "#00baff"},
+            {"Pa", "#00a1ff"},
+            {"U", "#008fff"},
+            {"Np", "#0080ff"},
+            {"Pu", "#006bff"},
+            {"Am", "#545cf2"},
+            {"Cm", "#785ce3"},
+            {"Bk", "#8a4fe3"},
+            {"Cf", "#a136d4"},
+            {"Es", "#b31fd4"},
+            {"Fm", "#b31fba"},
+            {"Md", "#b30da6"},
+            {"No", "#bd0d87"},
+            {"Lr", "#c70066"},
+            {"Rf", "#cc0059"},
+            {"Db", "#d1004f"},
+            {"Sg", "#d90045"},
+            {"Bh", "#e00038"},
+            {"Hs", "#e6002e"},
+            {"Mt", "#eb0026"},
+            {"Ds", "#000000"},
+            {"Rg", "#000000"},
+            {"Cn", "#000000"},
+            {"Nh", "#000000"},
+            {"Fl", "#000000"},
+            {"Mc", "#000000"},
+            {"Lv", "#000000"},
+            {"Ts", "#000000"},
+            {"Og", "#000000"},
+        };
+        QHash<QString, QString> table;
+        for (const auto& e : kColors) table.insert(QString::fromUtf8(e.symbol), QString::fromUtf8(e.hex));
+        return table;
+    }
+
+    static QHash<QString, ElementInfo> buildInfoTable() {
+        static const struct { int number; const char* label; const char* title; double mass; } kInfo[] = {
+            {1, "H", "Hydrogen", 1.00794},
+            {2, "He", "Helium", 4.0026022},
+            {3, "Li", "Lithium", 6.94},
+            {4, "Be", "Beryllium", 9.01218315},
+            {5, "B", "Boron", 10.81},
+            {6, "C", "Carbon", 12.011},
+            {7, "N", "Nitrogen", 14.007},
+            {8, "O", "Oxygen", 15.999},
+            {9, "F", "Fluorine", 18.9984031636},
+            {10, "Ne", "Neon", 20.1797},
+            {11, "Na", "Sodium", 22.989769282},
+            {12, "Mg", "Magnesium", 24.305},
+            {13, "Al", "Aluminium", 26.98153857},
+            {14, "Si", "Silicon", 28.085},
+            {15, "P", "Phosphorus", 30.9737619985},
+            {16, "S", "Sulfur", 32.06},
+            {17, "Cl", "Chlorine", 35.45},
+            {18, "Ar", "Argon", 39.948},
+            {19, "K", "Potassium", 39.0983},
+            {20, "Ca", "Calcium", 40.078},
+            {21, "Sc", "Scandium", 44.9559085},
+            {22, "Ti", "Titanium", 47.867},
+            {23, "V", "Vanadium", 50.9415},
+            {24, "Cr", "Chromium", 51.9961},
+            {25, "Mn", "Manganese", 54.9380443},
+            {26, "Fe", "Iron", 55.8452},
+            {27, "Co", "Cobalt", 58.9331944},
+            {28, "Ni", "Nickel", 58.6934},
+            {29, "Cu", "Copper", 63.546},
+            {30, "Zn", "Zinc", 65.38},
+            {31, "Ga", "Gallium", 69.723},
+            {32, "Ge", "Germanium", 72.63},
+            {33, "As", "Arsenic", 74.9215956},
+            {34, "Se", "Selenium", 78.971},
+            {35, "Br", "Bromine", 79.904},
+            {36, "Kr", "Krypton", 83.798},
+            {37, "Rb", "Rubidium", 85.4678},
+            {38, "Sr", "Strontium", 87.62},
+            {39, "Y", "Yttrium", 88.90584},
+            {40, "Zr", "Zirconium", 91.224},
+            {41, "Nb", "Niobium", 92.90637},
+            {42, "Mo", "Molybdenum", 95.95},
+            {43, "Tc", "Technetium", 97},
+            {44, "Ru", "Ruthenium", 101.07},
+            {45, "Rh", "Rhodium", 102.9055},
+            {46, "Pd", "Palladium", 106.42},
+            {47, "Ag", "Silver", 107.8682},
+            {48, "Cd", "Cadmium", 112.414},
+            {49, "In", "Indium", 114.818},
+            {50, "Sn", "Tin", 118.71},
+            {51, "Sb", "Antimony", 121.76},
+            {52, "Te", "Tellurium", 127.6},
+            {53, "I", "Iodine", 126.90447},
+            {54, "Xe", "Xenon", 131.293},
+            {55, "Cs", "Caesium", 132.90545196},
+            {56, "Ba", "Barium", 137.327},
+            {57, "La", "Lanthanum", 138.90547},
+            {58, "Ce", "Cerium", 140.116},
+            {59, "Pr", "Praseodymium", 140.90766},
+            {60, "Nd", "Neodymium", 144.242},
+            {61, "Pm", "Promethium", 145},
+            {62, "Sm", "Samarium", 150.36},
+            {63, "Eu", "Europium", 151.964},
+            {64, "Gd", "Gadolinium", 157.25},
+            {65, "Tb", "Terbium", 158.92535},
+            {66, "Dy", "Dysprosium", 162.5},
+            {67, "Ho", "Holmium", 164.93033},
+            {68, "Er", "Erbium", 167.259},
+            {69, "Tm", "Thulium", 168.93422},
+            {70, "Yb", "Ytterbium", 173.045},
+            {71, "Lu", "Lutetium", 174.9668},
+            {72, "Hf", "Hafnium", 178.49},
+            {73, "Ta", "Tantalum", 180.94788},
+            {74, "W", "Tungsten", 183.84},
+            {75, "Re", "Rhenium", 186.207},
+            {76, "Os", "Osmium", 190.23},
+            {77, "Ir", "Iridium", 192.217},
+            {78, "Pt", "Platinum", 195.084},
+            {79, "Au", "Gold", 196.9665695},
+            {80, "Hg", "Mercury", 200.592},
+            {81, "Tl", "Thallium", 204.38},
+            {82, "Pb", "Lead", 207.2},
+            {83, "Bi", "Bismuth", 208.9804},
+            {84, "Po", "Polonium", 209},
+            {85, "At", "Astatine", 210},
+            {86, "Rn", "Radon", 222},
+            {87, "Fr", "Francium", 223},
+            {88, "Ra", "Radium", 226},
+            {89, "Ac", "Actinium", 227},
+            {90, "Th", "Thorium", 232.0377},
+            {91, "Pa", "Protactinium", 231.03588},
+            {92, "U", "Uranium", 238.02891},
+            {93, "Np", "Neptunium", 237},
+            {94, "Pu", "Plutonium", 244},
+            {95, "Am", "Americium", 243},
+            {96, "Cm", "Curium", 247},
+            {97, "Bk", "Berkelium", 247},
+            {98, "Cf", "Californium", 251},
+            {99, "Es", "Einsteinium", 252},
+            {100, "Fm", "Fermium", 257},
+            {101, "Md", "Mendelevium", 258},
+            {102, "No", "Nobelium", 259},
+            {103, "Lr", "Lawrencium", 266},
+            {104, "Rf", "Rutherfordium", 267},
+            {105, "Db", "Dubnium", 268},
+            {106, "Sg", "Seaborgium", 269},
+            {107, "Bh", "Bohrium", 270},
+            {108, "Hs", "Hassium", 269},
+            {109, "Mt", "Meitnerium", 278},
+            {110, "Ds", "Darmstadtium", 281},
+            {111, "Rg", "Roentgenium", 282},
+            {112, "Cn", "Copernicium", 285},
+            {113, "Nh", "Nihonium", 286},
+            {114, "Fl", "Flerovium", 289},
+            {115, "Mc", "Moscovium", 289},
+            {116, "Lv", "Livermorium", 293},
+            {117, "Ts", "Tennessine", 294},
+            {118, "Og", "Oganesson", 294},
+        };
+        QHash<QString, ElementInfo> table;
+        for (const auto& e : kInfo) {
+            table.insert(QString::fromUtf8(e.label),
+                         ElementInfo{e.number, QString::fromUtf8(e.label), QString::fromUtf8(e.title), e.mass});
+        }
+        return table;
+    }
+
+    static QHash<int, QString> buildNumberTable() {
+        QHash<int, QString> table;
+        for (const auto& e : buildInfoTable()) table.insert(e.number, e.label);
+        return table;
+    }
+};
+
+#endif // ELEMENTDATA_H

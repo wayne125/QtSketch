@@ -74,9 +74,19 @@ function paint(ctx, width, height, thumb, strokeColor) {
         for (var j = 0; j < thumb.atoms.length; j++) {
             var a = thumb.atoms[j]
             if (a.label && a.label !== "C") {
-                ctx.beginPath()
-                ctx.arc(a.x * width, a.y * height, 1.5, 0, Math.PI * 2)
-                ctx.fill()
+                if (a.color) {
+                    ctx.fillStyle = a.color
+                    ctx.font = "7px sans-serif"
+                    ctx.textAlign = "center"
+                    ctx.textBaseline = "middle"
+                    ctx.fillText(a.label, a.x * width, a.y * height)
+                } else {
+                    // JS-worker-engine thumbnails carry no color field -- keep the
+                    // exact original monochrome-dot behavior, unchanged.
+                    ctx.beginPath()
+                    ctx.arc(a.x * width, a.y * height, 1.5, 0, Math.PI * 2)
+                    ctx.fill()
+                }
             }
         }
     }

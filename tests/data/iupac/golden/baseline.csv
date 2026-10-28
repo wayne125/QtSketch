@@ -1,0 +1,1108 @@
+id,smiles,pinned_name,pinned_success,actual_name,actual_success,expected_status,notes
+1,OC(=O)CCC1CCC(C(=O)O)CC1,3-(4-carboxycyclohexyl)propanoic acid,true,3-(4-carboxycyclohexyl)propanoic acid,true,,
+2,OC(=O)CCC1CCC([As](=O)(O)O)CC1,3-(4-arsonocyclohexyl)propanoic acid,true,3-(4-arsonocyclohexyl)propanoic acid,true,,
+3,OC(=O)CCC1CCC(P(=O)(O)O)CC1,3-(4-phosphonocyclohexyl)propanoic acid,true,3-(4-phosphonocyclohexyl)propanoic acid,true,,
+4,OC(=O)CCC1CCC(B(O)O)CC1,3-(4-boronocyclohexyl)propanoic acid,true,3-(4-boronocyclohexyl)propanoic acid,true,,
+5,OS(=O)(=O)c1ccc(B(O)O)cc1,4-boronobenzene-1-sulfonic acid,true,4-boronobenzene-1-sulfonic acid,true,,
+6,OC(=O)CCC1CCC(OO)CC1,3-(4-hydroperoxycyclohexyl)propanoic acid,true,3-(4-hydroperoxycyclohexyl)propanoic acid,true,,
+7,OC(=O)CCC1CCC(OCCCCC)CC1,3-(4-pentyloxycyclohexyl)propanoic acid,true,3-(4-pentyloxycyclohexyl)propanoic acid,true,,
+8,OC(=O)CCC1CCC(Oc2ccccc2)CC1,3-(4-phenoxycyclohexyl)propanoic acid,true,3-(4-phenoxycyclohexyl)propanoic acid,true,,
+9,CCCCCOCCCC(=O)O,4-pentyloxybutanoic acid,true,4-pentyloxybutanoic acid,true,,
+10,CCCCCOc1ccc(cc1)S(=O)(=O)O,4-pentyloxybenzene-1-sulfonic acid,true,4-pentyloxybenzene-1-sulfonic acid,true,,
+11,OC(=O)CCC1CCC(SCCCl)CC1,3-{4-[(2-chloroethyl)sulfanyl]cyclohexyl}propanoic acid,true,3-{4-[(2-chloroethyl)sulfanyl]cyclohexyl}propanoic acid,true,,
+12,OS(=O)(=O)c1ccc(SCCCl)cc1,4-[(2-chloroethyl)sulfanyl]benzene-1-sulfonic acid,true,4-[(2-chloroethyl)sulfanyl]benzene-1-sulfonic acid,true,,
+13,OC(=O)CCC1CCC(NC(=O)CCCl)CC1,3-{4-[(2-chloroethyl)amido]cyclohexyl}propanoic acid,true,3-{4-[(2-chloroethyl)amido]cyclohexyl}propanoic acid,true,,
+14,OS(=O)(=O)c1ccc(NC(=O)CCCl)cc1,4-[(2-chloroethyl)amido]benzene-1-sulfonic acid,true,4-[(2-chloroethyl)amido]benzene-1-sulfonic acid,true,,
+15,OC(=O)CCC1CCC([N+](=O)[O-])CC1,3-(4-nitrocyclohexyl)propanoic acid,true,3-(4-nitrocyclohexyl)propanoic acid,true,,
+16,OC(=O)CCC1CCC(N=O)CC1,3-(4-nitrosocyclohexyl)propanoic acid,true,3-(4-nitrosocyclohexyl)propanoic acid,true,,
+17,OC(=O)CCC1CCC(N=C=O)CC1,3-(4-isocyanatocyclohexyl)propanoic acid,true,3-(4-isocyanatocyclohexyl)propanoic acid,true,,
+18,OC(=O)CCC1CCC(N=[N+]=[N-])CC1,3-(4-azidocyclohexyl)propanoic acid,true,3-(4-azidocyclohexyl)propanoic acid,true,,
+19,OC(=O)CCC1CCC(=N)CC1,3-(4-iminocyclohexyl)propanoic acid,true,3-(4-iminocyclohexyl)propanoic acid,true,,
+20,OC(=O)CCC1CCC(=O)CC1,3-(4-oxocyclohexyl)propanoic acid,true,3-(4-oxocyclohexyl)propanoic acid,true,,
+21,CC(NC(=O)C)C(=O)O,2-ethanamidopropanoic acid,true,2-ethanamidopropanoic acid,true,,
+22,CC(NC=O)C(=O)O,,false,Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase.,false,,
+23,CC(NC(=O)CC)C(=O)O,2-propanamidopropanoic acid,true,2-propanamidopropanoic acid,true,,
+24,CC(NC(=O)CCCCC)C(=O)O,2-hexanamidopropanoic acid,true,2-hexanamidopropanoic acid,true,,
+25,OC(=O)CCC1CCC(B(C)O)CC1,3-{4-[hydroxy(methyl)boranyl]cyclohexyl}propanoic acid,true,3-{4-[hydroxy(methyl)boranyl]cyclohexyl}propanoic acid,true,,
+26,OS(=O)(=O)c1ccc(B(C)O)cc1,4-[hydroxy(methyl)boranyl]benzene-1-sulfonic acid,true,4-[hydroxy(methyl)boranyl]benzene-1-sulfonic acid,true,,
+27,OC(=O)CCC1CCC(S(=O)(=O)O)CC1,3-(4-sulfocyclohexyl)propanoic acid,true,3-(4-sulfocyclohexyl)propanoic acid,true,,
+28,OC(=O)CCC1CCC(S(=O)O)CC1,3-(4-sulfinocyclohexyl)propanoic acid,true,3-(4-sulfinocyclohexyl)propanoic acid,true,,
+29,CCOC(=O)CCC1CCC(P(=O)(Cl)Cl)CC1,ethyl 3-(4-dichlorophosphorylcyclohexyl)propanoate,true,ethyl 3-(4-dichlorophosphorylcyclohexyl)propanoate,true,,
+30,CCOC(=O)CCC1CCC([As](=O)(Cl)Cl)CC1,ethyl 3-(4-dichloroarsorylcyclohexyl)propanoate,true,ethyl 3-(4-dichloroarsorylcyclohexyl)propanoate,true,,
+31,NC(=S)CCCS(=O)(=O)N,4-sulfamoylbutanethioamide,true,4-sulfamoylbutanethioamide,true,,
+32,OC(=O)CCC1CCC(C(=O)N)CC1,3-(4-carbamoylcyclohexyl)propanoic acid,true,3-(4-carbamoylcyclohexyl)propanoic acid,true,,
+33,OC(=O)CCC1CCC(C(=S)N)CC1,3-(4-carbamothioylcyclohexyl)propanoic acid,true,3-(4-carbamothioylcyclohexyl)propanoic acid,true,,
+34,OC(=O)CCC1CCC(C(=N)N)CC1,3-(4-carbamimidoylcyclohexyl)propanoic acid,true,3-(4-carbamimidoylcyclohexyl)propanoic acid,true,,
+35,OC(=O)C1CCC(C(=N)N)CC1,4-carbamimidoylcyclohexanecarboxylic acid,true,4-carbamimidoylcyclohexanecarboxylic acid,true,,
+36,OS(=O)(=O)c1ccc(C(=O)N)cc1,4-carbamoylbenzene-1-sulfonic acid,true,4-carbamoylbenzene-1-sulfonic acid,true,,
+37,OC(=O)c1ccc(C(=N)N)cc1,4-carbamimidoylbenzenecarboxylic acid,true,4-carbamimidoylbenzenecarboxylic acid,true,,
+38,CCP(=O)(O)CC,diethylphosphinic acid,true,diethylphosphinic acid,true,,
+39,CP(=O)(O)c1ccccc1,methyl(phenyl)phosphinic acid,true,methyl(phenyl)phosphinic acid,true,,
+40,CC[As](=O)(O)CC,diethylarsinic acid,true,diethylarsinic acid,true,,
+41,C[As](=O)(O)c1ccccc1,methyl(phenyl)arsinic acid,true,methyl(phenyl)arsinic acid,true,,
+42,C[Sb](=O)(O)O,methanestibonic acid,true,methanestibonic acid,true,,
+43,c1ccccc1[Sb](=O)(O)O,benzenestibonic acid,true,benzenestibonic acid,true,,
+44,CC[Sb](=O)(O)CC,diethylstibinic acid,true,diethylstibinic acid,true,,
+45,C[Sb](=O)(O)c1ccccc1,methyl(phenyl)stibinic acid,true,methyl(phenyl)stibinic acid,true,,
+46,CCB(O)CC,diethylborinic acid,true,diethylborinic acid,true,,
+47,OP(=O)(O)OP(=O)(O)O,diphosphoric acid,true,diphosphoric acid,true,,
+48,OP(=O)(O)P(=O)(O)O,hypodiphosphoric acid,true,hypodiphosphoric acid,true,,
+49,OP(O)OP(O)O,diphosphorous acid,true,diphosphorous acid,true,,
+50,OP(O)P(O)O,hypodiphosphorous acid,true,hypodiphosphorous acid,true,,
+51,OP(=O)(O)OP(=O)(O)OP(=O)(O)O,,false,Phosphorus-containing groups other than phosphine and phosphonic acid are not supported in this phase.,false,,
+52,OS(=O)(=O)OS(=O)(=O)O,disulfuric acid,true,disulfuric acid,true,,
+53,OS(=O)(=O)S(=O)(=O)O,dithionic acid,true,dithionic acid,true,,
+54,OS(=O)S(=O)O,dithionous acid,true,dithionous acid,true,,
+55,OS(=O)OS(=O)O,,false,"Sulfur-containing groups other than thiols, thioethers, and sulfonic/sulfinic acids are not supported in this phase.",false,,
+56,O[As](=O)(O)O[As](=O)(O)O,diarsoric acid,true,diarsoric acid,true,,
+57,O[As](=O)(O)[As](=O)(O)O,hypodiarsoric acid,true,hypodiarsoric acid,true,,
+58,O[As](O)O[As](O)O,diarsorous acid,true,diarsorous acid,true,,
+59,O[As](O)[As](O)O,hypodiarsorous acid,true,hypodiarsorous acid,true,,
+60,OB(O)OB(O)O,diboric acid,true,diboric acid,true,,
+61,OB(O)B(O)O,hypodiboric acid,true,hypodiboric acid,true,,
+62,O[Sb](=O)(O)O[Sb](=O)(O)O,distiboric acid,true,distiboric acid,true,,
+63,O[Sb](=O)(O)[Sb](=O)(O)O,hypodistiboric acid,true,hypodistiboric acid,true,,
+64,O[Sb](O)O[Sb](O)O,distiborous acid,true,distiborous acid,true,,
+65,O[Sb](O)[Sb](O)O,hypodistiborous acid,true,hypodistiborous acid,true,,
+66,O[SbH]O[SbH]O,,false,No carbon atoms present in structure.,false,,
+67,CCB(O)Cl,chloro(ethyl)borinic acid,true,chloro(ethyl)borinic acid,true,,
+68,CB(O)c1ccccc1,methyl(phenyl)borinic acid,true,methyl(phenyl)borinic acid,true,,
+69,CN(CC)CC,N-ethyl-N-methylethanamine,true,N-ethyl-N-methylethanamine,true,,
+70,CCNCC,N-ethylethanamine,true,N-ethylethanamine,true,,
+71,CN(C)CC,"N,N-dimethylethanamine",true,"N,N-dimethylethanamine",true,,
+72,CCCN(CC)C,N-ethyl-N-methylpropan-1-amine,true,N-ethyl-N-methylpropan-1-amine,true,,
+73,CCCN,propan-1-amine,true,propan-1-amine,true,,
+74,CCN,ethanamine,true,ethanamine,true,,
+75,CCCN(CCC)CCC,"N,N-dipropylpropan-1-amine",true,"N,N-dipropylpropan-1-amine",true,,
+76,CN(CC)C(C)C,,false,"Branched, ring, or unsaturated chains on N-substituted amines are not supported",false,,
+77,CN(CCCl)CCCl,N-(2-chloroethyl)-N-methyl-2-chloroethan-1-amine,true,N-(2-chloroethyl)-N-methyl-2-chloroethan-1-amine,true,,
+78,CNCCCl,N-methyl-2-chloroethan-1-amine,true,N-methyl-2-chloroethan-1-amine,true,,
+79,CNC(C)C,,false,"Branched, ring, or unsaturated chains on N-substituted amines are not supported",false,,
+80,CNC1(C)C2CCC(C2)C1(C)C,,false,"Branched, ring, or unsaturated chains on N-substituted amines are not supported",false,,
+81,CN(C)C1CCCCC1,"N,N-dimethylcyclohexanamine",true,"N,N-dimethylcyclohexanamine",true,,
+82,CNCCNC,"N1,N2-dimethylethane-1,2-diamine",true,"N1,N2-dimethylethane-1,2-diamine",true,,
+83,CN(C)CCN(C)C,"N1,N1,N2,N2-tetramethylethane-1,2-diamine",true,"N1,N1,N2,N2-tetramethylethane-1,2-diamine",true,,
+84,CNCCCNC,"N1,N3-dimethylpropane-1,3-diamine",true,"N1,N3-dimethylpropane-1,3-diamine",true,,
+85,CCNCCNC,"N1-ethyl-N2-methylethane-1,2-diamine",true,"N1-ethyl-N2-methylethane-1,2-diamine",true,,
+86,CNCCN,"N1-methylethane-1,2-diamine",true,"N1-methylethane-1,2-diamine",true,,
+87,NCCNC,"N1-methylethane-1,2-diamine",true,"N1-methylethane-1,2-diamine",true,,
+88,CN(C)CCN,"N1,N1-dimethylethane-1,2-diamine",true,"N1,N1-dimethylethane-1,2-diamine",true,,
+89,NCCN(C)C,"N1,N1-dimethylethane-1,2-diamine",true,"N1,N1-dimethylethane-1,2-diamine",true,,
+90,CN(C)CCNC,"N1,N1,N2-trimethylethane-1,2-diamine",true,"N1,N1,N2-trimethylethane-1,2-diamine",true,,
+91,c1ccccc1N,aniline,true,aniline,true,,
+92,Nc1ccc(Cl)cc1,4-chloroaniline,true,4-chloroaniline,true,,
+93,c1ccccc1NC,N-methylaniline,true,N-methylaniline,true,,
+94,c1ccccc1N(C)C,"N,N-dimethylaniline",true,"N,N-dimethylaniline",true,,
+95,c1ccccc1Nc1ccccc1,N-phenylaniline,true,N-phenylaniline,true,,
+96,CNc1ccc(Cl)cc1,4-chloro-N-methylaniline,true,4-chloro-N-methylaniline,true,,
+97,Cc1ccc(NC)cc1,"N,4-dimethylaniline",true,"N,4-dimethylaniline",true,,
+98,c1cc(Cl)cc(Cl)c1NC,,false,A chain-based principal group outranks the ring in this structure; chain-as-parent seniority (P-44.1.1) for this ring/class combination is not yet supported.,false,,
+99,c1ccc2c(c1)cccc2NC,,false,"Branched, ring, or unsaturated chains on N-substituted amines are not supported",false,,
+100,CN1CCC(CC1)N(CC2=CC=CC=C2)C3=CC=CC=C3,N-benzyl-1-methyl-N-phenylpiperidin-4-amine,true,N-benzyl-1-methyl-N-phenylpiperidin-4-amine,true,,
+101,NC1CCNCC1,piperidin-4-amine,true,piperidin-4-amine,true,,
+102,CN1CCC(N)CC1,1-methylpiperidin-4-amine,true,1-methylpiperidin-4-amine,true,,
+103,CN1CCC(CC1)N(CC2=CC=CS2)C3=CC=CC=C3,1-methyl-N-phenyl-N-(thiophen-2-ylmethyl)piperidin-4-amine,true,1-methyl-N-phenyl-N-(thiophen-2-ylmethyl)piperidin-4-amine,true,,
+104,CN(C)C1CCNCC1,"N,N-dimethylpiperidin-4-amine",true,"N,N-dimethylpiperidin-4-amine",true,,
+105,N1CCNCC1,piperazine,true,piperazine,true,,
+106,c1ccccc1N2CCNCC2,1-phenylpiperazine,true,1-phenylpiperazine,true,,
+107,O1CCNCC1,morpholine,true,morpholine,true,,
+108,c1ccccc1N2CCOCC2,4-phenylmorpholine,true,4-phenylmorpholine,true,,
+109,CC1CNCCO1,2-methylmorpholine,true,2-methylmorpholine,true,,
+110,S1CCNCC1,thiomorpholine,true,thiomorpholine,true,,
+111,CN1CCSCC1,4-methylthiomorpholine,true,4-methylthiomorpholine,true,,
+112,C1CNCN1,imidazolidine,true,imidazolidine,true,,
+113,C1CNCO1,oxazolidine,true,oxazolidine,true,,
+114,C1CNCS1,thiazolidine,true,thiazolidine,true,,
+115,C1CCNN1,pyrazolidine,true,pyrazolidine,true,,
+116,C1CCON1,isoxazolidine,true,isoxazolidine,true,,
+117,C1CCSN1,isothiazolidine,true,isothiazolidine,true,,
+118,O=C1OCCN1c1ccccc1,3-phenyloxazolidin-2-one,true,3-phenyloxazolidin-2-one,true,,
+119,O=C1CSC(=O)N1,"thiazolidine-2,4-dione",true,"thiazolidine-2,4-dione",true,,
+120,O1CCOCC1,"1,4-dioxane",true,"1,4-dioxane",true,,
+121,S1CCSCC1,"1,4-dithiane",true,"1,4-dithiane",true,,
+122,O1CCOC1,"1,3-dioxolane",true,"1,3-dioxolane",true,,
+123,S1CCSC1,"1,3-dithiolane",true,"1,3-dithiolane",true,,
+124,C1CCSS1,"1,2-dithiolane",true,"1,2-dithiolane",true,,
+125,CC1(C)OCCO1,"2,2-dimethyl-1,3-dioxolane",true,"2,2-dimethyl-1,3-dioxolane",true,,
+126,OC(=O)CCCCC1CCSS1,"5-(1,2-dithiolan-3-yl)pentanoic acid",true,"5-(1,2-dithiolan-3-yl)pentanoic acid",true,,
+127,C1CN1,aziridine,true,aziridine,true,,
+128,C1CO1,oxirane,true,oxirane,true,,
+129,C1CS1,thiirane,true,thiirane,true,,
+130,C1CCN1,azetidine,true,azetidine,true,,
+131,C1CCO1,oxetane,true,oxetane,true,,
+132,C1CCS1,thietane,true,thietane,true,,
+133,C1NN1,"1,2-diaziridine",true,"1,2-diaziridine",true,,
+134,C1ON1,"1,2-oxaziridine",true,"1,2-oxaziridine",true,,
+135,C1COO1,"1,2-dioxetane",true,"1,2-dioxetane",true,,
+136,C1CCCNCN1,"1,3-diazepane",true,"1,3-diazepane",true,,
+137,C1CCCCNCN1,"1,3-diazocane",true,"1,3-diazocane",true,,
+138,C1CCCCCCNN1,"1,2-diazonane",true,"1,2-diazonane",true,,
+139,C1CCCOCO1,"1,3-dioxepane",true,"1,3-dioxepane",true,,
+140,C1OCCS1,"1,3-oxathiolane",true,"1,3-oxathiolane",true,,
+141,OCC1CC1,cyclopropylmethanol,true,cyclopropylmethanol,true,,
+142,OCC1CCCCCC1,cycloheptylmethanol,true,cycloheptylmethanol,true,,
+143,OCC1CCCCCN1,(azepan-2-yl)methanol,true,(azepan-2-yl)methanol,true,,
+144,OC(=O)CC1CCCCCN1,2-(azepan-2-yl)ethanoic acid,true,2-(azepan-2-yl)ethanoic acid,true,,
+145,OCC1CO1,(oxiran-2-yl)methanol,true,(oxiran-2-yl)methanol,true,,
+146,OCC1CCN1,(azetidin-2-yl)methanol,true,(azetidin-2-yl)methanol,true,,
+147,O=C1N(CCCCN2CCN(c3ncccn3)CC2)C(=O)CC2(CCCC2)C1,"8-(4-[4-(pyrimidin-2-yl)piperazin-1-yl]butyl)-8-azaspiro[4.5]decane-7,9-dione",true,"8-(4-[4-(pyrimidin-2-yl)piperazin-1-yl]butyl)-8-azaspiro[4.5]decane-7,9-dione",true,,
+148,c1ccc2c(nc(nc2N)N2CCN(C(c3occc3)=O)CC2)c1,2-[4-(furan-2-yloxomethyl)piperazin-1-yl]-4-aminoquinazoline,true,2-[4-(furan-2-yloxomethyl)piperazin-1-yl]-4-aminoquinazoline,true,,
+149,NC(=O)C1=CN=CC=C1,pyridine-3-carboxamide,true,pyridine-3-carboxamide,true,,
+150,OC(=O)C1=CN=CC=C1,pyridine-3-carboxylic acid,true,pyridine-3-carboxylic acid,true,,
+151,NC(=O)C1=NC=CN=C1,pyrazine-2-carboxamide,true,pyrazine-2-carboxamide,true,,
+152,OC(=O)C1=CN=CN=C1,pyrimidine-5-carboxylic acid,true,pyrimidine-5-carboxylic acid,true,,
+153,NC(=O)C1=CC=CC=C1,benzenecarboxamide,true,benzenecarboxamide,true,,
+154,OC(=O)C1CCCCC1,cyclohexanecarboxylic acid,true,cyclohexanecarboxylic acid,true,,
+155,CC(=O)NC,N-methylethanamide,true,N-methylethanamide,true,,
+156,CCN(CCCC1=CC=CC=C1)CCCC1=CC=CC=C1,N-ethyl-3-phenyl-N-(3-phenylpropyl)propan-1-amine,true,N-ethyl-3-phenyl-N-(3-phenylpropyl)propan-1-amine,true,,
+157,c1ccccc1CNC,N-methyl-1-phenylmethanamine,true,N-methyl-1-phenylmethanamine,true,,
+158,c1ccccc1CCC(=O)O,3-phenylpropanoic acid,true,3-phenylpropanoic acid,true,,
+159,c1ccccc1C(=O)O,benzenecarboxylic acid,true,benzenecarboxylic acid,true,,
+160,CC(=O)NCC,N-ethylethanamide,true,N-ethylethanamide,true,,
+161,O=CNC,N-methylmethanamide,true,N-methylmethanamide,true,,
+162,CC(=O)N,ethanamide,true,ethanamide,true,,
+163,CC(=O)N(C)C,"N,N-dimethylethanamide",true,"N,N-dimethylethanamide",true,,
+164,CCN(C)C(C)=O,N-ethyl-N-methylethanamide,true,N-ethyl-N-methylethanamide,true,,
+165,CC(=O)NC(C)C,N-(1-methylethyl)ethanamide,true,N-(1-methylethyl)ethanamide,true,,
+166,CC(=O)N(C)C(C)C,N-methyl-N-(1-methylethyl)ethanamide,true,N-methyl-N-(1-methylethyl)ethanamide,true,,
+167,O=CN(C)C,"N,N-dimethylmethanamide",true,"N,N-dimethylmethanamide",true,,
+168,CC(=O)NC(C)=O,,false,Acyclic imides (N-acylamides) are not supported,false,,
+169,CC(=O)Nc1ccccc1,N-phenylacetamide,true,N-phenylacetamide,true,,
+170,CC(=S)NC,N-methylethanethioamide,true,N-methylethanethioamide,true,,
+171,CC(=S)NCC,N-ethylethanethioamide,true,N-ethylethanethioamide,true,,
+172,S=CNC,N-methylmethanethioamide,true,N-methylmethanethioamide,true,,
+173,CC(=S)N,ethanethioamide,true,ethanethioamide,true,,
+174,CC(=S)N(C)C,"N,N-dimethylethanethioamide",true,"N,N-dimethylethanethioamide",true,,
+175,CCN(C)C(C)=S,N-ethyl-N-methylethanethioamide,true,N-ethyl-N-methylethanethioamide,true,,
+176,CC(=S)NC(C)C,N-(1-methylethyl)ethanethioamide,true,N-(1-methylethyl)ethanethioamide,true,,
+177,CC(=S)N(C)C(C)C,N-methyl-N-(1-methylethyl)ethanethioamide,true,N-methyl-N-(1-methylethyl)ethanethioamide,true,,
+178,CC(=S)NC(C)=S,,false,Acyclic imides (N-acylamides) are not supported,false,,
+179,S=CN(C)C,"N,N-dimethylmethanethioamide",true,"N,N-dimethylmethanethioamide",true,,
+180,CC(=O)N(C)N,N-methylethanehydrazide,true,N-methylethanehydrazide,true,,
+181,CC(=O)NNC,N'-methylethanehydrazide,true,N'-methylethanehydrazide,true,,
+182,CC(=O)NN,ethanehydrazide,true,ethanehydrazide,true,,
+183,CC(=O)N(C)NC,"N,N'-dimethylethanehydrazide",true,"N,N'-dimethylethanehydrazide",true,,
+184,CC(=O)N(C)NCC,N'-ethyl-N-methylethanehydrazide,true,N'-ethyl-N-methylethanehydrazide,true,,
+185,CC(=O)NN(C)C,"N',N'-dimethylethanehydrazide",true,"N',N'-dimethylethanehydrazide",true,,
+186,CC(=O)NN(C)CC,N'-ethyl-N'-methylethanehydrazide,true,N'-ethyl-N'-methylethanehydrazide,true,,
+187,CC(=O)NN(C)C(C)C,N'-methyl-N'-(1-methylethyl)ethanehydrazide,true,N'-methyl-N'-(1-methylethyl)ethanehydrazide,true,,
+188,CC(=O)N(C)N(C)C,,false,Hydrazides with substituents on both nitrogens are not supported,false,,
+189,ON=CN,N-hydroxymethanimidamide,true,N-hydroxymethanimidamide,true,,
+190,CC(N)=NO,N-hydroxyethanimidamide,true,N-hydroxyethanimidamide,true,,
+191,CCCCC(N)=NO,N-hydroxypentanimidamide,true,N-hydroxypentanimidamide,true,,
+192,CC(NC)=NO,,false,"N-substituted imines, oximes, hydrazones, and amidines are not supported in this phase; only the unsubstituted C=NH imine and unsubstituted -C(=NH)NH2 amidine are supported.",false,,
+193,CC(N)=NOC,,false,"N-substituted imines, oximes, hydrazones, and amidines are not supported in this phase; only the unsubstituted C=NH imine and unsubstituted -C(=NH)NH2 amidine are supported.",false,,
+194,CC(C)C(N)=NO,,false,"N-substituted imines, oximes, hydrazones, and amidines are not supported in this phase; only the unsubstituted C=NH imine and unsubstituted -C(=NH)NH2 amidine are supported.",false,,
+195,O=C(O)CCC1CCCCC1S(=O)C,3-(2-methanesulfinylcyclohexyl)propanoic acid,true,3-(2-methanesulfinylcyclohexyl)propanoic acid,true,,
+196,O=C(O)CCC1CCCCC1[Se](=O)C,3-(2-methaneseleninylcyclohexyl)propanoic acid,true,3-(2-methaneseleninylcyclohexyl)propanoic acid,true,,
+197,O=C(O)CCC1CCCCC1[Te](=O)C,3-(2-methanetellurinylcyclohexyl)propanoic acid,true,3-(2-methanetellurinylcyclohexyl)propanoic acid,true,,
+198,CN=O,nitrosomethane,true,nitrosomethane,true,,
+199,c1ccccc1N=O,nitrosobenzene,true,nitrosobenzene,true,,
+200,CN=NC,dimethyldiazene,true,dimethyldiazene,true,,
+201,CCN=NCC,diethyldiazene,true,diethyldiazene,true,,
+202,CN=NCC,ethyl(methyl)diazene,true,ethyl(methyl)diazene,true,,
+203,CN(C)N=O,dimethylnitrous amide,true,dimethylnitrous amide,true,,
+204,CNN=O,methylnitrous amide,true,methylnitrous amide,true,,
+205,CCCCN(CC)N=O,butyl(ethyl)nitrous amide,true,butyl(ethyl)nitrous amide,true,,
+206,O=NN(C)C1CCCCC1CCC(=O)O,3-{2-[methyl(nitroso)amino]cyclohexyl}propanoic acid,true,3-{2-[methyl(nitroso)amino]cyclohexyl}propanoic acid,true,,
+207,CN=NCC1CCCCC1CCC(=O)O,3-{2-[(methyldiazenyl)methyl]cyclohexyl}propanoic acid,true,3-{2-[(methyldiazenyl)methyl]cyclohexyl}propanoic acid,true,,
+208,ClC(=O)Cl,,false,Carbonic acid halides with multiple halogens are not supported in this phase.,false,,
+209,ClC(=O)Br,,false,Carbonic acid halides with multiple halogens are not supported in this phase.,false,,
+210,NC(=O)Cl,,false,Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase.,false,,
+211,OC(=O)N,carbamic acid,true,carbamic acid,true,,
+212,OC(=O)O,carbonic acid,true,carbonic acid,true,,
+213,COC(=O)N,methyl carbamate,true,methyl carbamate,true,,
+214,COC(=O)OC,dimethyl carbonate,true,dimethyl carbonate,true,,
+215,CCOC(=O)OC,ethyl methyl carbonate,true,ethyl methyl carbonate,true,,
+216,O=C(OC)OCC,ethyl methyl carbonate,true,ethyl methyl carbonate,true,,
+217,COC(=O)Cl,,false,Esters with a coexisting halogen on the acyl carbon (chloroformate-type structures) are not supported in this phase.,false,,
+218,ClC(=S)Cl,,false,Carbonothioyl/thiocarbamoyl halide derivatives (rootless thiocarbonyl carbons) are not supported in this phase.,false,,
+219,NC(=S)Cl,,false,Carbonothioyl/thiocarbamoyl halide derivatives (rootless thiocarbonyl carbons) are not supported in this phase.,false,,
+220,COC(=S)Cl,,false,Carbonothioyl/thiocarbamoyl halide derivatives (rootless thiocarbonyl carbons) are not supported in this phase.,false,,
+221,ClC#N,,false,Cyanic acid halide derivatives (rootless nitrile carbons) are not supported in this phase.,false,,
+222,N#CBr,,false,Cyanic acid halide derivatives (rootless nitrile carbons) are not supported in this phase.,false,,
+223,C,methane,true,methane,true,,
+224,CC,ethane,true,ethane,true,,
+225,CCC,propane,true,propane,true,,
+226,CCCC,butane,true,butane,true,,
+227,CCCCC,pentane,true,pentane,true,,
+228,CCCCCC,hexane,true,hexane,true,,
+229,CCCCCCC,heptane,true,heptane,true,,
+230,CCCCCCCC,octane,true,octane,true,,
+231,CCCCCCCCC,nonane,true,nonane,true,,
+232,CCCCCCCCCC,decane,true,decane,true,,
+233,CC(C)C,2-methylpropane,true,2-methylpropane,true,,
+234,C=C,ethene,true,ethene,true,,
+235,C#C,ethyne,true,ethyne,true,,
+236,CC=C,prop-1-ene,true,prop-1-ene,true,,
+237,CC(=O)O,ethanoic acid,true,ethanoic acid,true,,
+238,CC(=O)N,ethanamide,true,ethanamide,true,,
+239,CC#N,ethanenitrile,true,ethanenitrile,true,,
+240,CC=O,ethanal,true,ethanal,true,,
+241,CC(=O)C,propan-2-one,true,propan-2-one,true,,
+242,CCO,ethanol,true,ethanol,true,,
+243,CCN,ethanamine,true,ethanamine,true,,
+244,CC=N,ethanimine,true,ethanimine,true,,
+245,CCC(C)=N,butan-2-imine,true,butan-2-imine,true,,
+246,ClC(Cl)=N,,false,Carbonimidic/carbamimidic acid halide derivatives (rootless imine carbons) are not supported in this phase.,false,,
+247,NC(Cl)=N,,false,Carbonimidic/carbamimidic acid halide derivatives (rootless imine carbons) are not supported in this phase.,false,,
+248,CC=NC,N-methylethanimine,true,N-methylethanimine,true,,
+249,CCC=NC,N-methylpropan-1-imine,true,N-methylpropan-1-imine,true,,
+250,CC(C)=NC,,false,"N-substituted imines, oximes, hydrazones, and amidines are not supported in this phase; only the unsubstituted C=NH imine and unsubstituted -C(=NH)NH2 amidine are supported.",false,,
+251,CCOO,ethaneperoxol,true,ethaneperoxol,true,,
+252,CCC(C)(C)OO,2-methylbutane-2-peroxol,true,2-methylbutane-2-peroxol,true,,
+253,OOCCO,2-hydroperoxyethanol,true,2-hydroperoxyethanol,true,,
+254,CC(O)CO,"propane-1,2-diol",true,"propane-1,2-diol",true,,
+255,CCOOCC,,false,Dialkyl peroxides are not supported in this phase.,false,,
+256,CC(O)C(=O)O,2-hydroxypropanoic acid,true,2-hydroxypropanoic acid,true,,
+257,NCCO,2-aminoethanol,true,2-aminoethanol,true,,
+258,CNCCC(=O)O,3-methylaminopropanoic acid,true,3-methylaminopropanoic acid,true,,
+259,CC(NC(C)C)C(=O)O,2-[(1-methylethyl)amino]propanoic acid,true,2-[(1-methylethyl)amino]propanoic acid,true,,
+260,CN(C)CCC(=O)O,3-dimethylaminopropanoic acid,true,3-dimethylaminopropanoic acid,true,,
+261,CN(CC)CCC(=O)O,3-ethyl(methyl)aminopropanoic acid,true,3-ethyl(methyl)aminopropanoic acid,true,,
+262,NNCCCC(=O)O,,false,Substituted amine/hydrazine substituents are not supported in this phase.,false,,
+263,CC(N)C(=O)O,2-aminopropanoic acid,true,2-aminopropanoic acid,true,,
+264,CC(NC(=O)C)C(=O)O,2-ethanamidopropanoic acid,true,2-ethanamidopropanoic acid,true,,
+265,OC(=O)CC(CO)CC,3-(hydroxymethyl)pentanoic acid,true,3-(hydroxymethyl)pentanoic acid,true,,
+266,OC(=O)CC(Cl)Cl,"3,3-dichloropropanoic acid",true,"3,3-dichloropropanoic acid",true,,
+267,OC(=O)CC(Cc1cccs1)CC,3-(thiophen-2-ylmethyl)pentanoic acid,true,3-(thiophen-2-ylmethyl)pentanoic acid,true,,
+268,OC(=O)CC(Cc1ccc(OC)cc1)CC,3-[(4-methoxyphenyl)methyl]pentanoic acid,true,3-[(4-methoxyphenyl)methyl]pentanoic acid,true,,
+269,CC(Cl)C,2-chloropropane,true,2-chloropropane,true,,
+270,O=C(O)CCCCC(=O)O,hexanedioic acid,true,hexanedioic acid,true,,
+271,NCCN,"ethane-1,2-diamine",true,"ethane-1,2-diamine",true,,
+272,CCC(C)CC,3-methylpentane,true,3-methylpentane,true,,
+273,CC(F)C(Cl)C,2-chloro-3-fluorobutane,true,2-chloro-3-fluorobutane,true,,
+274,c1ccccc1,benzene,true,benzene,true,,
+275,C1CCCCC1,cyclohexane,true,cyclohexane,true,,
+276,C1CCCCC1O,cyclohexanol,true,cyclohexanol,true,,
+277,Oc1ccccc1CCC,2-propylphenol,true,2-propylphenol,true,,
+278,Oc1ccccc1,phenol,true,phenol,true,,
+279,Oc1ccc(C)cc1,4-methylphenol,true,4-methylphenol,true,,
+280,Oc1cccnc1CCC,2-propylpyridin-3-ol,true,2-propylpyridin-3-ol,true,,
+281,Oc1cccnc1,pyridin-3-ol,true,pyridin-3-ol,true,,
+282,C1CCCCC1C(=O)O,cyclohexanecarboxylic acid,true,cyclohexanecarboxylic acid,true,,
+283,Cc1ccccc1,methylbenzene,true,methylbenzene,true,,
+284,Clc1ccccc1,chlorobenzene,true,chlorobenzene,true,,
+285,C1=CCCCC1,cyclohexene,true,cyclohexene,true,,
+286,c1ccoc1,furan,true,furan,true,,
+287,c1ccsc1,thiophene,true,thiophene,true,,
+288,c1cc[se]c1,selenophene,true,selenophene,true,,
+289,c1cc[te]c1,tellurophene,true,tellurophene,true,,
+290,c1cc[nH]c1,pyrrole,true,pyrrole,true,,
+291,c1ccncc1,pyridine,true,pyridine,true,,
+292,N1C=CC=CC1,"1,2-dihydropyridine",true,"1,2-dihydropyridine",true,,
+293,CC1=CC=CNC1,,false,Saturated or partially unsaturated heterocycles are not yet supported; only the fully aromatic (maximally unsaturated) forms are supported in this phase.,false,,
+294,C1C=CNC=C1,,false,Saturated or partially unsaturated heterocycles are not yet supported; only the fully aromatic (maximally unsaturated) forms are supported in this phase.,false,,
+295,c1ccccp1,phosphinine,true,phosphinine,true,,
+296,C1CCC1,cyclobutane,true,cyclobutane,true,,
+297,C1CC1,cyclopropane,true,cyclopropane,true,,
+298,O=C1CCCCC1,cyclohexanone,true,cyclohexanone,true,,
+299,NC1CCCCC1,cyclohexanamine,true,cyclohexanamine,true,,
+300,ClC1CCCCC1,chlorocyclohexane,true,chlorocyclohexane,true,,
+301,c1ccc2ccccc2c1,naphthalene,true,naphthalene,true,,
+302,Cc1cccc2ccccc12,1-methylnaphthalene,true,1-methylnaphthalene,true,,
+303,Cc1ccc2ccccc2c1,2-methylnaphthalene,true,2-methylnaphthalene,true,,
+304,Clc1cccc2ccccc12,1-chloronaphthalene,true,1-chloronaphthalene,true,,
+305,Clc1cc2ccccc2cc1,2-chloronaphthalene,true,2-chloronaphthalene,true,,
+306,Oc1cccc2ccccc12,naphthalen-1-ol,true,naphthalen-1-ol,true,,
+307,OC(=O)c1cccc2ccccc12,naphthalene-1-carboxylic acid,true,naphthalene-1-carboxylic acid,true,,
+308,OC(=O)c1cccc2c(C(=O)O)cccc12,"naphthalene-1,5-dicarboxylic acid",true,"naphthalene-1,5-dicarboxylic acid",true,,
+309,c1ccc2cc3ccccc3cc2c1,,false,"All-carbon fused ring systems (e.g. anthracene, phenanthrene, benzo[c]cycloheptatriene) have mandatory Blue Book retained names; systematic fusion nomenclature via this mechanism is not applicable.",false,,
+310,C1CCC2CCCCC2C1,bicyclo[4.4.0]decane,true,bicyclo[4.4.0]decane,true,,
+311,C1CC2(CC1)CCCCC2,spiro[4.5]decane,true,spiro[4.5]decane,true,,
+312,[CH3+],,false,Charged atoms are not supported in Phase 1.,false,,
+313,CC.CC,,false,Multi-component structures are not supported in Phase 1.,false,,
+314,c1ccn[nH]1,pyrazole,true,pyrazole,true,,
+315,C(F)(Cl)Br,bromochlorofluoromethane,true,bromochlorofluoromethane,true,,
+316,CC1CCCCC1Cl,1-chloro-2-methylcyclohexane,true,1-chloro-2-methylcyclohexane,true,,
+317,C/C=C/C,(2E)-but-2-ene,true,(2E)-but-2-ene,true,,
+318,C/C=C\C,(2Z)-but-2-ene,true,(2Z)-but-2-ene,true,,
+319,C/C=C/CC,(2E)-pent-2-ene,true,(2E)-pent-2-ene,true,,
+320,C/C=C\CC,(2Z)-pent-2-ene,true,(2Z)-pent-2-ene,true,,
+321,CC(C)=CC,2-methylbut-2-ene,true,2-methylbut-2-ene,true,,
+322,C/C=C(C)\CC,(2Z)-3-methylpent-2-ene,true,(2Z)-3-methylpent-2-ene,true,,
+323,C/C=C(C)/CC,(2E)-3-methylpent-2-ene,true,(2E)-3-methylpent-2-ene,true,,
+324,CC=C(C)CC,3-methylpent-2-ene,true,3-methylpent-2-ene,true,,
+325,C=C=C,,false,Allenes and cumulated double bonds are not supported in this phase.,false,,
+326,OC(=O)[C@H](O)[C@H](O)[C@H](O)C(=O)O,"(2R,3r,4S)-2,3,4-trihydroxypentanedioic acid",true,"(2R,3r,4S)-2,3,4-trihydroxypentanedioic acid",true,,
+327,c1ccccc1S,benzenethiol,true,benzenethiol,true,,
+328,c1ccccc1S(=O)(=O)O,benzenesulfonic acid,true,benzenesulfonic acid,true,,
+329,C1CCCCC1S(=O)(=O)O,cyclohexanesulfonic acid,true,cyclohexanesulfonic acid,true,,
+330,c1ccccc1P(=O)(O)O,benzenephosphonic acid,true,benzenephosphonic acid,true,,
+331,c1ccccc1[As](=O)(O)O,benzenarsonic acid,true,benzenarsonic acid,true,,
+332,C1CCCCC1P(=O)(O)O,cyclohexanephosphonic acid,true,cyclohexanephosphonic acid,true,,
+333,C1CCCCC1[As](=O)(O)O,cyclohexanarsonic acid,true,cyclohexanarsonic acid,true,,
+334,O=C1CCC(=O)O1,"tetrahydrofuran-2,5-dione",true,"tetrahydrofuran-2,5-dione",true,,
+335,C1CCCCC1S,cyclohexanethiol,true,cyclohexanethiol,true,,
+336,c1ccccc1SC,methylsulfanylbenzene,true,methylsulfanylbenzene,true,,
+337,c1ccccc1C(=O)Cl,benzenecarbonyl chloride,true,benzenecarbonyl chloride,true,,
+338,C1CCCCC1C(=O)Cl,cyclohexanecarbonyl chloride,true,cyclohexanecarbonyl chloride,true,,
+339,c1ccc2cc(S(=O)(=O)O)ccc2c1,naphthalene-2-sulfonic acid,true,naphthalene-2-sulfonic acid,true,,
+340,Sc1cccc2ccccc12,naphthalene-1-thiol,true,naphthalene-1-thiol,true,,
+341,Oc1ccccc1S(=O)(=O)O,2-hydroxybenzene-1-sulfonic acid,true,2-hydroxybenzene-1-sulfonic acid,true,,
+342,CC(=O)Cl,ethanoyl chloride,true,ethanoyl chloride,true,,
+343,CC(O)C(=O)Cl,2-hydroxypropanoyl chloride,true,2-hydroxypropanoyl chloride,true,,
+344,OC1CCCCC1[Se](=O)C,2-methaneseleninylcyclohexan-1-ol,true,2-methaneseleninylcyclohexan-1-ol,true,,
+345,OC1CCCCC1[Te](=O)C,2-methanetellurinylcyclohexan-1-ol,true,2-methanetellurinylcyclohexan-1-ol,true,,
+346,CS(=O)(=O)O,methanesulfonic acid,true,methanesulfonic acid,true,,
+347,CS(=O)(=O)N,methanesulfonamide,true,methanesulfonamide,true,,
+348,NS(=O)(=O)CCC1CC(S(N)(=O)=O)CCC1,2-(3-sulfamoylcyclohexyl)ethanesulfonamide,true,2-(3-sulfamoylcyclohexyl)ethanesulfonamide,true,,
+349,NS(=O)CCC1CC(S(N)=O)CCC1,2-(3-sulfinamoylcyclohexyl)ethanesulfinamide,true,2-(3-sulfinamoylcyclohexyl)ethanesulfinamide,true,,
+350,c1ccccc1S(=O)(=O)N,benzenesulfonamide,true,benzenesulfonamide,true,,
+351,CS(=O)N,methanesulfinamide,true,methanesulfinamide,true,,
+352,c1ccccc1S(=O)N,benzenesulfinamide,true,benzenesulfinamide,true,,
+353,CS(=O)(=O)NC,N-methylmethanesulfonamide,true,N-methylmethanesulfonamide,true,,
+354,CCS(=O)(=O)NC,N-methylethanesulfonamide,true,N-methylethanesulfonamide,true,,
+355,CS(=O)NC,N-methylmethanesulfinamide,true,N-methylmethanesulfinamide,true,,
+356,CS(=O)(=O)N,methanesulfonamide,true,methanesulfonamide,true,,
+357,CS(=O)(=O)N(C)C,"N,N-dimethylmethanesulfonamide",true,"N,N-dimethylmethanesulfonamide",true,,
+358,CS(=O)(=O)N(C)CC,N-ethyl-N-methylmethanesulfonamide,true,N-ethyl-N-methylmethanesulfonamide,true,,
+359,CS(=O)N(C)C,"N,N-dimethylmethanesulfinamide",true,"N,N-dimethylmethanesulfinamide",true,,
+360,CS(=O)(=O)N1CCCCC1,,false,"Sulfur-containing groups other than thiols, thioethers, and sulfonic/sulfinic acids are not supported in this phase.",false,,
+361,CS(=O)(=O)Cl,methanesulfonyl chloride,true,methanesulfonyl chloride,true,,
+362,c1ccccc1S(=O)(=O)Cl,benzenesulfonyl chloride,true,benzenesulfonyl chloride,true,,
+363,CCS(=O)(=O)Br,ethanesulfonyl bromide,true,ethanesulfonyl bromide,true,,
+364,CS(=O)Cl,methanesulfinyl chloride,true,methanesulfinyl chloride,true,,
+365,c1ccccc1S(=O)Cl,benzenesulfinyl chloride,true,benzenesulfinyl chloride,true,,
+366,CCS(=O)Br,ethanesulfinyl bromide,true,ethanesulfinyl bromide,true,,
+367,OC(=O)CS(=O)(=O)O,2-sulfoethanoic acid,true,2-sulfoethanoic acid,true,,
+368,CP(=O)(O)O,methanephosphonic acid,true,methanephosphonic acid,true,,
+369,CP(=O)(Cl)Cl,methanephosphonic dichloride,true,methanephosphonic dichloride,true,,
+370,c1ccccc1P(=O)(Cl)Cl,benzenephosphonic dichloride,true,benzenephosphonic dichloride,true,,
+371,CCP(=O)(Br)Br,ethanephosphonic dibromide,true,ethanephosphonic dibromide,true,,
+372,C[As](=O)(Cl)Cl,methanarsonic dichloride,true,methanarsonic dichloride,true,,
+373,c1ccccc1[As](=O)(Cl)Cl,benzenarsonic dichloride,true,benzenarsonic dichloride,true,,
+374,CC[As](=O)(Br)Br,ethanarsonic dibromide,true,ethanarsonic dibromide,true,,
+375,C[As](=O)(O)O,methanarsonic acid,true,methanarsonic acid,true,,
+376,CCCP(=O)(O)O,propane-1-phosphonic acid,true,propane-1-phosphonic acid,true,,
+377,CCC[As](=O)(O)O,propan-1-arsonic acid,true,propan-1-arsonic acid,true,,
+378,Oc1ccccc1S(=O)(=O)O,2-hydroxybenzene-1-sulfonic acid,true,2-hydroxybenzene-1-sulfonic acid,true,,
+379,CS(=O)(=O)O,methanesulfonic acid,true,methanesulfonic acid,true,,
+380,CS(=O)O,methanesulfinic acid,true,methanesulfinic acid,true,,
+381,CCC(S(=O)O)C,butane-2-sulfinic acid,true,butane-2-sulfinic acid,true,,
+382,c1ccccc1S(=O)O,benzenesulfinic acid,true,benzenesulfinic acid,true,,
+383,C1CCCCC1S(=O)O,cyclohexanesulfinic acid,true,cyclohexanesulfinic acid,true,,
+384,CC1CCCCC1CCCS(=O)O,3-(2-methylcyclohexyl)propane-1-sulfinic acid,true,3-(2-methylcyclohexyl)propane-1-sulfinic acid,true,,
+385,Cc1ccccc1CCCS(=O)O,3-(2-methylphenyl)propane-1-sulfinic acid,true,3-(2-methylphenyl)propane-1-sulfinic acid,true,,
+386,CS(=O)C,methanesulfinylmethane,true,methanesulfinylmethane,true,,
+387,CCS(=O)CC,ethanesulfinylethane,true,ethanesulfinylethane,true,,
+388,CCS(=O)(=O)CC,ethanesulfonylethane,true,ethanesulfonylethane,true,,
+389,O=S(c1ccccc1)C,methanesulfinylbenzene,true,methanesulfinylbenzene,true,,
+390,O=S(=O)(c1ccccc1)C,methanesulfonylbenzene,true,methanesulfonylbenzene,true,,
+391,Oc1ccccc1S(=O)O,2-hydroxybenzene-1-sulfinic acid,true,2-hydroxybenzene-1-sulfinic acid,true,,
+392,CS(=O)(=O)O,methanesulfonic acid,true,methanesulfonic acid,true,,
+393,CCP,ethylphosphine,true,ethylphosphine,true,,
+394,CCB(O)O,ethylboronic acid,true,ethylboronic acid,true,,
+395,CCS,ethanethiol,true,ethanethiol,true,,
+396,CSC,methylsulfanylmethane,true,methylsulfanylmethane,true,,
+397,C[Se]C,methylselanylmethane,true,methylselanylmethane,true,,
+398,C[Te]C,methyltellanylmethane,true,methyltellanylmethane,true,,
+399,CC[Se]CC,ethylselanylethane,true,ethylselanylethane,true,,
+400,C[Se](=O)C,methylseleninylmethane,true,methylseleninylmethane,true,,
+401,C[Se](=O)(=O)C,methylselenonylmethane,true,methylselenonylmethane,true,,
+402,C[Te](=O)C,methyltellurinylmethane,true,methyltellurinylmethane,true,,
+403,C[Te](=O)(=O)C,methyltelluronylmethane,true,methyltelluronylmethane,true,,
+404,C[Se][Se]C,methyldiselanylmethane,true,methyldiselanylmethane,true,,
+405,C[Te][Te]C,methylditellanylmethane,true,methylditellanylmethane,true,,
+406,CC[SeH],ethaneselenol,true,ethaneselenol,true,,
+407,C[SeH],methaneselenol,true,methaneselenol,true,,
+408,CC[TeH],ethanetellurol,true,ethanetellurol,true,,
+409,[SeH]CCO,2-selanylethanol,true,2-selanylethanol,true,,
+410,[TeH]CCO,2-tellanylethanol,true,2-tellanylethanol,true,,
+411,CN(=O)=O,nitromethane,true,nitromethane,true,,
+412,C[N+](=O)[O-],nitromethane,true,nitromethane,true,,
+413,CCN=C=O,isocyanatoethane,true,isocyanatoethane,true,,
+414,CC(=O)OCC,ethyl ethanoate,true,ethyl ethanoate,true,,
+415,CC(=O)OC(C)C,(1-methylethyl) ethanoate,true,(1-methylethyl) ethanoate,true,,
+416,COC=O,methyl methanoate,true,methyl methanoate,true,,
+417,COC(=O)CC(=O)O,3-methoxycarbonylpropanoic acid,true,3-methoxycarbonylpropanoic acid,true,,
+418,COC(=O)C(=O)OC,,false,Multiple ester groups are not supported in this phase.,false,,
+419,C[C@H](Cl)C(=O)OCC,,false,Stereodescriptors combined with ester naming are not supported in this phase.,false,,
+420,CC(=O)OC(=O)C,ethanoic anhydride,true,ethanoic anhydride,true,,
+421,CCC(=O)OC(=O)CC,propanoic anhydride,true,propanoic anhydride,true,,
+422,CC(=O)OC(=O)CC,ethanoic propanoic anhydride,true,ethanoic propanoic anhydride,true,,
+423,CC(C)C(=O)OC(=O)C(C)C,2-methylpropanoic anhydride,true,2-methylpropanoic anhydride,true,,
+424,CC(F)C(=O)OC(=O)CC,2-fluoropropanoic propanoic anhydride,true,2-fluoropropanoic propanoic anhydride,true,,
+425,O=COC=O,methanoic anhydride,true,methanoic anhydride,true,,
+426,c1ccccc1CC(=O)O,2-phenylethanoic acid,true,2-phenylethanoic acid,true,,
+427,c1ccccc1CS,phenylmethanethiol,true,phenylmethanethiol,true,,
+428,c1ccccc1CO,phenylmethanol,true,phenylmethanol,true,,
+429,c1ccccc1CCN,2-phenylethanamine,true,2-phenylethanamine,true,,
+430,c1ccccc1CCC(=O)O,3-phenylpropanoic acid,true,3-phenylpropanoic acid,true,,
+431,Cc1ccccc1CC(=O)O,2-(2-methylphenyl)ethanoic acid,true,2-(2-methylphenyl)ethanoic acid,true,,
+432,c1ccccc1CC,ethylbenzene,true,ethylbenzene,true,,
+433,c1cccc2c(CC(=O)O)cccc12,2-(naphthalen-1-yl)ethanoic acid,true,2-(naphthalen-1-yl)ethanoic acid,true,,
+434,c1ccc2cc(CC(=O)O)ccc2c1,2-(naphthalen-2-yl)ethanoic acid,true,2-(naphthalen-2-yl)ethanoic acid,true,,
+435,c1cccc2c(CO)cccc12,(naphthalen-1-yl)methanol,true,(naphthalen-1-yl)methanol,true,,
+436,c1ccc2cc(CS)ccc2c1,(naphthalen-2-yl)methanethiol,true,(naphthalen-2-yl)methanethiol,true,,
+437,CCc1cccc2ccccc12,1-ethylnaphthalene,true,1-ethylnaphthalene,true,,
+438,CCc1ccc2ccccc2c1,2-ethylnaphthalene,true,2-ethylnaphthalene,true,,
+439,Cc1cccc2c(CC(=O)O)cccc12,2-(5-methylnaphthalen-1-yl)ethanoic acid,true,2-(5-methylnaphthalen-1-yl)ethanoic acid,true,,
+440,c1ccncc1CC(=O)O,2-(pyridin-3-yl)ethanoic acid,true,2-(pyridin-3-yl)ethanoic acid,true,,
+441,c1ccc2c(CC(=O)O)c3ccccc3cc2c1,2-(anthracen-9-yl)ethanoic acid,true,2-(anthracen-9-yl)ethanoic acid,true,,
+442,c1ccc2cc(-c3ccccc3)ccc2c1,2-phenylnaphthalene,true,2-phenylnaphthalene,true,,
+443,c1cc2cc(-c3ccccc3)c(-c4ccccc4)cc2cc1,"2,3-diphenylnaphthalene",true,"2,3-diphenylnaphthalene",true,,
+444,c1ccc2cc3ncc(-c4ccccc4)cc3cc2c1,"3-phenylbenzo[1',2':4,5]benzo[1,2-b]pyridine",true,"3-phenylbenzo[1',2':4,5]benzo[1,2-b]pyridine",true,,
+445,c1c2c(cccc2)nc2CCNCc12,"benzo[1,2-b]piperidino[3,4-e]pyridine",true,"benzo[1,2-b]piperidino[3,4-e]pyridine",true,,
+446,c1c2c(cccc2)nc2CCCNc12,"benzo[1,2-b]piperidino[2,3-e]pyridine",true,"benzo[1,2-b]piperidino[2,3-e]pyridine",true,,
+447,Nc1c2c(cccc2)nc2CCCNc12,"benzo[1,2-b]piperidino[2,3-e]pyridin-10-amine",true,"benzo[1,2-b]piperidino[2,3-e]pyridin-10-amine",true,,
+448,c1c2c(cccc2)nc2CCCCc12,"1,2,3,4-tetrahydroacridine",true,"1,2,3,4-tetrahydroacridine",true,PreferredIupacName,
+449,c1ccc2nc3CCCCc3cc2c1C,"7-methyl-2,3,4,5-tetrahydrodibenzo[1,2-b:1,2-e]pyridine",true,"7-methyl-2,3,4,5-tetrahydrodibenzo[1,2-b:1,2-e]pyridine",true,,
+450,C1CCc2cc3cc4ccncc4cc3cc2C1,"7,8,9,10-tetrahydronaphtho[2,3-g]isoquinoline",true,"7,8,9,10-tetrahydronaphtho[2,3-g]isoquinoline",true,SystematicIupacName,
+451,c1ccc2nc3c(cc2c1)CCC3,,false,"Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2.",false,,
+452,c1ccc2[nH]c3CCCCc3c2c1,,false,,false,,Result not found in output
+453,C1CCc2cc3NCCCc3cc2C1,,false,Combining hydro-prefix carbocycle saturation with a saturated heterocyclic ring in the same fused system is not yet supported.,false,,
+454,C1CCc2cc3NCCCCc3cc2C1,,false,Combining hydro-prefix carbocycle saturation with a saturated heterocyclic ring in the same fused system is not yet supported.,false,,
+455,C1CCc2cc3NCCCNc3cc2C1,,false,Combining hydro-prefix carbocycle saturation with a saturated heterocyclic ring in the same fused system is not yet supported.,false,,
+456,C1CCc2cc3NCCCCCc3cc2C1,,false,Combining hydro-prefix carbocycle saturation with a saturated heterocyclic ring in the same fused system is not yet supported.,false,,
+457,C1CCc2cc3OCCCCc3cc2C1,,false,Combining hydro-prefix carbocycle saturation with a saturated heterocyclic ring in the same fused system is not yet supported.,false,,
+458,C1CCc2cc3OCSc3cc2C1,,false,Combining hydro-prefix carbocycle saturation with a saturated heterocyclic ring in the same fused system is not yet supported.,false,,
+459,c1ccc2cc3OC=CC=Cc3cc2c1,"benzo[1',2':4,5]benzo[1,2-b]oxepine",true,"benzo[1',2':4,5]benzo[1,2-b]oxepine",true,,
+460,C1CCc2cc3OC=CC=Cc3cc2C1,"7,8,9,10-tetrahydrobenzo[1',2':4,5]benzo[1,2-b]oxepine",true,"7,8,9,10-tetrahydrobenzo[1',2':4,5]benzo[1,2-b]oxepine",true,,
+461,C1CCc2cc3NC=CC=Cc3cc2C1,"7,8,9,10-tetrahydrobenzo[1',2':4,5]benzo[1,2-b]azepine",true,"7,8,9,10-tetrahydrobenzo[1',2':4,5]benzo[1,2-b]azepine",true,,
+462,c1c2c(cc(CCCC3)c3c2)nc2CCCCc12,"1,2,3,4,7,8,9,10-octahydrobenz[b]acridine",true,"1,2,3,4,7,8,9,10-octahydrobenz[b]acridine",true,PreferredIupacName,
+463,C1CCc2cc3cc4CCCCc4cc3cc2C1,"1,2,3,4,7,8,9,10-octahydrotetracene",true,"1,2,3,4,7,8,9,10-octahydrotetracene",true,PreferredIupacName,
+464,c1ccc2cc3cc4ccncc4cc3cc2c1,"naphtho[2,3-g]isoquinoline",true,"naphtho[2,3-g]isoquinoline",true,PreferredIupacName,
+465,COc1cc2c(c([n](C(c3ccc(Cl)cc3)=O)c2cc1)C)CC(O)=O,,false,"Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2.",false,,
+466,C1CCc2cc(-c3ccccc3)ccc2C1,,false,"Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2.",false,,
+467,c1ccc2cc(-c3ccc(Cl)cc3Br)ccc2c1,2-(2-bromo-4-chlorophenyl)naphthalene,true,2-(2-bromo-4-chlorophenyl)naphthalene,true,,
+468,c1ccc2nc(-c3ccccc3)ccc2c1,2-phenylquinoline,true,2-phenylquinoline,true,,
+469,c1cc2c([nH]c(n2)-c2ncsc2)cc1,2-thiazol-4-ylbenzimidazole,true,2-thiazol-4-ylbenzimidazole,true,,
+470,O=C(c1c2c(cccc2)nc(-c2ccccc2)c1)O,,false,"Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2.",false,,
+471,O=C1N(c3ccccc3)C(=O)CC2(CCCC2)C1,"8-phenyl-8-azaspiro[4.5]decane-7,9-dione",true,"8-phenyl-8-azaspiro[4.5]decane-7,9-dione",true,,
+472,C1CCCCC1CC(=O)O,2-cyclohexylethanoic acid,true,2-cyclohexylethanoic acid,true,,
+473,C1CCCCC1CO,cyclohexylmethanol,true,cyclohexylmethanol,true,,
+474,C1CCCCC1CCC(=O)O,3-cyclohexylpropanoic acid,true,3-cyclohexylpropanoic acid,true,,
+475,CCC1CCCCC1,ethylcyclohexane,true,ethylcyclohexane,true,,
+476,CCCCCCCc1ccccc1,heptylbenzene,true,heptylbenzene,true,,
+477,Cc1ccccc1CCC(=O)O,3-(2-methylphenyl)propanoic acid,true,3-(2-methylphenyl)propanoic acid,true,,
+478,CC1CCCCC1CCC(=O)O,3-(2-methylcyclohexyl)propanoic acid,true,3-(2-methylcyclohexyl)propanoic acid,true,,
+479,CC1CCCCC1CC(=O)O,2-(2-methylcyclohexyl)ethanoic acid,true,2-(2-methylcyclohexyl)ethanoic acid,true,,
+480,Cc1ccccc1CCC(=O)N,3-(2-methylphenyl)propanamide,true,3-(2-methylphenyl)propanamide,true,,
+481,Cc1ccccc1CCC#N,3-(2-methylphenyl)propanenitrile,true,3-(2-methylphenyl)propanenitrile,true,,
+482,Cc1ccccc1CCC=O,3-(2-methylphenyl)propanal,true,3-(2-methylphenyl)propanal,true,,
+483,Cc1ccccc1CCC(=O)C,4-(2-methylphenyl)butan-2-one,true,4-(2-methylphenyl)butan-2-one,true,,
+484,Cc1ccccc1CCCO,3-(2-methylphenyl)propan-1-ol,true,3-(2-methylphenyl)propan-1-ol,true,,
+485,Cc1ccccc1CCCS,3-(2-methylphenyl)propane-1-thiol,true,3-(2-methylphenyl)propane-1-thiol,true,,
+486,Cc1ccccc1CCCN,3-(2-methylphenyl)propan-1-amine,true,3-(2-methylphenyl)propan-1-amine,true,,
+487,CC1CCCCC1C(O)CO,"1-(2-methylcyclohexyl)ethane-1,2-diol",true,"1-(2-methylcyclohexyl)ethane-1,2-diol",true,,
+488,CC1CCCCC1C(N)CN,"1-(2-methylcyclohexyl)ethane-1,2-diamine",true,"1-(2-methylcyclohexyl)ethane-1,2-diamine",true,,
+489,CC1CCCCC1CCC(=O)O,3-(2-methylcyclohexyl)propanoic acid,true,3-(2-methylcyclohexyl)propanoic acid,true,,
+490,Cc1ccccc1CCC=S,3-(2-methylphenyl)propanethial,true,3-(2-methylphenyl)propanethial,true,,
+491,Cc1ccccc1CCC(=S)C,4-(2-methylphenyl)butane-2-thione,true,4-(2-methylphenyl)butane-2-thione,true,,
+492,Cc1ccccc1CCCS(=O)(=O)O,3-(2-methylphenyl)propane-1-sulfonic acid,true,3-(2-methylphenyl)propane-1-sulfonic acid,true,,
+493,Cc1ccccc1CCCP(=O)(O)O,3-(2-methylphenyl)propane-1-phosphonic acid,true,3-(2-methylphenyl)propane-1-phosphonic acid,true,,
+494,Cc1ccccc1CCC[As](=O)(O)O,3-(2-methylphenyl)propan-1-arsonic acid,true,3-(2-methylphenyl)propan-1-arsonic acid,true,,
+495,Cc1ccccc1CCC(=O)N,3-(2-methylphenyl)propanamide,true,3-(2-methylphenyl)propanamide,true,,
+496,CC1CCCCC1CCC(=O)OC,methyl 3-(2-methylcyclohexyl)propanoate,true,methyl 3-(2-methylcyclohexyl)propanoate,true,,
+497,CC1CCCCC1CCC(=O)OCC,ethyl 3-(2-methylcyclohexyl)propanoate,true,ethyl 3-(2-methylcyclohexyl)propanoate,true,,
+498,CC1CCCCC1CCC(=O)Cl,3-(2-methylcyclohexyl)propanoyl chloride,true,3-(2-methylcyclohexyl)propanoyl chloride,true,,
+499,CC1CCCCC1CCC(=O)Oc1ccccc1,phenyl 3-(2-methylcyclohexyl)propanoate,true,phenyl 3-(2-methylcyclohexyl)propanoate,true,,
+500,CCC(=O)OC,methyl propanoate,true,methyl propanoate,true,,
+501,CCC(=O)Cl,propanoyl chloride,true,propanoyl chloride,true,,
+502,CN=[N+]=[N-],azidomethane,true,azidomethane,true,,
+503,CCN=[N+]=[N-],azidoethane,true,azidoethane,true,,
+504,CCCN=[N+]=[N-],1-azidopropane,true,1-azidopropane,true,,
+505,CC(N=[N+]=[N-])C,2-azidopropane,true,2-azidopropane,true,,
+506,[CH2+]N=[N+]=[N-],,false,Charged atoms are not supported in Phase 1.,false,,
+507,c1ccoc1CC(=O)O,2-(furan-2-yl)ethanoic acid,true,2-(furan-2-yl)ethanoic acid,true,,
+508,c1ccoc1CO,(furan-2-yl)methanol,true,(furan-2-yl)methanol,true,,
+509,c1(CC(=O)O)ccoc1,2-(furan-3-yl)ethanoic acid,true,2-(furan-3-yl)ethanoic acid,true,,
+510,c1(CO)ccoc1,(furan-3-yl)methanol,true,(furan-3-yl)methanol,true,,
+511,c1ccsc1CC(=O)O,2-(thiophen-2-yl)ethanoic acid,true,2-(thiophen-2-yl)ethanoic acid,true,,
+512,c1ccsc1CO,(thiophen-2-yl)methanol,true,(thiophen-2-yl)methanol,true,,
+513,c1(CC(=O)O)ccsc1,2-(thiophen-3-yl)ethanoic acid,true,2-(thiophen-3-yl)ethanoic acid,true,,
+514,c1(CO)ccsc1,(thiophen-3-yl)methanol,true,(thiophen-3-yl)methanol,true,,
+515,c1cc[nH]c1CC(=O)O,2-(pyrrol-2-yl)ethanoic acid,true,2-(pyrrol-2-yl)ethanoic acid,true,,
+516,c1cc[nH]c1CO,(pyrrol-2-yl)methanol,true,(pyrrol-2-yl)methanol,true,,
+517,c1(CC(=O)O)cc[nH]c1,2-(pyrrol-3-yl)ethanoic acid,true,2-(pyrrol-3-yl)ethanoic acid,true,,
+518,c1(CO)cc[nH]c1,(pyrrol-3-yl)methanol,true,(pyrrol-3-yl)methanol,true,,
+519,c1ccoc1CC,2-ethylfuran,true,2-ethylfuran,true,,
+520,c1ccsc1CC,2-ethylthiophene,true,2-ethylthiophene,true,,
+521,c1cc[se]c1CC,2-ethylselenophene,true,2-ethylselenophene,true,,
+522,c1cc[te]c1CC,2-ethyltellurophene,true,2-ethyltellurophene,true,,
+523,c1cc[nH]c1CC,2-ethylpyrrole,true,2-ethylpyrrole,true,,
+524,c1ccncc1CC(=O)O,2-(pyridin-3-yl)ethanoic acid,true,2-(pyridin-3-yl)ethanoic acid,true,,
+525,n1c(CC(=O)O)cccc1,2-(pyridin-2-yl)ethanoic acid,true,2-(pyridin-2-yl)ethanoic acid,true,,
+526,n1c(CO)cccc1,(pyridin-2-yl)methanol,true,(pyridin-2-yl)methanol,true,,
+527,n1cc(CC(=O)O)ccc1,2-(pyridin-3-yl)ethanoic acid,true,2-(pyridin-3-yl)ethanoic acid,true,,
+528,n1cc(CO)ccc1,(pyridin-3-yl)methanol,true,(pyridin-3-yl)methanol,true,,
+529,n1ccc(CC(=O)O)cc1,2-(pyridin-4-yl)ethanoic acid,true,2-(pyridin-4-yl)ethanoic acid,true,,
+530,n1ccc(CO)cc1,(pyridin-4-yl)methanol,true,(pyridin-4-yl)methanol,true,,
+531,n1c(CC)cccc1,2-ethylpyridine,true,2-ethylpyridine,true,,
+532,n1cc(CC)ccc1,3-ethylpyridine,true,3-ethylpyridine,true,,
+533,n1ccc(CC)cc1,4-ethylpyridine,true,4-ethylpyridine,true,,
+534,Cc1nccc(CC(=O)O)c1,2-(2-methylpyridin-4-yl)ethanoic acid,true,2-(2-methylpyridin-4-yl)ethanoic acid,true,,
+535,Cc1ccoc1CC(=O)O,2-(3-methylfuran-2-yl)ethanoic acid,true,2-(3-methylfuran-2-yl)ethanoic acid,true,,
+536,O=S(=O)(O)c1ccc(C(=O)O)cc1,4-sulfobenzenecarboxylic acid,true,4-sulfobenzenecarboxylic acid,true,,
+537,O=S(=O)(O)C1CCC(C(=O)O)CC1,4-sulfocyclohexanecarboxylic acid,true,4-sulfocyclohexanecarboxylic acid,true,,
+538,COC(=O)C1CCC(C(=O)O)CC1,4-methoxycarbonylcyclohexanecarboxylic acid,true,4-methoxycarbonylcyclohexanecarboxylic acid,true,,
+539,ClC(=O)C1CCC(C(=O)O)CC1,4-chlorocarbonylcyclohexanecarboxylic acid,true,4-chlorocarbonylcyclohexanecarboxylic acid,true,,
+540,O=S(=O)(O)c1cccc2c(C(=O)O)cccc12,5-sulfonaphthalene-1-carboxylic acid,true,5-sulfonaphthalene-1-carboxylic acid,true,,
+541,COC(=O)c1cccc2c(C(=O)O)cccc12,5-methoxycarbonylnaphthalene-1-carboxylic acid,true,5-methoxycarbonylnaphthalene-1-carboxylic acid,true,,
+542,OC1CCCCC1C(=O)O,2-hydroxycyclohexanecarboxylic acid,true,2-hydroxycyclohexanecarboxylic acid,true,,
+543,c1ccccc1N=[N+]=[N-],azidobenzene,true,azidobenzene,true,,
+544,C1CCCCC1N=[N+]=[N-],azidocyclohexane,true,azidocyclohexane,true,,
+545,c1cccc2c(N=[N+]=[N-])cccc12,1-azidonaphthalene,true,1-azidonaphthalene,true,,
+546,c1ccccc1CN=[N+]=[N-],,false,Unrecognized or unsupported substituent on ring.,false,,
+547,CCCC(=O)OC(=O)C,butanoic ethanoic anhydride,true,butanoic ethanoic anhydride,true,,
+548,CC(Cl)C(=O)OC(=O)C(Cl)C,2-chloropropanoic anhydride,true,2-chloropropanoic anhydride,true,,
+549,CC(C)C(=O)OC(=O)CC,2-methylpropanoic propanoic anhydride,true,2-methylpropanoic propanoic anhydride,true,,
+550,CCCCC(=O)NN,pentanehydrazide,true,pentanehydrazide,true,,
+551,NNC(=O)C1CCCCC1,cyclohexanecarbohydrazide,true,cyclohexanecarbohydrazide,true,,
+552,NNC(=O)CCCC(=O)N,,false,Substituted amine/hydrazine substituents are not supported in this phase.,false,,
+553,CCCCCC(=N)N,hexanimidamide,true,hexanimidamide,true,,
+554,C1CCCCC1C(=N)N,cyclohexanecarboximidamide,true,cyclohexanecarboximidamide,true,,
+555,CC(=N)N,ethanimidamide,true,ethanimidamide,true,,
+556,NC(=N)CCCC(=N)N,pentanediimidamide,true,pentanediimidamide,true,,
+557,CC(=N)NC,,false,"N-substituted imines, oximes, hydrazones, and amidines are not supported in this phase; only the unsubstituted C=NH imine and unsubstituted -C(=NH)NH2 amidine are supported.",false,,
+558,C(=N)NC,N-methylmethanimidamide,true,N-methylmethanimidamide,true,,
+559,C(=N)NCC,N-ethylmethanimidamide,true,N-ethylmethanimidamide,true,,
+560,C(=NC)N,,false,"N-substituted imines, oximes, hydrazones, and amidines are not supported in this phase; only the unsubstituted C=NH imine and unsubstituted -C(=NH)NH2 amidine are supported.",false,,
+561,NC(=N)N,guanidine,true,guanidine,true,,
+562,NC(=N)NC,N'-methylguanidine,true,N'-methylguanidine,true,,
+563,NC(=N)NCC,N'-ethylguanidine,true,N'-ethylguanidine,true,,
+564,NC(=N)NC(C)C,N'-(1-methylethyl)guanidine,true,N'-(1-methylethyl)guanidine,true,,
+565,CNC(=N)NC,,false,Carbonimidic/carbamimidic acid halide derivatives (rootless imine carbons) are not supported in this phase.,false,,
+566,NC(=O)N,urea,true,urea,true,,
+567,CNC(=O)N,methylurea,true,methylurea,true,,
+568,CNC(=O)NC,"N,N-dimethylurea",true,"N,N-dimethylurea",true,,
+569,CCNC(=O)NC,N-ethyl-N-methylurea,true,N-ethyl-N-methylurea,true,,
+570,CC(C)NC(=O)N,(1-methylethyl)urea,true,(1-methylethyl)urea,true,,
+571,CN(C)C(=O)N,,false,Carbonic/carbamic acid derivatives (rootless acyl carbons) are not supported in this phase.,false,,
+572,CCOC(=O)N,ethyl carbamate,true,ethyl carbamate,true,,
+573,COC(=O)N,methyl carbamate,true,methyl carbamate,true,,
+574,CCOC(=O)NC,ethyl methylcarbamate,true,ethyl methylcarbamate,true,,
+575,CC(C)OC(=O)N,(1-methylethyl) carbamate,true,(1-methylethyl) carbamate,true,,
+576,CCOC(=O)NC(C)C,ethyl (1-methylethyl)carbamate,true,ethyl (1-methylethyl)carbamate,true,,
+577,NC(=O)O,carbamic acid,true,carbamic acid,true,,
+578,CNC(=O)Oc1cccc2ccccc12,naphthalen-1-yl (methyl)carbamate,true,naphthalen-1-yl (methyl)carbamate,true,,
+579,NC(=O)Oc1ccccc1,phenyl carbamate,true,phenyl carbamate,true,,
+580,CNC(=O)Oc1ccccc1,phenyl (methyl)carbamate,true,phenyl (methyl)carbamate,true,,
+581,CN(C)C(=O)Oc1ccccc1,,false,Di-N-substituted carbamate esters are not yet supported in this phase.,false,,
+582,CC(OC(=O)NCC1(CC(=O)O)CCCCC1)OC(=O)C(C)C,,false,Carbamate esters with an additional ester or acid group elsewhere in the molecule are not yet supported in this phase.,false,,
+583,CCCC(=O)N=[N+]=[N-],butanoyl azide,true,butanoyl azide,true,,
+584,CCCC(=O)C#N,,false,Acyl cyanide is not supported in this phase.,false,,
+585,CCCC(=O)N=C=O,butanoyl isocyanate,true,butanoyl isocyanate,true,,
+586,CCCC(=O)N=C=S,butanoyl isothiocyanate,true,butanoyl isothiocyanate,true,,
+587,c1ccccc1C(=O)N=C=O,benzenecarbonyl isocyanate,true,benzenecarbonyl isocyanate,true,,
+588,c1ccccc1C(=O)N=C=S,benzenecarbonyl isothiocyanate,true,benzenecarbonyl isothiocyanate,true,,
+589,O=C(N=C=O)C1CCCCCCCCCN1,azacycloundecane-2-carbonyl isocyanate,true,azacycloundecane-2-carbonyl isocyanate,true,,
+590,O=C(N=C=O)c1ccc2ccccc2c1,naphthalene-2-carbonyl isocyanate,true,naphthalene-2-carbonyl isocyanate,true,,
+591,CC(=O)OO,,false,Peroxycarboxylic acids are not supported in this phase.,false,,
+592,OOC(=O)c1ccccc1,,false,Peroxycarboxylic acids are not supported in this phase.,false,,
+593,CN(C)CCN(CC1=CC=CC=C1)C2=CC=CC=N2,"N1-benzyl-N2,N2-dimethyl-N1-(pyridin-2-yl)ethane-1,2-diamine",true,"N1-benzyl-N2,N2-dimethyl-N1-(pyridin-2-yl)ethane-1,2-diamine",true,,
+594,CN(C)CCN(CC1=CC=C(C=C1)OC)C2=CC=CC=N2,"N1-[(4-methoxyphenyl)methyl]-N2,N2-dimethyl-N1-(pyridin-2-yl)ethane-1,2-diamine",true,"N1-[(4-methoxyphenyl)methyl]-N2,N2-dimethyl-N1-(pyridin-2-yl)ethane-1,2-diamine",true,,
+595,C=CCNCCN,,false,"Branched, ring, or unsaturated chains on N-substituted diamines are not supported",false,,
+596,ClN(C)CCN,,false,"Branched, ring, or unsaturated chains on N-substituted diamines are not supported",false,,
+597,CN(C)CCNCc1ccc(Cl)cc1,"N2-[(4-chlorophenyl)methyl]-N1,N1-dimethylethane-1,2-diamine",true,"N2-[(4-chlorophenyl)methyl]-N1,N1-dimethylethane-1,2-diamine",true,,
+598,CN(COC)CCN,,false,"Branched, ring, or unsaturated chains on N-substituted diamines are not supported",false,,
+599,[Li]C,methyllithium,true,methyllithium,true,,
+600,CC[Na],ethylsodium,true,ethylsodium,true,,
+601,C[K],methylpotassium,true,methylpotassium,true,,
+602,CC(C)[Li],(1-methylethyl)lithium,true,(1-methylethyl)lithium,true,,
+603,C1CCCCC1[Na],cyclohexylsodium,true,cyclohexylsodium,true,,
+604,C[Mg]Cl,methylmagnesium chloride,true,methylmagnesium chloride,true,,
+605,CC[Ca]I,ethylcalcium iodide,true,ethylcalcium iodide,true,,
+606,CC[Mg]CC,,false,Unsupported organometallic structure,false,,
+607,[Li]C[Na],,false,Molecules with more than one metal atom are not supported,false,,
+608,CC,ethane,true,ethane,true,,
+609,c1ccccc1N.Cl,aniline hydrochloride,true,aniline hydrochloride,true,,
+610,c1ccccc1N.F,aniline hydrofluoride,true,aniline hydrofluoride,true,,
+611,c1ccccc1N.Br,aniline hydrobromide,true,aniline hydrobromide,true,,
+612,c1ccccc1N.I,aniline hydroiodide,true,aniline hydroiodide,true,,
+613,CC(=O)O.[Li],lithium ethanoate,true,lithium ethanoate,true,,
+614,CC(=O)O.[Na],sodium ethanoate,true,sodium ethanoate,true,,
+615,CC(=O)O.[K],potassium ethanoate,true,potassium ethanoate,true,,
+616,CO.[Na],sodium methoxide,true,sodium methoxide,true,,
+617,CCO.[K],potassium ethoxide,true,potassium ethoxide,true,,
+618,CCCO.[Na],sodium propoxide,true,sodium propoxide,true,,
+619,CCCCO.[Li],lithium butoxide,true,lithium butoxide,true,,
+620,Oc1ccccc1.[Na],sodium phenoxide,true,sodium phenoxide,true,,
+621,CCCO.[K],potassium propoxide,true,potassium propoxide,true,,
+622,CCCCCO.[Na],sodium pentan-1-olate,true,sodium pentan-1-olate,true,,
+623,CC(O)CO.[Na],,false,Multi-component structures are not supported in Phase 1.,false,,
+624,[NH4+].CC(=O)O,ammonium ethanoate,true,ammonium ethanoate,true,,
+625,CC(=O)O.[NH4+],ammonium ethanoate,true,ammonium ethanoate,true,,
+626,[NH4+].CCC(=O)O,ammonium propanoate,true,ammonium propanoate,true,,
+627,[NH4+].CCO,ammonium ethoxide,true,ammonium ethoxide,true,,
+628,CCO.[NH4+],ammonium ethoxide,true,ammonium ethoxide,true,,
+629,[NH4+].CO,ammonium methoxide,true,ammonium methoxide,true,,
+630,[NH4+].[Cl-],ammonium chloride,true,ammonium chloride,true,,
+631,[Cl-].[NH4+],ammonium chloride,true,ammonium chloride,true,,
+632,[NH4+].[F-],ammonium fluoride,true,ammonium fluoride,true,,
+633,[NH4+].[Br-],ammonium bromide,true,ammonium bromide,true,,
+634,[NH4+].[I-],ammonium iodide,true,ammonium iodide,true,,
+635,CC(=O)O.CC,,false,Multi-component structures are not supported in Phase 1.,false,,
+636,c1ccccc1N.c1ccccc1,,false,Multi-component structures are not supported in Phase 1.,false,,
+637,Cl.Cl,,false,Multi-component structures are not supported in Phase 1.,false,,
+638,[Na+].[Cl-],,false,Multi-component structures are not supported in Phase 1.,false,,
+639,CC(=O)[O-],ethanoate(1-),true,ethanoate(1-),true,,
+640,CCC(=O)[O-],propanoate(1-),true,propanoate(1-),true,,
+641,CCCC(=O)[O-],butanoate(1-),true,butanoate(1-),true,,
+642,[O-]C,methoxide(1-),true,methoxide(1-),true,,
+643,C[O-],methoxide(1-),true,methoxide(1-),true,,
+644,CC[O-],ethoxide(1-),true,ethoxide(1-),true,,
+645,CCC[O-],propoxide(1-),true,propoxide(1-),true,,
+646,CCCC[O-],butoxide(1-),true,butoxide(1-),true,,
+647,CCCCC[O-],pentan-1-olate(1-),true,pentan-1-olate(1-),true,,
+648,c1ccccc1[O-],phenoxide(1-),true,phenoxide(1-),true,,
+649,CO[O-],,false,Charged atoms are not supported in Phase 1.,false,,
+650,[O-]C(=O)C(=O)[O-],ethanedioate(2-),true,ethanedioate(2-),true,,
+651,[O-]CCO,,false,Charged atoms are not supported,false,,
+652,O=C(CN(CC(O)=O)CCN(CC(O)=O)CC([O-])=O)[O-],,false,"Cannot name the neutral acid for anion: Branched, ring, or unsaturated chains on N-substituted diamines are not supported",false,,
+653,[NH3+]C,methanaminium,true,methanaminium,true,,
+654,[NH3+]CC,ethanaminium,true,ethanaminium,true,,
+655,C[NH2+]CC,N-methylethanaminium,true,N-methylethanaminium,true,,
+656,C[NH+](C)CC,"N,N-dimethylethanaminium",true,"N,N-dimethylethanaminium",true,,
+657,[NH3+]c1ccccc1,anilinium,true,anilinium,true,,
+658,C[N+](C)(C)C,"N,N,N-trimethylmethanaminium",true,"N,N,N-trimethylmethanaminium",true,,
+659,CC[N+](CC)(CC)CC,"N,N,N-triethylethanaminium",true,"N,N,N-triethylethanaminium",true,,
+660,CCC[N+](CCC)(CCC)CCC,"N,N,N-tripropylpropan-1-aminium",true,"N,N,N-tripropylpropan-1-aminium",true,,
+661,CCCC[N+](CCCC)(CCCC)CCCC,"N,N,N-tributylbutan-1-aminium",true,"N,N,N-tributylbutan-1-aminium",true,,
+662,C[N+](C)(C)CC,"N,N,N-trimethylethanaminium",true,"N,N,N-trimethylethanaminium",true,,
+663,c1ccccc1[N+](C)(C)C,"N,N,N-trimethylanilinium",true,"N,N,N-trimethylanilinium",true,,
+664,C[N+](CCO)(C)C,,false,Charged atoms are not supported in Phase 1.,false,,
+665,C[N+](CCOC(=O)N)(C)C,,false,Charged atoms are not supported in Phase 1.,false,,
+666,CC(OCC[N+](C)(C)C)=O,,false,Charged atoms are not supported in Phase 1.,false,,
+667,C[N+](CC(O)=O)(C)C,,false,Charged atoms are not supported in Phase 1.,false,,
+668,CC[N+](CCOc1c(OCC[N+](CC)(CC)CC)c(OCC[N+](CC)(CC)CC)ccc1)(CC)CC,,false,Charged atoms are not supported in Phase 1.,false,,
+669,C[N+]1CCCCC1,,false,Charged atoms are not supported in Phase 1.,false,,
+670,C[N+]1CCCC1,,false,Charged atoms are not supported in Phase 1.,false,,
+671,CC[N+]1(C)CCCCC1,,false,Charged atoms are not supported in Phase 1.,false,,
+672,CC[N+](CCC)(C)C,"N-ethyl-N,N-dimethylpropan-1-aminium",true,"N-ethyl-N,N-dimethylpropan-1-aminium",true,,
+673,CC[N+](c1ccccc1)(C)C,"N-ethyl-N,N-dimethylanilinium",true,"N-ethyl-N,N-dimethylanilinium",true,,
+674,CC[N+](c1cc(O)ccc1)(C)C,,false,Charged atoms are not supported in Phase 1.,false,,
+675,C[N+](C)(C)C(C)C,,false,Charged atoms are not supported in Phase 1.,false,,
+676,[NH3+]CCCCCC[NH3+],,false,Charged atoms are not supported in Phase 1.,false,,
+677,[NH3+]CCCCN,,false,Charged atoms are not supported,false,,
+678,[I-],iodide,true,iodide,true,,
+679,[F-],fluoride,true,fluoride,true,,
+680,[Cl-],chloride,true,chloride,true,,
+681,[18F-],[18F]fluoride,true,[18F]fluoride,true,,
+682,[123I-],[123I]iodide,true,[123I]iodide,true,,
+683,[131I-],[131I]iodide,true,[131I]iodide,true,,
+684,[O-2],oxide,true,oxide,true,,
+685,[Mg+2],magnesium(2+),true,magnesium(2+),true,,
+686,[82Rb+],[82Rb]rubidium(1+),true,[82Rb]rubidium(1+),true,,
+687,[89Sr+2],[89Sr]strontium(2+),true,[89Sr]strontium(2+),true,,
+688,O=N[O-],nitrite,true,nitrite,true,,
+689,O=P(O)([O-])[O-],hydrogen phosphate,true,hydrogen phosphate,true,,
+690,O=P(O)(O)[O-],dihydrogen phosphate,true,dihydrogen phosphate,true,,
+691,O=[32P](O)([O-])[O-],[32P]hydrogen phosphate,true,[32P]hydrogen phosphate,true,,
+692,O=S([O-])([O-])=O,sulfate,true,sulfate,true,,
+693,C[N+](C)(C)[O-],"N,N-dimethylmethanamine N-oxide",true,"N,N-dimethylmethanamine N-oxide",true,,
+694,CNC1C[N+]([O-])=C(c2ccccc2)c2c(ccc(c2)Cl)N=1,,false,Charged atoms are not supported in Phase 1.,false,,
+695,O=C(c1cnccc1)NCCO[N+]([O-])=O,,false,Charged atoms are not supported in Phase 1.,false,,
+696,[O-][Cl+3]([O-])([O-])[O-],perchlorate,true,perchlorate,true,,
+697,[O-]Cl,hypochlorite,true,hypochlorite,true,,
+698,O=S(=S)([O-])[O-],thiosulfate,true,thiosulfate,true,,
+699,O=P(F)([O-])[O-],monofluorophosphate,true,monofluorophosphate,true,,
+700,[N-]=[N+]=O,nitrous oxide,true,nitrous oxide,true,,
+701,C[S+]([O-])C,methanesulfinylmethane,true,methanesulfinylmethane,true,,
+702,NC(C[S+](C(c1ccccc1)c1ccccc1)[O-])=O,2-(diphenylmethyl)sulfinylethanamide,true,2-(diphenylmethyl)sulfinylethanamide,true,,
+703,CSC(c1ccccc1)c1ccccc1,(diphenylmethyl)sulfanylmethane,true,(diphenylmethyl)sulfanylmethane,true,,
+704,C[n+]1ccccc1,1-methylpyridin-1-ium,true,1-methylpyridin-1-ium,true,,
+705,C[n+]1c(C=NO)cccc1,,false,Charged atoms are not supported in Phase 1.,false,,
+706,CN(C(Oc1c[n+](C)ccc1)=O)C,,false,Charged atoms are not supported in Phase 1.,false,,
+707,COc1c(OC)c(C[S+](c2[nH]c3c(cccc3)n2)[O-])ncc1,,false,"Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2.",false,,
+708,CN1C(CCN2c3c(ccc(c3)[S+]([O-])C)Sc3c2cccc3)CCCC1,,false,"Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2.",false,,
+709,O=C1N(c2ccccc2)N(c2ccccc2)C(=O)C1CC[S+](c1ccccc1)[O-],,false,"Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2.",false,,
+710,CC1/C(=C/c2ccc([S+]([O-])C)cc2)/c2c(cc(cc2)F)C=1CC(O)=O,,false,E/Z descriptors on substituent branches are not supported in this phase.,false,,
+711,CCC(C(OCOC(C1N2[C@@H]([C@H](C2=O)[C@H](O)C)SC=1S[C@@H]1C[S+]([O-])CC1)=O)=O)CC,,false,"Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2.",false,,
+712,O=[As][As+]([O-])=O,arsenic trioxide,true,arsenic trioxide,true,,
+713,[Ca].CC(=O)O.CC(=O)O,calcium diethanoate,true,calcium diethanoate,true,,
+714,[Mg].CC(=O)O.CC(=O)O,magnesium diethanoate,true,magnesium diethanoate,true,,
+715,CC(=O)O.[Ca].CC(=O)O,calcium diethanoate,true,calcium diethanoate,true,,
+716,CC(=O)O.CC(=O)O.[Ca],calcium diethanoate,true,calcium diethanoate,true,,
+717,[Ca].CCO.CCO,calcium diethoxide,true,calcium diethoxide,true,,
+718,[Mg].CCO.CCO,magnesium diethoxide,true,magnesium diethoxide,true,,
+719,[Ca].[Cl-].[Cl-],calcium chloride,true,calcium chloride,true,,
+720,[Mg].[Cl-].[Cl-],magnesium chloride,true,magnesium chloride,true,,
+721,[Ca].[F-].[F-],calcium fluoride,true,calcium fluoride,true,,
+722,[Ca].[Br-].[Br-],calcium bromide,true,calcium bromide,true,,
+723,[Ca].[I-].[I-],calcium iodide,true,calcium iodide,true,,
+724,[Cl-].[Ca].[Cl-],calcium chloride,true,calcium chloride,true,,
+725,[Cl-].[Cl-].[Ca],calcium chloride,true,calcium chloride,true,,
+726,[Cl-].[Mg].[Cl-],magnesium chloride,true,magnesium chloride,true,,
+727,[Ca].[Cl-].[Br-],,false,Multi-component structures are not supported in Phase 1.,false,,
+728,[Ca].CC(=O)O.CCC(=O)O,,false,Multi-component structures are not supported in Phase 1.,false,,
+729,[Ca].CCO.CCCO,,false,Multi-component structures are not supported in Phase 1.,false,,
+730,O=C1CCCCC1c2ccccc2,2-phenylcyclohexan-1-one,true,2-phenylcyclohexan-1-one,true,,
+731,c1ccccc1c2ccccc2,biphenyl,true,biphenyl,true,,
+732,Cc1ccc(C2(C)CCCCC2)cc1,,false,Fused ring systems other than naphthalene are not supported in this phase.,false,,
+733,O=C1CCCCC1c2ccc(Cl)cc2,2-(4-chlorophenyl)cyclohexan-1-one,true,2-(4-chlorophenyl)cyclohexan-1-one,true,,
+734,CCc1c(-c2ccc(Cl)cc2)c(N)nc(N)n1,"5-(4-chlorophenyl)-6-ethylpyrimidine-2,4-diamine",true,"5-(4-chlorophenyl)-6-ethylpyrimidine-2,4-diamine",true,,
+735,Cc1c(C(O)=O)sc(-c2cc(C#N)c(OCC(C)C)cc2)n1,4-methyl-2-{4-[(2-methylpropyl)oxy]-3-cyanophenyl}thiazole-5-carboxylic acid,true,4-methyl-2-{4-[(2-methylpropyl)oxy]-3-cyanophenyl}thiazole-5-carboxylic acid,true,,
+736,OC(=O)CCC1CCC(C(=O)O)CC1,3-(4-carboxycyclohexyl)propanoic acid,true,3-(4-carboxycyclohexyl)propanoic acid,true,,
+737,c1cccc2ccccc12,naphthalene,true,naphthalene,true,,
+738,C1CCCCC1,cyclohexane,true,cyclohexane,true,,
+739,CN1CCCC1c2cccnc2,,false,Branched or ring N-substituents on amines are not supported,false,,
+740,n1ccccc1c2cccn2,2-pyrrol-2-ylpyridine,true,2-pyrrol-2-ylpyridine,true,,
+741,n1ccccc1c2ncnc2,"2-(1,4-diazol-2-yl)pyridine",true,"2-(1,4-diazol-2-yl)pyridine",true,,
+742,n1ccccc1C2cccnc2,,false,Two ring systems of equal seniority (P-44.2.1) are not yet supported as parent vs. substituent.,false,,
+743,,,true,(1S)-bromochlorofluoromethane vs (1R)-bromochlorofluoromethane,true,,"smiles not extracted, needs follow-up"
+744,,,true,(2S)-2-chlorobutane vs (2R)-2-chlorobutane,true,,"smiles not extracted, needs follow-up"
+745,,,true,(2S)-1-chloro-2-methylcyclohexane vs (2R)-1-chloro-2-methylcyclohexane,true,,"smiles not extracted, needs follow-up"
+746,,,true,"(2R,3S)-2-bromo-3-chlorobutane",true,,"smiles not extracted, needs follow-up"
+747,,,true,(2E)-but-2-ene vs (2Z)-but-2-ene,true,,"smiles not extracted, needs follow-up"
+748,,,true,"(2E,4S)-4-chloropent-2-ene",true,,"smiles not extracted, needs follow-up"
+749,,,true,methyl cyclohexanecarboxylate,true,,"smiles not extracted, needs follow-up"
+750,,,true,methyl benzenecarboxylate,true,,"smiles not extracted, needs follow-up"
+751,,,true,methyl 2-chlorocyclohexanecarboxylate,true,,"smiles not extracted, needs follow-up"
+752,,,true,phenyl ethanoate,true,,"smiles not extracted, needs follow-up"
+753,,,true,phenyl propanoate,true,,"smiles not extracted, needs follow-up"
+754,,,true,(2-chlorophenyl) ethanoate,true,,"smiles not extracted, needs follow-up"
+755,,,true,methyl naphthalene-1-carboxylate,true,,"smiles not extracted, needs follow-up"
+756,,,true,diphenylmethane,true,,"smiles not extracted, needs follow-up"
+757,,,true,"2,2-diphenylethanoic acid",true,,"smiles not extracted, needs follow-up"
+758,,,true,2-cyclohexyl-2-phenylethanoic acid,true,,"smiles not extracted, needs follow-up"
+759,,,true,biphenyl,true,,"smiles not extracted, needs follow-up"
+760,,,true,bicyclohexyl,true,,"smiles not extracted, needs follow-up"
+761,,,true,"2,2'-bipyridine",true,,"smiles not extracted, needs follow-up"
+762,,,true,"2,3'-bifuran",true,,"smiles not extracted, needs follow-up"
+763,,,true,"3,3'-bithiophene",true,,"smiles not extracted, needs follow-up"
+764,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+765,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+766,,,true,naphthalene,true,,"smiles not extracted, needs follow-up"
+767,,,true,1-methylnaphthalene,true,,"smiles not extracted, needs follow-up"
+768,,,true,3-(3-chlorophenyl)-2-phenylpropanoic acid,true,,"smiles not extracted, needs follow-up"
+769,,,true,methanesulfinylmethane,true,,"smiles not extracted, needs follow-up"
+770,,,true,methanesulfonylmethane,true,,"smiles not extracted, needs follow-up"
+771,,,true,methyldisulfanylmethane,true,,"smiles not extracted, needs follow-up"
+772,,,true,propane-2-thione,true,,"smiles not extracted, needs follow-up"
+773,,,true,ethanethial,true,,"smiles not extracted, needs follow-up"
+774,,,true,Unrecognized or unsupported substituent on ring.,true,,"smiles not extracted, needs follow-up"
+775,,,true,imidazole,true,,"smiles not extracted, needs follow-up"
+776,,,true,pyrimidine,true,,"smiles not extracted, needs follow-up"
+777,,,true,pyrazole,true,,"smiles not extracted, needs follow-up"
+778,,,true,pyridazine,true,,"smiles not extracted, needs follow-up"
+779,,,true,pyrazine,true,,"smiles not extracted, needs follow-up"
+780,,,true,2-ethylimidazole,true,,"smiles not extracted, needs follow-up"
+781,,,true,4-methylimidazole,true,,"smiles not extracted, needs follow-up"
+782,,,true,2-methylpyrimidine,true,,"smiles not extracted, needs follow-up"
+783,,,true,4-methylpyrimidine,true,,"smiles not extracted, needs follow-up"
+784,,,true,5-methylpyrimidine,true,,"smiles not extracted, needs follow-up"
+785,,,true,methylphosphine,true,,"smiles not extracted, needs follow-up"
+786,,,true,ethylphosphine,true,,"smiles not extracted, needs follow-up"
+787,,,true,methylboronic acid,true,,"smiles not extracted, needs follow-up"
+788,,,true,ethylboronic acid,true,,"smiles not extracted, needs follow-up"
+789,,,true,3-(2-methylcyclohexyl)propylboronic acid,true,,"smiles not extracted, needs follow-up"
+790,,,true,3-(2-methylcyclohexyl)propylphosphine,true,,"smiles not extracted, needs follow-up"
+791,,,true,ethylboronic acid,true,,"smiles not extracted, needs follow-up"
+792,,,true,ethylphosphine,true,,"smiles not extracted, needs follow-up"
+793,,,true,3-(2-methylcyclohexyl)propanoic acid,true,,"smiles not extracted, needs follow-up"
+794,,,true,4-[(1R)-1-chloroethyl]octane vs 4-[(1S)-1-chloroethyl]octane,true,,"smiles not extracted, needs follow-up"
+795,,,true,3-[(1R)-1-chloroethyl]pentanoic acid vs 3-[(1S)-1-chloroethyl]pentanoic acid,true,,"smiles not extracted, needs follow-up"
+796,,,true,[(1R)-1-chloroethyl]cyclohexane vs [(1S)-1-chloroethyl]cyclohexane,true,,"smiles not extracted, needs follow-up"
+797,,,true,1-[(1R)-1-chloroethyl]naphthalene vs 1-[(1S)-1-chloroethyl]naphthalene,true,,"smiles not extracted, needs follow-up"
+798,,,true,5-bromo-4-[(1R)-1-chloroethyl]nonane,true,,"smiles not extracted, needs follow-up"
+799,,,true,1-bromo-2-[(1S)-1-chloroethyl]cyclohexane,true,,"smiles not extracted, needs follow-up"
+800,,,true,2-bromo-1-[(1S)-1-chloroethyl]naphthalene,true,,"smiles not extracted, needs follow-up"
+801,,,true,(1E)-1-chloro-1-fluoroprop-1-ene vs (1Z)-1-chloro-1-fluoroprop-1-ene,true,,"smiles not extracted, needs follow-up"
+802,,,true,(1E)-2-bromo-1-chloro-1-fluoroprop-1-ene vs (1Z)-2-bromo-1-chloro-1-fluoroprop-1-ene,true,,"smiles not extracted, needs follow-up"
+803,,,true,bicyclo[2.2.1]heptane,true,,"smiles not extracted, needs follow-up"
+804,,,true,bicyclo[4.4.0]decane,true,,"smiles not extracted, needs follow-up"
+805,,,true,bicyclo[2.2.2]octane,true,,"smiles not extracted, needs follow-up"
+806,,,true,spiro[4.5]decane,true,,"smiles not extracted, needs follow-up"
+807,,,true,spiro[5.5]undecane,true,,"smiles not extracted, needs follow-up"
+808,,,true,spiro[3.3]heptane,true,,"smiles not extracted, needs follow-up"
+809,,,true,spiro[2.5]octane,true,,"smiles not extracted, needs follow-up"
+810,,,true,"(1S,2S,4R)-2-bromobicyclo[2.2.1]heptane",true,,"smiles not extracted, needs follow-up"
+811,,,true,(2R)-2-bromospiro[3.5]nonane,true,,"smiles not extracted, needs follow-up"
+812,,,true,3-methylspiro[5.5]undecane,true,,"smiles not extracted, needs follow-up"
+813,,,true,6-oxaspiro[4.5]decane,true,,"smiles not extracted, needs follow-up"
+814,,,true,9-oxa-6-azaspiro[4.5]decane,true,,"smiles not extracted, needs follow-up"
+815,,,true,7-thia-9-azaspiro[4.5]decane,true,,"smiles not extracted, needs follow-up"
+816,,,true,Radicals are not supported in Phase 1.,true,,"smiles not extracted, needs follow-up"
+817,,,true,spiro[5.5]undec-2-ene,true,,"smiles not extracted, needs follow-up"
+818,,,true,2-methylbicyclo[2.2.1]heptane,true,,"smiles not extracted, needs follow-up"
+819,,,true,1-methylbicyclo[2.2.1]heptane,true,,"smiles not extracted, needs follow-up"
+820,,,true,1-fluorobicyclo[2.2.1]heptane,true,,"smiles not extracted, needs follow-up"
+821,,,true,1-fluoro-4-methylbicyclo[2.2.1]heptane,true,,"smiles not extracted, needs follow-up"
+822,,,true,1-methylspiro[4.5]decane,true,,"smiles not extracted, needs follow-up"
+823,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+824,,,true,7-oxabicyclo[2.2.1]heptane,true,,"smiles not extracted, needs follow-up"
+825,,,true,2-oxa-4-thiabicyclo[3.2.1]octane,true,,"smiles not extracted, needs follow-up"
+826,,,true,"3,6,8-trioxabicyclo[3.2.2]nonane",true,,"smiles not extracted, needs follow-up"
+827,,,true,bicyclo[2.2.1]hept-2-ene,true,,"smiles not extracted, needs follow-up"
+828,,,true,spiro[3.5]non-5-ene,true,,"smiles not extracted, needs follow-up"
+829,,,true,oxazole,true,,"smiles not extracted, needs follow-up"
+830,,,true,isoxazole,true,,"smiles not extracted, needs follow-up"
+831,,,true,thiazole,true,,"smiles not extracted, needs follow-up"
+832,,,true,selenazole,true,,"smiles not extracted, needs follow-up"
+833,,,true,isothiazole,true,,"smiles not extracted, needs follow-up"
+834,,,true,isoselenazole,true,,"smiles not extracted, needs follow-up"
+835,,,true,3-methylpyrazole,true,,"smiles not extracted, needs follow-up"
+836,,,true,2-methylthiazole,true,,"smiles not extracted, needs follow-up"
+837,,,true,tetrahydrofuran,true,,"smiles not extracted, needs follow-up"
+838,,,true,pyrrolidine,true,,"smiles not extracted, needs follow-up"
+839,,,true,piperidine,true,,"smiles not extracted, needs follow-up"
+840,,,true,"1,2,4-triazole",true,,"smiles not extracted, needs follow-up"
+841,,,true,"1,3,5-triazine",true,,"smiles not extracted, needs follow-up"
+842,,,true,"1,2,3,4-tetrazole",true,,"smiles not extracted, needs follow-up"
+843,,,true,"1,3,4-oxadiazole",true,,"smiles not extracted, needs follow-up"
+844,,,true,"1,4-oxazine",true,,"smiles not extracted, needs follow-up"
+845,,,true,"3-methyl-1,2,4-triazole",true,,"smiles not extracted, needs follow-up"
+846,,,true,Saturated or partially unsaturated heterocycles are not yet supported; only the fully aromatic (maximally unsaturated) forms are supported in this phase.,true,,"smiles not extracted, needs follow-up"
+847,,,true,"3H-1,2,4-triazepine",true,,"smiles not extracted, needs follow-up"
+848,,,true,Saturated or partially unsaturated heterocycles are not yet supported; only the fully aromatic (maximally unsaturated) forms are supported in this phase.,true,,"smiles not extracted, needs follow-up"
+849,,,true,imidazole,true,,"smiles not extracted, needs follow-up"
+850,,,true,indole,true,,"smiles not extracted, needs follow-up"
+851,,,true,isoindole,true,,"smiles not extracted, needs follow-up"
+852,,,true,benzofuran,true,,"smiles not extracted, needs follow-up"
+853,,,true,isobenzofuran,true,,"smiles not extracted, needs follow-up"
+854,,,true,benzothiophene,true,,"smiles not extracted, needs follow-up"
+855,,,true,isobenzothiophene,true,,"smiles not extracted, needs follow-up"
+856,,,true,benzoselenophene,true,,"smiles not extracted, needs follow-up"
+857,,,true,isobenzoselenophene,true,,"smiles not extracted, needs follow-up"
+858,,,true,benzotellurophene,true,,"smiles not extracted, needs follow-up"
+859,,,true,isobenzotellurophene,true,,"smiles not extracted, needs follow-up"
+860,,,true,benzimidazole,true,,"smiles not extracted, needs follow-up"
+861,,,true,quinoline,true,,"smiles not extracted, needs follow-up"
+862,,,true,isoquinoline,true,,"smiles not extracted, needs follow-up"
+863,,,true,quinazoline,true,,"smiles not extracted, needs follow-up"
+864,,,true,cinnoline,true,,"smiles not extracted, needs follow-up"
+865,,,true,phthalazine,true,,"smiles not extracted, needs follow-up"
+866,,,true,quinoxaline,true,,"smiles not extracted, needs follow-up"
+867,,,true,"[1,3]benzothiazole",true,,"smiles not extracted, needs follow-up"
+868,,,true,"[1,3]benzoxazole",true,,"smiles not extracted, needs follow-up"
+869,,,true,"[1,3]benzoxazole",true,,"smiles not extracted, needs follow-up"
+870,,,true,"1,2,3-benzotriazole",true,,"smiles not extracted, needs follow-up"
+871,,,true,"[1,3]benzothiazole",true,,"smiles not extracted, needs follow-up"
+872,,,true,"[1,3]benzoxazole",true,,"smiles not extracted, needs follow-up"
+873,,,true,benzimidazole,true,,"smiles not extracted, needs follow-up"
+874,,,true,naphthalene,true,,"smiles not extracted, needs follow-up"
+875,,,true,"5-ethoxy-2-sulfamoyl[1,3]benzothiazole",true,,"smiles not extracted, needs follow-up"
+876,,,true,5-ethoxy-2-sulfamoylbenzimidazole,true,,"smiles not extracted, needs follow-up"
+877,,,true,"[1,2]benzothiazole",true,,"smiles not extracted, needs follow-up"
+878,,,true,"[2,1]benzothiazole",true,,"smiles not extracted, needs follow-up"
+879,,,true,"[1,2]benzoxazole",true,,"smiles not extracted, needs follow-up"
+880,,,true,"[2,1]benzoxazole",true,,"smiles not extracted, needs follow-up"
+881,,,true,purine,true,,"smiles not extracted, needs follow-up"
+882,,,true,purine,true,,"smiles not extracted, needs follow-up"
+883,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+884,,,true,"furo[2,3-b]pyridine",true,,"smiles not extracted, needs follow-up"
+885,,,true,"3H-thieno[3,2-d]imidazole",true,,"smiles not extracted, needs follow-up"
+886,,,true,pentalene,true,,"smiles not extracted, needs follow-up"
+887,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+888,,,true,bicyclo[3.3.0]octane,true,,"smiles not extracted, needs follow-up"
+889,,,true,3H-pyrrolizine,true,,"smiles not extracted, needs follow-up"
+890,,,true,3H-pyrrolizine,true,,"smiles not extracted, needs follow-up"
+891,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+892,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+893,,,true,"furo[3,2-b]pyridine",true,,"smiles not extracted, needs follow-up"
+894,,,true,"phosphinino[3,2-b]furan",true,,"smiles not extracted, needs follow-up"
+895,,,true,"pyrido[2,3-d]pyrimidine",true,,"smiles not extracted, needs follow-up"
+896,,,true,"thieno[3,2-b]thiophene",true,,"smiles not extracted, needs follow-up"
+897,,,true,"selenolo[3,2-b]thiophene",true,,"smiles not extracted, needs follow-up"
+898,,,true,"tellurolo[3,2-b]selenophene",true,,"smiles not extracted, needs follow-up"
+899,,,true,"phosphinino[3,2-b]tellurophene",true,,"smiles not extracted, needs follow-up"
+900,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+901,,,true,"4H-furo[3,2-b]pyrrole",true,,"smiles not extracted, needs follow-up"
+902,,,true,5-methylindole,true,,"smiles not extracted, needs follow-up"
+903,,,true,5-methylisoindole,true,,"smiles not extracted, needs follow-up"
+904,,,true,1-methylisoindole,true,,"smiles not extracted, needs follow-up"
+905,,,true,1-methylisoindole,true,,"smiles not extracted, needs follow-up"
+906,,,true,5-methylbenzofuran,true,,"smiles not extracted, needs follow-up"
+907,,,true,5-methylisobenzofuran,true,,"smiles not extracted, needs follow-up"
+908,,,true,1-methylisobenzofuran,true,,"smiles not extracted, needs follow-up"
+909,,,true,1-methylisobenzofuran,true,,"smiles not extracted, needs follow-up"
+910,,,true,5-methylbenzothiophene,true,,"smiles not extracted, needs follow-up"
+911,,,true,5-methylisobenzothiophene,true,,"smiles not extracted, needs follow-up"
+912,,,true,1-methylisobenzothiophene,true,,"smiles not extracted, needs follow-up"
+913,,,true,1-methylisobenzothiophene,true,,"smiles not extracted, needs follow-up"
+914,,,true,5-methylbenzimidazole,true,,"smiles not extracted, needs follow-up"
+915,,,true,5-methylbenzimidazole,true,,"smiles not extracted, needs follow-up"
+916,,,true,3-chloroquinoline,true,,"smiles not extracted, needs follow-up"
+917,,,true,3-methylisoquinoline,true,,"smiles not extracted, needs follow-up"
+918,,,true,2-methylquinazoline,true,,"smiles not extracted, needs follow-up"
+919,,,true,3-methylcinnoline,true,,"smiles not extracted, needs follow-up"
+920,,,true,1-methylphthalazine,true,,"smiles not extracted, needs follow-up"
+921,,,true,1-methylphthalazine,true,,"smiles not extracted, needs follow-up"
+922,,,true,2-methylquinoxaline,true,,"smiles not extracted, needs follow-up"
+923,,,true,2-methylquinoxaline,true,,"smiles not extracted, needs follow-up"
+924,,,true,"3,5-dimethylindole",true,,"smiles not extracted, needs follow-up"
+925,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+926,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+927,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+928,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+929,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+930,,,true,"thiazolo[5,4-b]pyridine",true,,"smiles not extracted, needs follow-up"
+931,,,true,"oxazolo[5,4-b]pyridine",true,,"smiles not extracted, needs follow-up"
+932,,,true,"1H-pyrrolo[2,3-b]pyridine",true,,"smiles not extracted, needs follow-up"
+933,,,true,"1H-imidazo[4,5-b]pyridine",true,,"smiles not extracted, needs follow-up"
+934,,,true,"1H-pyrazolo[4,5-b]pyridine",true,,"smiles not extracted, needs follow-up"
+935,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+936,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+937,,,true,"difuro[3,2-b:5,4-e]pyridine",true,,"smiles not extracted, needs follow-up"
+938,,,true,"difuro[3,2-b:3,4-e]pyridine",true,,"smiles not extracted, needs follow-up"
+939,,,true,"furo[4,5-b:3,2-b]difuran",true,,"smiles not extracted, needs follow-up"
+940,,,true,"furo[2,3-b:5,4-b]difuran",true,,"smiles not extracted, needs follow-up"
+941,,,true,"furo[3,2-b]thieno[2,3-e]pyridine",true,,"smiles not extracted, needs follow-up"
+942,,,true,"furo[2,3-b]thieno[3,2-e]pyrazine",true,,"smiles not extracted, needs follow-up"
+943,,,true,"6H-furo[3,2-b]pyrrolo[2,3-e]pyridine",true,,"smiles not extracted, needs follow-up"
+944,,,true,"2H-furo[3,2-b]pyrazolo[3,4-e]pyridine",true,,"smiles not extracted, needs follow-up"
+945,,,true,"thieno[3',4':4,5]furo[3,2-c]pyridine",true,,"smiles not extracted, needs follow-up"
+946,,,true,"thiazolo[4,5-d]oxazole",true,,"smiles not extracted, needs follow-up"
+947,,,true,"selenazolo[4,5-d]thiazole",true,,"smiles not extracted, needs follow-up"
+948,,,true,"pyrazino[2,3-d]pyridazine",true,,"smiles not extracted, needs follow-up"
+949,,,true,"pyrido[3,4-b]pyrido[6',5':4,5]pyrido[2,3-d]pyridine",true,,"smiles not extracted, needs follow-up"
+950,,,true,"pyrido[4',3':5,6]pyrido[4,3-b]pyrido[6',5':4,5]pyrido[2,3-d]pyridine",true,,"smiles not extracted, needs follow-up"
+951,,,true,"pyrido[4',3':5,6]pyrido[4,3-b]pyrido[6'',5'':4',5']pyrido[2',3':4,5]pyrido[2,3-d]pyridine",true,,"smiles not extracted, needs follow-up"
+952,,,true,"furo[2,3-b]thieno[2',3':4,5]pyrido[2,3-e]pyrazine",true,,"smiles not extracted, needs follow-up"
+953,,,true,furo[b]selenolo[d]thieno[b]1-azocine,true,,"smiles not extracted, needs follow-up"
+954,,,true,adamantane,true,,"smiles not extracted, needs follow-up"
+955,,,true,cubane,true,,"smiles not extracted, needs follow-up"
+956,,,true,adamantan-1-ol,true,,"smiles not extracted, needs follow-up"
+957,,,true,1-chloroadamantane,true,,"smiles not extracted, needs follow-up"
+958,,,true,adamantan-2-one,true,,"smiles not extracted, needs follow-up"
+959,,,true,1-chlorocubane,true,,"smiles not extracted, needs follow-up"
+960,,,true,bicyclo[4.4.0]decane,true,,"smiles not extracted, needs follow-up"
+961,,,true,1-azabicyclo[2.2.2]octane,true,,"smiles not extracted, needs follow-up"
+962,,,true,methyl 2-(4-methoxybenzamido)-3-{4-[(1-methylpiperidin-4-yl)oxy]phenyl}propanoate,true,,"smiles not extracted, needs follow-up"
+963,,,true,cyclohexyl(furan-3-yl)phenylmethane,true,,"smiles not extracted, needs follow-up"
+964,,,true,2-(4-chlorophenyl)ethanoic acid,true,,"smiles not extracted, needs follow-up"
+965,,,true,2-{4-[(furan-2-yl)oxy]phenyl}ethanoic acid,true,,"smiles not extracted, needs follow-up"
+966,,,true,Fused ring systems other than naphthalene are not supported in this phase.,true,,"smiles not extracted, needs follow-up"
+967,,,true,adamantane,true,,"smiles not extracted, needs follow-up"
+968,,,true,"1,3,5-triazine",true,,"smiles not extracted, needs follow-up"
+969,,,true,"1,2,4-oxadiazole",true,,"smiles not extracted, needs follow-up"
+970,,,true,"1,2,4-selenadiazole",true,,"smiles not extracted, needs follow-up"
+971,,,true,"1,3,5-triphosphinine",true,,"smiles not extracted, needs follow-up"
+972,,,true,1-azocine,true,,"smiles not extracted, needs follow-up"
+973,,,true,"2H-1,5-diazonine",true,,"smiles not extracted, needs follow-up"
+974,,,true,"3H-1,2-diazirine",true,,"smiles not extracted, needs follow-up"
+975,,,true,"1,3,5-triazine",true,,"smiles not extracted, needs follow-up"
+976,,,true,furan,true,,"smiles not extracted, needs follow-up"
+977,,,true,"1,3,5-triazine",true,,"smiles not extracted, needs follow-up"
+978,,,true,"1,2,4-oxadiazole",true,,"smiles not extracted, needs follow-up"
+979,,,true,azacycloundecane,true,,"smiles not extracted, needs follow-up"
+980,,,true,"1,5-dithiacyclododecane",true,,"smiles not extracted, needs follow-up"
+981,,,true,1-thia-5-selenacyclododecane,true,,"smiles not extracted, needs follow-up"
+982,,,true,5-[(2R)-2-methylcyclopentyl]heptanoic acid,true,,"smiles not extracted, needs follow-up"
+983,,,true,azocane,true,,"smiles not extracted, needs follow-up"
+984,,,true,aziridine,true,,"smiles not extracted, needs follow-up"
+985,,,true,6-(3-methylbutyl)undecan-1-amine,true,,"smiles not extracted, needs follow-up"
+986,,,true,"pyrrolidine-2,5-dione",true,,"smiles not extracted, needs follow-up"
+987,,,true,piperidin-4-ol,true,,"smiles not extracted, needs follow-up"
+988,,,true,pyrrolidin-2-one,true,,"smiles not extracted, needs follow-up"
+989,,,true,azepane,true,,"smiles not extracted, needs follow-up"
+990,,,true,azepan-2-one,true,,"smiles not extracted, needs follow-up"
+991,,,true,ethanethioamide,true,,"smiles not extracted, needs follow-up"
+992,,,true,propanethioamide,true,,"smiles not extracted, needs follow-up"
+993,,,true,benzenecarbothioamide,true,,"smiles not extracted, needs follow-up"
+994,,,true,3-(2-hydrazinylcyclohexyl)propanoic acid,true,,"smiles not extracted, needs follow-up"
+995,,,true,2-hydrazinylcyclohexanecarboxylic acid,true,,"smiles not extracted, needs follow-up"
+996,,,true,"7,7'-spirobi[bicyclo[4.1.0]heptane]",true,,"smiles not extracted, needs follow-up"
+997,,,true,"6,6'-spirobi[bicyclo[3.1.0]hexane]",true,,"smiles not extracted, needs follow-up"
+998,,,true,"3,3':6',6''-dispiroter[bicyclo[3.1.0]hexane]",true,,"smiles not extracted, needs follow-up"
+999,,,true,"2,3':7',7''-dispiroter[bicyclo[4.1.0]heptane]",true,,"smiles not extracted, needs follow-up"
+1000,,,true,phenyl ethanoate,true,,"smiles not extracted, needs follow-up"
+1001,,,true,2-methoxycarbonylbenzenecarboxylic acid,true,,"smiles not extracted, needs follow-up"
+1002,,,true,2-ethanoyloxybenzenecarboxylic acid,true,,"smiles not extracted, needs follow-up"
+1003,,,true,2-propanoyloxybenzenecarboxylic acid,true,,"smiles not extracted, needs follow-up"
+1004,,,true,2-(2-methyl-5-nitroimidazol-1-yl)ethanol,true,,"smiles not extracted, needs follow-up"
+1005,,,true,1-methylpyrazole,true,,"smiles not extracted, needs follow-up"
+1006,,,true,"completed, name='(diphenylmethyl)oxymethane' err=''",true,,"smiles not extracted, needs follow-up"
+1007,,,true,"completed, name='' err='Branched or ring N-substituents on amines are not supported'",true,,"smiles not extracted, needs follow-up"
+1008,,,true,"completed, name='' err='Branched or ring N-substituents on amines are not supported'",true,,"smiles not extracted, needs follow-up"
+1009,,,true,Unrecognized or unsupported substituent on ring.,true,,"smiles not extracted, needs follow-up"
+1010,,,true,Unrecognized or unsupported substituent on ring.,true,,"smiles not extracted, needs follow-up"
+1011,,,true,3-(naphthalen-2-yl)propanoic acid,true,,"smiles not extracted, needs follow-up"
+1012,,,true,(diphenylmethyl)oxymethane,true,,"smiles not extracted, needs follow-up"
+1013,,,true,Branched or ring N-substituents on amides are not supported,true,,"smiles not extracted, needs follow-up"
+1014,,,true,Branched or ring N-substituents on amides are not supported,true,,"smiles not extracted, needs follow-up"
+1015,,,true,Branched or ring N-substituents on amides are not supported,true,,"smiles not extracted, needs follow-up"
+1016,,,true,4-[4-bis(2-chloroethyl)aminophenyl]butanoic acid,true,,"smiles not extracted, needs follow-up"
+1017,,,true,4-[(4-diethylamino-1-methylbutyl)amino]-7-chloroquinoline,true,,"smiles not extracted, needs follow-up"
+1018,,,true,8-[(4-amino-1-methylbutyl)amino]-6-methoxyquinoline,true,,"smiles not extracted, needs follow-up"
+1019,,,true,1-[(1-methylethyl)amino]-3-([4-(2-methoxyethyl)phenyl])oxypropan-2-ol,true,,"smiles not extracted, needs follow-up"
+1020,,,true,aniline,true,,"smiles not extracted, needs follow-up"
+1021,,,true,Unrecognized or unsupported substituent on ring.,true,,"smiles not extracted, needs follow-up"
+1022,,,true,Unrecognized or unsupported substituent on ring.,true,,"smiles not extracted, needs follow-up"
+1023,,,true,3-(4-carboxycyclohexyl)propanoic acid,true,,"smiles not extracted, needs follow-up"
+1024,,,true,Branched or ring N-substituents on amides are not supported,true,,"smiles not extracted, needs follow-up"
+1025,,,true,benzenecarboxamide,true,,"smiles not extracted, needs follow-up"
+1026,,,true,Ring substituent bearing the principal group also carries additional substituent structure beyond the principal group itself; this is not supported.,true,,"smiles not extracted, needs follow-up"
+1027,,,true,Ring substituent bearing the principal group also carries additional substituent structure beyond the principal group itself; this is not supported.,true,,"smiles not extracted, needs follow-up"
+1028,,,true,phenylmethanol,true,,"smiles not extracted, needs follow-up"
+1029,,,true,Unsupported acyl group in an amide substituent on the parent chain.,true,,"smiles not extracted, needs follow-up"
+1030,,,true,2-methoxy-5-(2-methylaminoethyl)benzene-1-sulfonamide,true,,"smiles not extracted, needs follow-up"
+1031,,,true,err='Fused ring systems other than naphthalene are not supported in this phase.',true,,"smiles not extracted, needs follow-up"
+1032,,,true,benzenecarboxylic acid,true,,"smiles not extracted, needs follow-up"
+1033,,,true,methylbenzene,true,,"smiles not extracted, needs follow-up"
+1034,,,true,4-aminomethylbenzene-1-sulfonamide,true,,"smiles not extracted, needs follow-up"
+1035,,,true,5-methyl-2-(1-methylethyl)cyclohexan-1-ol,true,,"smiles not extracted, needs follow-up"
+1036,,,true,acridine,true,,"smiles not extracted, needs follow-up"
+1037,,,true,9H-carbazole,true,,"smiles not extracted, needs follow-up"
+1038,,,true,rejected with substituent error,true,,"smiles not extracted, needs follow-up"
+1039,,,true,rejected with substituent error,true,,"smiles not extracted, needs follow-up"
+1040,,,true,"5-methylfuro[3,2-b]thieno[2,3-e]pyridine",true,,"smiles not extracted, needs follow-up"
+1041,,,true,"8-chloro-5-methylfuro[3,2-b]thieno[2,3-e]pyridine",true,,"smiles not extracted, needs follow-up"
+1042,,,true,rejected as expected (Fused ring systems other than naphthalene are not supported in this phase.),true,,"smiles not extracted, needs follow-up"
+1043,,,true,"benzo[1,2-b]thieno[2,3-e]pyridine",true,,"smiles not extracted, needs follow-up"
+1044,,,true,"furo[3,2-b]thieno[2,3-e]pyridine",true,,"smiles not extracted, needs follow-up"
+1045,,,true,naphthalene,true,,"smiles not extracted, needs follow-up"
+1046,,,true,N-phenylacetamide,true,,"smiles not extracted, needs follow-up"
+1047,,,true,N-(4-hydroxyphenyl)acetamide,true,,"smiles not extracted, needs follow-up"
+1048,,,true,rejected cleanly (substituted amine branch not yet supported),true,,"smiles not extracted, needs follow-up"
+1049,,,true,A chain-based principal group outranks the ring in this structure; chain-as-parent seniority (P-44.1.1) for this ring/class combination is not yet supported.,true,,"smiles not extracted, needs follow-up"
+1050,,,true,2-phenylethanoic acid,true,,"smiles not extracted, needs follow-up"
+1051,,,true,[14C]urea,true,,"smiles not extracted, needs follow-up"
+1052,,,true,[13C]urea,true,,"smiles not extracted, needs follow-up"
+1053,,,true,clean rejection (multi-word not yet supported),true,,"smiles not extracted, needs follow-up"
+1054,,,true,still rejected with 'No carbon atoms present',true,,"smiles not extracted, needs follow-up"
+1055,,,true,still rejected,true,,"smiles not extracted, needs follow-up"
+1056,,,true,urea,true,,"smiles not extracted, needs follow-up"
+1057,c2cnc1cc4c(cccc4)cc12,"1H-benzo[1',2':4,5]benzo[1,2-b]pyrrole",true,"1H-benzo[1',2':4,5]benzo[1,2-b]pyrrole",true,,
+1058,Cc1ccc2cc(CCC(=O)Oc3ccccc3)ccc2c1,phenyl 3-(6-methylnaphthalen-2-yl)propanoate,true,phenyl 3-(6-methylnaphthalen-2-yl)propanoate,true,,
+1059,Cc1ccc2c(CCC(=O)Oc3ccccc3)c4ccccc4cc2c1,phenyl 3-(3-methylanthracen-9-yl)propanoate,true,phenyl 3-(3-methylanthracen-9-yl)propanoate,true,,
+1060,Cc1c(C)cc2cc(CCC(=O)Oc3ccccc3)ccc2c1,"phenyl 3-(6,7-dimethylnaphthalen-2-yl)propanoate",true,"phenyl 3-(6,7-dimethylnaphthalen-2-yl)propanoate",true,,
+1061,Cc1c(Cl)cc2cc(CCC(=O)Oc3ccccc3)ccc2c1,phenyl 3-(7-chloro-6-methylnaphthalen-2-yl)propanoate,true,phenyl 3-(7-chloro-6-methylnaphthalen-2-yl)propanoate,true,,
+1062,c1ccc2cc(C)c(CCC(=O)OC)cc2c1,methyl 3-(3-methylnaphthalen-2-yl)propanoate,true,methyl 3-(3-methylnaphthalen-2-yl)propanoate,true,,
+1063,COC(=O)CCc1ccc2cc(CCC(=O)OC)ccc2c1,,false,A chain-based principal group outranks the ring in this structure; chain-as-parent seniority (P-44.1.1) for this ring/class combination is not yet supported.,false,,
+1064,O=C(CCc1ccc2nc3ccsc3cc2c1)Oc4ccccc4,"phenyl 3-(benzo[1,2-b]thieno[2,3-e]pyridin-7-yl)propanoate",true,"phenyl 3-(benzo[1,2-b]thieno[2,3-e]pyridin-7-yl)propanoate",true,,
+1065,c1ccc2ccc3cccnc3c2c1,phenanthridine,true,phenanthridine,true,,
+1066,c1cnc2ncc3ccccc3c2c1,"1,10-phenanthroline",true,"1,10-phenanthroline",true,,
+1067,c1cnc2ccc3cnccc3c2c1,"1,7-phenanthroline",true,"1,7-phenanthroline",true,,
+1068,n1ccc2ccc3ncccc3c2c1,"3,8-phenanthroline",true,"3,8-phenanthroline",true,,
+1069,C1CCC2Cc3ncccc3CC2C1,"5,5a,6,7,8,9,9a,10-octahydrobenzo[g]quinoline",true,"5,5a,6,7,8,9,9a,10-octahydrobenzo[g]quinoline",true,,
+1070,C1CCC2CC3CCCCC3CC2C1,"1,2,3,4,4a,5,6,7,8,8a,9,9a,10,10a-tetradecahydroanthracene",true,"1,2,3,4,4a,5,6,7,8,8a,9,9a,10,10a-tetradecahydroanthracene",true,,
+1071,C1=CC=C2C(=C1)C=CC3=NC4=C(C=C32)C5=CC=CC=C5C=C4,"dibenz[a,j]acridine",true,"dibenz[a,j]acridine",true,,
+1072,C1=CC=C2C(=C1)C=CC3=NC4=C(N=C32)C5=CC=CC=C5C=C4,"dibenzo[a,j]phenazine",true,"dibenzo[a,j]phenazine",true,,
+1073,[nH]1cnc2cccc3cccc1c23,"1H-perimidine",true,"1H-perimidine",true,,
+1074,c1ncc2nccnc2n1,pteridine,true,pteridine,true,,
+1075,O=C(CCC1CCC2(CCCCC2)CC1)Oc1ccccc1,"phenyl 3-(spiro[5.5]undecan-3-yl)propanoate",true,"phenyl 3-(spiro[5.5]undecan-3-yl)propanoate",true,,
+1076,O=C(CCC1CCC2(CCCC(C)C2)CC1)Oc1ccccc1,"phenyl 3-(8-methylspiro[5.5]undecan-3-yl)propanoate",true,"phenyl 3-(8-methylspiro[5.5]undecan-3-yl)propanoate",true,,
+1077,C1CC=CC2=Nc3ccccc3[Hg]C2=1,2H-phenomercurazine,true,2H-phenomercurazine,true,,
+1078,O=C(CC1CC2(CCCCO2)CC1)Oc1ccccc1,phenyl 2-(6-oxaspiro[4.5]decan-2-yl)ethanoate,true,phenyl 2-(6-oxaspiro[4.5]decan-2-yl)ethanoate,true,,
+1079,c1ccc2ncccc2n1,"1,5-naphthyridine",true,"1,5-naphthyridine",true,,
+1080,c1ccc2cnccc2n1,"1,6-naphthyridine",true,"1,6-naphthyridine",true,,
+1081,c1ccc2ccncc2n1,"1,7-naphthyridine",true,"1,7-naphthyridine",true,,
+1082,c1ccc2cccnc2n1,"1,8-naphthyridine",true,"1,8-naphthyridine",true,,
+1083,n1ccc2cnccc2c1,"2,6-naphthyridine",true,"2,6-naphthyridine",true,,
+1084,n1ccc2ccncc2c1,"2,7-naphthyridine",true,"2,7-naphthyridine",true,,
+1085,O=C(CCC1CC2CCC1C2)Oc1ccccc1,"phenyl 3-(bicyclo[2.2.1]heptan-2-yl)propanoate",true,"phenyl 3-(bicyclo[2.2.1]heptan-2-yl)propanoate",true,,
+1086,O=C(CCC12CCC(CC1)C2)Oc1ccccc1,"phenyl 3-(bicyclo[2.2.1]heptan-1-yl)propanoate",true,"phenyl 3-(bicyclo[2.2.1]heptan-1-yl)propanoate",true,,
+1087,O=C(CC1CC2CCC1O2)Oc1ccccc1,"phenyl 2-(7-oxabicyclo[2.2.1]heptan-2-yl)ethanoate",true,"phenyl 2-(7-oxabicyclo[2.2.1]heptan-2-yl)ethanoate",true,,
+1088,OCC1CC2CCC1C2,"(bicyclo[2.2.1]heptan-2-yl)methanol",true,"(bicyclo[2.2.1]heptan-2-yl)methanol",true,,
+1089,OC(=O)CC1CC2CCC1C2,"2-(bicyclo[2.2.1]heptan-2-yl)ethanoic acid",true,"2-(bicyclo[2.2.1]heptan-2-yl)ethanoic acid",true,,
+1090,c1ccccc1C1CC2CCC1C2,"2-phenylbicyclo[2.2.1]heptane",true,"2-phenylbicyclo[2.2.1]heptane",true,,
+1091,O=C(CCC12CC3CC(CC(C3)C1)C2)Oc1ccccc1,"phenyl 3-(adamantan-1-yl)propanoate",true,"phenyl 3-(adamantan-1-yl)propanoate",true,,
+1092,OCC12CC3CC(CC(C3)C1)C2,"(adamantan-1-yl)methanol",true,"(adamantan-1-yl)methanol",true,,
+1093,OCC1C2CC3CC1CC(C2)C3,"(adamantan-2-yl)methanol",true,"(adamantan-2-yl)methanol",true,,
+1094,OCC12C3C4C1C5C2C3C45,"(cuban-1-yl)methanol",true,"(cuban-1-yl)methanol",true,,
+1095,OC1CC2CCC1C2,"bicyclo[2.2.1]heptan-2-ol",true,"bicyclo[2.2.1]heptan-2-ol",true,,
+1096,O=C1CC2CCC1C2,"bicyclo[2.2.1]heptan-2-one",true,"bicyclo[2.2.1]heptan-2-one",true,,
+1097,NC1CC2CCC1C2,"bicyclo[2.2.1]heptan-2-amine",true,"bicyclo[2.2.1]heptan-2-amine",true,,
+1098,O=C(O)C1CC2CCC1C2,"bicyclo[2.2.1]heptane-2-carboxylic acid",true,"bicyclo[2.2.1]heptane-2-carboxylic acid",true,,
+1099,OC1CC2C=CC1C2,"bicyclo[2.2.1]hept-5-en-2-ol",true,"bicyclo[2.2.1]hept-5-en-2-ol",true,,
+1100,C1C2CC3C1C3C2,"tricyclo[2.2.1.0^{2,6}]heptane",true,"tricyclo[2.2.1.0^{2,6}]heptane",true,,
+1101,C1CC2C3CCC(C3)C2C1,"tricyclo[5.2.1.0^{2,6}]decane",true,"tricyclo[5.2.1.0^{2,6}]decane",true,,
+1102,C1C2C3C2C4C1C34,"tetracyclo[3.2.0.0^{2,7}.0^{4,6}]heptane",true,"tetracyclo[3.2.0.0^{2,7}.0^{4,6}]heptane",true,,
+1103,C1CC2CC3CCC2CC13,"tricyclo[4.4.0.0^{3,8}]decane",true,"tricyclo[4.4.0.0^{3,8}]decane",true,,
+1104,CC12CC3CC1C2C3,"1-methyltricyclo[2.2.1.0^{2,6}]heptane",true,"1-methyltricyclo[2.2.1.0^{2,6}]heptane",true,,
+1105,O=C(CCC1C2CC3C1C3C2)Oc4ccccc4,"phenyl 3-(tricyclo[2.2.1.0^{2,6}]heptan-3-yl)propanoate",true,"phenyl 3-(tricyclo[2.2.1.0^{2,6}]heptan-3-yl)propanoate",true,,
+1106,OCC1C2CC3C1C3C2,"(tricyclo[2.2.1.0^{2,6}]heptan-3-yl)methanol",true,"(tricyclo[2.2.1.0^{2,6}]heptan-3-yl)methanol",true,,
+1107,OC(=O)CC1C2CC3C1C3C2,"2-(tricyclo[2.2.1.0^{2,6}]heptan-3-yl)ethanoic acid",true,"2-(tricyclo[2.2.1.0^{2,6}]heptan-3-yl)ethanoic acid",true,,

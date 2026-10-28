@@ -65,7 +65,7 @@ public:
     Q_INVOKABLE void exportBioAxoLabs(const QString &molfile);
 
 Q_SIGNALS:
-    void layoutFinished(const QString &result);
+    void layoutFinished(const QString &result, const QString &error);
     void reactionMappingFinished(const QString &result, const QString &error);
     void commonScaffoldFinished(const QString &result, const QString &error);
     void rgroupDecompositionFinished(const QString &result, const QString &error);

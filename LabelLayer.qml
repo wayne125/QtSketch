@@ -96,7 +96,7 @@ Item {
                 const aa = canvas.sketch.primitives.atoms[ai]
                 if (aa.isSgroup) { atomOccupancy.push(null); continue }
                 const hasVisibleLabel = aa.isSgroup || aa.element !== "C" || aa.charge !== 0 ||
-                        (aa.stereoLabel && aa.stereoLabel !== "") || canvas.showExplicitH ||
+                        (aa.cipLabel && aa.cipLabel !== "") || canvas.showExplicitH ||
                         (aa.isotope && aa.isotope > 0) || (aa.radical && aa.radical > 0) ||
                         (aa.explicitValence !== undefined && aa.explicitValence >= 0) ||
                         (aa.attachmentPoints && aa.attachmentPoints > 0) ||
@@ -104,6 +104,27 @@ Item {
                 if (!hasVisibleLabel) { atomOccupancy.push(null); continue }
                 const ap = canvas.chemToCanvas(aa.x, aa.y)
                 atomOccupancy.push({ x: ap.x, y: ap.y, r: approxPillH * 0.9 })
+            }
+
+            // Chiral-center CIP labels (R/S) are drawn beside their own wedge/hash
+            // bond rather than centered on the atom -- map atomId -> unit direction
+            // of that bond (the stereocenter is always the narrow/begin end).
+            const chiralBondDir = {}
+            if (canvas.sketch.primitives.bonds && canvas.sketch.primitives.atomsById) {
+                const bondsList = canvas.sketch.primitives.bonds
+                for (let bi = 0; bi < bondsList.length; bi++) {
+                    const bb = bondsList[bi]
+                    if (bb.stereo !== 1 && bb.stereo !== 6) continue
+                    if (chiralBondDir[bb.begin] !== undefined) continue
+                    const beginA = canvas.sketch.primitives.atomsById[bb.begin.toString()]
+                    const endA = canvas.sketch.primitives.atomsById[bb.end.toString()]
+                    if (!beginA || !endA) continue
+                    const bp1 = canvas.chemToCanvas(beginA.x, beginA.y)
+                    const bp2 = canvas.chemToCanvas(endA.x, endA.y)
+                    const bdx = bp2.x - bp1.x, bdy = bp2.y - bp1.y
+                    const blen = Math.sqrt(bdx * bdx + bdy * bdy)
+                    if (blen > 0) chiralBondDir[bb.begin] = { x: bdx / blen, y: bdy / blen }
+                }
             }
 
             // Given a flagged atom's own canvas position and pill half-extents,
@@ -172,7 +193,7 @@ Item {
                 const hasAttachment = a.attachmentPoints && a.attachmentPoints > 0
 
                 // Skip unlabelled carbons
-                if (a.element === "C" && a.charge === 0 && !a.stereoLabel &&
+                if (a.element === "C" && a.charge === 0 && !a.cipLabel &&
                         !canvas.showExplicitH && !hasIsotope && !hasRadical && !hasValence && !hasAttachment) {
                     if (!hasH) continue
                     // Terminal carbons with showExplicitH off still show no label if renderLabel === "C"
@@ -185,15 +206,36 @@ Item {
                 const baseElement  = a.element
                 const implicitH    = a.implicitHCount || 0
                 const charge       = a.charge || 0
-                const stereoLabel  = a.stereoLabel || ""
                 const cipLabel     = a.cipLabel || ""
                 const aam          = a.aam || 0
                 const checkWarning = a.checkWarning || ""
                 const hOnLeft      = a.hOnLeft || false
 
+                // Chiral centers on a plain carbon show only the CIP letter (R/S/E/Z),
+                // not the "C" element symbol -- matches standard skeletal-formula
+                // convention (bare vertex + stereo descriptor, no atom label).
+                const isChiralCarbon = baseElement === "C" && charge === 0 && !hasIsotope &&
+                        !hasRadical && !hasValence && !hasAttachment && cipLabel !== ""
+
+                // When nothing else needs a pill at this vertex, draw the CIP letter
+                // as a small floating label beside the atom's own wedge/hash bond
+                // instead of centered on the vertex -- keeps the bond/vertex clear.
+                if (isChiralCarbon && implicitH === 0 && !canvas.showExplicitH && chiralBondDir[a.id]) {
+                    const dir = chiralBondDir[a.id]
+                    const perpX = -dir.y, perpY = dir.x
+                    const cipFontSize = Math.max(9, 11 * root.scale)
+                    const cipOffset = 10 * root.scale
+                    ctx.font = "bold " + cipFontSize + "px " + Theme.fontFamilyCss
+                    ctx.textAlign = "center"
+                    ctx.textBaseline = "middle"
+                    ctx.fillStyle = Theme.accent
+                    ctx.fillText(cipLabel, p.x + perpX * cipOffset, p.y + perpY * cipOffset)
+                    continue
+                }
+
                 // ── Measure components ──────────────────────────────────────
                 ctx.font = "bold " + fontSize + "px " + Theme.fontFamilyCss
-                const elemW = root.measureCached(ctx, baseElement)
+                const elemW = isChiralCarbon ? 0 : root.measureCached(ctx, baseElement)
 
                 let hText = "", hSubText = ""
                 if (implicitH > 0) {
@@ -234,16 +276,11 @@ Item {
                 const valW = valText ? root.measureCached(ctx, valText) : 0
 
                 let totalWidth = isoW + elemW + hW + hSubW + chargeW + valW + apW
-                let stereoW = 0
-                if (stereoLabel) {
-                    ctx.font = "bold " + subSize + "px " + Theme.fontFamilyCss
-                    stereoW = root.measureCached(ctx, " " + stereoLabel)
-                    totalWidth += stereoW
-                }
                 let cipW = 0
+                const cipText = isChiralCarbon ? cipLabel : " " + cipLabel
                 if (cipLabel) {
                     ctx.font = "bold " + subSize + "px " + Theme.fontFamilyCss
-                    cipW = root.measureCached(ctx, " " + cipLabel)
+                    cipW = root.measureCached(ctx, cipText)
                     totalWidth += cipW
                 }
 
@@ -287,8 +324,10 @@ Item {
                         ctx.fillText(hSubText, cx, p.y + fontSize * Theme.subscriptOffset)
                         cx += hSubW
                     }
-                    ctx.font = "bold " + fontSize + "px " + Theme.fontFamilyCss
-                    ctx.fillText(baseElement, cx, p.y)
+                    if (!isChiralCarbon) {
+                        ctx.font = "bold " + fontSize + "px " + Theme.fontFamilyCss
+                        ctx.fillText(baseElement, cx, p.y)
+                    }
                     cx += elemW
                 } else {
                     // Element first, H on right
@@ -296,7 +335,9 @@ Item {
                     ctx.fillStyle = textColor
                     ctx.textAlign = "left"
                     ctx.textBaseline = "middle"
-                    ctx.fillText(baseElement, cx, p.y)
+                    if (!isChiralCarbon) {
+                        ctx.fillText(baseElement, cx, p.y)
+                    }
                     cx += elemW
                     if (hText) {
                         ctx.fillText(hText, cx, p.y)
@@ -333,19 +374,11 @@ Item {
                     cx += valW
                 }
 
-                // Stereo label
-                if (stereoLabel) {
-                    ctx.font = "bold " + subSize + "px " + Theme.fontFamilyCss
-                    ctx.fillStyle = isSelected ? Theme.accent : Theme.textSecondary
-                    ctx.fillText(" " + stereoLabel, cx, p.y)
-                    cx += stereoW
-                }
-
                 // CIP descriptor (R/S/E/Z)
                 if (cipLabel) {
                     ctx.font = "bold " + subSize + "px " + Theme.fontFamilyCss
                     ctx.fillStyle = Theme.accent
-                    ctx.fillText(" " + cipLabel, cx, p.y)
+                    ctx.fillText(cipText, cx, p.y)
                     cx += cipW
                 }
 
@@ -474,6 +507,43 @@ Item {
                     ctx.lineTo(right, bottom)
                     ctx.lineTo(right - tick, bottom)
                     ctx.stroke()
+                }
+            }
+            // Bond CIP labels
+            if (canvas.sketch.primitives.bonds && canvas.sketch.primitives.atomsById) {
+                const bondsList = canvas.sketch.primitives.bonds
+                for (let bi = 0; bi < bondsList.length; bi++) {
+                    const bb = bondsList[bi]
+                    if (!bb.cipLabel) continue
+
+                    const beginA = canvas.sketch.primitives.atomsById[bb.begin.toString()]
+                    const endA = canvas.sketch.primitives.atomsById[bb.end.toString()]
+                    if (!beginA || !endA) continue
+
+                    const p1 = canvas.chemToCanvas(beginA.x, beginA.y)
+                    const p2 = canvas.chemToCanvas(endA.x, endA.y)
+
+                    const midX = (p1.x + p2.x) / 2
+                    const midY = (p1.y + p2.y) / 2
+
+                    const bdx = p2.x - p1.x
+                    const bdy = p2.y - p1.y
+                    const blen = Math.sqrt(bdx * bdx + bdy * bdy)
+                    if (blen === 0) continue
+
+                    const dirX = bdx / blen
+                    const dirY = bdy / blen
+                    const perpX = -dirY
+                    const perpY = dirX
+
+                    const cipFontSize = Math.max(9, 11 * root.scale)
+                    const cipOffset = 10 * root.scale
+
+                    ctx.font = "bold " + cipFontSize + "px " + Theme.fontFamilyCss
+                    ctx.textAlign = "center"
+                    ctx.textBaseline = "middle"
+                    ctx.fillStyle = Theme.accent
+                    ctx.fillText(bb.cipLabel, midX + perpX * cipOffset, midY + perpY * cipOffset)
                 }
             }
 

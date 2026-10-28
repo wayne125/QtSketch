@@ -16,43 +16,31 @@ void PlacementPreviewManager::beginPreview(int startAtomId, const QPointF& start
     m_startAtomId = startAtomId;
     m_startPixelPos = startPixelPos;
     m_startChemPos = startChemPos;
+    m_lastChemPos = startChemPos;
     m_toolId = toolId;
     m_lastResult.valid = false;
+    m_cachedAngles.clear();
+    if (m_v8) {
+        QVariantMap primitives = m_v8->primitives();
+        QVariantList bonds = primitives.value("bonds").toList();
+        QVariantMap atomsById = primitives.value("atomsById").toMap();
+        for (const QVariant& bv : bonds) {
+            QVariantMap b = bv.toMap();
+            int beginId = b.value("begin").toInt();
+            int endId = b.value("end").toInt();
+            QVariantMap beginAtom = atomsById.value(QString::number(beginId)).toMap();
+            QVariantMap endAtom = atomsById.value(QString::number(endId)).toMap();
+            if (beginAtom.isEmpty() || endAtom.isEmpty()) continue;
+            double bx = beginAtom.value("x").toDouble(), by = beginAtom.value("y").toDouble();
+            double ex = endAtom.value("x").toDouble(), ey = endAtom.value("y").toDouble();
+            m_cachedAngles[beginId].append(std::atan2(ey - by, ex - bx));
+            m_cachedAngles[endId].append(std::atan2(by - ey, bx - ex));
+        }
+    }
 }
 
 QList<double> PlacementPreviewManager::getExistingAngles(int atomId) const {
-    QList<double> angles;
-    if (!m_v8) return angles;
-
-    QVariantMap primitives = m_v8->primitives();
-    QVariantList bonds = primitives.value("bonds").toList();
-    QVariantMap atomsById = primitives.value("atomsById").toMap();
-
-    QVariantMap centerAtom = atomsById.value(QString::number(atomId)).toMap();
-    if (centerAtom.isEmpty()) return angles;
-    double cx = centerAtom.value("x").toDouble();
-    double cy = centerAtom.value("y").toDouble();
-
-    for (const QVariant& bv : bonds) {
-        QVariantMap b = bv.toMap();
-        int beginId = b.value("begin").toInt();
-        int endId = b.value("end").toInt();
-        
-        int otherId = -1;
-        if (beginId == atomId) otherId = endId;
-        else if (endId == atomId) otherId = beginId;
-        
-        if (otherId != -1) {
-            QVariantMap otherAtom = atomsById.value(QString::number(otherId)).toMap();
-            if (!otherAtom.isEmpty()) {
-                double ox = otherAtom.value("x").toDouble();
-                double oy = otherAtom.value("y").toDouble();
-                double angle = std::atan2(oy - cy, ox - cx);
-                angles.append(angle);
-            }
-        }
-    }
-    return angles;
+    return m_cachedAngles.value(atomId);
 }
 
 void PlacementPreviewManager::updatePreview(const QPointF& currentMouse, double chemScale, double bondLength) {
@@ -61,13 +49,17 @@ void PlacementPreviewManager::updatePreview(const QPointF& currentMouse, double 
 
     QPointF currentChem(m_startChemPos.x() + (currentMouse.x() - m_startPixelPos.x()) / chemScale,
                         m_startChemPos.y() + (currentMouse.y() - m_startPixelPos.y()) / chemScale);
-    
+    m_lastChemPos = currentChem;
+
     QList<double> angles = getExistingAngles(m_startAtomId);
     
     if (m_toolId.startsWith("ATOM_")) {
         QString label = m_toolId.mid(5); 
         m_lastResult = AtomPlacementEngine::compute(m_startChemPos, currentChem, label, angles, bondLength);
-    } else if (m_toolId.startsWith("FG_") || m_toolId.startsWith("SS_") || m_toolId.startsWith("LIB_") || m_toolId.startsWith("TEMPLATE_")) {
+    } else if (m_toolId.startsWith("FG_") || m_toolId.startsWith("SS_") || m_toolId.startsWith("LIB_")) {
+        m_lastResult = m_v8 ? m_v8->getFunctionalGroupPlacementResult(m_toolId, currentChem.x(), currentChem.y(), m_startAtomId)
+                             : PlacementResult{};
+    } else if (m_toolId.startsWith("TEMPLATE_")) {
         m_lastResult = FragmentPlacementEngine::compute(m_startChemPos, currentChem, m_toolId, angles, bondLength);
     }
     
@@ -110,12 +102,14 @@ PlacementResult PlacementPreviewManager::commitPreview() {
     }
     PlacementResult res = m_lastResult;
     m_active = false;
+    m_cachedAngles.clear();
     m_lastResult.valid = false;
     return res;
 }
 
 void PlacementPreviewManager::cancelPreview() {
     m_active = false;
+    m_cachedAngles.clear();
     m_lastResult.valid = false;
     
     if (m_v8) {

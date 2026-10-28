@@ -17,9 +17,19 @@ scratch/
 src/test_*.json
 run_sketch.bat
 
+# IUPAC namer development scratch (standalone drivers, FDA-sweep results,
+# diagnostic tools) - kept on disk locally only, never meant to be committed.
+# 3 files from this dir were accidentally committed in 89a8c2e; untracked
+# there and covered here going forward.
+.claude_scratch_fdafull/
+
 # Vendored Indigo SDK (637 MB third-party tree; kept on disk, not in history.
 # See THIRD-PARTY-NOTICES.md — source: https://github.com/epam/indigo)
 indigo/
+# Separate full Indigo source-tree checkout (distinct from indigo/ above) -
+# accidentally committed via a broad `git add` during an agy-delegate task;
+# untracked here, kept on disk locally only. Includes >50MB font blobs.
+Indigo-indigo-1.45.0/
 # Duplicate/unused copy of the Indigo runtime DLL at repo root — the build
 # links and copies indigo/lib/indigo.dll instead (see CMakeLists.txt).
 /indigo.dll
@@ -42,6 +52,10 @@ imago/
 .qtcreator/
 .claude/
 .codegraph/
+.superpowers/
+
+# Ad-hoc analysis writeups (not needed to build) - kept on disk locally only.
+docs/analysis/
 
 # Session planning docs / notes (not needed to build)
 docs/superpowers/
@@ -57,6 +71,7 @@ ui-typography-redesign.md
 AGENTS.md
 
 # Feature-tracking/planning docs - untracked from git, kept on disk locally only.
+IUPAC Blue Book Coverage.md
 Architecture Map.md
 Architecture Map.html
 Features To Be Implemented.md
@@ -64,3 +79,8 @@ library-audit.html
 
 # Journal/ChemDraw template samples - untracked from git, kept on disk locally only.
 Journal Templates/
+
+# Retired JS engine (quickjs-ng vendor tree + qjs_engine.*/chem-core.js) - kept on disk
+# for local reference only, no longer tracked/pushed. Same "on disk, not in history"
+# treatment as indigo/ and imago/ above.
+archive/js-engine/

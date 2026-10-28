@@ -121,10 +121,10 @@ Rectangle {
         Item {
             Layout.fillWidth: true
             Layout.preferredHeight: root.editOpen ? editGrid.implicitHeight : 0
-            Behavior on Layout.preferredHeight { NumberAnimation { duration: 200; easing.type: Easing.InOutQuad } }
+            Behavior on Layout.preferredHeight { NumberAnimation { duration: Theme.durationMedium; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate } }
             clip: true
             opacity: root.editOpen ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: 200 } }
+            Behavior on opacity { NumberAnimation { duration: Theme.durationMedium; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate } }
 
             GridLayout {
                 id: editGrid
@@ -168,10 +168,10 @@ Rectangle {
         Item {
             Layout.fillWidth: true
             Layout.preferredHeight: root.bondsOpen ? bondsGrid.implicitHeight : 0
-            Behavior on Layout.preferredHeight { NumberAnimation { duration: 200; easing.type: Easing.InOutQuad } }
+            Behavior on Layout.preferredHeight { NumberAnimation { duration: Theme.durationMedium; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate } }
             clip: true
             opacity: root.bondsOpen ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: 200 } }
+            Behavior on opacity { NumberAnimation { duration: Theme.durationMedium; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate } }
 
             GridLayout {
                 id: bondsGrid
@@ -212,10 +212,10 @@ Rectangle {
         Item {
             Layout.fillWidth: true
             Layout.preferredHeight: root.ringsOpen ? ringsGrid.implicitHeight : 0
-            Behavior on Layout.preferredHeight { NumberAnimation { duration: 200; easing.type: Easing.InOutQuad } }
+            Behavior on Layout.preferredHeight { NumberAnimation { duration: Theme.durationMedium; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate } }
             clip: true
             opacity: root.ringsOpen ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: 200 } }
+            Behavior on opacity { NumberAnimation { duration: Theme.durationMedium; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate } }
 
             GridLayout {
                 id: ringsGrid
@@ -259,10 +259,10 @@ Rectangle {
         Item {
             Layout.fillWidth: true
             Layout.preferredHeight: root.groupsOpen ? groupsGrid.implicitHeight : 0
-            Behavior on Layout.preferredHeight { NumberAnimation { duration: 200; easing.type: Easing.InOutQuad } }
+            Behavior on Layout.preferredHeight { NumberAnimation { duration: Theme.durationMedium; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate } }
             clip: true
             opacity: root.groupsOpen ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: 200 } }
+            Behavior on opacity { NumberAnimation { duration: Theme.durationMedium; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate } }
 
             GridLayout {
                 id: groupsGrid
@@ -309,10 +309,10 @@ Rectangle {
         Item {
             Layout.fillWidth: true
             Layout.preferredHeight: root.templatesOpen ? templatesGrid.implicitHeight : 0
-            Behavior on Layout.preferredHeight { NumberAnimation { duration: 200; easing.type: Easing.InOutQuad } }
+            Behavior on Layout.preferredHeight { NumberAnimation { duration: Theme.durationMedium; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate } }
             clip: true
             opacity: root.templatesOpen ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: 200 } }
+            Behavior on opacity { NumberAnimation { duration: Theme.durationMedium; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate } }
 
             GridLayout {
                 id: templatesGrid
@@ -349,10 +349,10 @@ Rectangle {
         Item {
             Layout.fillWidth: true
             Layout.preferredHeight: root.userTemplatesOpen ? userTemplatesGrid.implicitHeight : 0
-            Behavior on Layout.preferredHeight { NumberAnimation { duration: 200; easing.type: Easing.InOutQuad } }
+            Behavior on Layout.preferredHeight { NumberAnimation { duration: Theme.durationMedium; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate } }
             clip: true
             opacity: root.userTemplatesOpen ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: 200 } }
+            Behavior on opacity { NumberAnimation { duration: Theme.durationMedium; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate } }
 
             GridLayout {
                 id: userTemplatesGrid

@@ -1,0 +1,144 @@
+# Known, reviewed, pre-existing atom-order-dependence failures in
+# IupacNamer, discovered 2026-10-22 when the IUPAC_GOLDEN_DETERMINISM=1
+# check in iupac_golden_test was first wired to a real seeded atom-order
+# permutation (tools/iupac/AtomOrderRandomizer). Each row below has a
+# verified canonical-equivalent reordering (confirmed via Indigo
+# canonical SMILES, independent of generateName) that still produces a
+# different generateName() result -- success vs REJECTED, or a
+# different name -- than the row's own original atom order.
+#
+# This is a real bug in IupacNamer. A row ID appearing here is not a
+# license to ignore it forever -- it is flagged for a dedicated task.
+#
+# 2026-10-22 (earlier same day): rows 444, 445, 449, 459, 460, 461 fixed
+# and removed from this list. Root cause: IupacNamer.cpp's getCandidates
+# lambda (inside nameLinearChainFusion), in its no-heteroatom (plain
+# benzo) N<4 fallback, only generated 2 local-numbering candidates
+# (forward/backward) anchored at rCycle[0] -- an atom-order-dependent
+# position -- instead of the full rotation x direction candidate set,
+# so the already-correct downstream NameScore (FR-4.5 lowest-locants)
+# comparator never saw the canonical option for some atom orderings.
+# Fixed by generating the full candidate set; verified via a full golden
+# regression (742/0/0 unchanged) that no other row was affected.
+#
+# 2026-10-22 (later same day): rows 450, 462, 464 fixed and removed from this
+# list. Root causes:
+# - Row 464: RetainedRingMatcher.cpp:136 inverted query/target arguments to
+#   indigoExactMatch(clone, refMol), causing out-of-order target indices to be
+#   queried against the mapping and corrupting baseAtomMap (fusion letter g vs h).
+# - Rows 450, 462: FusedRingOrientation.cpp hard-coded BFS ring placement from
+#   ring 0 instead of the directed tree root from detectFusedRingDirections,
+#   causing invalid reverse edge traversals, geometric overlap contradictions,
+#   and fallback from retained ring naming to generic benzo prefixes.
+#
+# 2026-10-22 (same day, later still): row 1057 added. New molecule found during
+# independent stress-testing of the 450/462/464 fix (not a pre-existing golden
+# row -- freshly added to baseline.csv for this purpose). Default atom order
+# names it "benzo[1',2':4,5]benzo[1,2-b]pyrrole" (no indicated-H); all 5
+# verified reorderings name it "1H-benzo[1',2':4,5]benzo[1,2-b]pyrrole" (with
+# indicated-H). Root cause not yet investigated -- distinct subsystem
+# (indicated-hydrogen assignment), unrelated to RetainedRingMatcher/
+# FusedRingOrientation. Flagged for a future dedicated task.
+#
+# 2026-10-23: row 446 fixed and removed from this list. Root cause: exocyclic
+# amine detection at IupacNamer.cpp:13644 checked nitrogen membership on
+# individual rings in sssrRings rather than the global ring atom union,
+# mistakenly treating one endocyclic nitrogen of a multi-ring fused system as
+# an "exocyclic amine" whenever it appeared outside the current ring. The
+# subsequent branch-traversal hit a false-positive rejection depending on
+# which ring appeared first in SSSR iteration order. Fixed by checking
+# against the union of all ring atoms so bis-aza heterocycles never enter the
+# exocyclic amine branch.
+#
+# Row 441 was ALSO attempted this same pass and reverted -- left here as a
+# known failure, still open. The attempt correctly fixed one real bug
+# (nameRingSystemAsSubstituent hardcoded fusedSystemRingIdx[1] as anthracene's
+# central ring, causing spurious "Substituents on fused ring systems..."
+# rejections when atom reordering made a different ring sort to index 1) but
+# bundled it with a second, incorrect change: a new sequential-peripheral-
+# counting candidate generator for the attachment locant, replacing the
+# existing computePeripheralNumbering3Ring call. That generator can only ever
+# produce {5, 10} as the tied meso-locant pair (confirmed by hand-tracing its
+# own cycle/periphGraph logic against this molecule's real connectivity), and
+# picks 5 -- a real anthracene locant number, but assigned to the wrong atom.
+# Real IUPAC anthracene numbering is a fixed retained pattern (meso positions
+# are always 9 and 10, per "9,10-anthraquinone"), not something sequential
+# counting from an arbitrary valid start can reproduce. This reproduces, for
+# locant 5, the exact mistake an earlier session already ruled out for locant
+# 9 (see the comment pinning this test case in tests/iupac_namer_test.cpp).
+# Reverted IupacNamer.cpp back to the single-candidate
+# computePeripheralNumbering3Ring call (the known-safe, previously-verified
+# "10" answer) -- so row 441's original non-determinism (REJECTED vs
+# anthracen-10-yl vs the wrong anthracen-5-yl, depending on atom order) is
+# back. The accept/reject-gate half of the bug (dynamic center/end-ring
+# identification via fusion degree, instead of hardcoding index 1) is real
+# and worth re-fixing on its own; it needs pairing with a correct fixed
+# anthracene-numbering lookup for the locant, not sequential counting.
+#
+#
+# 2026-10-23: rows 183 and 184 fixed and removed from this list. Root cause:
+# In IupacNamer.cpp (~line 14957, ~line 15012), the acyl carbonyl carbon was
+# located by taking the first non-nitrogen carbon neighbor of nNodeNear. Under
+# input atom reordering, an alkyl substituent on nNodeNear could precede the
+# acyl carbon in the neighbor list, misidentifying the substituent carbon as
+# the acyl carbon and yielding rLen = 0 instead of the real acyl chain length.
+# This caused the carbon conservation check (rLen + rPrimeLenNear + rPrimeLenFar + 1 == countC)
+# to fail and spuriously reject the molecule. Fixed by reusing the acylCarbon
+# index already positively identified during nNodeNear detection.
+#
+#
+# 2026-10-23: rows 289 and 522 fixed and removed from this list. Root cause:
+# In tools/iupac/AtomOrderRandomizer.cpp, indigoSmiles(newMol) serialized aromatic
+# tellurium in tellurophenes as capitalized "[Te]" instead of lowercase "[te]".
+# When re-parsed by Indigo during determinism checking, the uppercase "[Te]" was
+# treated as aliphatic, failing aromaticity perception and adding two spurious
+# implicit hydrogens to adjacent ring carbons (converting tellurophene C4H4Te into
+# 2,5-dihydrotellurophene C4H6Te), triggering IupacNamer's saturation rejection.
+# Fixed by preserving lowercase "[te]" for aromatic tellurium in AtomOrderRandomizer
+# and adding a round-trip canonical verification before accepting reordered SMILES.
+#
+#
+# 2026-10-23: row 1057 fixed and removed from this list. Root cause:
+# In IupacNamer.cpp (~line 12078), indigoCountImplicitHydrogens(atomObj) returned
+# -1 for the unbracketed aromatic nitrogen in raw SMILES c2cnc1cc4c(cccc4)cc12,
+# setting node.totalH = -1 and preventing the pyrrole ring from detecting its
+# saturated NH position. Under atom reordering, AtomOrderRandomizer's dearomatize/
+# aromatize cycle emitted bracketed [nH], where indigoCountImplicitHydrogens
+# returned 1, correctly identifying the indicated hydrogen. Per IUPAC fusion
+# rules (Blue Book P-25.7.1.3 / P-53.2.2), indicated hydrogen is required to specify
+# the saturation isomer (1H- vs 2H-/3H-). Fixed by calling indigoCanonicalSmiles
+# to standardize implicit hydrogens when indigoCountImplicitHydrogens returns -1,
+# making row 1057 deterministically produce "1H-benzo[1',2':4,5]benzo[1,2-b]pyrrole".
+#
+#
+# 2026-10-23: row 441 fixed and removed from this list. Root cause:
+# In IupacNamer.cpp nameRingSystemAsSubstituent (~line 3010), central ring of
+# anthracene was hardcoded to fusedSystemRingIdx[1], failing bridgehead checks
+# under atom reorderings where the central ring sorted to index 0 or 2.
+# Furthermore, computePeripheralNumbering3Ring was a general sequential-counting
+# algorithm that assigned arbitrary locants {5, 10} to the two meso carbons
+# depending on input atom order (giving 5 in some reorderings and 10 in others).
+# Real IUPAC anthracene numbering (P-25.1.1) fixes the meso positions as {9, 10}.
+# Per P-14.4 (lowest locants), a single meso substituent must be assigned locant 9.
+# Fixed by dynamically identifying the central ring via fusion degree (degree 2
+# vs degree 1 ends) and generating all 4 symmetry-equivalent valid IUPAC
+# anthracene numberings. Step 2's lowest-locant selector canonically picks locant 9
+# across all atom orderings ("2-(anthracen-9-yl)ethanoic acid").
+#
+#
+# 2026-10-23: row 499 fixed and removed from this list. Root cause:
+# In IupacNamer.cpp (~line 15880), the ring-substituent classification loop
+# unconditionally overwrote foundAttachChainNode and attachRingNode on every
+# exocyclic neighbor meeting "isChainC && !isDirectExocyclicGroup". For row 499
+# (phenyl 3-(2-methylcyclohexyl)propanoate), the cyclohexane ring has two
+# exocyclic plain-carbon substituents: a bare methyl group and the propanoate ester
+# chain. Under atom reordering, whichever substituent was visited last won, causing
+# the methyl carbon to be misidentified as the parent chain attachment and the real
+# propanoate chain to be treated as a ring substituent ("3-oxo-3-phenoxypropyl").
+# Fixed by collecting all candidate pairs and, when multiple candidates exist on the
+# same ring, performing an acyclic carbon-reachability BFS walk to determine which
+# candidate's chain reaches a principal characteristic group (acid, ester, amide,
+# nitrile, aldehyde, ketone, alcohol, amine, etc.). The unique principal chain is
+# deterministically selected as the parent link across all input atom orderings.
+#
+# One row ID per line. Lines starting with # are comments.

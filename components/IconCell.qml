@@ -61,12 +61,16 @@ T.AbstractButton {
     Keys.onReturnPressed: root.clicked()
     Keys.onSpacePressed: root.clicked()
 
+    // Fluent tactile press cue: a subtle scale-down while held, springing back on release.
+    scale: root.pressed ? 0.94 : 1.0
+    Behavior on scale { NumberAnimation { duration: Theme.durationFast; easing.type: Easing.BezierSpline; easing.bezierCurve: root.pressed ? Theme.easingAccelerate : Theme.easingDecelerate } }
+
     background: Rectangle {
         radius: 4
         color: root.selected ? Theme.selected : (root.hovered && root.enabled ? Theme.hover : "transparent")
         border.color: root.accentColor
         border.width: (root.borderAlwaysVisible || (root.selected && root.showSelectionBorder)) ? 1 : 0
-        Behavior on color { ColorAnimation { duration: 150 } }
+        Behavior on color { ColorAnimation { duration: Theme.durationFast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate } }
     }
 
     contentItem: Item {

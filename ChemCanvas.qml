@@ -212,6 +212,7 @@ Item {
             // call threw "not a function" every time Escape was pressed and the
             // overlay was never cleared. Every other call site here is unqualified.
             setOverlayState({ hoverAtomId: null, hoverBondId: null, dragRect: null, bondPreview: null })
+            sketch.selectItem(null, null)
             event.accepted = true
         }
         // Hover-atom element shortcuts: type an element letter while hovering an atom
@@ -384,6 +385,8 @@ Item {
             sketch.addRGroupMember(id)
         } else if (type === "rgroupRemoveMember") {
             sketch.removeRGroupMember(id, val)
+        } else if (type === "sgroupLabel") {
+            sketch.sendCommand("renameSgroup", [id, val])
         }
         refresh()
     }
@@ -663,6 +666,12 @@ Item {
         id: gridCanvas
         anchors.fill: parent
         antialiasing: true
+        // Moves the paint work off the GUI thread, same as ThumbnailGridItem already
+        // does. Safe here specifically because onPaint below only reads plain numbers
+        // (root.scale/offsetX/offsetY/width/height) -- no shared JS object graphs like
+        // MoleculeLayer/LabelLayer touch, so there's nothing for the worker thread to race.
+        renderStrategy: Canvas.Threaded
+        renderTarget: Canvas.FramebufferObject
         onPaint: {
             const ctx = getContext("2d")
             ctx.clearRect(0, 0, width, height)
@@ -1327,6 +1336,32 @@ Item {
                                     break
                                 }
                             }
+                        } else {
+                            // Angle snap to 15-degree increments while dragging over empty
+                            // canvas, matching ChemDraw/ACD's default bond-drag behavior and
+                            // this app's own existing 15-degree convention (selection-rotate
+                            // handle, ~line 1217). Hold Shift for free-angle drawing. Never
+                            // applies when magnetically snapped onto an existing atom (the
+                            // branch above always takes priority). Math stays entirely in
+                            // canvas-pixel space: bondPreview.startX/Y are chem-space, so
+                            // convert via chemToCanvas before any angle/distance calculation
+                            // -- see this file's own CHAIN-tool comment a few lines below for
+                            // why mixing the two spaces here would be a real bug, not a style
+                            // choice.
+                            const shiftHeld = (m.modifiers & Qt.ShiftModifier) !== 0
+                            if (!shiftHeld) {
+                                const startCanvas = chemToCanvas(sketch.overlayState.bondPreview.startX, sketch.overlayState.bondPreview.startY)
+                                const dx = targetX - startCanvas.x
+                                const dy = targetY - startCanvas.y
+                                const dist = Math.sqrt(dx * dx + dy * dy)
+                                if (dist > 0) {
+                                    const angle = Math.atan2(dy, dx)
+                                    const step = Math.PI / 12  // 15 degrees
+                                    const snappedAngle = Math.round(angle / step) * step
+                                    targetX = startCanvas.x + Math.cos(snappedAngle) * dist
+                                    targetY = startCanvas.y + Math.sin(snappedAngle) * dist
+                                }
+                            }
                         }
                         setOverlayState({
                             hoverAtomId: hoverAtomId,
@@ -1569,6 +1604,9 @@ Item {
                             } else {
                                 sketch.selectItem(null, hitBond)
                             }
+                        } else {
+                            // Short click on truly empty canvas (no atom/bond hit): deselect.
+                            sketch.selectItem(null, null)
                         }
                     }
                 } else if (currentTool.startsWith("BOND_")) {
@@ -1606,16 +1644,39 @@ Item {
                         else if (currentTool === "BOND_UPDOWN") { newType = 1; newStereo = 4 }
                         else { newType = parseInt(currentTool.split("_")[1]) || 1 }
 
+                        // A plain click (no real drag) must still place a full standard-length
+                        // bond, like ChemDraw and other professional editors -- not the raw,
+                        // barely-moved mouse position, which put both atoms on top of each
+                        // other (rendered as a zero-length overlapping stub). On empty canvas
+                        // this is a simple horizontal default (1.5 = chem-core's
+                        // StandardBondLength, already hardcoded the same way for the Chain tool
+                        // above; angle-0 matches the old engine's own getLargestEmptyAngle
+                        // no-neighbors default). Clicking on an existing atom instead asks
+                        // suggestBondEndpoint to reuse AtomPlacementEngine's own
+                        // existing-neighbor-aware angle snap (the same engine the ATOM_/FG_
+                        // tools' click-to-extend gesture already uses), so the new bond doesn't
+                        // land on top of one that's already there.
+                        const clickDx = m.x - pressX, clickDy = m.y - pressY
+                        const wasClick = (clickDx * clickDx + clickDy * clickDy) < 25
+                        let endChemP = wasClick ? { x: startX + 1.5, y: startY } : canvasToChem(m.x, m.y)
+                        if (wasClick && startAtomId !== null) {
+                            const suggested = sketch.suggestBondEndpoint(startAtomId, 1.5)
+                            if (suggested && suggested.x !== undefined) endChemP = suggested
+                        }
+                        // A plain click landing back on the very atom the drag started from
+                        // (mouse never really left it) must extend by one bond, exactly like
+                        // landing on empty canvas -- not silently do nothing, which is what
+                        // the startAtomId !== endAtomId check below would otherwise do.
+                        const clickedOwnStart = wasClick && endAtomId === startAtomId
+
                         if (startAtomId === null) {
                             if (endAtomId === null) {
-                                const endChemP = canvasToChem(m.x, m.y)
                                 sketch.addBondBetweenCoords(startX, startY, endChemP.x, endChemP.y, newType, newStereo)
                             } else {
                                 sketch.addBondAndAtom(endAtomId, "C", startX, startY, newType, newStereo)
                             }
                         } else {
-                            if (endAtomId === null) {
-                                const endChemP = canvasToChem(m.x, m.y)
+                            if (endAtomId === null || clickedOwnStart) {
                                 sketch.addBondAndAtom(startAtomId, "C", endChemP.x, endChemP.y, newType, newStereo)
                             } else if (startAtomId !== endAtomId) {
                                 sketch.addBond(startAtomId, endAtomId, newType, newStereo)

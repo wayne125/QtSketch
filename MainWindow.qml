@@ -226,6 +226,11 @@ ApplicationWindow {
             activeSketch.sendCommand("addBracketSelection", [])
             return
         }
+        if (op === "iupac_name") {
+            // Use special molfile that prevents fabricated E/Z labels
+            activeSketch.requestMolfileForNaming("iupac_name")
+            return
+        }
         if (op !== "layout" && op !== "aromatize") window.isProcessing = true
         activeSketch.requestSerialize(op)
     }
@@ -273,6 +278,7 @@ ApplicationWindow {
     property alias uiSettings: uiSettings
 
     property var docTitles: ({})
+
     function titleFor(docId) {
         if (docTitles[docId] === undefined) {
             var n = Object.keys(docTitles).length + 1
@@ -320,13 +326,27 @@ ApplicationWindow {
         fileIO.write(appData + "/user_templates.json", JSON.stringify(window._userTemplates))
     }
 
+    // Mirrors externally-pushed PropertyPanel values onto the floating
+    // instance too. Canvas-derived display values (most of PropertyPanel's
+    // own computed bindings) don't need this -- both instances already
+    // share the same `canvas: activeCanvas` binding and update themselves.
+    // This is only for values a signal handler pushes directly onto
+    // `propPanel.X`, which the floating instance would otherwise never see.
+    function syncFloatingPanel(props) {
+        if (!floatingPropPanel) return
+        for (const key in props) floatingPropPanel[key] = props[key]
+    }
+
     Settings {
         id: uiSettings
         category: "ui"
-        property bool compactDensity: false
+        property bool compactDensity: true
         property bool cpkColorsEnabled: true
         property string recentFilesJoined: ""
         property bool fgFullStructure: true
+        property string panelState: "docked"
+        property real floatingPanelX: -1
+        property real floatingPanelY: -1
     }
     Component.onCompleted: {
         Theme.compactDensity = uiSettings.compactDensity
@@ -474,13 +494,16 @@ ApplicationWindow {
 
         Connections {
             target: indigoSvc
-            function onLayoutFinished(newMol) {
+            function onLayoutFinished(newMol, error) {
                 window.isProcessing = false
-                // true: layout() output (SMILES/InChI load, Clean/Layout op) has no
-                // meaningful page placement -- recenter it on the page.
+                // IndigoService::layout preserves the structure's original centroid,
+                // so no forced re-centering here -- don't disturb where the user had it.
                 if (newMol && activeCanvas) {
-                    activeCanvas.loadMolfile(newMol, true)
-                    window.centerViewOnPage()
+                    activeCanvas.loadMolfile(newMol)
+                } else if (error) {
+                    messageDialogsGroup.workerErrorDialog.errorText = "Layout: " + error
+                    messageDialogsGroup.workerErrorDialog.severe = false
+                    messageDialogsGroup.workerErrorDialog.open()
                 }
             }
             function onCommonScaffoldFinished(result, error) {
@@ -669,6 +692,14 @@ ApplicationWindow {
                 propPanel.molMostAbundantMass = mostAbundantMass
                 propPanel.molFragmentCount = fragmentCount
                 propPanel.molRingCount = ringCount
+                syncFloatingPanel({
+                    molMW: mw, molMono: mono, molFormula: mf, molAtoms: atoms,
+                    molBonds: bonds, molTPSA: tpsa, molLogP: logp, molHBA: hba,
+                    molHBD: hbd, molRotBonds: rotBonds, molMolarRefractivity: molarRefractivity,
+                    molPka: pka, molHeavyAtoms: heavyAtoms, molIsChiral: isChiral,
+                    molMostAbundantMass: mostAbundantMass, molFragmentCount: fragmentCount,
+                    molRingCount: ringCount
+                })
             }
             function onStereoDescriptorsReady(jsonMap) {
                 if (activeSketch) activeSketch.setStereoDescriptors(jsonMap)
@@ -701,6 +732,7 @@ ApplicationWindow {
                 propPanel.iupacLoading = false
                 propPanel.iupacName = name
                 propPanel.iupacError = error
+                syncFloatingPanel({ iupacLoading: false, iupacName: name, iupacError: error })
             }
 
             // Biopolymer load
@@ -753,6 +785,7 @@ ApplicationWindow {
                 save: (data) => fileIO.write(window.pendingSaveUrl, data),
                 render_svg: (data) => indigoSvc.renderToFile(data, window.pendingRenderUrl, "svg"),
                 render_pdf: (data) => indigoSvc.renderToFile(data, window.pendingRenderUrl, "pdf"),
+                render_png: (data) => indigoSvc.renderToFile(data, window.pendingRenderUrl, "png"),
                 render_grid: (data) => indigoSvc.renderReactionGridToFile(data, window.pendingRenderUrl, "pdf"),
                 automap: (data) => indigoSvc.autoMapReaction(data),
                 ionize: (data) => indigoSvc.ionizeAtPh(data, window.pendingIonizePh),
@@ -864,9 +897,11 @@ ApplicationWindow {
                 },
                 mol_name: (data) => {
                     propPanel.molName = data;
+                    syncFloatingPanel({ molName: data })
                 },
                 sdf_props: (data) => {
                     propPanel.sdfProps = JSON.parse(data);
+                    syncFloatingPanel({ sdfProps: JSON.parse(data) })
                 },
                 clipboard_preview: (data) => {
                     if (activeCanvas) activeCanvas.clipboardPreview = data === "null" ? null : JSON.parse(data);
@@ -881,17 +916,22 @@ ApplicationWindow {
                 if (handler) handler(data);
             }
             function onStateUpdated(state, selection, dirty, undoState, redoState, result) {
-                if (result !== "stereoUpdated" && result !== "checkUpdated") {
+                if (result !== "stereoUpdated" && result !== "checkUpdated" && result !== "selectionOnly") {
                     propUpdateTimer.restart()
                     // A generated name is only valid for the exact structure it was
                     // generated from; any real structural edit (or undo/redo) invalidates it.
+                    // Pure selection changes (click/rect/lasso select, select-all, etc.) are
+                    // tagged "selectionOnly" by V8Process and don't touch the structure, so
+                    // they must not wipe a name the user just generated.
                     propPanel.iupacName = ""
                     propPanel.iupacError = ""
+                    syncFloatingPanel({ iupacName: "", iupacError: "" })
                 }
             }
             function onErrorOccurred(error) {
                 window.isProcessing = false
                 propPanel.iupacLoading = false
+                syncFloatingPanel({ iupacLoading: false })
                 messageDialogsGroup.workerErrorDialog.errorText = error
                 // Explicit even though severe defaults to true -- guards against
                 // a previous recoverable-error call site's severe = false
@@ -924,66 +964,84 @@ ApplicationWindow {
             Layout.fillWidth: true
             spacing: 4
 
-            TabBar {
-                id: docTabBar
+            Item {
+                id: docTabBarWrapper
                 Layout.fillWidth: true
-                currentIndex: DocumentManager.docIds.indexOf(DocumentManager.activeDocId)
-                onCurrentIndexChanged: {
-                    var ids = DocumentManager.docIds
-                    if (currentIndex >= 0 && currentIndex < ids.length) DocumentManager.activeDocId = ids[currentIndex]
-                }
+                implicitHeight: docTabBar.implicitHeight
 
-                Repeater {
-                    model: DocumentManager.docIds
-                    TabButton {
-                        id: tabBtn
-                        required property int modelData
-                        // titleRev forces re-evaluation after open / save-as / rename
-                        text: (window.titleRev, (window.dirtyDocs[modelData] ? "● " : "") + window.titleFor(modelData))
+                TabBar {
+                    id: docTabBar
+                    anchors.fill: parent
+                    currentIndex: DocumentManager.docIds.indexOf(DocumentManager.activeDocId)
+                    onCurrentIndexChanged: {
+                        var ids = DocumentManager.docIds
+                        if (currentIndex >= 0 && currentIndex < ids.length) DocumentManager.activeDocId = ids[currentIndex]
+                    }
 
-                        // Content-sized and left-aligned, the Fluent tab behaviour.
-                        // TabBar stretches its buttons to fill the bar by default,
-                        // so a lone document tab spanned the whole window with its
-                        // label centred in the middle of empty space. The +32 is
-                        // room for the close affordance overlaid on the right.
-                        width: Math.min(240, Math.max(120, implicitWidth + 32))
+                    Repeater {
+                        model: DocumentManager.docIds
+                        TabButton {
+                            id: tabBtn
+                            indicator: Item {}
+                            required property int modelData
+                            // titleRev forces re-evaluation after open / save-as / rename
+                            text: (window.titleRev, (window.dirtyDocs[modelData] ? "● " : "") + window.titleFor(modelData))
 
-                        onDoubleClicked: {
-                            taskDialogsGroup.renameDialog.docId = modelData
-                            taskDialogsGroup.renameDialog.open()
-                        }
+                            // Content-sized and left-aligned, the Fluent tab behaviour.
+                            // TabBar stretches its buttons to fill the bar by default,
+                            // so a lone document tab spanned the whole window with its
+                            // label centred in the middle of empty space. The +32 is
+                            // room for the close affordance overlaid on the right.
+                            width: Math.min(240, Math.max(120, implicitWidth + 32))
 
-                        Text {
-                            // Segoe Fluent Icons Dismiss (U+E8BB) -- same glyph the
-                            // window's own Close caption button uses.
-                            text: String.fromCharCode(0xE8BB)
-                            anchors.right: parent ? parent.right : undefined
-                            anchors.verticalCenter: parent ? parent.verticalCenter : undefined
-                            anchors.rightMargin: 8
-                            font { family: Theme.fontIcons; pixelSize: 10 }
-                            color: tabMouseArea.containsMouse ? Theme.error : Theme.textSecondary
-                            MouseArea {
-                                id: tabMouseArea
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                onClicked: {
-                                    if (DocumentManager.docIds.length <= 1) return
-                                    if (window.dirtyDocs[tabBtn.modelData]) {
-                                        // Switch to the tab being closed first: fileDialogsGroup.saveDialog/the
-                                        // structureReady Connections below only ever operate on
-                                        // activeSketch/activeCanvas, so saving a *different*,
-                                        // still-background tab here would silently save the
-                                        // wrong document's content instead.
-                                        DocumentManager.activeDocId = tabBtn.modelData
-                                        window._pendingCloseDocId = tabBtn.modelData
-                                        messageDialogsGroup.unsavedChangesDialog.open()
-                                    } else {
-                                        DocumentManager.closeDocument(tabBtn.modelData)
+                            onDoubleClicked: {
+                                taskDialogsGroup.renameDialog.docId = modelData
+                                taskDialogsGroup.renameDialog.open()
+                            }
+
+                            Text {
+                                // Segoe Fluent Icons Dismiss (U+E8BB) -- same glyph the
+                                // window's own Close caption button uses.
+                                text: String.fromCharCode(0xE8BB)
+                                anchors.right: parent ? parent.right : undefined
+                                anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+                                anchors.rightMargin: 8
+                                font { family: Theme.fontIcons; pixelSize: 10 }
+                                color: tabMouseArea.containsMouse ? Theme.error : Theme.textSecondary
+                                MouseArea {
+                                    id: tabMouseArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    onClicked: {
+                                        if (DocumentManager.docIds.length <= 1) return
+                                        if (window.dirtyDocs[tabBtn.modelData]) {
+                                            // Switch to the tab being closed first: fileDialogsGroup.saveDialog/the
+                                            // structureReady Connections below only ever operate on
+                                            // activeSketch/activeCanvas, so saving a *different*,
+                                            // still-background tab here would silently save the
+                                            // wrong document's content instead.
+                                            DocumentManager.activeDocId = tabBtn.modelData
+                                            window._pendingCloseDocId = tabBtn.modelData
+                                            messageDialogsGroup.unsavedChangesDialog.open()
+                                        } else {
+                                            DocumentManager.closeDocument(tabBtn.modelData)
+                                        }
                                     }
                                 }
                             }
                         }
                     }
+                }
+
+                Rectangle {
+                    id: tabIndicator
+                    height: 2
+                    color: Theme.accent
+                    y: docTabBar.height - height
+                    x: docTabBar.currentItem ? docTabBar.currentItem.x : 0
+                    width: docTabBar.currentItem ? docTabBar.currentItem.width : 0
+                    Behavior on x { NumberAnimation { duration: Theme.durationFast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate } }
+                    Behavior on width { NumberAnimation { duration: Theme.durationFast; easing.type: Easing.BezierSpline; easing.bezierCurve: Theme.easingDecelerate } }
                 }
             }
 
@@ -1376,6 +1434,17 @@ ApplicationWindow {
                         clip: true
                         ScrollBar.horizontal.policy: ScrollBar.AlwaysOn
                         ScrollBar.vertical.policy: ScrollBar.AlwaysOn
+                        // ScrollView infers its scrollable extent from the content item's
+                        // IMPLICIT size, but workspaceContent is a plain Item whose explicit
+                        // width/height (below) never becomes implicitWidth/implicitHeight
+                        // automatically (unlike Column/Row/Layout types). Without this, ScrollView
+                        // thought content was always exactly viewport-sized -- the scrollbar thumb
+                        // filled the whole track (nothing to grab) and wheel/drag scrolling did
+                        // nothing. Same bug class already hit and fixed in components/
+                        // StatusPlaceholder.qml; see also centerViewOnPage()'s own comment above,
+                        // which worked around half of this same problem for a different call site.
+                        contentWidth: workspaceContent.width
+                        contentHeight: workspaceContent.height
 
                         Item {
                             id: workspaceContent
@@ -1408,11 +1477,6 @@ ApplicationWindow {
                                     }
                                 }
                                 color: Theme.surface
-                                clip: true
-                                border {
-                                    color: Theme.outline
-                                    width: 1
-                                }
                                 scale: window.zoomLevel
                                 transformOrigin: Item.TopLeft
                                 
@@ -1516,25 +1580,111 @@ ApplicationWindow {
                 }
             }
 
-            // Thin separator
+            // Thin separator (hidden when the docked panel is collapsed/floating --
+            // there's nothing for it to separate from in that state).
             Rectangle {
                 Layout.preferredWidth: 1
                 Layout.fillHeight: true
                 color: Theme.outline
+                visible: uiSettings.panelState === "docked"
             }
 
             PropertyPanel {
                 id: propPanel
-                Layout.preferredWidth: Theme.propertyPanelWidth
+                Layout.preferredWidth: uiSettings.panelState === "docked" ? Theme.propertyPanelWidth : 0
                 Layout.fillHeight: true
+                visible: uiSettings.panelState === "docked"
                 canvas: activeCanvas
+            }
+
+            // Slim re-expand tab, shown only when the panel isn't docked (covers
+            // both "collapsed" and, once Task 4 lands, "floating").
+            Rectangle {
+                Layout.preferredWidth: 20
+                Layout.fillHeight: true
+                visible: uiSettings.panelState !== "docked"
+                color: Theme.surface
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "◀"
+                    font.pixelSize: Theme.fontSizeCaption
+                    color: Theme.textSecondary
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: uiSettings.panelState = "docked"
+                }
             }
         }
 
-        // Bottom atom bar: the most-used atoms one click away, Ketcher-style
+    Window {
+        id: floatingPropertyWindow
+        title: "Properties"
+        width: 280
+        height: 420
+        visible: uiSettings.panelState === "floating"
+        flags: Qt.Window
+
+        // Restore the saved position once, before the window first shows --
+        // not reactively on panelState change, so a later re-float after a
+        // dock/undock cycle doesn't re-run this (the window keeps whatever
+        // position the user last dragged it to within the same session).
+        Component.onCompleted: {
+            if (uiSettings.floatingPanelX < 0 || uiSettings.floatingPanelY < 0) return
+            let fits = false
+            for (const screen of Qt.application.screens) {
+                if (uiSettings.floatingPanelX >= screen.virtualX &&
+                    uiSettings.floatingPanelX < screen.virtualX + screen.width &&
+                    uiSettings.floatingPanelY >= screen.virtualY &&
+                    uiSettings.floatingPanelY < screen.virtualY + screen.height) {
+                    fits = true
+                    break
+                }
+            }
+            if (fits) {
+                x = uiSettings.floatingPanelX
+                y = uiSettings.floatingPanelY
+            } else {
+                // Saved monitor is gone (disconnected, resolution changed,
+                // etc.) -- fall back to a position relative to the main
+                // window instead of restoring stale, possibly-unreachable
+                // coordinates.
+                x = window.x + 40
+                y = window.y + 40
+            }
+        }
+
+        onXChanged: if (visible) { uiSettings.floatingPanelX = x }
+        onYChanged: if (visible) { uiSettings.floatingPanelY = y }
+
+        // Closing via the OS [X] must not strand panelState as "floating"
+        // with the window gone and the docked slot still collapsed to 0 --
+        // that would make the panel unreachable. Dock instead of closing.
+        onClosing: function(closeEvent) {
+            closeEvent.accepted = false
+            uiSettings.panelState = "docked"
+        }
+
+        PropertyPanel {
+            id: floatingPropPanel
+            anchors.fill: parent
+            canvas: activeCanvas
+            isFloating: true
+        }
+    }
+
+        // Bottom bar: quick-atom picker + status/zoom controls, merged into
+        // one row (was two stacked bars costing ~80px combined; see
+        // docs/superpowers/specs/2026-10-06-layout-space-maximization-design.md).
+        // Tall enough to actually contain a standard-height control plus its
+        // padding; at a tighter fixed height the controls inside were
+        // squeezed, which is what made the zoom handle read as oversized.
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: Theme.toolCellSize + 8
+            Layout.preferredHeight: Theme.controlHeight + 8
             color: Theme.surface
 
             Rectangle {
@@ -1545,7 +1695,11 @@ ApplicationWindow {
             }
 
             RowLayout {
-                anchors.centerIn: parent
+                anchors {
+                    left: parent ? parent.left : undefined
+                    leftMargin: 10
+                    verticalCenter: parent ? parent.verticalCenter : undefined
+                }
                 spacing: Theme.spacingSmall
 
                 Repeater {
@@ -1581,32 +1735,8 @@ ApplicationWindow {
                         }
                     }
                 }
-            }
-        }
 
-        // Status bar with Zoom Control
-        Rectangle {
-            Layout.fillWidth: true
-            // Tall enough to actually contain a standard-height control plus its
-            // padding; at the previous fixed 30px the 32px controls inside were
-            // squeezed, which is what made the zoom handle read as oversized.
-            Layout.preferredHeight: Theme.controlHeight + 8
-            color: Theme.background
-            
-            Rectangle {
-                anchors.top: parent.top
-                width: parent.width
-                height: 1
-                color: Theme.outline
-            }
-
-            RowLayout {
-                anchors {
-                    left: parent ? parent.left : undefined
-                    leftMargin: 16
-                    verticalCenter: parent ? parent.verticalCenter : undefined
-                }
-                spacing: 12
+                Rectangle { width: 1; height: 20; color: Theme.outline; opacity: 0.6 }
 
                 Text {
                     text: activeCanvas ? "Tool: " + ToolLabels.label(activeCanvas.currentTool) : "No document"
@@ -1667,7 +1797,7 @@ ApplicationWindow {
                     height: 20
                     radius: 10
                     color: Theme.error
-                    
+
                     RowLayout {
                         id: issueRow
                         anchors.centerIn: parent
@@ -1690,8 +1820,11 @@ ApplicationWindow {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
-                            // Property panel is always visible, but if it has a collapsible section later, we would expand it here.
-                            // Currently, no explicit action needed as it's persistently visible.
+                            // Re-expand the Properties panel if it's collapsed/floating --
+                            // wired in Task 3/4; a no-op here if already docked.
+                            if (typeof uiSettings !== "undefined" && uiSettings.panelState !== "docked") {
+                                uiSettings.panelState = "docked"
+                            }
                         }
                     }
                 }
@@ -1715,9 +1848,7 @@ ApplicationWindow {
                     // ViewAll (large cells) when compact is active, GridView
                     // (dense cells) when comfortable is — the icon shows the
                     // layout the click switches TO, matching the tooltip.
-                    // Replaces the ◧/◨ geometric characters, which were text
-                    // standing in for icons and took the body font's metrics.
-                    text: Theme.compactDensity ? "" : ""
+                    text: Theme.compactDensity ? "" : ""
                     font { family: Theme.fontIcons; pixelSize: Theme.iconSize }
                     implicitWidth: Theme.controlHeight
                     implicitHeight: Theme.controlHeight
@@ -1734,12 +1865,7 @@ ApplicationWindow {
                 Text {
                     text: Math.round(window.zoomLevel * 100) + "%"
                     color: Theme.textSecondary
-                    font {
-                        pixelSize: Theme.fontSizeBody
-                        bold: true
-                        family: Theme.fontMono
-                    }
-                    
+                    font { pixelSize: Theme.fontSizeBody; bold: true; family: Theme.fontMono }
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
@@ -1894,6 +2020,21 @@ ApplicationWindow {
             pendingSdfBatchUrl = fileUrl
             window.isProcessing = true
             indigoSvc.parseIndigoBatchFile(fileUrl, "cdx")
+            return
+        } else if (fileStrEarly.endsWith(".rxn")) {
+            const data = fileIO.read(fileUrl)
+            if (data !== "" && activeSketch) {
+                if (activeCanvas) activeCanvas.clearCanvas()
+                const ok = activeSketch.importReaction(data)
+                if (ok) {
+                    window.centerViewOnPage()
+                    setDocFile(DocumentManager.activeDocId, fileUrl)
+                } else {
+                    messageDialogsGroup.workerErrorDialog.errorText = "Open Reaction: the file does not contain a valid reaction. The canvas was cleared before the import attempt -- press Ctrl+Z to restore your previous content."
+                    messageDialogsGroup.workerErrorDialog.severe = false
+                    messageDialogsGroup.workerErrorDialog.open()
+                }
+            }
             return
         }
         const data = fileIO.read(fileUrl)
