@@ -15,4 +15,5 @@ std::map<int, QString> computePeripheralNumberingGeneral(
     const std::set<int> &substituentBearingNodes = {},
     const std::set<int> &hydroLocantBearingNodes = {},
     std::vector<std::map<int, QString>> *tiedMapsOut = nullptr,
-    bool restrictStartToPredecessorBridgehead = false);
+    bool restrictStartToPredecessorBridgehead = false,
+    const std::set<int> &principalGroupBearingNodes = {});

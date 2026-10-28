@@ -48,7 +48,8 @@ std::map<int, QString> computePeripheralNumberingGeneral(
     const std::set<int> &substituentBearingNodes = {},
     const std::set<int> &hydroLocantBearingNodes = {},
     std::vector<std::map<int, QString>> *tiedMapsOut = nullptr,
-    bool restrictStartToPredecessorBridgehead = false);
+    bool restrictStartToPredecessorBridgehead = false,
+    const std::set<int> &principalGroupBearingNodes = {});
 
 // Helper to build Graph from molecule (copied from computePeripheralNumberingForMol)
 static Graph buildGraphFromMol(int mol, std::map<int, int> &indigoToGraphIdx) {
@@ -998,7 +999,10 @@ int main() {
         // post-task state for this exact molecule -- direct, legible proof the new code
         // ran and changed behavior, not reliant on an internal debug trace alone.
         // Structurally validated via check_sssr.exe: 3 rings (6,6,6), 15 heavy atoms.
-        {"Nc1c2c(cccc2)nc2CCCNc12", "", true, "Substituents on fused ring systems named via this mechanism are not yet supported."},
+        // Wave 3 Part 2: the amino group is now the ring's principal
+        // characteristic group, correctly threaded as a suffix (not rejected
+        // as an unsupported prefix) -- flips from rejection to success.
+        {"Nc1c2c(cccc2)nc2CCCNc12", "benzo[1,2-b]piperidino[2,3-e]pyridin-10-amine", false, ""},
 
         // Hydro-prefix fused-ring plan, Task 3 (Mechanism B: all-carbon mancude
         // classification + hydro-locant detection). Classifies a plain all-carbon
@@ -5959,13 +5963,16 @@ int main() {
 
     {
         // Test 4: IMIQUIMOD (real drug with substituents)
-        // Should reject due to exocyclic substituents (Part B guard)
+        // Wave 3 Part 2: the amino group (-NH2, this ring system's principal
+        // characteristic group) is now threaded as a suffix, and the alkyl
+        // group on the indicated-hydrogen nitrogen is cited as a prefix --
+        // flips from rejection to success.
         int m = indigoLoadMoleculeFromString("CC(C)Cn1cnc2c(N)nc3ccccc3c21");
         if (m >= 0) {
             IupacResult r = IupacNamer::generateName(m);
             indigoFree(m);
-            if (!r.success && r.error.contains("Substituents on fused ring systems")) {
-                std::cout << "[PASS] IMIQUIMOD -> rejected with substituent error\n";
+            if (r.success && r.name == "1-(2-methylpropyl)-1H-benzo[1,2-b]imidazo[5,4-d]pyridin-4-amine") {
+                std::cout << "[PASS] IMIQUIMOD -> " << r.name.toStdString() << "\n";
                 passed++;
             } else {
                 std::cout << "[FAIL] IMIQUIMOD -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";

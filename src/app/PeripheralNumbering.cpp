@@ -261,7 +261,8 @@ std::map<int, QString> computePeripheralNumberingGeneral(
     const std::set<int> &substituentBearingNodes,
     const std::set<int> &hydroLocantBearingNodes,
     std::vector<std::map<int, QString>> *tiedMapsOut,
-    bool restrictStartToPredecessorBridgehead) {
+    bool restrictStartToPredecessorBridgehead,
+    const std::set<int> &principalGroupBearingNodes) {
     std::map<int, QString> emptyMap;
     if (tiedMapsOut) tiedMapsOut->clear();
 
@@ -291,6 +292,11 @@ std::map<int, QString> computePeripheralNumberingGeneral(
         // function's own independent candidate search/comparator -- not a
         // separate call, same reasoning as Task 3's merged-call fix (B1).
         std::vector<QString> hydroLocants;
+        // Wave 3 Part 2: parallel field for the principal characteristic
+        // group's own ring locants (P-14.4(c)), ranked above hydroLocants
+        // (P-14.4(d)) and below fusionCarbonLocants -- same shape and
+        // sort as hydroLocants just above.
+        std::vector<QString> principalGroupLocants;
         int candidateIndex;
     };
 
@@ -400,11 +406,19 @@ std::map<int, QString> computePeripheralNumberingGeneral(
             }
         }
 
+        for (int node : principalGroupBearingNodes) {
+            auto it = cand.locantMap.find(node);
+            if (it != cand.locantMap.end()) {
+                cand.principalGroupLocants.push_back(it->second);
+            }
+        }
+
         std::sort(cand.heteroatomLocants.begin(), cand.heteroatomLocants.end());
         std::sort(cand.heteroatomSeniorityAtLocants.begin(), cand.heteroatomSeniorityAtLocants.end());
         std::sort(cand.fusionCarbonLocants.begin(), cand.fusionCarbonLocants.end());
         std::sort(cand.substituentLocants.begin(), cand.substituentLocants.end());
         std::sort(cand.hydroLocants.begin(), cand.hydroLocants.end(), locantLess);
+        std::sort(cand.principalGroupLocants.begin(), cand.principalGroupLocants.end(), locantLess);
 
         return cand;
     };
@@ -584,6 +598,14 @@ std::map<int, QString> computePeripheralNumberingGeneral(
                 return a.heteroatomSeniorityAtLocants < b.heteroatomSeniorityAtLocants;
             if (a.fusionCarbonLocants != b.fusionCarbonLocants)
                 return a.fusionCarbonLocants < b.fusionCarbonLocants;
+            // Wave 3 Part 2: principal characteristic group locants (P-14.4(c))
+            // rank immediately below fusionCarbonLocants and above the
+            // hydro-prefix criterion below (P-14.4(d)), per IUPAC P-14.4.
+            if (a.principalGroupLocants != b.principalGroupLocants)
+                return std::lexicographical_compare(
+                    a.principalGroupLocants.begin(), a.principalGroupLocants.end(),
+                    b.principalGroupLocants.begin(), b.principalGroupLocants.end(),
+                    locantLess);
             // Hydro-prefix fused-ring plan, Task 4 (third attempt, review finding
             // I2): fusionCarbonLocants (P-25.3.1.3, ring numbering itself) must be
             // settled BEFORE any hydro-prefix criterion (P-31.1.4.2.4) -- an
@@ -621,6 +643,7 @@ std::map<int, QString> computePeripheralNumberingGeneral(
             if (c.heteroatomLocants == bestIt->heteroatomLocants &&
                 c.heteroatomSeniorityAtLocants == bestIt->heteroatomSeniorityAtLocants &&
                 c.fusionCarbonLocants == bestIt->fusionCarbonLocants &&
+                c.principalGroupLocants == bestIt->principalGroupLocants &&
                 c.hydroLocants == bestIt->hydroLocants &&
                 c.substituentLocants == bestIt->substituentLocants) {
                 bool dup = false;

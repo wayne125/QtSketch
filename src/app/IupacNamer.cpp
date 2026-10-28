@@ -66,7 +66,8 @@ std::map<int, QString> computePeripheralNumbering3Ring(
     const std::set<int> &bridgeheads,
     const std::set<int> &substituentBearingNodes = {},
     bool preferIndicatedHydrogenLocant = false,
-    const std::set<int> &hydroLocantBearingNodes = {});
+    const std::set<int> &hydroLocantBearingNodes = {},
+    const std::set<int> &principalGroupBearingNodes = {});
 
 
 std::map<int, QString> computePeripheralNumberingForMol(int mol);
@@ -117,6 +118,41 @@ RingSystemNameResult namePhase31BenzoFusion(
     int ringCount,
     const std::vector<std::set<int>> *ringSubsetOverride = nullptr);
 
+// Wave 3 Part 2: carries the principal characteristic group's suffix
+// metadata from generateNameImpl's prepareFusedParentContext into
+// nameLinearChainFusion / nameBranchingFusion, so the winning peripheral
+// numbering and the final "-<locants>-<suffix>" assembly both see it
+// BEFORE candidate selection -- not as a post-hoc wrapper (see the design
+// discussion this struct's own plan is anchored to: a wrapper applied
+// after these functions return can't steer which numbering candidate
+// they already picked internally). Holds only exclusion/suffix metadata,
+// never a duplicate of extraSubstituents' own substituent list.
+struct FusedParentContext {
+    // Exocyclic neighbor graph nodes already handled by the caller (the
+    // defining heteroatom/carbon of the principal suffix group, a non-simple
+    // substituent prefix already pushed into extraSubstituents, or an
+    // isolated-ring attachment atom already in extraSubstituents).
+    // nameLinearChainFusion / nameBranchingFusion skip these nodes in their
+    // own internal simpleRingSubstituentName scan.
+    std::set<int> handledExocyclicNeighbors;
+
+    // Ring graph nodes bearing the principal characteristic group, used for
+    // (1) the P-14.4(c) peripheral-numbering tie-break and (2) extracting
+    // the suffix locants from the winning periphMap.
+    std::vector<int> principalRingAtoms;
+
+    // Assembled suffix word after "-<locants>-", e.g. "amine", "diamine",
+    // "ol", "diol", "one", "carboxylic acid". Empty when there is no
+    // principal suffix group (parentCtx is still non-null in that case only
+    // if the caller has nothing else to report via it).
+    QString suffixWord;
+
+    // True when the parent ring name's trailing 'e' must be elided before
+    // "-<locants>-<suffixWord>" per P-16.7.1 (suffixWord starts with a
+    // vowel: "amine", "ol", "one", "imine").
+    bool elideTerminalE = false;
+};
+
 std::vector<RingSystemNameResult> nameLinearChainFusion(
     const Graph &g,
     int mol,
@@ -124,7 +160,8 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
     int ringCount,
     int freeValenceAtom = -1,
     const std::vector<std::set<int>> *ringSubsetOverride = nullptr,
-    const std::vector<std::pair<int, QString>> &extraSubstituents = {});
+    const std::vector<std::pair<int, QString>> &extraSubstituents = {},
+    const FusedParentContext *parentCtx = nullptr);
 
 std::vector<RingSystemNameResult> nameBranchingFusion(
     const Graph &g,
@@ -133,7 +170,8 @@ std::vector<RingSystemNameResult> nameBranchingFusion(
     int ringCount,
     int freeValenceAtom = -1,
     const std::vector<std::set<int>> *ringSubsetOverride = nullptr,
-    const std::vector<std::pair<int, QString>> &extraSubstituents = {});
+    const std::vector<std::pair<int, QString>> &extraSubstituents = {},
+    const FusedParentContext *parentCtx = nullptr);
 
 namespace {
 
@@ -7722,7 +7760,8 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
     int ringCount,
     int freeValenceAtom,
     const std::vector<std::set<int>> *ringSubsetOverride,
-    const std::vector<std::pair<int, QString>> &extraSubstituents) {
+    const std::vector<std::pair<int, QString>> &extraSubstituents,
+    const FusedParentContext *parentCtx) {
 
     // --- Phase 44 & 48: N-Heterocycle Fusion Chain Nomenclature (linear-chain branch) ---
     if (ringCount < 3) {
@@ -8451,6 +8490,13 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                     for (const auto &ringNodes : nodesN) {
                         allSystemNodesUnion.insert(ringNodes.begin(), ringNodes.end());
                     }
+                    // Wave 3 Part 2: ring atoms bearing the principal characteristic
+                    // group suffix, per-flagged by the caller's FusedParentContext.
+                    std::set<int> principalRingAtomsSet;
+                    if (parentCtx) {
+                        principalRingAtomsSet.insert(parentCtx->principalRingAtoms.begin(),
+                                                      parentCtx->principalRingAtoms.end());
+                    }
                     std::vector<std::pair<int, QString>> collectedSubstituents;
                     bool hasUnsupportedSubstituentPre = false;
                     std::set<int> scannedNodesPre;
@@ -8466,6 +8512,7 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                 int nei = n.neighbors[j];
                                 if (!allSystemNodesUnion.count(nei) && g.nodes[nei].atomicNumber != 1) {
                                     if (node == freeValenceAtom) continue;
+                                    if (parentCtx && parentCtx->handledExocyclicNeighbors.count(nei)) continue;
                                     if (N >= 3) {
                                         QString subName = simpleRingSubstituentName(g, node, nei, allSystemNodesUnion, mol);
                                         if (subName.isEmpty()) {
@@ -8536,7 +8583,7 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                             }
                         }
                         assert(validateFusionInput(g, input));
-                        periphMapN4Precomp = computePeripheralNumberingGeneral(g, input, substituentBearingNodes, hydroPositionNodes, &tiedPeriphMaps);
+                        periphMapN4Precomp = computePeripheralNumberingGeneral(g, input, substituentBearingNodes, hydroPositionNodes, &tiedPeriphMaps, false, principalRingAtomsSet);
                         if (!periphMapN4Precomp.empty()) {
                             periphMapN4PrecompValid = true;
                         }
@@ -8578,6 +8625,7 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                         int nei = n.neighbors[j];
                                         if (!allSystemNodesUnion2.count(nei) && g.nodes[nei].atomicNumber != 1) {
                                             if (node == freeValenceAtom) continue;
+                                            if (parentCtx && parentCtx->handledExocyclicNeighbors.count(nei)) continue;
                                             if (N >= 3) {
                                                 QString subName = simpleRingSubstituentName(g, node, nei, allSystemNodesUnion2, mol);
                                                 if (subName.isEmpty()) {
@@ -8603,7 +8651,8 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                         // was reclassified to BENZENE from real saturation (hydroPositionNodes
                         // non-empty) -- acridine/carbazole are the FULLY mancude retained names,
                         // not valid for a partially saturated ring system like TACRINE's core.
-                        if (N == 3 && ends == 2 && centers == 1 && hydroPositionNodes.empty()) {
+                        if (N == 3 && ends == 2 && centers == 1 && hydroPositionNodes.empty() &&
+                            collectedSubstituents.empty() && extraSubstituents.empty() && principalRingAtomsSet.empty()) {
                             // Find which indices are ends (degree 1) and which is center (degree 2)
                             int centerIdx = -1;
                             std::vector<int> endIndices;
@@ -9118,7 +9167,10 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                 for (int i = 0; i < N; ++i) {
                                     if (isNHType(typesN[i])) {
                                         for (int n : nodesN[i]) {
-                                            if (g.nodes[n].atomicNumber == 7 && g.nodes[n].totalH >= 1) {
+                                            // Wave 3 Part 2: an N-substituted pyrrole/imidazole/pyrazole
+                                            // nitrogen (e.g. Imiquimod's N1, 2 ring bonds + 1 exocyclic
+                                            // bond) has totalH == 0 but still carries indicated hydrogen.
+                                            if (g.nodes[n].atomicNumber == 7 && (g.nodes[n].totalH >= 1 || g.nodes[n].neighbors.size() == 3)) {
                                                 ihNodes.push_back(n);
                                                 break; // One per NH ring
                                             }
@@ -9196,7 +9248,7 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                 QString prefixPart;
 
                                 // Compute periphMap for N==3 (not already computed for N>=4 above)
-                                if (N == 3 && (!collectedSubstituents.empty() || !ihNodes.empty() || !hydroPositionNodes.empty() || freeValenceAtom != -1)) {
+                                if (N == 3 && (!collectedSubstituents.empty() || !ihNodes.empty() || !hydroPositionNodes.empty() || freeValenceAtom != -1 || !principalRingAtomsSet.empty())) {
                                     // Build bridgehead set for peripheral numbering
                                     std::set<int> bheads;
                                     for (int i = 0; i < 3; ++i) {
@@ -9216,10 +9268,10 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                     // substituents are also being cited in the same call (the
                                     // old false-when-citing-substituents branch had no cited
                                     // chemical justification for differing).
-                                    periphMap = computePeripheralNumbering3Ring(g, nodesN[0], nodesN[1], nodesN[2], bheads, substituentBearingNodes, true, hydroPositionNodes);
+                                    periphMap = computePeripheralNumbering3Ring(g, nodesN[0], nodesN[1], nodesN[2], bheads, substituentBearingNodes, true, hydroPositionNodes, principalRingAtomsSet);
                                 }
 
-                                if (!collectedSubstituents.empty() || !ihNodes.empty() || !hydroPositionNodes.empty()) {
+                                if (!collectedSubstituents.empty() || !ihNodes.empty() || !hydroPositionNodes.empty() || !principalRingAtomsSet.empty()) {
 
                                     // --- substituent locants ---
                                     std::vector<std::pair<QString, QString>> namedSubstituents; // (substituentName, locantStr)
@@ -9349,6 +9401,33 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                 // and a hyphen is needed between hydroPrefix and ihPrefix
                                 // when both are present (hydroPrefix is alphabetic, ihPrefix
                                 // starts with a digit -- "2,3-dihydro-1H-indene").
+                                // Wave 3 Part 2: append the principal characteristic group
+                                // suffix (e.g. "-4-amine") to the parent stem BEFORE the
+                                // hydro/indicated-H prefix is prepended below, so satPart +
+                                // resultName carries the complete "...amine"-suffixed parent.
+                                if (parentCtx && !parentCtx->principalRingAtoms.empty() && !parentCtx->suffixWord.isEmpty()) {
+                                    std::vector<QString> pLocStrs;
+                                    for (int pNode : parentCtx->principalRingAtoms) {
+                                        if (!periphMap.count(pNode)) {
+                                            return {RingSystemNameResult{false, "Failed to compute peripheral locant for principal group.", "", {}}};
+                                        }
+                                        QString locStr = periphMap[pNode];
+                                        bool okInt = false;
+                                        locStr.toInt(&okInt);
+                                        if (!okInt) {
+                                            return {RingSystemNameResult{false, "Principal group on bridgehead atom of fused ring system is not supported.", "", {}}};
+                                        }
+                                        pLocStrs.push_back(locStr);
+                                    }
+                                    std::sort(pLocStrs.begin(), pLocStrs.end(), locantLess);
+                                    QStringList pLocQList;
+                                    for (const QString &s : pLocStrs) pLocQList.append(s);
+                                    if (parentCtx->elideTerminalE && resultName.endsWith('e')) {
+                                        resultName.chop(1);
+                                    }
+                                    resultName += "-" + pLocQList.join(",") + "-" + parentCtx->suffixWord;
+                                }
+
                                 QString satPart = hydroPrefix;
                                 if (!ihPrefix.isEmpty()) {
                                     if (!satPart.isEmpty()) satPart += "-";
@@ -9400,7 +9479,8 @@ std::vector<RingSystemNameResult> nameBranchingFusion(
     int ringCount,
     int freeValenceAtom,
     const std::vector<std::set<int>> *ringSubsetOverride,
-    const std::vector<std::pair<int, QString>> &extraSubstituents) {
+    const std::vector<std::pair<int, QString>> &extraSubstituents,
+    const FusedParentContext *parentCtx) {
 
     // --- Degree-3+ branching fusion mechanism ---
     // This function duplicates the ring-detection setup from the linear chain
@@ -9682,6 +9762,13 @@ std::vector<RingSystemNameResult> nameBranchingFusion(
             std::vector<std::pair<int, QString>> collectedSubstituents;
             bool hasUnsupportedSubstituent = false;
             std::set<int> scannedNodesBranching;
+            // Wave 3 Part 2: ring atoms bearing the principal characteristic
+            // group suffix, per the caller's FusedParentContext.
+            std::set<int> principalRingAtomsSet;
+            if (parentCtx) {
+                principalRingAtomsSet.insert(parentCtx->principalRingAtoms.begin(),
+                                              parentCtx->principalRingAtoms.end());
+            }
 
             for (int i = 0; i < N_d; ++i) {
                 for (int node : nodesN_d[i]) {
@@ -9696,6 +9783,7 @@ std::vector<RingSystemNameResult> nameBranchingFusion(
                         if (!allSystemNodesUnion.count(nei) && g.nodes[nei].atomicNumber != 1) {
                             // Skip the free valence atom's own exocyclic bond (it's the attachment point, not a substituent)
                             if (node == freeValenceAtom) continue;
+                            if (parentCtx && parentCtx->handledExocyclicNeighbors.count(nei)) continue;
                             QString subName = simpleRingSubstituentName(g, node, nei, allSystemNodesUnion, mol);
                             if (subName.isEmpty()) {
                                 hasUnsupportedSubstituent = true;
@@ -10134,7 +10222,7 @@ std::vector<RingSystemNameResult> nameBranchingFusion(
             for (const auto &es : extraSubstituents) collectedSubstituents.push_back(es);
 
             // Handle substituents for branching case: build prefix string
-            if (!collectedSubstituents.empty()) {
+            if (!collectedSubstituents.empty() || !principalRingAtomsSet.empty()) {
                 // Build bridgehead set: any atom that is a member of 2+ rings
                 std::set<int> bheads;
                 for (int node : allSystemNodesUnion) {
@@ -10152,7 +10240,7 @@ std::vector<RingSystemNameResult> nameBranchingFusion(
                     substituentBearingNodes.insert(sub.first);
                 }
                 // Compute peripheral numbering with substituent set
-                std::map<int, QString> periphMapWithSubs = computePeripheralNumberingGeneral(g, detectedInputGraph, substituentBearingNodes);
+                std::map<int, QString> periphMapWithSubs = computePeripheralNumberingGeneral(g, detectedInputGraph, substituentBearingNodes, {}, nullptr, false, principalRingAtomsSet);
                 
                 // Build named substituents with locants
                 std::vector<std::pair<QString, QString>> namedSubstituents;
@@ -10213,6 +10301,44 @@ std::vector<RingSystemNameResult> nameBranchingFusion(
                     // See the equivalent fix in Phase 31 / the chain mechanism.
                     QString sep = (!resultName.isEmpty() && resultName[0].isDigit()) ? "-" : "";
                     resultName = prefixPart + sep + resultName;
+                }
+
+                // Wave 3 Part 2: append the principal characteristic group suffix
+                // (e.g. "-4-amine") using the SAME periphMapWithSubs that just
+                // numbered the detachable substituents, so both agree on one
+                // winning numbering -- same pattern as nameLinearChainFusion.
+                if (parentCtx && !parentCtx->principalRingAtoms.empty() && !parentCtx->suffixWord.isEmpty()) {
+                    std::vector<QString> pLocStrs;
+                    for (int pNode : parentCtx->principalRingAtoms) {
+                        if (!periphMapWithSubs.count(pNode)) {
+                            return {RingSystemNameResult{false, "Failed to compute peripheral locant for principal group.", "", {}}};
+                        }
+                        QString locStr = periphMapWithSubs[pNode];
+                        bool okInt = false;
+                        locStr.toInt(&okInt);
+                        if (!okInt) {
+                            return {RingSystemNameResult{false, "Principal group on bridgehead atom of fused ring system is not supported.", "", {}}};
+                        }
+                        pLocStrs.push_back(locStr);
+                    }
+                    // Numeric-then-letter compare (matches nameLinearChainFusion's
+                    // own locantLess) so a bridgehead locant like "9b" sorts by its
+                    // leading number, not as a plain string.
+                    auto principalLocantLess = [](const QString &a, const QString &b) {
+                        int numA = 0, numB = 0;
+                        int i = 0, j = 0;
+                        while (i < a.size() && a[i].isDigit()) { numA = numA * 10 + a[i].digitValue(); i++; }
+                        while (j < b.size() && b[j].isDigit()) { numB = numB * 10 + b[j].digitValue(); j++; }
+                        if (numA != numB) return numA < numB;
+                        return a.mid(i) < b.mid(j);
+                    };
+                    std::sort(pLocStrs.begin(), pLocStrs.end(), principalLocantLess);
+                    QStringList pLocQList;
+                    for (const QString &s : pLocStrs) pLocQList.append(s);
+                    if (parentCtx->elideTerminalE && resultName.endsWith('e')) {
+                        resultName.chop(1);
+                    }
+                    resultName += "-" + pLocQList.join(",") + "-" + parentCtx->suffixWord;
                 }
             }
             
@@ -25375,6 +25501,276 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
 
 
 
+    // Wave 3 Part 2: when nameLinearChainFusion/nameBranchingFusion reject a
+    // fused ring system with "Substituents on [branching] fused ring systems
+    // ... are not yet supported" because one exocyclic group is the
+    // molecule's principal characteristic group (which their own
+    // simpleRingSubstituentName scan can't classify as a prefix -- correctly,
+    // since IUPAC requires it as a suffix), this builds the suffix metadata
+    // and the remaining group's prefix names, then RETRIES the same mechanism
+    // with that context. This only runs on that exact failure, after the
+    // existing chain-wins-vs-ring-wins check has already decided the ring is
+    // the senior parent -- so it cannot change any currently-passing case:
+    // every molecule that doesn't hit this exact rejection takes the exact
+    // same path as before.
+    struct PreparedFusedContext {
+        bool supported = true;
+        QString unsupportedError;
+        FusedParentContext ctx;
+        std::vector<std::pair<int, QString>> extraSubs;
+    };
+    auto prepareFusedParentContext = [&](const std::set<int> &ringNodeSet,
+                                          const FunctionalGroupClassification &fgc) -> PreparedFusedContext {
+        PreparedFusedContext out;
+        GroupType winningType = fgc.winningRingGroup;
+        const std::map<int, GroupType> &carbonGroup = fgc.carbonGroup;
+
+        std::set<int> principalCarbons;
+        if (winningType != GroupType::NONE) {
+            for (const auto &pair : carbonGroup) {
+                int cNode = pair.first;
+                if (pair.second != winningType) continue;
+                bool isOnOrExocyclic = ringNodeSet.count(cNode) > 0;
+                if (!isOnOrExocyclic) {
+                    for (int nei : g.nodes[cNode].neighbors) {
+                        if (ringNodeSet.count(nei) > 0) { isOnOrExocyclic = true; break; }
+                    }
+                }
+                if (isOnOrExocyclic) principalCarbons.insert(cNode);
+            }
+        }
+
+        {
+            auto unsubRes = checkPrincipalHeteroatomsUnsubstituted(g, principalCarbons, winningType, ringNodeSet);
+            if (unsubRes.hasError) {
+                out.supported = false;
+                out.unsupportedError = unsubRes.msg;
+                return out;
+            }
+        }
+
+        // Narrowed first-release suffix scope (Wave 3 Part 2): the ring-carbon
+        // heteroatom suffixes and the exocyclic-carbon suffixes nameNaphthaleneFusion
+        // already supports. Anything else (ESTER, ACYL_HALIDE, halide-class
+        // suffixes, P/As/Sb acids) is correctly left unsupported here -- those
+        // molecules keep today's existing rejection message, zero regression.
+        int pCount = static_cast<int>(principalCarbons.size());
+        QString bareWord;
+        bool exocyclicCarbonSuffix = false;
+        if (winningType == GroupType::ALCOHOL) bareWord = "ol";
+        else if (winningType == GroupType::KETONE) bareWord = "one";
+        else if (winningType == GroupType::AMINE) bareWord = "amine";
+        else if (winningType == GroupType::THIOL) bareWord = "thiol";
+        else if (winningType == GroupType::SELENOL) bareWord = "selenol";
+        else if (winningType == GroupType::TELLUROL) bareWord = "tellurol";
+        else if (winningType == GroupType::IMINE) bareWord = "imine";
+        else if (winningType == GroupType::HYDROPEROXIDE) bareWord = "peroxol";
+        else if (winningType == GroupType::SULFONIC_ACID) bareWord = "sulfonic acid";
+        else if (winningType == GroupType::SULFONAMIDE) bareWord = "sulfonamide";
+        else if (winningType == GroupType::SULFINIC_ACID) bareWord = "sulfinic acid";
+        else if (winningType == GroupType::SULFINAMIDE) bareWord = "sulfinamide";
+        else if (winningType == GroupType::ACID) { bareWord = "carboxylic acid"; exocyclicCarbonSuffix = true; }
+        else if (winningType == GroupType::AMIDE) { bareWord = "carboxamide"; exocyclicCarbonSuffix = true; }
+        else if (winningType == GroupType::THIOAMIDE) { bareWord = "carbothioamide"; exocyclicCarbonSuffix = true; }
+        else if (winningType == GroupType::HYDRAZIDE) { bareWord = "carbohydrazide"; exocyclicCarbonSuffix = true; }
+        else if (winningType == GroupType::AMIDINE) { bareWord = "carboximidamide"; exocyclicCarbonSuffix = true; }
+        else if (winningType == GroupType::NITRILE) { bareWord = "carbonitrile"; exocyclicCarbonSuffix = true; }
+        else if (winningType == GroupType::ALDEHYDE) { bareWord = "carbaldehyde"; exocyclicCarbonSuffix = true; }
+
+        if (winningType != GroupType::NONE && bareWord.isEmpty()) {
+            out.supported = false;
+            out.unsupportedError = "Substituents on fused ring systems named via this mechanism are not yet supported.";
+            return out;
+        }
+
+        if (!bareWord.isEmpty()) {
+            out.ctx.suffixWord = (pCount == 1) ? bareWord : (multiPrefix(pCount) + bareWord);
+            out.ctx.elideTerminalE = isVowel(out.ctx.suffixWord.at(0));
+            for (int pc : principalCarbons) {
+                if (exocyclicCarbonSuffix) {
+                    // pc is the exocyclic defining carbon (e.g. the -COOH carbon);
+                    // the suffix locant belongs to its RING neighbor.
+                    int ringNei = -1;
+                    for (int nei : g.nodes[pc].neighbors) {
+                        if (ringNodeSet.count(nei)) { ringNei = nei; break; }
+                    }
+                    if (ringNei == -1) {
+                        out.supported = false;
+                        out.unsupportedError = "Substituents on fused ring systems named via this mechanism are not yet supported.";
+                        return out;
+                    }
+                    out.ctx.principalRingAtoms.push_back(ringNei);
+                    out.ctx.handledExocyclicNeighbors.insert(pc);
+                } else {
+                    // pc is the ring atom itself; the defining heteroatom neighbor
+                    // (and nothing else) is what the generic prefix scan must skip.
+                    out.ctx.principalRingAtoms.push_back(pc);
+                    for (int nei : g.nodes[pc].neighbors) {
+                        if (ringNodeSet.count(nei)) continue;
+                        int nz = g.nodes[nei].atomicNumber;
+                        bool isAzide = (carbonAzide.count(pc) && std::find(carbonAzide[pc].begin(), carbonAzide[pc].end(), nei) != carbonAzide[pc].end());
+                        if (!isAzide && (nz == 7 || nz == 8 || nz == 16 || nz == 34 || nz == 52)) {
+                            out.ctx.handledExocyclicNeighbors.insert(nei);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Partition every remaining exocyclic bond: let the caller's own
+        // simpleRingSubstituentName handle plain alkyl/halogen (by leaving it
+        // alone here), and classify everything else (the same per-neighbor
+        // switch nameNaphthaleneFusion uses) into out.extraSubs.
+        for (int rNode : ringNodeSet) {
+            for (size_t j = 0; j < g.nodes[rNode].neighbors.size(); ++j) {
+                int nei = g.nodes[rNode].neighbors[j];
+                int order = g.nodes[rNode].bondOrders[j];
+                if (ringNodeSet.count(nei)) continue;
+                if (g.nodes[nei].atomicNumber == 1) continue;
+                if (out.ctx.handledExocyclicNeighbors.count(nei)) continue;
+
+                QString existingName = simpleRingSubstituentName(g, rNode, nei, ringNodeSet, mol);
+                if (!existingName.isEmpty()) continue; // native alkyl/halogen path handles it
+
+                int nz = g.nodes[nei].atomicNumber;
+                QString subName;
+                if (nz == 9 || nz == 17 || nz == 35 || nz == 53) {
+                    subName = halogenPrefix(nz);
+                } else if (nz == 8) {
+                    if (order == 1) {
+                        if (fgc.etherOxygens.count(nei)) {
+                            int alkylNei = -1;
+                            for (int oNei : g.nodes[nei].neighbors) {
+                                if (oNei != rNode) { alkylNei = oNei; break; }
+                            }
+                            if (alkylNei != -1) {
+                                QString alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings, ringNodeSet, {}, nullptr, mol);
+                                if (!alkylName.isEmpty()) {
+                                    if (alkylName.startsWith("(") && alkylName.endsWith(")")) {
+                                        subName = alkylName + "oxy";
+                                    } else if (alkylName == "methyl" || alkylName == "ethyl" || alkylName == "propyl" || alkylName == "butyl" || alkylName == "phenyl") {
+                                        alkylName.chop(2); alkylName += "oxy";
+                                        subName = alkylName;
+                                    } else if (alkylName.endsWith("yl") && !alkylName.contains('(') && !alkylName.contains('[') &&
+                                               !std::any_of(alkylName.begin(), alkylName.end(), [](QChar c) { return c.isDigit(); })) {
+                                        alkylName += "oxy";
+                                        subName = alkylName;
+                                    } else {
+                                        subName = "(" + alkylName + ")oxy";
+                                    }
+                                }
+                            }
+                        } else if (winningType != GroupType::ALCOHOL) {
+                            subName = "hydroxy";
+                        }
+                    } else if (order == 2) {
+                        if (winningType != GroupType::ALDEHYDE && winningType != GroupType::KETONE) {
+                            subName = "oxo";
+                        }
+                    }
+                } else if (nz == 7) {
+                    bool isAzide = false;
+                    for (size_t k = 0; k < g.nodes[nei].neighbors.size(); ++k) {
+                        int nNei = g.nodes[nei].neighbors[k];
+                        if (g.nodes[nei].bondOrders[k] >= 2 && isAzideNitrogen(nNei, nei, g)) { isAzide = true; break; }
+                    }
+                    if (carbonAzide.count(rNode) && std::find(carbonAzide[rNode].begin(), carbonAzide[rNode].end(), nei) != carbonAzide[rNode].end()) {
+                        subName = "azido";
+                    } else if (isIsocyanateNitrogen(nei, rNode, g)) {
+                        subName = "isocyanato";
+                    } else if (isNitroNitrogen(nei, rNode, g)) {
+                        subName = "nitro";
+                    } else if (isNitrosoNitrogen(nei, rNode, g)) {
+                        subName = "nitroso";
+                    } else if (!isAzide && order == 1 && winningType != GroupType::AMINE) {
+                        QString amidoName = tryNameAmidoSubstituent(nei, rNode, g, allSSSRRings, mol);
+                        if (!amidoName.isEmpty()) {
+                            subName = amidoName;
+                        } else if (isHydrazinylNitrogen(nei, rNode, g)) {
+                            subName = "hydrazinyl";
+                        } else {
+                            subName = nameAmineSubstituentPrefix(nei, rNode, g, allSSSRRings, {}, mol);
+                        }
+                    } else if (!isAzide && order == 2 && fgc.carbonImine.count(rNode) && fgc.carbonImine.at(rNode) == nei && winningType != GroupType::IMINE) {
+                        subName = "imino";
+                    }
+                } else if (nz == 16) {
+                    if (carbonSulfonicAcid.count(rNode) && carbonSulfonicAcid[rNode] == nei && winningType != GroupType::SULFONIC_ACID) {
+                        subName = "sulfo";
+                    } else if (carbonSulfonamide.count(rNode) && carbonSulfonamide[rNode] == nei && winningType != GroupType::SULFONAMIDE) {
+                        subName = "sulfamoyl";
+                    } else if (carbonSulfonylHalide.count(rNode) && carbonSulfonylHalide[rNode] == nei && winningType != GroupType::SULFONYL_HALIDE) {
+                        subName = halogenPrefix(sulfonylHalideZ[rNode]) + "sulfonyl";
+                    } else if (carbonSulfinylHalide.count(rNode) && carbonSulfinylHalide[rNode] == nei && winningType != GroupType::SULFINYL_HALIDE) {
+                        subName = halogenPrefix(sulfinylHalideZ[rNode]) + "sulfinyl";
+                    } else if (carbonSulfinicAcid.count(rNode) && carbonSulfinicAcid[rNode] == nei && winningType != GroupType::SULFINIC_ACID) {
+                        subName = "sulfino";
+                    } else if (carbonSulfinamide.count(rNode) && carbonSulfinamide[rNode] == nei && winningType != GroupType::SULFINAMIDE) {
+                        subName = "sulfinamoyl";
+                    } else if (fgc.carbonHydroperoxide.count(rNode) && fgc.carbonHydroperoxide.at(rNode) == nei && winningType != GroupType::HYDROPEROXIDE) {
+                        subName = "hydroperoxy";
+                    } else if (carbonThiol.count(rNode) && carbonThiol[rNode] == nei && winningType != GroupType::THIOL) {
+                        subName = "sulfanyl";
+                    } else if (order == 1) {
+                        if (thioetherSulfurs.count(nei)) {
+                            int alkylNei = -1;
+                            for (int sNei : g.nodes[nei].neighbors) { if (sNei != rNode) { alkylNei = sNei; break; } }
+                            if (alkylNei != -1) {
+                                QString alkylName = nameBranchGraph(g, alkylNei, nei, {}, {}, {}, nullptr, mol);
+                                subName = wrapCompoundSuffix(alkylName, "sulfanyl");
+                            }
+                        }
+                    }
+                } else if (nz == 34) {
+                    if (carbonSelenol.count(rNode) && carbonSelenol[rNode] == nei && winningType != GroupType::SELENOL) {
+                        subName = "selanyl";
+                    }
+                } else if (nz == 52) {
+                    if (carbonTellurol.count(rNode) && carbonTellurol[rNode] == nei && winningType != GroupType::TELLUROL) {
+                        subName = "tellanyl";
+                    }
+                } else if (nz == 15) {
+                    if (carbonPhosphonicAcid.count(rNode) && carbonPhosphonicAcid[rNode] == nei && winningType != GroupType::PHOSPHONIC_ACID) {
+                        subName = "phosphono";
+                    }
+                } else if (nz == 33) {
+                    if (carbonArsonicAcid.count(rNode) && carbonArsonicAcid[rNode] == nei && winningType != GroupType::ARSONIC_ACID) {
+                        subName = "arsono";
+                    }
+                } else if (nz == 5) {
+                    if (carbonBoronicAcid.count(rNode) && carbonBoronicAcid[rNode] == nei && winningType != GroupType::BORONIC_ACID) {
+                        subName = "borono";
+                    }
+                } else if (nz == 6) {
+                    if (carbonGroup.count(nei) && winningType != carbonGroup.at(nei)) {
+                        GroupType neiGroup = carbonGroup.at(nei);
+                        if (neiGroup == GroupType::ACID) subName = "carboxy";
+                        else if (neiGroup == GroupType::AMIDE) subName = "carbamoyl";
+                        else if (neiGroup == GroupType::THIOAMIDE) subName = "carbamothioyl";
+                        else if (neiGroup == GroupType::AMIDINE) subName = "carbamimidoyl";
+                    }
+                    if (subName.isEmpty()) {
+                        subName = nameBranchGraph(g, nei, rNode, allSSSRRings, ringNodeSet, {}, nullptr, mol);
+                        if (subName.startsWith("(") && subName.endsWith(")")) {
+                            QString inner = subName.mid(1, subName.length() - 2);
+                            if (!inner.isEmpty() && !inner[0].isDigit()) subName = inner;
+                        }
+                    }
+                }
+
+                if (subName.isEmpty()) {
+                    out.supported = false;
+                    out.unsupportedError = "Substituents on fused ring systems named via this mechanism are not yet supported.";
+                    return out;
+                }
+                out.ctx.handledExocyclicNeighbors.insert(nei);
+                out.extraSubs.push_back({rNode, subName});
+            }
+        }
+
+        return out;
+    };
+
     // --- Multi-component ring dispatch: a molecule with exactly one real,
     // non-trivial ring system (a 2-ring fused pair, or an N-ring ortho-fused
     // chain/branch) plus one or more separate, plain, otherwise-unsubstituted
@@ -26376,6 +26772,9 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                     // Check if this is the specific rejection for exocyclic substituents on fused rings
                     // and whether a chain should win instead (same logic as naphthalene case at line ~14107)
                     if (chainResults[0].error == "Substituents on fused ring systems named via this mechanism are not yet supported.") {
+                        // Wave 3 Part 2: captured BEFORE the "int ringCount = 0, ..." below
+                        // shadows the outer whole-molecule ring count this retry needs.
+                        int outerRingCountForRetry = ringCount;
                         // Build ringNodeSet as the union of all ring nodes (converted to graph indices)
                         std::set<int> ringNodeSet;
                         for (const auto &ring : sssrRings) {
@@ -26417,6 +26816,18 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                                 QString chainName = nameChainParentWithRingSubstituent(mol, indigoToGraphIdx, g, ringNodeSet, allSSSRRings, carbonGroup, combinedWinner, stereoByGraphId, &handledBranchStereoIds, carbonSulfonamide, carbonSulfinamide);
                                 if (!chainName.isEmpty()) {
                                     return {true, chainName, ""};
+                                }
+                            }
+                        } else {
+                            // Wave 3 Part 2: ring is the senior parent (chain did not win
+                            // above) and the one unnameable exocyclic group is the ring's
+                            // own principal characteristic group -- retry with it threaded
+                            // through as a suffix instead of a (rejected) prefix.
+                            PreparedFusedContext prep = prepareFusedParentContext(ringNodeSet, fgc);
+                            if (prep.supported) {
+                                auto retryResults = nameLinearChainFusion(g, mol, indigoToGraphIdx, outerRingCountForRetry, -1, nullptr, prep.extraSubs, &prep.ctx);
+                                if (!retryResults.empty() && retryResults[0].success) {
+                                    return {true, retryResults[0].baseName, ""};
                                 }
                             }
                         }
@@ -26444,6 +26855,9 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                     // Check if this is the specific rejection for exocyclic substituents on fused rings
                     // and whether a chain should win instead (same logic as naphthalene case at line ~14107)
                     if (branchResults[0].error == "Substituents on branching fused ring systems are not yet supported.") {
+                        // Wave 3 Part 2: captured BEFORE the "int ringCount = 0, ..." below
+                        // shadows the outer whole-molecule ring count this retry needs.
+                        int outerRingCountForRetry = ringCount;
                         // Build ringNodeSet as the union of all ring nodes (converted to graph indices)
                         std::set<int> ringNodeSet;
                         for (const auto &ring : sssrRings) {
@@ -26485,6 +26899,16 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                                 QString chainName = nameChainParentWithRingSubstituent(mol, indigoToGraphIdx, g, ringNodeSet, allSSSRRings, carbonGroup, combinedWinner, stereoByGraphId, &handledBranchStereoIds, carbonSulfonamide, carbonSulfinamide);
                                 if (!chainName.isEmpty()) {
                                     return {true, chainName, ""};
+                                }
+                            }
+                        } else {
+                            // Wave 3 Part 2: see the identical retry in the linear-chain
+                            // branch above.
+                            PreparedFusedContext prep = prepareFusedParentContext(ringNodeSet, fgc);
+                            if (prep.supported) {
+                                auto retryResults = nameBranchingFusion(g, mol, indigoToGraphIdx, outerRingCountForRetry, -1, nullptr, prep.extraSubs, &prep.ctx);
+                                if (!retryResults.empty() && retryResults[0].success) {
+                                    return {true, retryResults[0].baseName, ""};
                                 }
                             }
                         }
@@ -26777,7 +27201,8 @@ std::map<int, QString> computePeripheralNumbering3Ring(
     const std::set<int> &bridgeheads,
     const std::set<int> &substituentBearingNodes,
     bool preferIndicatedHydrogenLocant,
-    const std::set<int> &hydroLocantBearingNodes)
+    const std::set<int> &hydroLocantBearingNodes,
+    const std::set<int> &principalGroupBearingNodes)
 {
     std::map<int, QString> emptyMap;
 
@@ -26837,6 +27262,10 @@ std::map<int, QString> computePeripheralNumbering3Ring(
         // on a tie, producing a name whose locants come from two different
         // numberings of the same ring system.
         std::vector<int> hydroLocants;
+        // Wave 3 Part 2: principal characteristic group locants (P-14.4(c)),
+        // ranked above hydroLocants (P-14.4(d)) and below the heteroatom
+        // criteria above -- same shape as hydroLocants just above.
+        std::vector<int> principalGroupLocants;
         int candidateIndex;
     };
 
@@ -26890,7 +27319,12 @@ std::map<int, QString> computePeripheralNumbering3Ring(
                         if (z == 8) rank = 0;
                         else if (z == 16) rank = 1;
                         else if (z == 7) {
-                            if (preferIndicatedHydrogenLocant && g.nodes[node].totalH >= 1) rank = 2;
+                            // Wave 3 Part 2: an N-substituted pyrrole/imidazole/pyrazole
+                            // nitrogen (e.g. Imiquimod's N1: 2 ring bonds + 1 exocyclic
+                            // substituent bond) has totalH == 0 but still carries the
+                            // ring's indicated hydrogen position -- neighbors.size() == 3
+                            // catches it the same way getCandidates' own hNH check does.
+                            if (preferIndicatedHydrogenLocant && (g.nodes[node].totalH >= 1 || g.nodes[node].neighbors.size() == 3)) rank = 2;
                             else if (preferIndicatedHydrogenLocant) rank = 3;
                             else rank = 2;
                         }
@@ -26940,10 +27374,28 @@ std::map<int, QString> computePeripheralNumbering3Ring(
                     }
                 }
 
+                for (int node : principalGroupBearingNodes) {
+                    auto it = cand.locantMap.find(node);
+                    if (it != cand.locantMap.end()) {
+                        QString locStr = it->second;
+                        int numLoc = 0;
+                        std::string s = locStr.toStdString();
+                        for (char c : s) {
+                            if (std::isdigit(static_cast<unsigned char>(c))) {
+                                numLoc = numLoc * 10 + (c - '0');
+                            } else {
+                                break;
+                            }
+                        }
+                        cand.principalGroupLocants.push_back(numLoc);
+                    }
+                }
+
                 std::sort(cand.heteroatomLocants.begin(), cand.heteroatomLocants.end());
                 std::sort(cand.heteroatomSeniorityAtLocants.begin(), cand.heteroatomSeniorityAtLocants.end());
                 std::sort(cand.substituentLocants.begin(), cand.substituentLocants.end());
                 std::sort(cand.hydroLocants.begin(), cand.hydroLocants.end());
+                std::sort(cand.principalGroupLocants.begin(), cand.principalGroupLocants.end());
 
                 candidates.push_back(cand);
             }
@@ -26958,6 +27410,10 @@ std::map<int, QString> computePeripheralNumbering3Ring(
                 return a.heteroatomLocants < b.heteroatomLocants;
             if (a.heteroatomSeniorityAtLocants != b.heteroatomSeniorityAtLocants)
                 return a.heteroatomSeniorityAtLocants < b.heteroatomSeniorityAtLocants;
+            // Wave 3 Part 2: principal characteristic group locants (P-14.4(c))
+            // rank above the hydro-prefix criterion below (P-14.4(d)).
+            if (a.principalGroupLocants != b.principalGroupLocants)
+                return a.principalGroupLocants < b.principalGroupLocants;
             // Fix round 1 (review finding I3): hydro/indicated-H-class locants
             // rank ABOVE detachable substituent locants per P-31.1.4.2.4 (hydro
             // prefixes are numbered before detachable substituent prefixes are
