@@ -2516,13 +2516,15 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
                             subName = "hydrazinyl";
                         } else {
                             // Handles plain/secondary/tertiary amine substituent naming
-                            // uniformly; still correctly returns "" for anything beyond
-                            // that (a hydrazine's nitrogen-rooted "R", or more than two
-                            // substituents), which must keep falling through to the
-                            // existing rejection below rather than being misnamed
-                            // (confirmed regression, since fixed: nameBranchGraph on a
-                            // bare terminal NH2 root used to produce "amino", which this
-                            // code then wrapped into the nonsense "aminoamino").
+                            // uniformly, including a substituted hydrazinyl "R" (a
+                            // hydrazine's nitrogen-rooted far neighbor); still correctly
+                            // returns "" for anything beyond that (more than two
+                            // substituents, a longer N-N-N chain), which must keep
+                            // falling through to the existing rejection below rather than
+                            // being misnamed (confirmed regression, since fixed:
+                            // nameBranchGraph on a bare terminal NH2 root used to produce
+                            // "amino", which this code then wrapped into the nonsense
+                            // "aminoamino").
                             subName = nameAmineSubstituentPrefix(nei, rNode, g, allIndependentRings, {}, mol);
                             if (subName.isEmpty()) {
                                 if (outErr) *outErr = true;
@@ -5400,9 +5402,10 @@ QString nameBranchGraph(const Graph &g, int rootIdx, int parentIdx, const std::v
         // here used to silently discard that entire chain (confirmed live:
         // chloroquine's N-(5-diethylaminopentan-2-yl) side chain vanished,
         // producing "4-amino-7-chloroquinoline"). Delegate to the shared
-        // amine-substituent-prefix namer (handles plain/secondary/tertiary
-        // uniformly, and still correctly returns "" for anything beyond that,
-        // e.g. a hydrazine's nitrogen-rooted "R" or more than two substituents).
+        // amine-substituent-prefix namer (handles plain/secondary/tertiary and
+        // substituted-hydrazinyl "R" uniformly, and still correctly returns ""
+        // for anything beyond that, e.g. a longer N-N-N chain or more than two
+        // substituents).
         return nameAmineSubstituentPrefix(rootIdx, parentIdx, g, allIndependentRings, forbiddenNodes, mol);
     }
 
@@ -6944,6 +6947,109 @@ StereoResult processDoubleBondStereo(
     return {true, "", ""};
 }
 
+// Names a plain or substituted acyclic two-nitrogen hydrazinyl group
+// (-NR1-NR2R3) rooted at `nNode` (N1, the nitrogen attached to `fromNode`),
+// with `farN` (N2) as nNode's only other heavy neighbor. Per IUPAC's
+// hydrazine numbering (P6a.html#6803010201), the parent-attached nitrogen
+// is locant 1; N1 may carry at most one carbon substituent, N2 at most two.
+// Returns "hydrazinyl" for the unsubstituted pair, a bracketed/parenthesized
+// "<locants>-<subs>hydrazin-1-yl" prefix for the substituted case, or "" for
+// anything outside that shape (a longer N-N-N chain, a nitrogen-containing
+// ring, a non-carbon substituent, or a branch that cannot be named) so the
+// caller falls through to its existing rejection.
+QString tryNameHydrazinylSubstituent(int nNode, int fromNode, int farN, const Graph &g,
+                                      const std::vector<std::set<int>> &allIndependentRings,
+                                      const std::set<int> &forbiddenNodes, int mol) {
+    if (g.nodes[nNode].atomicNumber != 7 || g.nodes[farN].atomicNumber != 7) return "";
+
+    for (size_t k = 0; k < g.nodes[nNode].neighbors.size(); ++k) {
+        if (g.nodes[nNode].neighbors[k] == farN && g.nodes[nNode].bondOrders[k] != 1) return "";
+    }
+
+    // Reject cyclic hydrazines: neither nitrogen may sit in any ring.
+    for (const auto &ring : allIndependentRings) {
+        if (ring.count(nNode) || ring.count(farN)) return "";
+    }
+
+    // Reject an acyl-linked hydrazide cited as a substituent (fromNode itself
+    // is a carbonyl carbon, -C(=O)-NH-NH2) -- out of scope for this namer,
+    // matching the existing rejection of a losing amide's branched/N-rooted
+    // N-substituent at the same structural position.
+    for (size_t k = 0; k < g.nodes[fromNode].neighbors.size(); ++k) {
+        int fn = g.nodes[fromNode].neighbors[k];
+        if (g.nodes[fn].atomicNumber == 8 && g.nodes[fromNode].bondOrders[k] == 2) return "";
+    }
+
+    auto collectCarbonSubs = [&](int center, const std::set<int> &exclude) -> std::vector<int> {
+        std::vector<int> subs;
+        for (size_t k = 0; k < g.nodes[center].neighbors.size(); ++k) {
+            int nb = g.nodes[center].neighbors[k];
+            if (exclude.count(nb)) continue;
+            if (g.nodes[nb].atomicNumber <= 1) continue;
+            if (g.nodes[center].bondOrders[k] != 1 || g.nodes[nb].atomicNumber != 6) { subs.push_back(-1); continue; }
+            subs.push_back(nb);
+        }
+        return subs;
+    };
+
+    std::vector<int> n1Subs = collectCarbonSubs(nNode, {fromNode, farN});
+    std::vector<int> n2Subs = collectCarbonSubs(farN, {nNode});
+    if (n1Subs.size() > 1 || n2Subs.size() > 2) return "";
+    for (int s : n1Subs) if (s < 0) return "";
+    for (int s : n2Subs) if (s < 0) return "";
+
+    if (n1Subs.empty() && n2Subs.empty()) return "hydrazinyl";
+
+    std::set<int> branchForbidden = forbiddenNodes;
+    branchForbidden.insert(nNode);
+    branchForbidden.insert(farN);
+    branchForbidden.insert(fromNode);
+
+    std::vector<std::pair<int, QString>> locNamePairs;
+    for (int s : n1Subs) {
+        QString name = nameBranchGraph(g, s, nNode, allIndependentRings, branchForbidden, {}, nullptr, mol);
+        if (name.isEmpty()) return "";
+        locNamePairs.push_back({1, name});
+    }
+    for (int s : n2Subs) {
+        QString name = nameBranchGraph(g, s, farN, allIndependentRings, branchForbidden, {}, nullptr, mol);
+        if (name.isEmpty()) return "";
+        locNamePairs.push_back({2, name});
+    }
+
+    auto stripOuter = [](const QString &s) -> QString {
+        if ((s.startsWith("(") && s.endsWith(")")) || (s.startsWith("[") && s.endsWith("]"))) {
+            return s.mid(1, s.length() - 2);
+        }
+        return s;
+    };
+
+    std::map<QString, std::vector<int>> grouped;
+    for (const auto &p : locNamePairs) grouped[stripOuter(p.second)].push_back(p.first);
+
+    std::vector<QString> distinctNames;
+    for (auto &kv : grouped) distinctNames.push_back(kv.first);
+    std::sort(distinctNames.begin(), distinctNames.end(), [](const QString &a, const QString &b) {
+        return alphabetizationKey(a).toLower() < alphabetizationKey(b).toLower();
+    });
+
+    QString body;
+    for (const QString &name : distinctNames) {
+        std::vector<int> locs = grouped[name];
+        std::sort(locs.begin(), locs.end());
+        QStringList locStrs;
+        for (int l : locs) locStrs.append(QString::number(l));
+        bool needsWrap = false;
+        for (QChar c : name) { if (c.isDigit()) { needsWrap = true; break; } }
+        QString multPrefix = locs.size() == 2 ? "di" : (locs.size() == 3 ? "tri" : "");
+        QString term = needsWrap ? ((locs.size() > 1 ? "bis(" : "(") + name + ")") : (multPrefix + name);
+        body += locStrs.join(",") + "-" + term;
+    }
+    body += "hydrazin-1-yl";
+
+    return (body.contains('(') ? "[" : "(") + body + (body.contains('(') ? "]" : ")");
+}
+
 // Names an amine nitrogen `nNode` (attached to `fromNode`) as a substituent
 // prefix -- "amino" for plain -NH2, "<R>amino" for secondary -NH-R (P-66.6.1),
 // and the tertiary -NR2/-NRR' case: identical R groups collapse to a
@@ -6951,10 +7057,10 @@ StereoResult processDoubleBondStereo(
 // own name needs enclosure per the same rule used elsewhere in this file);
 // different R groups are each individually parenthesized and alphabetized,
 // e.g. "(carboxymethyl)(2-hydroxyethyl)amino" (a real Blue Book worked
-// example). Returns "" for anything unsupported: more than two substituents,
-// or a nitrogen-rooted "R" (a hydrazine shape, -NH-NH2) -- R must be
-// carbon-rooted, matching the guard already proven necessary for the
-// secondary case.
+// example). A -NH-NH2 (or substituted hydrazinyl) nitrogen-rooted "R" is
+// delegated to tryNameHydrazinylSubstituent above. Returns "" for anything
+// still unsupported: more than two substituents, a longer N-N-N chain, or a
+// nitrogen-containing ring.
 QString nameAmineSubstituentPrefix(int nNode, int fromNode, const Graph &g,
                                     const std::vector<std::set<int>> &allIndependentRings,
                                     const std::set<int> &forbiddenNodes,
@@ -6965,7 +7071,16 @@ QString nameAmineSubstituentPrefix(int nNode, int fromNode, const Graph &g,
     }
     if (heavyNeighbors.empty()) return "amino";
     if (heavyNeighbors.size() > 2) return "";
-    
+
+    // A heavy neighbor that is itself nitrogen and not nitroso is a
+    // hydrazinyl far nitrogen (-N-N<) rather than a plain/secondary/tertiary
+    // amine substituent -- delegate to the dedicated hydrazinyl namer.
+    for (int r : heavyNeighbors) {
+        if (g.nodes[r].atomicNumber == 7 && !isNitrosoNitrogen(r, nNode, g)) {
+            return tryNameHydrazinylSubstituent(nNode, fromNode, r, g, allIndependentRings, forbiddenNodes, mol);
+        }
+    }
+
     // Check that all heavy neighbors are either carbon or nitroso nitrogen
     for (int r : heavyNeighbors) {
         if (g.nodes[r].atomicNumber != 6 && !isNitrosoNitrogen(r, nNode, g)) return "";
@@ -7364,10 +7479,10 @@ std::optional<QString> tryNameNitrosamine(int cNode, int nNode, const Graph &g, 
 // own name needs enclosure per the same rule used elsewhere in this file);
 // different R groups are each individually parenthesized and alphabetized,
 // e.g. "(carboxymethyl)(2-hydroxyethyl)amino" (a real Blue Book worked
-// example). Returns "" for anything unsupported: more than two substituents,
-// or a nitrogen-rooted "R" (a hydrazine shape, -NH-NH2) -- R must be
-// carbon-rooted, matching the guard already proven necessary for the
-// secondary case.
+// example). A substituted-hydrazinyl "R" is delegated to
+// tryNameHydrazinylSubstituent. Returns "" for anything still unsupported:
+// more than two substituents, a longer N-N-N chain, or a nitrogen-containing
+// ring.
 
 RingSystemNameResult namePhase31BenzoFusion(
     const Graph &g,

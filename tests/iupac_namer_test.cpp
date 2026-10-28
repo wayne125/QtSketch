@@ -609,12 +609,36 @@ int main() {
         // worked example shape, "(carboxymethyl)(2-hydroxyethyl)amino"): each R
         // individually parenthesized and alphabetized.
         {"CN(CC)CCC(=O)O", "3-ethyl(methyl)aminopropanoic acid"},
-        // Confirm a hydrazine substituent (-NH-NH2, "R" is nitrogen-rooted, not
-        // carbon-rooted) still rejects cleanly rather than being misnamed --
-        // this is the exact regression caught during review: nameBranchGraph on a
-        // bare terminal NH2 root produced "amino", which got wrapped into the
-        // nonsense "aminoamino" before the carbon-rooted guard was added.
-        {"NNCCCC(=O)O", "", true, "amine/hydrazine"},
+        // Plain hydrazinyl substituent (-NH-NH2, Wave 4A): parent-attached N
+        // is locant 1, far N is locant 2. Named via tryNameHydrazinylSubstituent.
+        {"NNCCCC(=O)O", "4-hydrazinylbutanoic acid"},
+        // Substituted hydrazinyl: one methyl on the parent-attached nitrogen (N1).
+        {"CN(N)CCCC(=O)O", "4-(1-methylhydrazin-1-yl)butanoic acid"},
+        // Substituted hydrazinyl: one methyl on the far nitrogen (N2).
+        {"CNNCCCC(=O)O", "4-(2-methylhydrazin-1-yl)butanoic acid"},
+        // One methyl on each nitrogen: different locants, same substituent name,
+        // grouped under one multiplying prefix with both locants listed.
+        {"CN(NC)CCCC(=O)O", "4-(1,2-dimethylhydrazin-1-yl)butanoic acid"},
+        // Two methyls on the far nitrogen (N2), none on N1.
+        {"CN(C)NCCCC(=O)O", "4-(2,2-dimethylhydrazin-1-yl)butanoic acid"},
+        // Three methyls total: one on N1, two on N2.
+        {"CN(C)N(C)CCCC(=O)O", "4-(1,2,2-trimethylhydrazin-1-yl)butanoic acid"},
+        // A branched carbon substituent on the far nitrogen, via nameBranchGraph.
+        {"CC(C)NNCCCC(=O)O", "4-[2-(1-methylethyl)hydrazin-1-yl]butanoic acid"},
+        // Ring substituent on the far nitrogen, one bond removed via a methyl
+        // bridge -- a ring bonded DIRECTLY to a hydrazinyl/amine nitrogen hits
+        // a separate, pre-existing "ring N-substituent" limitation unrelated
+        // to Wave 4A (confirmed live: even a plain unsubstituted
+        // cyclohexylhydrazine, C1CCCCC1NN, is rejected the same way).
+        {"C1CCCCC1CNNCCCC(=O)O", "4-(2-cyclohexylmethylhydrazin-1-yl)butanoic acid"},
+        // Longer N-N-N chain (triazanyl) still rejects cleanly rather than
+        // being misnamed as a two-nitrogen hydrazinyl group.
+        {"NNNCCCC(=O)O", "", true, ""},
+        // Acyl-linked hydrazide (-C(=O)-NH-NH2 cited as a substituent) stays
+        // rejected: this is a structurally different shape (the hydrazine
+        // hangs off an acyl carbon, not a plain chain/ring atom) that Wave 4A
+        // deliberately leaves out of scope.
+        {"NNC(=O)CCCC(=O)N", "", true, "amine/hydrazine"},
         // Confirm plain amino still works: NH2-CH(CH3)-COOH
         {"CC(N)C(=O)O", "2-aminopropanoic acid"},
         // Confirm existing amido tests still pass
@@ -5183,11 +5207,24 @@ int main() {
         int m = indigoLoadMoleculeFromString("NNCCCC(=O)O");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
-        if (!r.success && r.error.contains("Substituted amine/hydrazine substituents are not supported in this phase.")) {
-            std::cout << "[PASS] NNCCCC(=O)O rejected correctly\n";
+        if (r.success && r.name == "4-hydrazinylbutanoic acid") {
+            std::cout << "[PASS] Wave 4A NNCCCC(=O)O -> 4-hydrazinylbutanoic acid\n";
             passed++;
         } else {
             std::cout << "[FAIL] NNCCCC(=O)O -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        int m = indigoLoadMoleculeFromString("NNC(=O)CCCC(=O)N");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success && r.error.contains("Substituted amine/hydrazine substituents are not supported in this phase.")) {
+            std::cout << "[PASS] Acyl-linked hydrazide NNC(=O)CCCC(=O)N still rejected\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] NNC(=O)CCCC(=O)N -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
             failed++;
         }
     }
