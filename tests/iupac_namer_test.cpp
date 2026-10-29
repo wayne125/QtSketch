@@ -1236,6 +1236,18 @@ int main() {
         {"C1CCc2cc3OCCCCc3cc2C1", "2,3,4,5,7,8,9,10-octahydrobenzo[1',2':4,5]benzo[1,2-b]oxepine"},
         {"C1CCc2cc3OCSc3cc2C1", "5,6,7,8-tetrahydro-2H-benzo[1',2':4,5]benzo[1,2-d]1,3-oxathiole"},
 
+        // Review Focus (plan Section 4's own checklist item): a substituent on
+        // either the hydro-reclassified all-carbon ring or the mancude-
+        // reclassified heterocycle -- the plan's own Section 1 only required
+        // "retain existing behavior" (i.e. still reject) for substituted
+        // derivatives, but this falls back to the generic fusion citation
+        // (RetainedRingMatcher.cpp's registry match doesn't handle
+        // substituents) and names the methyl at the correct locant on top of
+        // the correct hydro set -- more capable than the plan's own minimum
+        // bar, confirmed correct by direct inspection rather than assumed.
+        {"C1CC(C)c2cc3NCCCc3cc2C1", "9-methyl-1,2,3,4,6,7,8,9-octahydrobenzo[1',2':4,5]benzo[1,2-b]pyridine"},
+        {"C1CCc2cc3NC(C)CCc3cc2C1", "2-methyl-1,2,3,4,6,7,8,9-octahydrobenzo[1',2':4,5]benzo[1,2-b]pyridine"},
+
         // Fix round 2 -> fix round 3 (re-review correction): the original pin here
         // ("c1ccc2cc3NCCCCc3cc2c1") was NOT actually mancude -- its "NCCCC" ring is
         // a real saturated azepane (4 sp3 carbons), so it wasn't a valid sanity
