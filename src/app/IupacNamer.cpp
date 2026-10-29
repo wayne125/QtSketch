@@ -7487,10 +7487,94 @@ bool hasSeniorPrincipalGroup(const Graph &g) {
             return true; // Sulfonic acid found
         }
     }
-    
-    // Check for nitrile: C#N pattern (though this is often not senior to azo in practice)
-    // Check for phosphonic acid, etc.
-    
+
+    // Check for acyl halide: C(=O)X pattern (X = F/Cl/Br/I) -- senior to amide
+    // (already checked above), per P-65.2.2.
+    for (size_t i = 0; i < g.nodes.size(); ++i) {
+        const GraphNode &node = g.nodes[i];
+        if (node.atomicNumber != 6) continue;
+
+        bool hasDoubleO = false;
+        bool hasHalide = false;
+
+        for (size_t j = 0; j < node.neighbors.size(); ++j) {
+            int nei = node.neighbors[j];
+            int nz = g.nodes[nei].atomicNumber;
+            if (nz == 8 && node.bondOrders[j] == 2 && g.nodes[nei].neighbors.size() == 1) {
+                hasDoubleO = true;
+            }
+            if ((nz == 9 || nz == 17 || nz == 35 || nz == 53) && node.bondOrders[j] == 1) {
+                hasHalide = true;
+            }
+        }
+
+        if (hasDoubleO && hasHalide) {
+            return true; // Acyl halide found
+        }
+    }
+
+    // Check for sulfonamide: S(=O)2N pattern -- same suffix tier as amide
+    // (already checked above), per P-65.3.1.
+    for (size_t i = 0; i < g.nodes.size(); ++i) {
+        const GraphNode &node = g.nodes[i];
+        if (node.atomicNumber != 16) continue;
+
+        int doubleOCount = 0;
+        bool hasSingleN = false;
+
+        for (size_t j = 0; j < node.neighbors.size(); ++j) {
+            int nei = node.neighbors[j];
+            int nz = g.nodes[nei].atomicNumber;
+            if (nz == 8 && node.bondOrders[j] == 2) {
+                doubleOCount++;
+            }
+            if (nz == 7 && node.bondOrders[j] == 1) {
+                hasSingleN = true;
+            }
+        }
+
+        if (doubleOCount >= 2 && hasSingleN) {
+            return true; // Sulfonamide found
+        }
+    }
+
+    // Check for phosphonic acid: P(=O)(OH) pattern -- acids tier, senior to
+    // amide (already checked above), per P-65.1.1.
+    for (size_t i = 0; i < g.nodes.size(); ++i) {
+        const GraphNode &node = g.nodes[i];
+        if (node.atomicNumber != 15) continue;
+
+        bool hasDoubleO = false;
+        bool hasSingleOH = false;
+
+        for (size_t j = 0; j < node.neighbors.size(); ++j) {
+            int nei = node.neighbors[j];
+            int nz = g.nodes[nei].atomicNumber;
+            if (nz == 8 && node.bondOrders[j] == 2 && g.nodes[nei].neighbors.size() == 1) {
+                hasDoubleO = true;
+            }
+            if (nz == 8 && node.bondOrders[j] == 1) {
+                const GraphNode &oNode = g.nodes[nei];
+                if (oNode.totalH >= 1 || oNode.neighbors.size() == 1) {
+                    hasSingleOH = true;
+                }
+            }
+        }
+
+        if (hasDoubleO && hasSingleOH) {
+            return true; // Phosphonic acid found
+        }
+    }
+
+    // Check for nitrile: C#N pattern -- left unchecked deliberately. Real
+    // IUPAC general seniority (P-41) ranks azo/diazene's own position
+    // relative to nitrile closely enough that this codebase has not
+    // verified which wins; the other four checks above (acid/ester/amide/
+    // sulfonic acid, now joined by acyl halide/sulfonamide/phosphonic acid)
+    // are all clearly senior to azo regardless, so adding them is safe
+    // without resolving that separate, narrower question. Leaving nitrile's
+    // honest rejection in place rather than guessing wrong.
+
     return false;
 }
 

@@ -542,6 +542,16 @@ int main() {
         // just a different (also correct) diagnostic message.
         // Item D: now supported with proper diazenyl/nitrosamine substituent prefix naming
         {"O=NN(C)C1CCCCC1CCC(=O)O", "3-{2-[methyl(nitroso)amino]cyclohexyl}propanoic acid", false},
+        // Theme 9: hasSeniorPrincipalGroup extended with three more senior
+        // classes (acyl halide, sulfonamide, phosphonic acid) -- all clearly
+        // senior to azo/nitrosamine, same tier as amide (already covered
+        // above). Nitrile deliberately left unextended (see that function's
+        // own comment): azo's real seniority relative to nitrile specifically
+        // was not resolved, so it stays an honest rejection rather than a guess.
+        {"O=NN(C)C1CCCCC1CP(=O)(O)O", "{2-[methyl(nitroso)amino]cyclohexyl}methanephosphonic acid"},
+        {"O=NN(C)C1CCCCC1CS(=O)(=O)N", "{2-[methyl(nitroso)amino]cyclohexyl}methanesulfonamide"},
+        {"O=NN(C)C1CCCCC1CC(=O)Cl", "2-{2-[methyl(nitroso)amino]cyclohexyl}ethanoyl chloride"},
+        {"O=NN(C)C1CCCCC1CCC#N", "", true, ""},
         {"CN=NCC1CCCCC1CCC(=O)O", "3-{2-[(methyldiazenyl)methyl]cyclohexyl}propanoic acid", false},
 
         // Rootless acyl carbon / multiple halogen fixes
