@@ -379,7 +379,26 @@ static bool skeletonMatchRetainedSystem(int mol, const std::set<int> &ringAtoms,
         int it = indigoIterateAtoms(refAromMol);
         int idx = 0, a;
         while ((a = indigoNext(it)) != 0) {
-            refTotalH[idx] = indigoCountImplicitHydrogens(a);
+            // indigoCountImplicitHydrogens returns -1 (not 0) for a plain
+            // lowercase aromatic nitrogen with no explicit H/charge marker
+            // (e.g. quinoline's own "n1", pyridine-type) -- confirmed via
+            // direct instrumentation: every aromatic carbon position in
+            // this same reference returns its correct 0 or 1 count, only
+            // the bare aromatic "n" positions return -1. A negative return
+            // here is Indigo reporting it can't compute an implicit-H count
+            // via its normal mechanism for this already fully
+            // valence-satisfied aromatic position, not that the count is
+            // unknown or that this position should be excluded -- the
+            // correct expected count for exactly this shape is 0 (no H),
+            // matching real pyridine-type nitrogen chemistry. Treating it
+            // as a hard -1 (as the surrounding expectedH>=0 checks do)
+            // silently undercounts this position's saturation when the
+            // real molecule has it reduced (e.g. quinoline -> piperidine-
+            // fused-ring), which then fails buildHydroPrefix's even-count
+            // check and falls through to a generic fusion citation instead
+            // of this retained name.
+            int h = indigoCountImplicitHydrogens(a);
+            refTotalH[idx] = (h < 0) ? 0 : h;
             indigoFree(a);
             ++idx;
         }
@@ -1067,7 +1086,7 @@ std::optional<RingSystemNameResult> tryRetainedBaseDecomposition(int mol) {
             best = &bestCandidates[i];
         }
     }
-    
+
     // Step 7 (Task 10): the winning base may cover only k < N rings. The
     // remaining rings (the "remainder") are a contiguous prefix and/or
     // suffix of chainOrder, since isLinearChain was already enforced above.

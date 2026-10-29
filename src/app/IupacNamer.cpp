@@ -1365,6 +1365,147 @@ QString getBaseNameShared(RingType t) {
     return "";
 }
 
+// Classifies a fused-ring heterocycle component's MANCUDE identity purely
+// from ring size and heteroatom composition/positions -- real bond orders
+// and hydrogen counts play no part, unlike classifyMonocyclicHeteroRing
+// (which decides mancude-vs-saturated from the real structure and is left
+// unchanged for its existing callers). This is the heteroatom analogue of
+// the all-carbon ring's forced-BENZENE trick (Hydro-prefix fused-ring
+// plan, Task 3), extended to a genuinely saturated heterocycle (PIPERIDINE,
+// azepane, etc.) fused alongside a hydro-reclassified all-carbon ring in
+// the same system -- real saturation is tracked separately by the caller's
+// own hydro-prefix mechanism, not by this function.
+//
+// Scoped to exactly the six supported shapes (Mixed hydro-prefix and
+// heterocycle saturation plan, Section 2): single N in a 6-ring (pyridine),
+// single N or O in a 7-ring (azepine/oxepine), single N in an 8-ring
+// (azocine), two N's in a 7-ring (1,4-diazepine), and an O+S pair in a
+// 5-ring (1,3-oxathiole). Anything else returns false so the caller's
+// existing rejection stands.
+static bool classifyMancudeFusionComponent(const Graph &g, const std::vector<int> &ringHeteroNodes,
+                                            int ringSize, const std::vector<int> &ringCycle,
+                                            RingType &outType, QString &outNameRoot) {
+    if (ringHeteroNodes.size() == 1) {
+        int z = g.nodes[ringHeteroNodes[0]].atomicNumber;
+        if (ringSize == 6 && z == 7) { outType = RingType::PYRIDINE; outNameRoot = "pyridine"; return true; }
+        if (ringSize == 7 && z == 7) { outType = RingType::AZEPINE; outNameRoot = "azepine"; return true; }
+        if (ringSize == 7 && z == 8) { outType = RingType::OXEPINE; outNameRoot = "oxepine"; return true; }
+        if (ringSize == 8 && z == 7) {
+            outNameRoot = buildCanonicalGeneralHeterocycleName(g, ringCycle, ringHeteroNodes);
+            if (outNameRoot.isEmpty()) return false;
+            outType = RingType::GENERAL_HETEROCYCLE;
+            return true;
+        }
+    } else if (ringHeteroNodes.size() == 2) {
+        if (ringSize == 7) {
+            bool bothN = true;
+            for (int n : ringHeteroNodes) if (g.nodes[n].atomicNumber != 7) bothN = false;
+            if (bothN) {
+                outNameRoot = buildCanonicalGeneralHeterocycleName(g, ringCycle, ringHeteroNodes);
+                if (outNameRoot.isEmpty()) return false;
+                outType = RingType::GENERAL_HETEROCYCLE;
+                return true;
+            }
+        } else if (ringSize == 5) {
+            std::set<int> zs;
+            for (int n : ringHeteroNodes) zs.insert(g.nodes[n].atomicNumber);
+            if (zs.size() == 2 && zs.count(8) && zs.count(16)) {
+                outNameRoot = buildCanonicalGeneralHeterocycleName(g, ringCycle, ringHeteroNodes);
+                if (outNameRoot.isEmpty()) return false;
+                outType = RingType::GENERAL_HETEROCYCLE;
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+// Candidate hydro/indicated-H split for a mancude-reclassified fused-ring
+// heterocycle component (ring C), given its full ordered cycle and the two
+// bridgehead atoms it shares with the adjacent (always-aromatic) ring.
+//
+// Key insight (Mixed hydro-prefix and heterocycle saturation plan, Section
+// 2): a bridgehead's two bonds into its aromatic neighbor ring already sum
+// to exactly 3 bond-order-units in any Kekule structure of that neighbor
+// (one single + one double), so a carbon bridgehead's THIRD bond -- the one
+// into this ring -- is always forced single, regardless of which Kekule
+// structure the neighbor ring takes. The bridgehead therefore never
+// participates in this ring's own double-bond matching; neither does a
+// divalent heteroatom (O/S/Se/Te), whose two ring bonds are always single
+// since its valence is already satisfied by them alone. Both kinds of atom
+// keep the same H count (zero) whether the ring is mancude or fully
+// saturated, so neither ever needs a hydro-prefix citation.
+// Everything else (C, N, and other valence>=3 ring atoms) CAN carry a ring
+// double bond, so walking the span between the two bridgeheads and
+// splitting it at every divalent-heteroatom boundary gives one or more
+// maximal "participant" runs. A run of even length admits a perfect
+// matching (no indicated hydrogen needed; all its atoms gain one H each --
+// standard "dihydro"-per-position hydro-prefix accounting -- when really
+// saturated). A run of odd length always leaves exactly one atom unmatched
+// in any maximum matching; real precedent (1H-azepine, the 1H-1,4-diazepine
+// tautomer) confirms the valid unmatched positions are exactly the
+// alternating ones counted from either end of the run (indices 0,2,4,...).
+// Those are returned as this run's indicated-H candidates; the caller tries
+// each and keeps whichever produces the lowest overall locants (plan
+// Section 3) -- this function does not pick a winner itself.
+struct RingCHydrogenationCandidates {
+    bool success = false;
+    std::vector<int> hydroNodes;                         // always-hydro atoms (even-length runs)
+    std::vector<std::vector<int>> oddRuns;                // each odd-length run's full atom list, in order
+    std::vector<std::vector<int>> indicatedHCandidates;   // parallel to oddRuns: valid single-unmatched-position choices
+};
+
+static RingCHydrogenationCandidates computeRingCHydrogenationCandidates(
+    const Graph &g, const std::vector<int> &ringCycle, int bridgehead1, int bridgehead2) {
+    RingCHydrogenationCandidates result;
+    int n = static_cast<int>(ringCycle.size());
+    int idx1 = -1, idx2 = -1;
+    for (int i = 0; i < n; ++i) {
+        if (ringCycle[i] == bridgehead1) idx1 = i;
+        if (ringCycle[i] == bridgehead2) idx2 = i;
+    }
+    if (idx1 < 0 || idx2 < 0) return result;
+
+    bool adjacentForward = (idx2 == (idx1 + 1) % n);
+    bool adjacentBackward = (idx1 == (idx2 + 1) % n);
+    std::vector<int> span; // non-bridgehead atoms, the long way around from bridgehead1 to bridgehead2
+    if (adjacentForward) {
+        for (int i = (idx1 - 1 + n) % n; i != idx2; i = (i - 1 + n) % n) span.push_back(ringCycle[i]);
+    } else if (adjacentBackward) {
+        for (int i = (idx1 + 1) % n; i != idx2; i = (i + 1) % n) span.push_back(ringCycle[i]);
+    } else {
+        // The two bridgeheads must share the fusion edge directly; anything
+        // else isn't the simple ortho-fusion shape this is scoped for.
+        return result;
+    }
+
+    std::vector<std::vector<int>> runs;
+    std::vector<int> currentRun;
+    for (int node : span) {
+        int z = g.nodes[node].atomicNumber;
+        bool isDivalentBoundary = (z == 8 || z == 16 || z == 34 || z == 52);
+        if (isDivalentBoundary) {
+            if (!currentRun.empty()) { runs.push_back(currentRun); currentRun.clear(); }
+        } else {
+            currentRun.push_back(node);
+        }
+    }
+    if (!currentRun.empty()) runs.push_back(currentRun);
+
+    for (const auto &run : runs) {
+        int m = static_cast<int>(run.size());
+        if (m % 2 == 0) {
+            for (int node : run) result.hydroNodes.push_back(node);
+        } else {
+            std::vector<int> candidates;
+            for (int i = 0; i < m; i += 2) candidates.push_back(run[i]);
+            result.oddRuns.push_back(run);
+            result.indicatedHCandidates.push_back(candidates);
+        }
+    }
+    result.success = true;
+    return result;
+}
 
 bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHeteroNodes, int ringSize, const std::vector<int> &ringCycle, RingType &outType, QString &outNameRoot, QString &outErrorMsg, bool allowSaturated = false, const std::vector<std::pair<int,int>> &fusionBonds = {}) {
     outErrorMsg.clear();
@@ -7981,6 +8122,12 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                 // signature of "this ring was classified via a saturated branch",
                 // independent of which specific RingType it ended up as.
                 std::vector<bool> heteroRingHasSaturatedAtom(N, false);
+                // The single odd-length participant run's candidate atoms (at most
+                // one such run exists across this plan's six supported shapes), to
+                // be resolved into exactly one indicated-H node once periphMap is
+                // available (lowest-locant candidate wins); the rest of the run
+                // stays in hydroPositionNodes.
+                std::vector<int> mancudeIndicatedHCandidates;
 
                 for (int i = 0; i < N; ++i) {
                     cyclesN[i] = buildCycleN(nodesN[i]);
@@ -8180,7 +8327,47 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                 if (!hydroPositionNodes.empty()) {
                     for (int i = 0; i < N; ++i) {
                         if (heteroRingHasSaturatedAtom[i]) {
-                            return {RingSystemNameResult{false, "Combining hydro-prefix carbocycle saturation with a saturated heterocyclic ring in the same fused system is not yet supported.", "", {}}};
+                            // Mixed hydro-prefix and heterocycle saturation plan: before
+                            // rejecting, try reclassifying this saturated heterocycle to
+                            // its mancude identity (same trick already applied to the
+                            // all-carbon ring above) -- scoped to exactly the six shapes
+                            // classifyMancudeFusionComponent knows. Needs this ring's own
+                            // bridgeheads (shared with its one fusion partner in the
+                            // chain) to locate the saturated span for hydrogenation
+                            // accounting.
+                            int partner = -1, bh1 = -1, bh2 = -1;
+                            for (int j = 0; j < N; ++j) {
+                                if (j != i && shared[i][j] == 2 && sharedNodesPairs[i][j].size() == 2) {
+                                    partner = j;
+                                    bh1 = sharedNodesPairs[i][j][0];
+                                    bh2 = sharedNodesPairs[i][j][1];
+                                    break;
+                                }
+                            }
+                            RingType mancudeType;
+                            QString mancudeNameRoot;
+                            bool reclassified = false;
+                            if (partner != -1 &&
+                                classifyMancudeFusionComponent(g, rHeteroN[i], static_cast<int>(nodesN[i].size()), cyclesN[i], mancudeType, mancudeNameRoot)) {
+                                RingCHydrogenationCandidates hydroModel = computeRingCHydrogenationCandidates(g, cyclesN[i], bh1, bh2);
+                                if (hydroModel.success && hydroModel.oddRuns.size() <= 1) {
+                                    typesN[i] = mancudeType;
+                                    for (int node : hydroModel.hydroNodes) hydroPositionNodes.insert(node);
+                                    if (!hydroModel.oddRuns.empty()) {
+                                        // Provisionally mark the whole run as hydro so the
+                                        // numbering below is biased toward low locants for
+                                        // all of it; resolved into exactly one indicated-H
+                                        // node (lowest locant among the candidates) plus
+                                        // (run size - 1) hydro nodes once periphMap exists.
+                                        for (int node : hydroModel.oddRuns[0]) hydroPositionNodes.insert(node);
+                                        mancudeIndicatedHCandidates = hydroModel.indicatedHCandidates[0];
+                                    }
+                                    reclassified = true;
+                                }
+                            }
+                            if (!reclassified) {
+                                return {RingSystemNameResult{false, "Combining hydro-prefix carbocycle saturation with a saturated heterocyclic ring in the same fused system is not yet supported.", "", {}}};
+                            }
                         }
                     }
                 }
@@ -9386,6 +9573,31 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                     periphMap = computePeripheralNumbering3Ring(g, nodesN[0], nodesN[1], nodesN[2], bheads, substituentBearingNodes, true, hydroPositionNodes, principalRingAtomsSet);
                                 }
 
+                                // Mixed hydro-prefix and heterocycle saturation plan: resolve
+                                // the reclassified heterocycle's odd-length run into exactly
+                                // one indicated-H node now that real locants exist -- the
+                                // candidate with the lowest locant wins (real precedent:
+                                // 1H-azepine, the 1H-1,4-diazepine tautomer), and the rest of
+                                // the run stays in hydroPositionNodes where it was already
+                                // provisionally placed above.
+                                if (!mancudeIndicatedHCandidates.empty()) {
+                                    int bestNode = -1;
+                                    QString bestLocant;
+                                    for (int node : mancudeIndicatedHCandidates) {
+                                        if (!periphMap.count(node)) continue;
+                                        QString locStr = periphMap[node];
+                                        if (bestNode == -1 || locantLess(locStr, bestLocant)) {
+                                            bestNode = node;
+                                            bestLocant = locStr;
+                                        }
+                                    }
+                                    if (bestNode == -1) {
+                                        return {RingSystemNameResult{false, "Failed to compute peripheral locant for indicated hydrogen.", "", {}}};
+                                    }
+                                    hydroPositionNodes.erase(bestNode);
+                                    ihNodes.push_back(bestNode);
+                                }
+
                                 if (!collectedSubstituents.empty() || !ihNodes.empty() || !hydroPositionNodes.empty() || !principalRingAtomsSet.empty()) {
 
                                     // --- substituent locants ---
@@ -9470,14 +9682,16 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
 
                                     // P-31 hydro-prefix format: "<locants>-<count-word>hydro", e.g.
                                     // "4a,5,8,8a-tetrahydro". Count word by position count: 2->di,
-                                    // 4->tetra, 6->hexa, 8->octa (always even, since each saturated
-                                    // ring-internal position pairs with the loss of one mancude
-                                    // double bond) -- verified against real PINs this file already
-                                    // uses the same multiplying-prefix words for elsewhere (di/tetra/
-                                    // hexa/octa, not "bis"/"tetrakis" style, matching simple locant
-                                    // sets). An odd count or >8 positions is outside what this task
-                                    // scoped (6-membered all-carbon rings only) can produce; reject
-                                    // rather than guess a word for it. No trailing hyphen here
+                                    // 4->tetra, 6->hexa, 8->octa, 10->deca (always even, since each
+                                    // saturated ring-internal position pairs with the loss of one
+                                    // mancude double bond -- the azocane-shaped case's 10 adds the
+                                    // Mixed hydro-prefix and heterocycle saturation plan's one new
+                                    // entry) -- verified against real PINs this file already uses
+                                    // the same multiplying-prefix words for elsewhere (di/tetra/
+                                    // hexa/octa/deca, not "bis"/"tetrakis" style, matching simple
+                                    // locant sets). An odd count or >10 positions is outside what
+                                    // this mechanism can produce; reject rather than guess a word
+                                    // for it. No trailing hyphen here
                                     // (fix round 1, review finding B3b) -- the separator before
                                     // whatever follows (indicated-H or the parent name) is added
                                     // once, below, not baked into this prefix.
@@ -9488,6 +9702,7 @@ std::vector<RingSystemNameResult> nameLinearChainFusion(
                                             case 4: countWord = "tetra"; break;
                                             case 6: countWord = "hexa"; break;
                                             case 8: countWord = "octa"; break;
+                                            case 10: countWord = "deca"; break;
                                             default:
                                                 return {RingSystemNameResult{false, "Unsupported hydro-prefix position count.", "", {}}};
                                         }

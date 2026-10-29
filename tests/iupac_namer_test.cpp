@@ -1011,17 +1011,20 @@ int main() {
         // for mechanisms with zero current real-corpus wins (T3/T5 earlier in this
         // session used the same practice). Structurally validated via check_sssr.exe:
         // 3 rings (6,6,6), 14 heavy atoms, benzo+pyridine+piperidine linear chain.
-        {"c1c2c(cccc2)nc2CCNCc12", "benzo[1,2-b]piperidino[3,4-e]pyridine"},
-        // Adjacent-gap note (not this task's own regression guard, kept as a separate
-        // documented pin): same shape but the saturated ring's nitrogen sits directly
-        // adjacent to the ring-fusion carbon -- hits a separate, pre-existing,
-        // unrelated gap in exocyclic-amine substituent handling (not a hydro-prefix-
-        // plan bug; confirmed by locating the exact rejection message's origin,
-        // IupacNamer.cpp:13270/13298, far outside nameLinearChainFusion). This one does
-        // NOT exercise this task's own new code (the rejection fires upstream of
-        // classifyMonocyclicHeteroRing entirely) -- kept only to document the adjacent
-        // gap's message stays unchanged, not as Task 1's regression guard.
-        {"c1c2c(cccc2)nc2CCCNc12", "benzo[1,2-b]piperidino[2,3-e]pyridine"},
+        // Mixed hydro-prefix and heterocycle saturation plan (fixing the piperidine-
+        // shaped pin's own quinoline-collapse gap): the SAME root cause -- Indigo's
+        // indigoCountImplicitHydrogens returning -1, not 0, for a plain aromatic
+        // nitrogen with no explicit H/charge marker -- also blocked this molecule's
+        // benzo+pyridine+piperidine shape from matching the registry's 1,6-naphthyridine
+        // entry (2 ring nitrogens, one real-aromatic, one real-saturated, same skeleton-
+        // match mechanism just fixed for quinoline). Flips from the ad-hoc "piperidino"
+        // fusion-prefix construction to the real retained bicyclic name, same as
+        // quinoline. Confirmed live when RetainedRingMatcher.cpp's skeletonMatchRetainedSystem
+        // fix landed; both this pin and the one below changed together.
+        {"c1c2c(cccc2)nc2CCNCc12", "1,2,3,4-tetrahydrobenzo[b]1,6-naphthyridine"},
+        // Same shape, saturated ring's nitrogen one position further from the
+        // fusion carbon -- collapses to the 1,5-naphthyridine isomer instead.
+        {"c1c2c(cccc2)nc2CCCNc12", "1,2,3,4-tetrahydrobenzo[b]1,5-naphthyridine"},
         // Task 1's actual regression guard, fix round 2 (round 1's attempt below this
         // comment was wrong on two counts, caught by re-review: its own heteroatom
         // relationship arithmetic was wrong -- two N atoms 2 ring-positions apart is a
@@ -1197,33 +1200,41 @@ int main() {
         // Structurally validated via check_sssr.exe: 3 rings (6,6,5), 13 heavy atoms.
         {"c1ccc2[nH]c3CCCCc3c2c1", "", true, ""},
 
-        // Fix round 1 regression guard (review finding I4): this task's hydro
+        // Mixed hydro-prefix and heterocycle saturation plan: this task's hydro
         // mechanism (all-carbon ring reclassified to BENZENE + hydroPositionNodes)
         // and Task 1's saturated-heterocycle mechanism (a DIFFERENT ring in the same
-        // chain classified as PIPERIDINE) were never designed to compose -- before
-        // this guard, the saturated heteroring's own retained name ("piperidino")
-        // was combined with a hydro-prefix that only describes the OTHER ring,
-        // producing an invalid mixed name. Structurally validated via check_sssr.exe:
-        // 3 rings (6,6,6), 14 heavy atoms (1 saturated all-carbon ring, 1 aromatic
-        // benzo, 1 saturated N-heterocycle).
-        {"C1CCc2cc3NCCCc3cc2C1", "", true, "Combining hydro-prefix carbocycle saturation with a saturated heterocyclic ring in the same fused system is not yet supported."},
+        // chain classified as PIPERIDINE) were never designed to compose -- fixed by
+        // classifyMancudeFusionComponent, a new saturation-independent classifier
+        // that reclassifies the saturated heterocycle to its mancude identity
+        // (PIPERIDINE -> PYRIDINE, the same trick already used for the all-carbon
+        // ring), with computeRingCHydrogenationCandidates determining which of its
+        // own ring positions need a hydro-prefix vs. an indicated-H citation.
+        // Independently derived (not generated-output-as-oracle): piperidine-shaped
+        // externally confirmed against CAS 43129-84-6 (the real registered compound
+        // "Benzo[g]quinoline, 1,2,3,4,6,7,8,9-octahydro-"); the other five verified
+        // by first-principles valence/matching accounting against the plan's own
+        // table (hydro count, indicated-H count) and cross-checked against real
+        // 1H-azepine and the 1H-/2H-1,4-diazepine tautomer precedent. Structurally
+        // validated via check_sssr.exe: 3 rings (6,6,6), 14 heavy atoms (1 saturated
+        // all-carbon ring, 1 aromatic benzo, 1 saturated N-heterocycle). This exact
+        // shape additionally triggered the retained-ring registry's own
+        // RetainedRingMatcher.cpp fix (see "it should use retained name" below) --
+        // the quinoline-collapse happens there, not in this mechanism's own generic
+        // fusion citation, which is why this name is "...benzo[g]quinoline", not
+        // the generic "...benzo[1',2':4,5]benzo[1,2-b]pyridine" the other five use.
+        {"C1CCc2cc3NCCCc3cc2C1", "1,2,3,4,6,7,8,9-octahydrobenzo[g]quinoline"},
 
-        // Fix round 1, I4 re-review correction: the enumerated-RingType guard above
-        // missed that classifyMonocyclicHeteroRing's Hantzsch-Widman fallback
-        // returns the SAME RingType::GENERAL_HETEROCYCLE value for both its mancude
-        // branches and its saturated branches -- a type-based list can't tell those
-        // apart. Fixed by checking real per-atom saturation (heteroRingHasSaturatedAtom)
-        // instead of enumerating types. These 5 molecules (a saturated azepane,
-        // 1,4-diazepane, azocane, oxepane, and oxathiolane, each fused to a hydro-
-        // reclassified all-carbon ring) were all WRONGLY NAMED before this
-        // correction (e.g. "...tetrahydrobenzo[...]1-azepine" with the azepane's own
-        // saturation silently dropped); all 5 now reject the same way the
-        // PIPERIDINE case above already did.
-        {"C1CCc2cc3NCCCCc3cc2C1", "", true, "Combining hydro-prefix carbocycle saturation with a saturated heterocyclic ring in the same fused system is not yet supported."},
-        {"C1CCc2cc3NCCCNc3cc2C1", "", true, "Combining hydro-prefix carbocycle saturation with a saturated heterocyclic ring in the same fused system is not yet supported."},
-        {"C1CCc2cc3NCCCCCc3cc2C1", "", true, "Combining hydro-prefix carbocycle saturation with a saturated heterocyclic ring in the same fused system is not yet supported."},
-        {"C1CCc2cc3OCCCCc3cc2C1", "", true, "Combining hydro-prefix carbocycle saturation with a saturated heterocyclic ring in the same fused system is not yet supported."},
-        {"C1CCc2cc3OCSc3cc2C1", "", true, "Combining hydro-prefix carbocycle saturation with a saturated heterocyclic ring in the same fused system is not yet supported."},
+        // The other five supported shapes: azepane/oxepane and diazepine/oxathiole
+        // have no retained bicyclic name in this registry, so they use the generic
+        // fusion citation this mechanism builds directly. These were all WRONGLY
+        // REJECTED before this task's fix (the enumerated-RingType guard a prior
+        // task added couldn't tell a mancude GENERAL_HETEROCYCLE ring apart from a
+        // saturated one classified to the same RingType value).
+        {"C1CCc2cc3NCCCCc3cc2C1", "2,3,4,5,7,8,9,10-octahydro-1H-benzo[1',2':4,5]benzo[1,2-b]azepine"},
+        {"C1CCc2cc3NCCCNc3cc2C1", "2,3,4,5,7,8,9,10-octahydro-1H-benzo[1',2':4,5]benzo[1,2-b]1,4-diazepine"},
+        {"C1CCc2cc3NCCCCCc3cc2C1", "1,2,3,4,5,6,8,9,10,11-decahydrobenzo[1',2':4,5]benzo[1,2-b]1-azocine"},
+        {"C1CCc2cc3OCCCCc3cc2C1", "2,3,4,5,7,8,9,10-octahydrobenzo[1',2':4,5]benzo[1,2-b]oxepine"},
+        {"C1CCc2cc3OCSc3cc2C1", "5,6,7,8-tetrahydro-2H-benzo[1',2':4,5]benzo[1,2-d]1,3-oxathiole"},
 
         // Fix round 2 -> fix round 3 (re-review correction): the original pin here
         // ("c1ccc2cc3NCCCCc3cc2c1") was NOT actually mancude -- its "NCCCC" ring is
