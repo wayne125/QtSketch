@@ -741,8 +741,26 @@ int main() {
         {"c1cc[nH]c1", "pyrrole"},
         {"c1ccncc1", "pyridine"},
         {"N1C=CC=CC1", "1,2-dihydropyridine"},
-        {"CC1=CC=CNC1", "", true, "Saturated or partially unsaturated heterocycles are not yet supported; only the fully aromatic (maximally unsaturated) forms are supported in this phase."},
-        {"C1C=CNC=C1", "", true, "Saturated or partially unsaturated heterocycles are not yet supported; only the fully aromatic (maximally unsaturated) forms are supported in this phase."},
+        // Theme 4 (partially/fully saturated monocyclic heterocycles): the
+        // old narrow "whole molecule is a bare 6-atom ring, exact adjacent
+        // Kekule pattern" special case for 1,2-dihydropyridine has been
+        // replaced by a general SRP (saturated-ring-position) mechanism
+        // that also covers substituted rings and non-adjacent (1,4-)
+        // dihydro patterns.
+        {"CC1=CC=CNC1", "3-methyl-1,2-dihydropyridine"},
+        {"C1C=CNC=C1", "1,4-dihydropyridine"},
+
+        // Theme 4: fully saturated two-heteroatom 6-rings with no retained
+        // saturated name. N,N pairs (sep 1/2) cite the mancude parent's own
+        // retained word stem plus a hexahydro-prefix (hexahydropyridazine/
+        // hexahydropyrimidine); O,N and S,N pairs instead take the direct
+        // Hantzsch-Widman saturated "-inane" suffix (real PIN: 1,3-oxazinane).
+        {"C1CCCNN1", "hexahydropyridazine"},
+        {"C1CCNCN1", "hexahydropyrimidine"},
+        {"C1CCCNO1", "1,2-oxazinane"},
+        {"C1CCNCO1", "1,3-oxazinane"},
+        {"C1CCCNS1", "1,2-thiazinane"},
+        {"C1CCNCS1", "1,3-thiazinane"},
         {"c1ccccp1", "phosphinine"},
 
         // Other ring sizes (only cyclohexane/-ol/-ene/-carboxylic acid were tested at size 6)

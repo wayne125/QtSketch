@@ -959,7 +959,16 @@ static QString hwGeneralRingStem(int ringSize, const std::vector<int> &heteroAto
         }
         case 4: return saturated ? (anyN ? "etidine" : "etane") : "ete";   // Confirmed by PINs: oxete, azete, azetidine, oxetane
         case 5: return saturated ? (anyN ? "olidine" : "olane") : "ole";   // 5-ring always "ole" unsaturated
-        case 6: return hwSixMemberStem(heteroAtomicNumbers); // delegate to existing logic (see note above re: saturated)
+        case 6:
+            // Theme 4: confirmed against the real PIN "1,3-oxazinane" --
+            // any-N size-6 saturated stem is "inane", matching the
+            // size3/4/5 "any N -> -idine family" pattern. Only ever
+            // reached with saturated=true for an any-N composition (the
+            // O,N/S,N two-heteroatom case classifyMonocyclicHeteroRing
+            // routes here); a no-N size-6 saturated stem has no confirmed
+            // PIN and is intentionally left as the unsaturated spelling
+            // rather than guessed.
+            return saturated ? (anyN ? "inane" : hwSixMemberStem(heteroAtomicNumbers)) : hwSixMemberStem(heteroAtomicNumbers);
         case 7: return saturated ? "epane" : "epine"; // Confirmed by PINs: azepine, azepane
         case 8: return saturated ? "ocane" : "ocine"; // Confirmed by PIN: diazocine, azocane
         case 9: return saturated ? "onane" : "onine"; // Confirmed by PIN: dioxonine, azonane
@@ -1415,6 +1424,33 @@ static bool classifyMancudeFusionComponent(const Graph &g, const std::vector<int
                 outType = RingType::GENERAL_HETEROCYCLE;
                 return true;
             }
+        } else if (ringSize == 6) {
+            // Theme 4 (partially/fully saturated monocyclic heterocycles):
+            // an N,N pair at a 1,2-/1,3-relationship has no retained
+            // saturated name (pyridazine/pyrimidine themselves ARE the
+            // mancude parent a hexahydro-prefix cites; the 1,4-pair already
+            // has one -- piperazine -- via classifyMonocyclicHeteroRing's
+            // own allSingleInRing branch, so sep==3 is deliberately not
+            // added here). An O,N or S,N pair at the same relationship
+            // takes a different, systematic route instead (the real PIN
+            // "1,3-oxazinane" is a direct Hantzsch-Widman saturated name,
+            // not a hydro-prefixed mancude parent) -- handled earlier in
+            // classifyMonocyclicHeteroRing's own allSingleInRing branch,
+            // never reaching this function.
+            int z1 = g.nodes[ringHeteroNodes[0]].atomicNumber;
+            int z2 = g.nodes[ringHeteroNodes[1]].atomicNumber;
+            bool isNN = (z1 == 7 && z2 == 7);
+            if (isNN) {
+                int idx0 = -1, idx1 = -1;
+                for (int i = 0; i < ringSize; ++i) {
+                    if (ringCycle[i] == ringHeteroNodes[0]) idx0 = i;
+                    if (ringCycle[i] == ringHeteroNodes[1]) idx1 = i;
+                }
+                int d = std::abs(idx0 - idx1);
+                int sep = std::min(d, ringSize - d);
+                if (sep == 1) { outType = RingType::PYRIDAZINE; outNameRoot = "pyridazine"; return true; }
+                if (sep == 2) { outType = RingType::PYRIMIDINE; outNameRoot = "pyrimidine"; return true; }
+            }
         }
     }
     return false;
@@ -1507,7 +1543,7 @@ static RingCHydrogenationCandidates computeRingCHydrogenationCandidates(
     return result;
 }
 
-bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHeteroNodes, int ringSize, const std::vector<int> &ringCycle, RingType &outType, QString &outNameRoot, QString &outErrorMsg, bool allowSaturated = false, const std::vector<std::pair<int,int>> &fusionBonds = {}) {
+bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHeteroNodes, int ringSize, const std::vector<int> &ringCycle, RingType &outType, QString &outNameRoot, QString &outErrorMsg, bool allowSaturated = false, const std::vector<std::pair<int,int>> &fusionBonds = {}, std::vector<int> *outHydroNodes = nullptr) {
     outErrorMsg.clear();
     bool heteroAromatic = true;
     bool allSingleInRing = true;
@@ -1831,16 +1867,23 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
             // explicit branches above don't cover, e.g. a mixed O/S pair
             // (1,3-oxathiolane, a real ring found in lamivudine/
             // emtricitabine). hwGeneralRingStem's own saturated branch
-            // covers sizes 3-5 and 7-10 correctly; size 6 is excluded here
-            // because its systematic saturated-form suffix spelling for an
-            // UNretained combination (e.g. 1,2-/1,3-relationship pairs, or
-            // an O/S pair) is not yet confirmed against a PIN example, so a
-            // six-membered pair/relationship the branches above don't cover
-            // (hexahydropyridazine, hexahydropyrimidine, 1,4-oxathiane)
-            // remains a documented, separate follow-on. Reuses the same
-            // general Hantzsch-Widman machinery as the single-heteroatom
-            // fallback just above.
-            if ((ringSize >= 3 && ringSize <= 5) || (ringSize >= 7 && ringSize <= 10)) {
+            // covers sizes 3-5 and 7-10 correctly, and now also size 6 for
+            // an O,N or S,N pair (Theme 4: confirmed against the real PIN
+            // "1,3-oxazinane" -- hwGeneralRingStem's own size-6 saturated
+            // case returns "inane" for any-N composition, matching the
+            // size3/4/5 "any N -> -idine family" pattern, and the existing
+            // elision rules in buildGeneralHeterocycleName produce
+            // "1,2-oxazinane"/"1,3-oxazinane"/"1,2-thiazinane"/
+            // "1,3-thiazinane" correctly with no further changes needed).
+            // An N,N pair (sep 1/2) is deliberately excluded here even
+            // though it's also size 6/any-N: hexahydropyridazine/
+            // hexahydropyrimidine use the RETAINED pyridazine/pyrimidine
+            // word stem (no systematic "diazinane" spelling is in common
+            // use), so those fall through to the later mancude-parent +
+            // hexahydro-prefix mechanism instead (search
+            // "classifyMancudeFusionComponent" below).
+            if ((ringSize >= 3 && ringSize <= 5) || (ringSize >= 7 && ringSize <= 10) ||
+                (ringSize == 6 && (isON || isSN))) {
                 if (tryGeneralHeterocycle(g, ringHeteroNodes, ringSize, outNameRoot)) {
                     outType = RingType::GENERAL_HETEROCYCLE; return true;
                 }
@@ -1870,6 +1913,90 @@ bool classifyMonocyclicHeteroRing(const Graph &g, const std::vector<int> &ringHe
                     outType = RingType::SELENEPINE; outNameRoot = "selenepine"; return true;
                 } else if (hZ == 52) {
                     outType = RingType::TELLUREPINE; outNameRoot = "tellurepine"; return true;
+                }
+            }
+        }
+        // Theme 4: a monocyclic ring that is neither mancude (heteroAromatic)
+        // nor fully saturated (allSingleInRing) may still cite a mancude
+        // parent plus a hydro-prefix -- e.g. real 1,2- or 1,4-dihydropyridine
+        // (single-N, 2 extra H), or a fully saturated two-heteroatom 6-ring
+        // lacking its own retained saturated name (hexahydropyridazine,
+        // hexahydropyrimidine, 1,2-/1,3-oxazinane/thiazinane; fully
+        // saturated via this same SRP-count==ringSize branch, not the
+        // partial one). A ring atom with BOTH ring bonds single ("SRP",
+        // saturated ring position) is a hydro-prefix candidate. Validity
+        // (real precedent: 1,2-dihydropyridine's own 4-5 bond is single,
+        // NOT double, so "every non-SRP bond must be double" is wrong):
+        // split the cycle into runs of consecutive non-SRP atoms between
+        // SRP boundaries, and each run's internal bonds must alternate
+        // double,single,double,... starting with a double adjacent to each
+        // boundary -- the standard conjugated-polyene pattern, same
+        // even-run model as computeRingCHydrogenationCandidates (a run of
+        // odd length has no perfect matching and would need an indicated-H
+        // this mechanism doesn't attempt, so it's rejected, not guessed). A
+        // zero-length run (two SRPs directly adjacent) is trivially valid.
+        // Scoped to ring size 6 and the two counts this file has real
+        // naming infrastructure for (2 -> dihydro on a single heteroatom,
+        // ringSize -> hexahydro on a 1,2-/1,3- two-heteroatom pair);
+        // anything else falls through to the same honest rejection below
+        // rather than guess. Gated on fusionBonds.empty() -- a fused ring
+        // component has its own bridgehead-aware mechanism
+        // (computeRingCHydrogenationCandidates) already; this one assumes
+        // no bridgeheads and walks the whole cycle.
+        if (allowSaturated && outHydroNodes && ringSize == 6 && fusionBonds.empty()) {
+            auto bondOrderOf = [&](int a, int b) -> int {
+                for (const auto &gb : g.bonds) {
+                    if ((gb.u == a && gb.v == b) || (gb.u == b && gb.v == a)) return gb.order;
+                }
+                return -1;
+            };
+            std::set<int> srp;
+            for (int i = 0; i < ringSize; ++i) {
+                int u = ringCycle[i];
+                int prev = ringCycle[(i - 1 + ringSize) % ringSize];
+                int next = ringCycle[(i + 1) % ringSize];
+                if (bondOrderOf(u, prev) == 1 && bondOrderOf(u, next) == 1) srp.insert(u);
+            }
+            int srpCount = static_cast<int>(srp.size());
+            bool validMancudeMinusSrp = true;
+            if (srpCount > 0 && srpCount < ringSize) {
+                int startIdx = -1;
+                for (int i = 0; i < ringSize; ++i) {
+                    int prevIdx = (i - 1 + ringSize) % ringSize;
+                    if (!srp.count(ringCycle[i]) && srp.count(ringCycle[prevIdx])) { startIdx = i; break; }
+                }
+                std::vector<int> run;
+                for (int step = 0; step < ringSize; ++step) {
+                    int node = ringCycle[(startIdx + step) % ringSize];
+                    if (srp.count(node)) {
+                        int k = static_cast<int>(run.size());
+                        if (k > 0) {
+                            if (k % 2 != 0) {
+                                validMancudeMinusSrp = false;
+                            } else {
+                                for (int i = 0; i + 1 < k; ++i) {
+                                    int expected = (i % 2 == 0) ? 2 : 1;
+                                    if (bondOrderOf(run[i], run[i + 1]) != expected) { validMancudeMinusSrp = false; break; }
+                                }
+                            }
+                        }
+                        run.clear();
+                        if (!validMancudeMinusSrp) break;
+                    } else {
+                        run.push_back(node);
+                    }
+                }
+            }
+            bool dihydroCase = (ringHeteroNodes.size() == 1 && srpCount == 2);
+            bool hexahydroCase = (ringHeteroNodes.size() == 2 && srpCount == ringSize);
+            if (validMancudeMinusSrp && (dihydroCase || hexahydroCase)) {
+                RingType mancudeType;
+                QString mancudeNameRoot;
+                if (classifyMancudeFusionComponent(g, ringHeteroNodes, ringSize, ringCycle, mancudeType, mancudeNameRoot)) {
+                    outType = mancudeType;
+                    outNameRoot = mancudeNameRoot;
+                    if (outHydroNodes) *outHydroNodes = std::vector<int>(srp.begin(), srp.end());
+                    return true;
                 }
             }
         }
@@ -18822,64 +18949,13 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
         }
     }
 
-    // --- 1,2-dihydropyridine specific narrow case (P-31) ---
-    if (ringSize == 6 && g.nodes.size() == 6 && ringHeteroNodes.size() == 1 && g.nodes[ringHeteroNodes[0]].atomicNumber == 7) {
-        int nIdx = ringHeteroNodes[0];
-        const GraphNode &nNode = g.nodes[nIdx];
-        if (nNode.totalH == 1 && nNode.neighbors.size() == 2) {
-            int nei1 = nNode.neighbors[0];
-            int nei2 = nNode.neighbors[1];
-            int b1 = nNode.bondOrders[0];
-            int b2 = nNode.bondOrders[1];
-            if (b1 == 1 && b2 == 1) {
-                int satC = -1;
-                if (g.nodes[nei1].totalH == 2 && g.nodes[nei2].totalH == 1) satC = nei1;
-                else if (g.nodes[nei2].totalH == 2 && g.nodes[nei1].totalH == 1) satC = nei2;
-                
-                if (satC != -1) {
-                    auto getBondOrder = [&](int u, int v) {
-                        for (size_t k = 0; k < g.nodes[u].neighbors.size(); ++k) {
-                            if (g.nodes[u].neighbors[k] == v) return g.nodes[u].bondOrders[k];
-                        }
-                        return -1;
-                    };
-                    int path[6];
-                    path[0] = nIdx;
-                    path[1] = satC;
-                    for (int i = 2; i < 6; ++i) {
-                        int curr = path[i-1];
-                        int prev = path[i-2];
-                        int next = -1;
-                        for (int nei : g.nodes[curr].neighbors) {
-                            if (nei != prev) { next = nei; break; }
-                        }
-                        path[i] = next;
-                    }
-                    if (getBondOrder(path[0], path[1]) == 1 &&
-                        getBondOrder(path[1], path[2]) == 1 &&
-                        getBondOrder(path[2], path[3]) == 2 &&
-                        getBondOrder(path[3], path[4]) == 1 &&
-                        getBondOrder(path[4], path[5]) == 2 &&
-                        getBondOrder(path[5], path[0]) == 1) {
-                        bool hOk = true;
-                        for (int i = 2; i <= 5; ++i) {
-                            if (g.nodes[path[i]].totalH != 1) hOk = false;
-                        }
-                        if (hOk) {
-                            return {true, "1,2-dihydropyridine", ""};
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     RingType rType;
     QString parentNameRoot;
+    std::vector<int> monocyclicHydroNodes;
 
     if (!ringHeteroNodes.empty()) {
         QString classErr;
-        if (!classifyMonocyclicHeteroRing(g, ringHeteroNodes, ringSize, ringCycle, rType, parentNameRoot, classErr, true)) {
+        if (!classifyMonocyclicHeteroRing(g, ringHeteroNodes, ringSize, ringCycle, rType, parentNameRoot, classErr, true, {}, &monocyclicHydroNodes)) {
             return {false, "", classErr};
         }
     } else {
@@ -19337,6 +19413,7 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
         std::vector<int> substituentLocants;
         std::vector<std::pair<QString, int>> namedSubstituents;
         std::set<int> handledBranchStereoIds;
+        std::vector<int> hydroLocants; // Theme 4: this candidate's locants for monocyclicHydroNodes
     };
 
     std::vector<RingSignature> ringSignatures;
@@ -19356,6 +19433,10 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                 sig.heteroatomSeniorityAtLocants.push_back(hwSeniorityRank(z));
             }
         }
+        for (int node : monocyclicHydroNodes) {
+            sig.hydroLocants.push_back(locantMap[node]);
+        }
+        std::sort(sig.hydroLocants.begin(), sig.hydroLocants.end());
 
         for (int pC : principalCarbons) {
             if (ringNodeSet.count(pC)) {
@@ -19807,6 +19888,12 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
             if (a.heteroatomLocants != b.heteroatomLocants) return a.heteroatomLocants < b.heteroatomLocants;
             if (a.heteroatomSeniorityAtLocants != b.heteroatomSeniorityAtLocants) return a.heteroatomSeniorityAtLocants < b.heteroatomSeniorityAtLocants;
             if (a.principalLocants != b.principalLocants) return a.principalLocants < b.principalLocants;
+            // Theme 4: lowest-locants tiebreak for the hydro-prefix positions
+            // (P-31.1.4.3) -- otherwise two candidates tied on every other
+            // criterion (e.g. an unsubstituted dihydropyridine, where both
+            // the fwd and bwd rotation seed from the same heteroatom locant
+            // 1) fall through to arbitrary candidate-vector order.
+            if (a.hydroLocants != b.hydroLocants) return a.hydroLocants < b.hydroLocants;
             if (a.doubleBondLocants != b.doubleBondLocants) return a.doubleBondLocants < b.doubleBondLocants;
             if (a.tripleBondLocants != b.tripleBondLocants) return a.tripleBondLocants < b.tripleBondLocants;
             if (a.substituentLocants != b.substituentLocants) return a.substituentLocants < b.substituentLocants;
@@ -19969,6 +20056,45 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
     for (size_t i = 0; i < bestSig.ringChain.size(); ++i) {
         graphIdToLocant[bestSig.ringChain[i]] = static_cast<int>(i + 1);
     }
+
+    // Theme 4: cite the SRP positions classifyMonocyclicHeteroRing found
+    // (dihydro on a single heteroatom, or hexahydro on a two-heteroatom
+    // ring with no retained saturated name) as a hydro-prefix on the
+    // mancude parent name, fused directly with no hyphen (real PINs write
+    // "1,2-dihydropyridine"/"hexahydropyridazine" as one word, matching
+    // this file's own fused-ring hydro-prefix convention). The all-ring
+    // (hexahydro) case omits locants, same convention as
+    // "decahydronaphthalene" -- unambiguous when every ring position is
+    // cited.
+    if (!monocyclicHydroNodes.empty()) {
+        std::vector<int> hydroLocs;
+        for (int node : monocyclicHydroNodes) {
+            if (!graphIdToLocant.count(node)) {
+                return {false, "", "Failed to compute locant for hydro-prefix position."};
+            }
+            hydroLocs.push_back(graphIdToLocant[node]);
+        }
+        std::sort(hydroLocs.begin(), hydroLocs.end());
+        QString countWord;
+        switch (hydroLocs.size()) {
+            case 2: countWord = "di"; break;
+            case 6: countWord = "hexa"; break;
+            default:
+                return {false, "", "Unsupported hydro-prefix position count."};
+        }
+        if (static_cast<int>(hydroLocs.size()) == ringSize) {
+            // A locant-led parent name (e.g. "1,2-oxazine", built by
+            // buildCanonicalGeneralHeterocycleName) needs the hyphen the
+            // bare-word retained names (pyridazine, pyrimidine) don't.
+            QString sep = (!parentNameRoot.isEmpty() && parentNameRoot[0].isDigit()) ? "-" : "";
+            parentNameRoot = countWord + "hydro" + sep + parentNameRoot;
+        } else {
+            QStringList locQList;
+            for (int l : hydroLocs) locQList.append(QString::number(l));
+            parentNameRoot = locQList.join(",") + "-" + countWord + "hydro" + parentNameRoot;
+        }
+    }
+
     StereoResult ezRes = processDoubleBondStereo(mol, g, ringNodeSet, graphIdToLocant, stereoByGraphId);
     if (!ezRes.ok) {
         return {false, "", ezRes.error};
