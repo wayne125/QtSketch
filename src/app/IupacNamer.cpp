@@ -20067,7 +20067,7 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                                     if (oNei != rNode) { alkylNei = oNei; break; }
                                 }
                                 if (alkylNei != -1) {
-                                    QString alkylName = nameBranchGraph(g, alkylNei, nei, {}, {}, {}, nullptr, mol);
+                                    QString alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings, {}, {}, nullptr, mol);
                                     if (alkylName.isEmpty()) {
                                         // leave subName empty -- unnameable substituent
                                     } else if (alkylName.startsWith("(") && alkylName.endsWith(")")) {
@@ -20148,7 +20148,7 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                                 if (sNei != rNode) { alkylNei = sNei; break; }
                             }
                             if (alkylNei != -1) {
-                                QString alkylName = nameBranchGraph(g, alkylNei, nei, {}, {}, {}, nullptr, mol);
+                                QString alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings, {}, {}, nullptr, mol);
                                 subName = wrapCompoundSuffix(alkylName, "sulfanyl");
                             }
                         } else if (sulfoxideSulfurs.count(nei)) {
@@ -20183,7 +20183,7 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                                 if (sNei != rNode) { alkylNei = sNei; break; }
                             }
                             if (alkylNei != -1) {
-                                QString alkylName = nameBranchGraph(g, alkylNei, nei, {}, {}, {}, nullptr, mol);
+                                QString alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings, {}, {}, nullptr, mol);
                                 subName = wrapCompoundSuffix(alkylName, "selanyl");
                             }
                         } else if (selenoxideSeleniums.count(nei)) {
@@ -20218,7 +20218,7 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                                 if (sNei != rNode) { alkylNei = sNei; break; }
                             }
                             if (alkylNei != -1) {
-                                QString alkylName = nameBranchGraph(g, alkylNei, nei, {}, {}, {}, nullptr, mol);
+                                QString alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings, {}, {}, nullptr, mol);
                                 subName = wrapCompoundSuffix(alkylName, "tellanyl");
                             }
                         } else if (telluroxideTelluriums.count(nei)) {
@@ -21214,7 +21214,7 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                                     if (oNei != rNode) { alkylNei = oNei; break; }
                                 }
                                 if (alkylNei != -1) {
-                                    QString alkylName = nameBranchGraph(g, alkylNei, nei, {}, {}, {}, nullptr, mol);
+                                    QString alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings, {}, {}, nullptr, mol);
                                     if (alkylName.isEmpty()) {
                                         // leave subName empty -- unnameable substituent
                                     } else if (alkylName.startsWith("(") && alkylName.endsWith(")")) {
@@ -21294,7 +21294,7 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                                     if (sNei != rNode) { alkylNei = sNei; break; }
                                 }
                                 if (alkylNei != -1) {
-                                    QString alkylName = nameBranchGraph(g, alkylNei, nei, {}, {}, {}, nullptr, mol);
+                                    QString alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings, {}, {}, nullptr, mol);
                                     subName = wrapCompoundSuffix(alkylName, "sulfanyl");
                                 }
                             } else if (sulfoxideSulfurs.count(nei)) {
@@ -21329,7 +21329,7 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                                     if (sNei != rNode) { alkylNei = sNei; break; }
                                 }
                                 if (alkylNei != -1) {
-                                    QString alkylName = nameBranchGraph(g, alkylNei, nei, {}, {}, {}, nullptr, mol);
+                                    QString alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings, {}, {}, nullptr, mol);
                                     subName = wrapCompoundSuffix(alkylName, "selanyl");
                                 }
                             } else if (selenoxideSeleniums.count(nei)) {
@@ -21364,7 +21364,7 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                                     if (sNei != rNode) { alkylNei = sNei; break; }
                                 }
                                 if (alkylNei != -1) {
-                                    QString alkylName = nameBranchGraph(g, alkylNei, nei, {}, {}, {}, nullptr, mol);
+                                    QString alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings, {}, {}, nullptr, mol);
                                     subName = wrapCompoundSuffix(alkylName, "tellanyl");
                                 }
                             } else if (telluroxideTelluriums.count(nei)) {
@@ -26733,7 +26733,7 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                             int alkylNei = -1;
                             for (int sNei : g.nodes[nei].neighbors) { if (sNei != rNode) { alkylNei = sNei; break; } }
                             if (alkylNei != -1) {
-                                QString alkylName = nameBranchGraph(g, alkylNei, nei, {}, {}, {}, nullptr, mol);
+                                QString alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings, {}, {}, nullptr, mol);
                                 subName = wrapCompoundSuffix(alkylName, "sulfanyl");
                             }
                         }

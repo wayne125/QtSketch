@@ -6103,6 +6103,39 @@ int main() {
     }
 
     {
+        // A ring reached through an ether linkage, where that ring loses the
+        // parent-ring selection, was silently misnamed as a straight alkyl
+        // chain instead of a ring substituent: namePhase2Monocyclic's own
+        // generic ether/thioether-analogue substituent dispatch (9 identical
+        // call sites across the file) passed an EMPTY ring list into
+        // nameBranchGraph, disabling its ring-detection entirely, so a
+        // 6-membered benzene ring walked through this path came back named
+        // "hexyl" (e.g. "c1ccc(OC2CCCCC2)cc1" -> "hexyloxycyclohexane"
+        // instead of "phenoxycyclohexane"). Fixed by passing the real ring
+        // list (allSSSRRings) at all 9 sites.
+        static const std::pair<const char*, const char*> ringAsChainCases[] = {
+            {"c1ccc(OC2CCCCC2)cc1", "phenoxycyclohexane"},
+            {"C1CCCCC1Oc1ccccc1", "cyclohexyloxybenzene"},
+            {"Clc1ccccc1OC1CCCCC1", "(2-chlorophenyl)oxycyclohexane"},
+            {"Clc1ccc(OC2CCCCC2)cc1", "(4-chlorophenyl)oxycyclohexane"},
+        };
+        for (const auto &tc : ringAsChainCases) {
+            int m = indigoLoadMoleculeFromString(tc.first);
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            std::string n = r.name.toStdString();
+            if (r.success && n == tc.second) {
+                std::cout << "[PASS] Ring-as-chain ether misnaming " << tc.first << ": " << n << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] Ring-as-chain ether misnaming " << tc.first << " expected '" << tc.second << "' -> got "
+                           << (r.success ? ("name='" + n + "'") : ("error='" + r.error.toStdString() + "'")) << "\n";
+                failed++;
+            }
+        }
+    }
+
+    {
         // Regression: chain with carboxylic acid should still win over plain phenyl ring
         // Carboxylic acid (rank 1) outranks any group on an unsubstituted phenyl
         int m = indigoLoadMoleculeFromString("O=C(O)c1ccccc1");
