@@ -898,6 +898,16 @@ int main() {
         {"CS(=O)(=O)N(C)CC", "N-ethyl-N-methylmethanesulfonamide"},  // N,N-di different substituents, alphabetized
         {"CS(=O)N(C)C", "N,N-dimethylmethanesulfinamide"},  // sulfinamide analogue
         {"CS(=O)(=O)NC(C)C", "N-(1-methylethyl)methanesulfonamide"}, // branched N-sub (Wave 2, Item 1A)
+        // SULFONAMIDE's own suffix locant must be omitted even with another
+        // ring substituent present (real PIN convention) -- confirmed real
+        // regression via tamsulosin; these three pin the fix directly.
+        {"O=S(=O)(N)c1ccccc1", "benzenesulfonamide"}, // no other substituent (already worked)
+        {"Cc1ccccc1S(=O)(=O)N", "2-methylbenzenesulfonamide"}, // must NOT regress to "...benzene-1-sulfonamide"
+        {"COc1ccc(cc1)S(=O)(=O)N", "4-methoxybenzenesulfonamide"},
+        // Negative control: ALCOHOL/AMINE genuinely keep their own locant when
+        // another substituent is present (real PIN convention differs here) --
+        // must stay unaffected by the SULFONAMIDE/SULFINAMIDE-only omission above.
+        {"CC1CCCCC1N", "2-methylcyclohexan-1-amine"},
         // N-cyclohexylmethanesulfonamide: ring N-SUBSTITUENT (not the N itself being
         // a ring atom). Sulfonamide sulfur classification used to require an
         // unsubstituted N, so any ring-bearing sulfonamide (anywhere in the
@@ -6024,7 +6034,7 @@ int main() {
         indigoFree(m);
         std::string n = r.name.toStdString();
         std::string err = r.error.toStdString();
-        if (r.success && n == "2-methoxy-5-(2-methylaminoethyl)benzene-1-sulfonamide") {
+        if (r.success && n == "2-methoxy-5-(2-methylaminoethyl)benzenesulfonamide") {
             std::cout << "[PASS] Ring-chain seniority (sulfonamide vs amine): ring correctly selected as parent, secondary amine chain now correctly named -> " << n << "\n";
             passed++;
         } else {
@@ -6037,8 +6047,8 @@ int main() {
         // Tamsulosin free base (2 rings): previously produced the same garbled
         // double-hyphen artifact ("...propane--sulfonamide"), then (after that
         // seniority fix) an honest rejection, since no two-disjoint-ring
-        // dispatch existed for this shape at all. Now handled by the
-        // ringCount==2 "try each ring as the Phase 2 monocyclic parent" fix
+        // dispatch existed for this shape at all. Handled by the ringCount==2
+        // "try each ring as the Phase 2 monocyclic parent" fix
         // (phase2ForcedRingNodeSet + namePhase2Monocyclic, tried senior-ring-
         // first via compareRingSeniority): the sulfonamide-bearing ring
         // correctly wins as parent, and the second, unrelated ring -- buried
@@ -6046,29 +6056,48 @@ int main() {
         // sulfonamide's N -- gets named via the SAME general ring-substituent
         // machinery any ordinary ring substituent already used.
         //
-        // The result is structurally correct but not a polished PIN -- two
-        // separate, pre-existing gaps in naming code this fix didn't touch,
-        // newly exposed because this molecule could never reach them before:
-        // (1) the phenyl->phenoxy ether contraction in nameExocyclicRingSubstituent
-        // only special-cases a bare "phenyl", not a substituted one, so
-        // "(2-ethoxyphenyl)oxy" prints instead of the contracted
-        // "(2-ethoxyphenoxy)"; (2) the sulfonamide suffix's own implied
-        // locant isn't omitted even though convention drops it here
-        // ("benzene-1-sulfonamide" instead of "benzenesulfonamide"). Real PIN
-        // (PubChem/DrugBank): "(R)-5-(2-((2-(2-ethoxyphenoxy)ethyl)amino)-
-        // propyl)-2-methoxybenzenesulfonamide". Pinning today's actual,
-        // structurally-equivalent output; the two cosmetic gaps are separate,
-        // unrelated follow-ups, not regressions from this fix.
+        // That fix alone exposed (not introduced) two separate, pre-existing
+        // naming-quality gaps, both now also fixed: (1) nameBranchGraph's
+        // ether dispatch only contracted a BARE "phenyl" to "phenoxy", not a
+        // substituted one, so a substituted phenoxy substituent printed as
+        // the uncontracted "(2-ethoxyphenyl)oxy"; mirrored into
+        // nameExocyclicRingSubstituent's sibling copy too. (2) SULFONAMIDE/
+        // SULFINAMIDE's own suffix locant wasn't omitted when other ring
+        // substituents were present, unlike real PIN practice
+        // ("4-methylbenzenesulfonamide", not "...benzene-1-sulfonamide") --
+        // scoped to just those two types, since ALCOHOL/AMINE genuinely keep
+        // theirs ("2-methylcyclohexan-1-amine" is correct and unchanged).
+        // Now matches the real PubChem/DrugBank PIN exactly.
         int m = indigoLoadMoleculeFromString("CCOc1ccccc1OCCN[C@H](C)Cc1ccc(OC)c(S(N)(=O)=O)c1");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
         std::string n = r.name.toStdString();
         std::string err = r.error.toStdString();
-        if (r.success && n == "5-[(2R)-2-[(2-(2-ethoxyphenyl)oxyethyl)amino]propyl]-2-methoxybenzene-1-sulfonamide") {
+        if (r.success && n == "5-[(2R)-2-[(2-(2-ethoxyphenoxy)ethyl)amino]propyl]-2-methoxybenzenesulfonamide") {
             std::cout << "[PASS] Tamsulosin free base (2 rings): " << n << "\n";
             passed++;
         } else {
             std::cout << "[FAIL] Tamsulosin free base (2 rings) -> got success=" << r.success << " name='" << n << "' err='" << err << "'\n";
+            failed++;
+        }
+    }
+
+    {
+        // Substituted-phenoxy ether contraction, ring-rooted producer side
+        // (nameExocyclicRingSubstituent's sibling copy of the fix verified
+        // above via tamsulosin's chain-rooted nameBranchGraph copy): the
+        // ring (cyclohexane) wins as parent, and its "(4-chlorophenoxy)methyl"
+        // substituent must print the contracted form, not the literal,
+        // uncontracted "(4-chlorophenyl)oxymethyl".
+        int m = indigoLoadMoleculeFromString("Clc1ccc(OCC2CCCCC2)cc1");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        std::string n = r.name.toStdString();
+        if (r.success && n == "[(4-chlorophenoxy)methyl]cyclohexane") {
+            std::cout << "[PASS] Ring-rooted substituted-phenoxy contraction: " << n << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Ring-rooted substituted-phenoxy contraction -> got success=" << r.success << " name='" << n << "' err='" << r.error.toStdString() << "'\n";
             failed++;
         }
     }
@@ -6122,7 +6151,7 @@ int main() {
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
         std::string n = r.name.toStdString();
-        if (r.success && n == "4-aminomethylbenzene-1-sulfonamide") {
+        if (r.success && n == "4-aminomethylbenzenesulfonamide") {
             std::cout << "[PASS] MAFENIDE: ring correctly wins parent selection, real name -> " << n << "\n";
             passed++;
         } else {

@@ -2436,7 +2436,16 @@ QString nameExocyclicRingSubstituent(const Graph &g, int rNode, int nei, int ord
                 QString alkylName = nameBranchGraph(g, alkylNei, nei, allIndependentRings, {}, {}, nullptr, mol);
                 if (alkylName.isEmpty()) return QString();
                 if (alkylName.startsWith("(") && alkylName.endsWith(")")) {
-                    subName = "[(" + alkylName.mid(1, alkylName.length() - 2) + ")oxy]";
+                    // Same substituted-phenyl -> phenoxy contraction as the
+                    // sibling copy in nameBranchGraph's own ether dispatch
+                    // (see its comment) -- kept in sync so the two don't drift.
+                    QString inner = alkylName.mid(1, alkylName.length() - 2);
+                    if (inner.endsWith("phenyl")) {
+                        inner.chop(2);
+                        subName = "(" + inner + "oxy)";
+                    } else {
+                        subName = "[(" + inner + ")oxy]";
+                    }
                 } else if (alkylName.startsWith("[") && alkylName.endsWith("]")) {
                     subName = "{[" + alkylName.mid(1, alkylName.length() - 2) + "]oxy}";
                 } else if (alkylName == "methyl" || alkylName == "ethyl" || alkylName == "propyl" || alkylName == "butyl" || alkylName == "phenyl") {
@@ -5905,6 +5914,18 @@ QString nameBranchGraph(const Graph &g, int rootIdx, int parentIdx, const std::v
             QString alkylName = nameBranchGraph(g, alkylNei, rootIdx, allIndependentRings, newForbidden, {}, nullptr, mol);
             if (alkylName.isEmpty()) return "";
             if (alkylName.startsWith("(") && alkylName.endsWith(")")) {
+                // Retained-prefix contraction: a SUBSTITUTED phenyl still
+                // contracts to phenoxy, same as the bare "phenyl" case below
+                // ("(2-ethoxyphenyl)" -> "(2-ethoxyphenoxy)", not the literal,
+                // uncontracted "(2-ethoxyphenyl)oxy" -- confirmed live via
+                // tamsulosin's own 2-ethoxyphenoxyethylamino substituent).
+                // Deliberately phenyl-only: cyclohexyl/naphthyl/propan-2-yl +
+                // oxy have no equivalent established contracted form here.
+                QString inner = alkylName.mid(1, alkylName.length() - 2);
+                if (inner.endsWith("phenyl")) {
+                    inner.chop(2);
+                    return "(" + inner + "oxy)";
+                }
                 return alkylName + "oxy";
             } else if (alkylName == "methyl" || alkylName == "ethyl" || alkylName == "propyl" || alkylName == "butyl" || alkylName == "phenyl") {
                 alkylName.chop(2);
@@ -20831,7 +20852,21 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                 // single-substituent ring (matches the AMIDE/THIOAMIDE isExocyclic
                 // branch above, whose own omission check never depended on
                 // prefixPart either).
-                if (pCount == 1 && prefixLocantsMap.empty() && allCarbon) {
+                //
+                // SULFONAMIDE/SULFINAMIDE additionally omit their own suffix
+                // locant even when OTHER ring substituents are present (real
+                // PIN precedent: "4-methylbenzenesulfonamide", not
+                // "4-methylbenzene-1-sulfonamide" -- confirmed against
+                // tamsulosin's actual PubChem/DrugBank name). This is
+                // deliberately type-scoped, not a blanket rule: ALCOHOL/AMINE
+                // keep their locant when another substituent exists ("2-
+                // methylcyclohexan-1-amine" is the real, confirmed-live
+                // current -- and correct -- output), so they're left on the
+                // stricter prefixLocantsMap.empty() test below unchanged.
+                bool omitSuffixLocant = (pCount == 1 && allCarbon) &&
+                    (prefixLocantsMap.empty() ||
+                     winningType == GroupType::SULFONAMIDE || winningType == GroupType::SULFINAMIDE);
+                if (omitSuffixLocant) {
                     fullName = prefixPart + stem + sfx;
                 } else {
                     QStringList lStrs;
