@@ -28166,6 +28166,31 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                         }
                     }
                 }
+            } else {
+                // Two disjoint rings with no direct ring-to-ring bond -- e.g.
+                // connected via an amide, thioamide, sulfonamide, or sulfinamide
+                // linker (confirmed live bug: O=C(NC1CCCCC1)C1CCCCC1 fell through
+                // every branch above into nameNaphthaleneFusion's "not naphthalene"
+                // rejection, even though the two rings aren't fused at all).
+                // Try each ring as the Phase 2 monocyclic parent, senior ring
+                // first per P-44.2.1 as a tie-break (not load-bearing for
+                // correctness -- whichever ring actually carries the principal
+                // group is the one namePhase2Monocyclic + tryBuildPrincipalNSubstituentPrefix
+                // (b995ffe) will succeed on; the wrong ring is expected to fail
+                // cleanly via nameChainParentWithRingSubstituent's own ring-
+                // membership guard when the chain walk reaches the other ring).
+                int cmp = compareRingSeniority(g, ring1Nodes, ring2Nodes);
+                std::vector<const std::set<int> *> candRings =
+                    (cmp < 0) ? std::vector<const std::set<int> *>{&ring2Nodes, &ring1Nodes}
+                              : std::vector<const std::set<int> *>{&ring1Nodes, &ring2Nodes};
+                for (const std::set<int> *candRing : candRings) {
+                    phase2ForcedRingNodeSet = *candRing;
+                    IupacResult res = namePhase2Monocyclic();
+                    if (res.success) {
+                        return res;
+                    }
+                }
+                phase2ForcedRingNodeSet.clear();
             }
         }
 

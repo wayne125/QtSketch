@@ -493,6 +493,27 @@ int main() {
         // amide path already built "N-methyl" prefixes via nameBranchGraph; the
         // ring-parent path never did until tryBuildPrincipalNSubstituentPrefix.
         {"C1CCCCC1C(=O)NC", "N-methylcyclohexanecarboxamide"},
+        // Two SEPARATE, non-bonded rings (ringCount==2), one the acyl parent,
+        // the other the N-substituent -- previously fell through every
+        // ringCount==2 special case (none require a direct ring-to-ring bond
+        // or a shared atom) straight into nameNaphthaleneFusion's unrelated
+        // "not naphthalene" rejection. Fixed by trying each ring as the Phase 2
+        // monocyclic parent (phase2ForcedRingNodeSet + namePhase2Monocyclic,
+        // senior ring first per compareRingSeniority as a non-load-bearing
+        // tie-break); the wrong ring is expected to fail via
+        // nameChainParentWithRingSubstituent's own ring-membership guard.
+        {"O=C(NC1CCCCC1)C1CCCCC1", "N-cyclohexylcyclohexanecarboxamide"},
+        // Reversed ring discovery order in the SMILES -- confirms the result
+        // doesn't depend on which ring SSSR happens to find first.
+        {"C1CCCCC1NC(=O)C1CCCCC1", "N-cyclohexylcyclohexanecarboxamide"},
+        {"S=C(NC1CCCCC1)C1CCCCC1", "N-cyclohexylcyclohexanecarbothioamide"},
+        {"O=S(=O)(NC1CCCCC1)C1CCCCC1", "N-cyclohexylcyclohexanesulfonamide"},
+        {"O=S(NC1CCCCC1)C1CCCCC1", "N-cyclohexylcyclohexanesulfinamide"},
+        {"O=C(Nc1ccccc1)c1cccnc1", "N-phenylpyridine-3-carboxamide"},
+        // All-carbon acyl parent + heteroaromatic N-substituent (the reverse
+        // pairing from the row above) -- the wrong-ring attempt (pyridine
+        // forced as parent) must fail even though pyridine has a heteroatom.
+        {"O=C(Nc1cccnc1)C1CCCCC1", "N-(pyridin-3-yl)cyclohexanecarboxamide"},
         // Ring-attached thioamide carbon misclassified as THIONE when its N bore
         // any substituent (classification required an unsubstituted NH2, unlike
         // the AMIDE branch right above it) -- THIONE isn't an exocyclic-to-ring
@@ -6014,19 +6035,37 @@ int main() {
 
     {
         // Tamsulosin free base (2 rings): previously produced the same garbled
-        // double-hyphen artifact ("...propane--sulfonamide"). The multi-ring case
-        // of this same fix (a ring keeps its own principal group as a real parent
-        // candidate rather than being pre-committed to substituent status) also
-        // now correctly avoids the garbled output, honestly rejecting instead
-        // (this exact 2-ring shape needs separate, not-yet-implemented fused-ring
-        // support, unrelated to the seniority bug this task fixed).
+        // double-hyphen artifact ("...propane--sulfonamide"), then (after that
+        // seniority fix) an honest rejection, since no two-disjoint-ring
+        // dispatch existed for this shape at all. Now handled by the
+        // ringCount==2 "try each ring as the Phase 2 monocyclic parent" fix
+        // (phase2ForcedRingNodeSet + namePhase2Monocyclic, tried senior-ring-
+        // first via compareRingSeniority): the sulfonamide-bearing ring
+        // correctly wins as parent, and the second, unrelated ring -- buried
+        // inside the N-substituent's own ether chain, nowhere near the
+        // sulfonamide's N -- gets named via the SAME general ring-substituent
+        // machinery any ordinary ring substituent already used.
+        //
+        // The result is structurally correct but not a polished PIN -- two
+        // separate, pre-existing gaps in naming code this fix didn't touch,
+        // newly exposed because this molecule could never reach them before:
+        // (1) the phenyl->phenoxy ether contraction in nameExocyclicRingSubstituent
+        // only special-cases a bare "phenyl", not a substituted one, so
+        // "(2-ethoxyphenyl)oxy" prints instead of the contracted
+        // "(2-ethoxyphenoxy)"; (2) the sulfonamide suffix's own implied
+        // locant isn't omitted even though convention drops it here
+        // ("benzene-1-sulfonamide" instead of "benzenesulfonamide"). Real PIN
+        // (PubChem/DrugBank): "(R)-5-(2-((2-(2-ethoxyphenoxy)ethyl)amino)-
+        // propyl)-2-methoxybenzenesulfonamide". Pinning today's actual,
+        // structurally-equivalent output; the two cosmetic gaps are separate,
+        // unrelated follow-ups, not regressions from this fix.
         int m = indigoLoadMoleculeFromString("CCOc1ccccc1OCCN[C@H](C)Cc1ccc(OC)c(S(N)(=O)=O)c1");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
         std::string n = r.name.toStdString();
         std::string err = r.error.toStdString();
-        if (!r.success && err == "Fused ring systems other than naphthalene are not supported in this phase.") {
-            std::cout << "[PASS] Tamsulosin free base (2 rings): garbled double-hyphen artifact eliminated, honest rejection -> err='" << err << "'\n";
+        if (r.success && n == "5-[(2R)-2-[(2-(2-ethoxyphenyl)oxyethyl)amino]propyl]-2-methoxybenzene-1-sulfonamide") {
+            std::cout << "[PASS] Tamsulosin free base (2 rings): " << n << "\n";
             passed++;
         } else {
             std::cout << "[FAIL] Tamsulosin free base (2 rings) -> got success=" << r.success << " name='" << n << "' err='" << err << "'\n";
