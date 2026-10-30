@@ -2334,16 +2334,57 @@ int main() {
     }
 
     {
-        // Substituted ring assembly regression test (must reject)
+        // Substituted two-ring assembly: Cl sits on the ring carbon adjacent
+        // to the inter-ring bond's own attachment atom (ring-closure bond
+        // ties the Cl-bearing atom directly to the atom that bonds to the
+        // second ring) -- that's the 2-position, not 4 as an earlier comment
+        // here wrongly assumed. Now supported via computeRingAssemblyCandidates.
         int m = indigoLoadMoleculeFromString("Clc1ccccc1-c1ccccc1");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
-        if (!r.success) {
-            std::cout << "[PASS] Substituted ring assembly (4-chlorobiphenyl) rejects cleanly -> " << r.error.toStdString() << "\n";
+        if (r.success && r.name == "2-chlorobiphenyl") {
+            std::cout << "[PASS] Substituted ring assembly: " << r.name.toStdString() << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] Substituted ring assembly should reject -> got name='" << r.name.toStdString() << "'\n";
+            std::cout << "[FAIL] Substituted ring assembly (2-chlorobiphenyl) -> got "
+                       << (r.success ? ("name='" + r.name.toStdString() + "'") : ("error='" + r.error.toStdString() + "'")) << "\n";
             failed++;
+        }
+    }
+
+    {
+        // Substituted two-ring assembly coverage: each halogen, both-ring
+        // substitution, methyl, alphabetical tie-break, intrinsic-locant
+        // heterocycles (bipyridine/bifuran/bithiophene), and a saturated
+        // (bicyclohexyl) case. All route through computeRingAssemblyCandidates.
+        static const std::pair<const char*, const char*> assemblyCases[] = {
+            {"Clc1ccc(-c2ccccc2)cc1", "4-chlorobiphenyl"},
+            {"Clc1cccc(-c2ccccc2)c1", "3-chlorobiphenyl"},
+            {"Clc1ccc(-c2ccc(Cl)cc2)cc1", "4,4'-dichlorobiphenyl"},
+            {"Cc1ccc(-c2ccccc2)cc1", "4-methylbiphenyl"},
+            {"Fc1ccccc1-c1ccccc1", "2-fluorobiphenyl"},
+            {"Brc1ccccc1-c1ccccc1", "2-bromobiphenyl"},
+            {"Ic1ccccc1-c1ccccc1", "2-iodobiphenyl"},
+            {"Clc1ccc(-c2ccccn2)nc1", "5-chloro-2,2'-bipyridine"},
+            {"c1ccc(-c2cccc(C)n2)nc1", "6-methyl-2,2'-bipyridine"},
+            {"Cc1ccc(-c2cccs2)s1", "5-methyl-2,2'-bithiophene"},
+            {"Cc1ccc(-c2ccco2)o1", "5-methyl-2,2'-bifuran"},
+            {"CC1CCC(-C2CCCCC2)CC1", "4-methylbicyclohexyl"},
+            {"Clc1ccc(C)c(-c2ccccc2)c1", "5-chloro-2-methylbiphenyl"},
+            {"FC1=CC=C(C=C1)C1=CC=C(Cl)C=C1", "4-chloro-4'-fluorobiphenyl"},
+        };
+        for (const auto &tc : assemblyCases) {
+            int m = indigoLoadMoleculeFromString(tc.first);
+            IupacResult r = IupacNamer::generateName(m);
+            indigoFree(m);
+            if (r.success && r.name == tc.second) {
+                std::cout << "[PASS] Substituted ring assembly " << tc.first << ": " << r.name.toStdString() << "\n";
+                passed++;
+            } else {
+                std::cout << "[FAIL] Substituted ring assembly " << tc.first << " expected '" << tc.second << "' -> got "
+                           << (r.success ? ("name='" + r.name.toStdString() + "'") : ("error='" + r.error.toStdString() + "'")) << "\n";
+                failed++;
+            }
         }
     }
 

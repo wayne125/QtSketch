@@ -3274,6 +3274,304 @@ QString nameRingAsSubstituent(const Graph &g, const std::set<int> &ringNodes, in
     return res;
 }
 
+// Substituted two-ring assemblies (e.g. 4,4'-dichlorobiphenyl,
+// 5-chloro-2,2'-bipyridine): a bounded, structured alternative to routing
+// through nameRingAsSubstituent's full "-yl" string output. That function's
+// output is meant for a single substituent citation and is reconstructed
+// here only for its ring-numbering/classification machinery (the candidate
+// generation switch below is a direct copy of lines ~2501-2654 above) --
+// NOT by calling nameRingAsSubstituent and parsing its string back apart,
+// which is exactly the fragile approach this replaces. Scope is
+// deliberately narrow: only terminal halogen or methyl branches are
+// recognized; anything else on the ring bails the whole analysis (ok=false)
+// so the caller falls back to today's plain, unsubstituted "bi-" naming or
+// to the equal-ring-seniority rejection.
+struct RingAssemblySub {
+    QString name;
+    int locant;
+};
+struct RingAssemblyCandidate {
+    int attachLocant;
+    std::vector<RingAssemblySub> substituents;
+};
+struct RingAssemblyAnalysis {
+    bool ok = false;
+    RingType rType = RingType::BENZENE;
+    QString bareParentName;
+    std::vector<RingAssemblyCandidate> candidates;
+};
+
+RingAssemblyAnalysis computeRingAssemblyCandidates(const Graph &g, const std::set<int> &ringNodes, int attachmentNode, int parentLinkNode) {
+    RingAssemblyAnalysis result;
+    if (ringNodes.empty() || !ringNodes.count(attachmentNode)) return result;
+    int ringSize = static_cast<int>(ringNodes.size());
+    if (ringSize != 5 && ringSize != 6) return result;
+
+    std::vector<int> ringCycle;
+    int startNode = *ringNodes.begin();
+    int current = startNode;
+    int previous = -1;
+    for (int step = 0; step < ringSize; ++step) {
+        ringCycle.push_back(current);
+        int nextNode = -1;
+        for (int nei : g.nodes[current].neighbors) {
+            if (ringNodes.count(nei) && nei != previous) { nextNode = nei; break; }
+        }
+        if (nextNode == -1) break;
+        previous = current;
+        current = nextNode;
+    }
+    if (static_cast<int>(ringCycle.size()) != ringSize) return result;
+    for (int n : ringNodes) {
+        int ringInternalDegree = 0;
+        for (int nei : g.nodes[n].neighbors) {
+            if (ringNodes.count(nei)) ringInternalDegree++;
+        }
+        if (ringInternalDegree != 2) return result;
+    }
+
+    std::vector<int> ringHeteroNodes;
+    for (int idx : ringNodes) {
+        if (g.nodes[idx].atomicNumber != 6) ringHeteroNodes.push_back(idx);
+    }
+
+    RingType rType;
+    QString parentNameRoot;
+    QString classErr;
+
+    if (!ringHeteroNodes.empty()) {
+        if (!classifyMonocyclicHeteroRing(g, ringHeteroNodes, ringSize, ringCycle, rType, parentNameRoot, classErr, true)) {
+            return result;
+        }
+    } else {
+        bool allAromatic = true;
+        bool allSingle = true;
+        bool hasDouble = false;
+        bool hasTriple = false;
+        for (const auto &gb : g.bonds) {
+            if (ringNodes.count(gb.u) && ringNodes.count(gb.v)) {
+                if (gb.order != 4) allAromatic = false;
+                if (gb.order != 1) allSingle = false;
+                if (gb.order == 2) hasDouble = true;
+                if (gb.order == 3) hasTriple = true;
+            }
+        }
+        if (hasTriple) return result;
+        if (ringSize == 6 && (allAromatic || (!allSingle && !hasDouble))) {
+            rType = RingType::BENZENE; parentNameRoot = "benzene";
+        } else if (allSingle) {
+            rType = RingType::CYCLOALKANE; parentNameRoot = "cyclo" + chainRoot(ringSize) + "ane";
+        } else {
+            rType = RingType::CYCLOALKENE; parentNameRoot = "cyclo" + chainRoot(ringSize);
+        }
+    }
+
+    std::vector<std::vector<int>> ringCandidates;
+    if (rType == RingType::FURAN || rType == RingType::THIOPHENE || rType == RingType::SELENOPHENE || rType == RingType::TELLUROPHENE || rType == RingType::PHOSPHININE || rType == RingType::PYRROLE || rType == RingType::PYRIDINE ||
+        rType == RingType::PIPERIDINE || rType == RingType::PYRROLIDINE || rType == RingType::TETRAHYDROFURAN || rType == RingType::TETRAHYDROTHIOPHENE ||
+        rType == RingType::AZEPINE || rType == RingType::OXEPINE ||
+        rType == RingType::THIEPINE || rType == RingType::SELENEPINE ||
+        rType == RingType::TELLUREPINE) {
+        int hNode = ringHeteroNodes[0];
+        int hIdx = -1;
+        for (int i = 0; i < ringSize; ++i) {
+            if (ringCycle[i] == hNode) { hIdx = i; break; }
+        }
+        std::vector<int> fwd(ringSize), bwd(ringSize);
+        for (int i = 0; i < ringSize; ++i) {
+            fwd[i] = ringCycle[(hIdx + i) % ringSize];
+            bwd[i] = ringCycle[(hIdx - i + ringSize) % ringSize];
+        }
+        ringCandidates.push_back(fwd);
+        ringCandidates.push_back(bwd);
+    } else if (rType == RingType::IMIDAZOLE || rType == RingType::PYRAZOLE) {
+        int hNH = -1, hN = -1;
+        if (g.nodes[ringHeteroNodes[0]].totalH >= 1 || g.nodes[ringHeteroNodes[0]].neighbors.size() == 3) {
+            hNH = ringHeteroNodes[0]; hN = ringHeteroNodes[1];
+        } else {
+            hNH = ringHeteroNodes[1]; hN = ringHeteroNodes[0];
+        }
+        int hIdx = -1;
+        for (int i = 0; i < ringSize; ++i) {
+            if (ringCycle[i] == hNH) { hIdx = i; break; }
+        }
+        std::vector<int> fwd(ringSize), bwd(ringSize);
+        for (int i = 0; i < ringSize; ++i) {
+            fwd[i] = ringCycle[(hIdx + i) % ringSize];
+            bwd[i] = ringCycle[(hIdx - i + ringSize) % ringSize];
+        }
+        int reqOtherIdx = (rType == RingType::IMIDAZOLE) ? 2 : 1;
+        if (fwd[reqOtherIdx] == hN) ringCandidates.push_back(fwd);
+        if (bwd[reqOtherIdx] == hN) ringCandidates.push_back(bwd);
+    } else if (rType == RingType::PYRIMIDINE || rType == RingType::PYRIDAZINE || rType == RingType::PYRAZINE ||
+               rType == RingType::PIPERAZINE || rType == RingType::MORPHOLINE || rType == RingType::THIOMORPHOLINE ||
+               rType == RingType::IMIDAZOLIDINE || rType == RingType::OXAZOLIDINE || rType == RingType::THIAZOLIDINE ||
+               rType == RingType::PYRAZOLIDINE || rType == RingType::ISOXAZOLIDINE || rType == RingType::ISOTHIAZOLIDINE) {
+        int n1 = ringHeteroNodes[0], n2 = ringHeteroNodes[1];
+        int reqOtherIdx = (rType == RingType::PYRIDAZINE || rType == RingType::PYRAZOLIDINE ||
+                           rType == RingType::ISOXAZOLIDINE || rType == RingType::ISOTHIAZOLIDINE) ? 1 :
+                          (rType == RingType::PYRIMIDINE || rType == RingType::IMIDAZOLIDINE ||
+                           rType == RingType::OXAZOLIDINE || rType == RingType::THIAZOLIDINE) ? 2 : 3;
+        std::vector<int> seeds;
+        if (g.nodes[n1].atomicNumber == g.nodes[n2].atomicNumber) {
+            seeds = {n1, n2};
+        } else {
+            seeds = {(hwSeniorityRank(g.nodes[n1].atomicNumber) < hwSeniorityRank(g.nodes[n2].atomicNumber)) ? n1 : n2};
+        }
+        for (int seed : seeds) {
+            int otherNode = (seed == n1) ? n2 : n1;
+            int idx = -1;
+            for (int i = 0; i < ringSize; ++i) {
+                if (ringCycle[i] == seed) { idx = i; break; }
+            }
+            std::vector<int> fwd(ringSize), bwd(ringSize);
+            for (int i = 0; i < ringSize; ++i) {
+                fwd[i] = ringCycle[(idx + i) % ringSize];
+                bwd[i] = ringCycle[(idx - i + ringSize) % ringSize];
+            }
+            if (fwd[reqOtherIdx] == otherNode) ringCandidates.push_back(fwd);
+            if (bwd[reqOtherIdx] == otherNode) ringCandidates.push_back(bwd);
+        }
+    } else if (rType == RingType::DIOXOLANE || rType == RingType::DITHIOLANE || rType == RingType::DIOXANE || rType == RingType::DITHIANE) {
+        int n1 = ringHeteroNodes[0], n2 = ringHeteroNodes[1];
+        int idx1 = -1, idx2 = -1;
+        for (int i = 0; i < ringSize; ++i) {
+            if (ringCycle[i] == n1) idx1 = i;
+            if (ringCycle[i] == n2) idx2 = i;
+        }
+        int dist = std::abs(idx1 - idx2);
+        int sep = std::min(dist, ringSize - dist);
+        for (int seed : {n1, n2}) {
+            int otherNode = (seed == n1) ? n2 : n1;
+            int idx = (seed == n1) ? idx1 : idx2;
+            std::vector<int> fwd(ringSize), bwd(ringSize);
+            for (int i = 0; i < ringSize; ++i) {
+                fwd[i] = ringCycle[(idx + i) % ringSize];
+                bwd[i] = ringCycle[(idx - i + ringSize) % ringSize];
+            }
+            if (fwd[sep] == otherNode) ringCandidates.push_back(fwd);
+            if (bwd[sep] == otherNode) ringCandidates.push_back(bwd);
+        }
+    } else if (rType == RingType::OXAZOLE || rType == RingType::ISOXAZOLE || rType == RingType::THIAZOLE || rType == RingType::ISOTHIAZOLE) {
+        int hOS = -1, hN = -1;
+        int z0 = g.nodes[ringHeteroNodes[0]].atomicNumber;
+        if (z0 == 8 || z0 == 16) {
+            hOS = ringHeteroNodes[0]; hN = ringHeteroNodes[1];
+        } else {
+            hOS = ringHeteroNodes[1]; hN = ringHeteroNodes[0];
+        }
+        int hIdx = -1;
+        for (int i = 0; i < ringSize; ++i) {
+            if (ringCycle[i] == hOS) { hIdx = i; break; }
+        }
+        std::vector<int> fwd(ringSize), bwd(ringSize);
+        for (int i = 0; i < ringSize; ++i) {
+            fwd[i] = ringCycle[(hIdx + i) % ringSize];
+            bwd[i] = ringCycle[(hIdx - i + ringSize) % ringSize];
+        }
+        int reqNIdx = (rType == RingType::ISOXAZOLE || rType == RingType::ISOTHIAZOLE) ? 1 : 2;
+        if (fwd[reqNIdx] == hN) ringCandidates.push_back(fwd);
+        if (bwd[reqNIdx] == hN) ringCandidates.push_back(bwd);
+    } else if (rType == RingType::GENERAL_HETEROCYCLE) {
+        int minRank = 99;
+        for (int nodeIdx : ringHeteroNodes) {
+            int r = hwSeniorityRank(g.nodes[nodeIdx].atomicNumber);
+            if (r < minRank) minRank = r;
+        }
+        for (int st = 0; st < ringSize; ++st) {
+            int z = g.nodes[ringCycle[st]].atomicNumber;
+            if (hwSeniorityRank(z) == minRank) {
+                std::vector<int> fwd2(ringSize), bwd2(ringSize);
+                for (int i = 0; i < ringSize; ++i) {
+                    fwd2[i] = ringCycle[(st + i) % ringSize];
+                    bwd2[i] = ringCycle[(st - i + ringSize) % ringSize];
+                }
+                ringCandidates.push_back(fwd2);
+                ringCandidates.push_back(bwd2);
+            }
+        }
+    } else {
+        for (int st = 0; st < ringSize; ++st) {
+            std::vector<int> fwd(ringSize), bwd(ringSize);
+            for (int i = 0; i < ringSize; ++i) {
+                fwd[i] = ringCycle[(st + i) % ringSize];
+                bwd[i] = ringCycle[(st - i + ringSize) % ringSize];
+            }
+            ringCandidates.push_back(fwd);
+            ringCandidates.push_back(bwd);
+        }
+    }
+
+    bool ringFullySaturatedSub = true;
+    for (const auto &gb : g.bonds) {
+        if (ringNodes.count(gb.u) && ringNodes.count(gb.v) && gb.order != 1) { ringFullySaturatedSub = false; break; }
+    }
+
+    bool bareNameSet = false;
+
+    for (const auto &cand : ringCandidates) {
+        std::map<int, int> locantMap;
+        for (int i = 0; i < ringSize; ++i) locantMap[cand[i]] = i + 1;
+        int attachLocant = locantMap[attachmentNode];
+
+        QString bareName;
+        if (rType == RingType::GENERAL_HETEROCYCLE) {
+            QString bn = buildGeneralHeterocycleName(g, cand, ringSize, ringFullySaturatedSub);
+            if (ringFullySaturatedSub) {
+                if (ringHeteroNodes.size() == 1 && bn.startsWith("1-")) bn = bn.mid(2);
+            } else {
+                std::vector<int> indicatedHLocants = findIndicatedHydrogenLocants(g, cand);
+                if (!indicatedHLocants.empty()) {
+                    QStringList hParts;
+                    for (int locant : indicatedHLocants) hParts.append(QString("%1H").arg(locant));
+                    bn = hParts.join(",") + "-" + bn;
+                }
+            }
+            if (!bn.endsWith("furan") && !bn.endsWith("e")) bn += "e";
+            bareName = bn;
+        } else {
+            bareName = parentNameRoot;
+        }
+        if (!bareNameSet) { result.bareParentName = bareName; bareNameSet = true; }
+
+        std::vector<RingAssemblySub> subs;
+        bool candOk = true;
+        for (int i = 0; i < ringSize && candOk; ++i) {
+            int rNode = cand[i];
+            int locant = i + 1;
+            for (size_t j = 0; j < g.nodes[rNode].neighbors.size(); ++j) {
+                int nei = g.nodes[rNode].neighbors[j];
+                if (ringNodes.count(nei)) continue;
+                if (rNode == attachmentNode && nei == parentLinkNode) continue;
+                int order = g.nodes[rNode].bondOrders[j];
+                int nZ = g.nodes[nei].atomicNumber;
+                if (order == 1 && (nZ == 9 || nZ == 17 || nZ == 35 || nZ == 53) && g.nodes[nei].neighbors.size() == 1) {
+                    subs.push_back({halogenPrefix(nZ), locant});
+                } else if (order == 1 && nZ == 6 && g.nodes[nei].neighbors.size() == 1 && g.nodes[nei].totalH == 3) {
+                    subs.push_back({"methyl", locant});
+                } else {
+                    // Outside this task's bounded scope (terminal halogen/methyl only).
+                    // Every candidate here shares the same physical ring atoms and
+                    // exocyclic neighbors, so no rotation can rescue this -- bail the
+                    // whole ring rather than silently dropping or mis-scoring it.
+                    candOk = false;
+                    break;
+                }
+            }
+        }
+        if (!candOk) return RingAssemblyAnalysis{};
+
+        RingAssemblyCandidate rc;
+        rc.attachLocant = attachLocant;
+        rc.substituents = subs;
+        result.candidates.push_back(rc);
+    }
+
+    result.rType = rType;
+    result.ok = !result.candidates.empty();
+    return result;
+}
+
 } // namespace
 
 bool rankRingSubstituentCandidate(
@@ -18196,86 +18494,105 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                 if (ring2Nodes.count(n)) sharedNodes.push_back(n);
             }
             if (sharedNodes.empty()) {
-                auto checkRingAssemblyOneSide = [&](const std::set<int> &rNodes, const std::set<int> &otherRNodes) -> std::pair<QString, int> {
-                    int attachNodeThis = -1;
-                    int attachNodeOther = -1;
-                    int nodesWithExo = 0;
-                    bool validSubstituent = true;
-                    for (int rNode : rNodes) {
-                        int exoCount = 0;
-                        for (size_t j = 0; j < g.nodes[rNode].neighbors.size(); ++j) {
-                            int nei = g.nodes[rNode].neighbors[j];
-                            if (!rNodes.count(nei)) {
-                                exoCount++;
-                                if (!otherRNodes.count(nei) || g.nodes[rNode].bondOrders[j] != 1) {
-                                    validSubstituent = false;
-                                } else {
-                                    attachNodeThis = rNode;
-                                    attachNodeOther = nei;
-                                }
+                // Connectivity is checked independently from substitution now (unlike the
+                // old single combined scan): find the sole single bond joining the two
+                // rings first; whether either ring also carries a halogen/methyl branch
+                // is computeRingAssemblyCandidates's own, separate concern.
+                int attach1 = -1, attach2 = -1;
+                int interRingBondCount = 0;
+                for (int n1 : ring1Nodes) {
+                    for (size_t j = 0; j < g.nodes[n1].neighbors.size(); ++j) {
+                        int nei = g.nodes[n1].neighbors[j];
+                        if (ring2Nodes.count(nei)) {
+                            interRingBondCount++;
+                            if (g.nodes[n1].bondOrders[j] == 1) { attach1 = n1; attach2 = nei; }
+                        }
+                    }
+                }
+                if (interRingBondCount == 1 && attach1 != -1) {
+                    RingAssemblyAnalysis analysis1 = computeRingAssemblyCandidates(g, ring1Nodes, attach1, attach2);
+                    RingAssemblyAnalysis analysis2 = computeRingAssemblyCandidates(g, ring2Nodes, attach2, attach1);
+                    if (analysis1.ok && analysis2.ok && analysis1.bareParentName == analysis2.bareParentName) {
+                        QString parentName = analysis1.bareParentName;
+                        bool phenylLike = (analysis1.rType == RingType::BENZENE);
+                        bool cyclohexylLike = (analysis1.rType == RingType::CYCLOALKANE && ring1Nodes.size() == 6);
+
+                        struct AssemblyChoice {
+                            int attach0, attach1v;
+                            std::vector<std::tuple<QString, int, int>> subs; // name, locant, primeFlag (0=unprimed,1=primed)
+                        };
+                        std::vector<AssemblyChoice> choices;
+                        for (const auto &ca : analysis1.candidates) {
+                            for (const auto &cb : analysis2.candidates) {
+                                AssemblyChoice c1;
+                                c1.attach0 = ca.attachLocant; c1.attach1v = cb.attachLocant;
+                                for (const auto &s : ca.substituents) c1.subs.push_back({s.name, s.locant, 0});
+                                for (const auto &s : cb.substituents) c1.subs.push_back({s.name, s.locant, 1});
+                                choices.push_back(c1);
+
+                                AssemblyChoice c2;
+                                c2.attach0 = cb.attachLocant; c2.attach1v = ca.attachLocant;
+                                for (const auto &s : cb.substituents) c2.subs.push_back({s.name, s.locant, 0});
+                                for (const auto &s : ca.substituents) c2.subs.push_back({s.name, s.locant, 1});
+                                choices.push_back(c2);
                             }
                         }
-                        if (exoCount > 1) {
-                            validSubstituent = false;
-                        } else if (exoCount == 1) {
-                            nodesWithExo++;
+
+                        // P-28.2.1 (attachment locants lowest possible) then lowest combined
+                        // substituent locants at first point of difference, then lowest
+                        // locants in alphabetical citation order -- structural (number,
+                        // primeFlag) comparison throughout, never string/sum comparison.
+                        auto key2 = [](const AssemblyChoice &c) {
+                            std::vector<std::pair<int, int>> v;
+                            for (const auto &s : c.subs) v.push_back({std::get<1>(s), std::get<2>(s)});
+                            std::sort(v.begin(), v.end());
+                            return v;
+                        };
+                        auto key3 = [](const AssemblyChoice &c) {
+                            std::vector<std::pair<QString, std::pair<int, int>>> named;
+                            for (const auto &s : c.subs) named.push_back({std::get<0>(s), {std::get<1>(s), std::get<2>(s)}});
+                            std::sort(named.begin(), named.end(), [](const auto &x, const auto &y) { return x.first < y.first; });
+                            std::vector<std::pair<int, int>> locs;
+                            for (const auto &p : named) locs.push_back(p.second);
+                            return locs;
+                        };
+
+                        const AssemblyChoice *best = nullptr;
+                        for (const auto &c : choices) {
+                            if (!best) { best = &c; continue; }
+                            if (c.attach0 != best->attach0) { if (c.attach0 < best->attach0) best = &c; continue; }
+                            if (c.attach1v != best->attach1v) { if (c.attach1v < best->attach1v) best = &c; continue; }
+                            auto k2c = key2(c), k2b = key2(*best);
+                            if (k2c != k2b) { if (k2c < k2b) best = &c; continue; }
+                            if (key3(c) < key3(*best)) best = &c;
                         }
-                    }
-                    if (!validSubstituent || nodesWithExo != 1 || attachNodeThis == -1) return {"", -1};
 
-                    bool ringSubErr = false;
-                    QString subName = nameRingAsSubstituent(g, rNodes, attachNodeThis, attachNodeOther, allSSSRRings, {}, {}, nullptr, carbonSulfonamide, carbonSulfinamide, &ringSubErr, mol);
-                    if (ringSubErr) return {"!ERROR!", -1};
-                    if (subName.isEmpty()) return {"", -1};
+                        if (best) {
+                            QString biBlock;
+                            if (phenylLike) biBlock = "biphenyl";
+                            else if (cyclohexylLike) biBlock = "bicyclohexyl";
+                            else biBlock = QString("%1,%2'-bi%3").arg(best->attach0).arg(best->attach1v).arg(parentName);
 
-                    while (subName.startsWith("(") || subName.startsWith("[") || subName.startsWith("{")) subName = subName.mid(1);
-                    while (subName.endsWith(")") || subName.endsWith("]") || subName.endsWith("}")) subName.chop(1);
+                            std::map<QString, std::vector<std::pair<int, int>>> grouped;
+                            for (const auto &s : best->subs) grouped[std::get<0>(s)].push_back({std::get<1>(s), std::get<2>(s)});
+                            std::vector<QString> names;
+                            for (const auto &kv : grouped) names.push_back(kv.first);
+                            std::sort(names.begin(), names.end());
 
-                    if (subName == "phenyl") return {"phenyl", 1};
-                    if (subName == "cyclohexyl") return {"cyclohexyl", 1};
-
-                    if (!subName.endsWith("-yl")) return {"", -1};
-                    int lastDash = subName.lastIndexOf('-');
-                    if (lastDash == -1) return {"", -1};
-                    int prevDash = subName.lastIndexOf('-', lastDash - 1);
-                    if (prevDash == -1) return {"", -1};
-
-                    bool ok;
-                    int locant = subName.mid(prevDash + 1, lastDash - prevDash - 1).toInt(&ok);
-                    if (!ok) return {"", -1};
-
-                    // Every bare monocyclic heterocycle parent name this codebase produces ends
-                    // in a terminal "e" (pyridine, thiophene, pyrrole, oxazole, ... and every
-                    // hwGeneralRingStem() form: irine/irene/ete/ole/ine/inine/epine/ocine/onine/
-                    // ecine) EXCEPT the furan family (furan, tetrahydrofuran, ...), which never
-                    // had one to begin with. A whitelist of specific curated ring-name endings
-                    // would silently produce a wrong (missing-e) name for any general Hantzsch-
-                    // Widman heterocycle not in the list (e.g. an uncommon-element or 7-10
-                    // membered ring) -- restoring "e" by default and excluding only the one real
-                    // exception is robust to every ring type nameRingAsSubstituent can produce,
-                    // not just the ones this task happened to test.
-                    QString stem = subName.left(prevDash);
-                    QString parentName = stem;
-                    if (!parentName.endsWith("furan") && !parentName.endsWith("e")) {
-                        parentName += "e";
-                    }
-
-                    return {parentName, locant};
-                };
-
-                auto res1 = checkRingAssemblyOneSide(ring1Nodes, ring2Nodes);
-                if (res1.first == "!ERROR!") return {false, "", "N-substituted amino ring substituents are not supported"};
-                auto res2 = checkRingAssemblyOneSide(ring2Nodes, ring1Nodes);
-                if (res2.first == "!ERROR!") return {false, "", "N-substituted amino ring substituents are not supported"};
-                if (!res1.first.isEmpty() && !res2.first.isEmpty() && res1.first == res2.first) {
-                    if (res1.first == "phenyl" || res1.first == "cyclohexyl") {
-                        return {true, "bi" + res1.first, ""};
-                    } else {
-                        int loc1 = std::min(res1.second, res2.second);
-                        int loc2 = std::max(res1.second, res2.second);
-                        // P-28.2.1: one component is numbered unprimed, the identical second
-                        // component numbered primed (e.g. Blue Book's own "2,3'-bifuran").
-                        return {true, QString("%1,%2'-bi%3").arg(loc1).arg(loc2).arg(res1.first), ""};
+                            QStringList parts;
+                            for (const auto &name : names) {
+                                auto locs = grouped[name];
+                                std::sort(locs.begin(), locs.end());
+                                QStringList locStrs;
+                                for (const auto &lp : locs) locStrs.append(QString::number(lp.first) + (lp.second == 1 ? "'" : ""));
+                                QString countWord = (locs.size() == 2) ? "di" : (locs.size() == 3) ? "tri" : (locs.size() == 4) ? "tetra" : "";
+                                parts.append(locStrs.join(",") + "-" + countWord + name);
+                            }
+                            QString subPrefix = parts.join("-");
+                            QString sep = (!biBlock.isEmpty() && biBlock[0].isDigit()) ? "-" : "";
+                            QString finalName = subPrefix.isEmpty() ? biBlock : (subPrefix + sep + biBlock);
+                            return {true, finalName, ""};
+                        }
                     }
                 }
             }
