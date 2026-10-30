@@ -2372,6 +2372,15 @@ int main() {
             {"CC1CCC(-C2CCCCC2)CC1", "4-methylbicyclohexyl"},
             {"Clc1ccc(C)c(-c2ccccc2)c1", "5-chloro-2-methylbiphenyl"},
             {"FC1=CC=C(C=C1)C1=CC=C(Cl)C=C1", "4-chloro-4'-fluorobiphenyl"},
+            // Full functional-group coverage (not just halogen/methyl): every
+            // exocyclic substituent now routes through the same
+            // nameExocyclicRingSubstituent dispatch nameRingAsSubstituent
+            // itself uses, so ring assemblies get identical coverage.
+            {"Nc1ccc(-c2ccccc2)cc1", "4-aminobiphenyl"},
+            {"COc1ccc(-c2ccccc2)cc1", "4-methoxybiphenyl"},
+            {"N#Cc1ccc(-c2ccccc2)cc1", "4-cyanobiphenyl"},
+            {"O=[N+]([O-])c1ccc(-c2ccccc2)cc1", "4-nitrobiphenyl"},
+            {"CCc1ccc(-c2ccccc2)cc1", "4-ethylbiphenyl"},
         };
         for (const auto &tc : assemblyCases) {
             int m = indigoLoadMoleculeFromString(tc.first);
@@ -2385,6 +2394,26 @@ int main() {
                            << (r.success ? ("name='" + r.name.toStdString() + "'") : ("error='" + r.error.toStdString() + "'")) << "\n";
                 failed++;
             }
+        }
+    }
+
+    {
+        // Senior-principal-group gate: a carboxylic acid on an assembly ring
+        // must NOT be absorbed as a "carboxy" prefix on a ring-assembly
+        // parent (that would bypass normal suffix selection and produce a
+        // confirmed-wrong name) -- hasSeniorPrincipalGroup steps the whole
+        // ring-assembly path aside so the rest of the pipeline owns it, the
+        // same pattern already used for the azo/nitrosamine early-returns.
+        // An honest rejection here is correct; "4-carboxybiphenyl" is not.
+        int m = indigoLoadMoleculeFromString("OC(=O)c1ccc(-c2ccccc2)cc1");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success && r.name != "4-carboxybiphenyl") {
+            std::cout << "[PASS] Ring assembly steps aside for senior principal group -> " << r.error.toStdString() << "\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Ring assembly senior-group gate -> got success=" << r.success << " name='" << r.name.toStdString() << "'\n";
+            failed++;
         }
     }
 
