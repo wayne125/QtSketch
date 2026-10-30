@@ -485,6 +485,14 @@ int main() {
         {"CC(C)C(=S)NC", "N-methyl-2-methylpropanethioamide"}, // branched acyl parent (Wave 2, Item 1B)
         {"CC(=S)NC(C)=S", "", true, "Acyclic imides (N-acylamides) are not supported"},
         {"S=CN(C)C", "N,N-dimethylmethanethioamide"},
+        {"C1CCCCC1C(=S)N", "cyclohexanecarbothioamide"},
+        // Ring-attached thioamide carbon misclassified as THIONE when its N bore
+        // any substituent (classification required an unsubstituted NH2, unlike
+        // the AMIDE branch right above it) -- THIONE isn't an exocyclic-to-ring
+        // suffix type, so the whole C(=S)N(R) fragment was silently dropped and
+        // the molecule named as bare "cyclohexane". Now correctly classified as
+        // THIOAMIDE and cleanly rejected via the same guard AMIDE already uses.
+        {"C1CCCCC1C(=S)NC", "", true, "Branched or ring N-substituents on thioamides are not supported"},
 
         // P-66.3.3.1 Substituted hydrazides
         {"CC(=O)N(C)N", "N-methylethanehydrazide"}, // Methyl on NEAR nitrogen

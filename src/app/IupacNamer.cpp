@@ -11587,15 +11587,10 @@ static FunctionalGroupClassification classifyFunctionalGroups(
                       if (g.nodes[nei].atomicNumber == 6) singleC++;
                   }
 
-                  bool hasUnsubN = false;
-                  for (int sN : singleN) {
-                      if (g.nodes[sN].totalH == 2 && g.nodes[sN].neighbors.size() == 1) {
-                          hasUnsubN = true;
-                          break;
-                      }
-                  }
-
-                  if (hasUnsubN && singleC >= 1) {
+                  // Mirror the AMIDE branch above: any single-bonded N makes this a
+                  // thioamide carbon, substituted or not -- see the sibling copy of
+                  // this classification (same fix, same bug) for the full explanation.
+                  if (!singleN.empty() && singleC >= 1) {
                       carbonGroup[i] = GroupType::THIOAMIDE;
                   } else {
                       if (singleC == 0 && node.totalH == 0) {
@@ -22054,15 +22049,20 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                         if (g.nodes[nei].atomicNumber == 6) singleC++;
                     }
 
-                    bool hasUnsubN = false;
-                    for (int sN : singleN) {
-                        if (g.nodes[sN].totalH == 2 && g.nodes[sN].neighbors.size() == 1) {
-                            hasUnsubN = true;
-                            break;
-                        }
-                    }
-
-                    if (hasUnsubN && singleC >= 1) {
+                    // Mirror the AMIDE branch just above (!doubleO.empty() && !singleN.empty()):
+                    // any single-bonded N makes this a thioamide carbon, substituted or not --
+                    // requiring an UNSUBSTITUTED N here (as this used to) silently misclassified
+                    // an N-alkyl/N-aryl thioamide carbon as THIONE instead (confirmed live bug:
+                    // C1CCCCC1C(=S)NC, a ring-attached N-methyl thioamide, silently dropped the
+                    // whole C(=S)NC fragment and named the molecule bare "cyclohexane" -- THIONE
+                    // isn't an exocyclic-to-ring suffix type, so its principal carbon's own
+                    // substituent, excluded from the ring's normal substituent scan, was never
+                    // named at all). Letting substituted thioamide carbons through to
+                    // GroupType::THIOAMIDE routes them into the SAME existing, already-correct
+                    // checkPrincipalHeteroatomsUnsubstituted guard the AMIDE branch already
+                    // relies on, which cleanly rejects an N-substituted thioamide with an honest
+                    // message instead of silently losing the substituent.
+                    if (!singleN.empty() && singleC >= 1) {
                         carbonGroup[i] = GroupType::THIOAMIDE;
                     } else {
                         if (singleC == 0 && node.totalH == 0) {
