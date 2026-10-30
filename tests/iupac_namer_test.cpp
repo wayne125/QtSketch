@@ -1485,6 +1485,34 @@ int main() {
         // declines rather than producing a wrong name.
         {"O=C(c1c2c(cccc2)nc(-c2ccccc2)c1)O", "", true, "Fused, bridged, spiro, or multiple ring systems are not supported in Phase 2."},
 
+        // Same functional-group gap as CINCHOPHEN above, but WITHOUT an
+        // isolated extra ring -- just a plain quinoline-6-carboxylic acid.
+        // The CINCHOPHEN guard's own comment assumed this exact function
+        // (namePhase31BenzoFusion) would never be reached this way, because
+        // chain-vs-ring seniority intercepts an acid-bearing ring before
+        // Phase 31 runs -- disproved live (confirmed via a direct
+        // reachability probe): this silently came back as
+        // "6-hydroxyoxomethylquinoline" instead of rejecting or correctly
+        // suffixing. Same guard, placed at this function's own top level so
+        // every caller is protected, not just the multi-component dispatcher.
+        // Deliberately narrow (gated on the ring system having a heteroatom,
+        // and only counting a real order-2/3 bond, never aromatic order 4)
+        // to avoid two false positives an earlier, broader attempt hit:
+        // all-carbon naphthalene+acid (has its own separate, working suffix
+        // path) and a heteroaromatic RING substituent like thiazol-4-yl
+        // (whose own internal aromatic bonds aren't a functional group).
+        {"OC(=O)c1ccc2ncccc2c1", "", true, "Fused heterobicyclic ring systems with a functional group (acid, ester, amide, ketone, nitrile, imine, ...) exocyclic to the ring are not yet classified by this mechanism."},
+        {"OC(=O)c1ccc2ccncc2c1", "", true, "Fused heterobicyclic ring systems with a functional group (acid, ester, amide, ketone, nitrile, imine, ...) exocyclic to the ring are not yet classified by this mechanism."},
+        {"OC(=O)c1ccc2occc2c1", "", true, "Fused heterobicyclic ring systems with a functional group (acid, ester, amide, ketone, nitrile, imine, ...) exocyclic to the ring are not yet classified by this mechanism."},
+        {"OC(=O)c1ccc2[nH]ccc2c1", "", true, "Fused heterobicyclic ring systems with a functional group (acid, ester, amide, ketone, nitrile, imine, ...) exocyclic to the ring are not yet classified by this mechanism."},
+        // Regression guard for one of the two false positives found and
+        // fixed while narrowing this guard: all-carbon naphthalene+acid must
+        // stay on its own separate, already-correct suffix path. (The other
+        // false positive -- a heteroaromatic ring substituent like
+        // thiazol-4-yl on a heterobicyclic real component -- is already
+        // pinned by the THIABENDAZOLE test a few lines above.)
+        {"OC(=O)c1cccc2ccccc12", "naphthalene-1-carboxylic acid"},
+
         // Multi-component ring dispatch, true spiro real component (exactly 1
         // shared atom, Blue Book P-24.2.1) + a directly-attached isolated ring
         // substituent. Spiro core is a dione-bearing 6-ring spiro-fused to a

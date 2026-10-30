@@ -8326,6 +8326,66 @@ RingSystemNameResult namePhase31BenzoFusion(
                         std::set<int> allSystemNodes = ring1Nodes;
                         allSystemNodes.insert(ring2Nodes.begin(), ring2Nodes.end());
 
+                        // Guard: this function's own substituent classification
+                        // (further below) only special-cases a handful of
+                        // sulfur-rooted groups (sulfonic/sulfonamide/sulfonyl-
+                        // halide/sulfinyl-halide/sulfinic/sulfinamide, confirmed
+                        // already working here, e.g. the Phase 31 sulfamoyl-
+                        // benzothiazole/benzimidazole tests) -- an exocyclic
+                        // CARBON that itself carries a genuine double/triple
+                        // bond to O/N (acid/ester/amide/ketone/nitrile/imine,
+                        // one bond further than the ring) falls instead to a
+                        // generic nameBranchGraph walk that cannot recognize
+                        // that pattern as a functional group at all. Confirmed
+                        // live: plain quinoline-6-carboxylic acid (no other
+                        // substituent, no isolated extra ring) silently came
+                        // back as "6-hydroxyoxomethylquinoline", misreading the
+                        // acid as a gem-diol.
+                        //
+                        // Deliberately narrow to avoid two confirmed false
+                        // positives from an earlier, broader attempt: (1) gated
+                        // on the ring system actually having a heteroatom --
+                        // an all-carbon fused system (naphthalene + acid/ester/
+                        // sulfonic acid/azide/isocyanate, all already correctly
+                        // handled) goes through a separate, working suffix path
+                        // further below that this guard must not preempt; (2)
+                        // only counts a REAL double/triple bond (order 2 or 3),
+                        // never order 4 -- an exocyclic substituent that is
+                        // itself an aromatic heterocycle (e.g. thiazol-4-yl)
+                        // has its OWN internal aromatic C=N/C-S bonds at order
+                        // 4 post-aromatization, which is a ring feature, not a
+                        // functional group, and nameBranchGraph's own ring-
+                        // detection already names that substituent correctly.
+                        bool fg31SystemHasHeteroatom = false;
+                        for (int n : allSystemNodes) {
+                            if (g.nodes[n].atomicNumber != 6) { fg31SystemHasHeteroatom = true; break; }
+                        }
+                        bool fg31HasFunctionalGroup = false;
+                        if (fg31SystemHasHeteroatom) {
+                            for (int n : allSystemNodes) {
+                                for (size_t j = 0; j < g.nodes[n].neighbors.size(); ++j) {
+                                    int nei = g.nodes[n].neighbors[j];
+                                    if (allSystemNodes.count(nei)) continue;
+                                    if (g.nodes[nei].atomicNumber != 6) continue; // direct N/O/S attachment handled elsewhere
+                                    for (size_t k = 0; k < g.nodes[nei].neighbors.size(); ++k) {
+                                        int nei2 = g.nodes[nei].neighbors[k];
+                                        int order2 = g.nodes[nei].bondOrders[k];
+                                        int nz2 = g.nodes[nei2].atomicNumber;
+                                        if (nei2 == n) continue;
+                                        if ((order2 == 2 || order2 == 3) && (nz2 == 7 || nz2 == 8)) {
+                                            fg31HasFunctionalGroup = true;
+                                            break;
+                                        }
+                                    }
+                                    if (fg31HasFunctionalGroup) break;
+                                }
+                                if (fg31HasFunctionalGroup) break;
+                            }
+                        }
+                        if (fg31HasFunctionalGroup) {
+                            return {false, "Fused heterobicyclic ring systems with a functional group (acid, ester, amide, ketone, nitrile, imine, ...) exocyclic to the ring are not yet classified by this mechanism.", "", {}};
+                        }
+
                         auto isBenzoRing = [&](const std::set<int> &rNodes) -> bool {
                             if (rNodes.size() != 6) return false;
                             for (int n : rNodes) {
