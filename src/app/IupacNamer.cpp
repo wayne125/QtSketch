@@ -18147,7 +18147,7 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
     for (size_t i = 0; i < g.nodes.size(); ++i) {
         const GraphNode &node = g.nodes[i];
         if (node.atomicNumber == 16) {
-            int dblO = 0, sglO_OH = 0, sglC = 0, dblC = 0, sglS = 0, sglN = 0, sglN_unsub = 0;
+            int dblO = 0, sglO_OH = 0, sglC = 0, dblC = 0, sglS = 0, sglN = 0;
             std::vector<int> cNeighbors;
             std::vector<int> halogens;
             for (size_t j = 0; j < node.neighbors.size(); ++j) {
@@ -18164,7 +18164,6 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                     cNeighbors.push_back(nei);
                 } else if (nZ == 7) {
                     sglN++;
-                    if (order == 1 && g.nodes[nei].totalH == 2 && g.nodes[nei].neighbors.size() == 1) sglN_unsub++;
                 } else if (nZ == 16 && order == 1) {
                     sglS++;
                 } else if ((nZ == 9 || nZ == 17 || nZ == 35 || nZ == 53) && order == 1) {
@@ -18174,7 +18173,18 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
 
             if (dblO == 2 && sglO_OH == 1 && sglC == 1 && node.neighbors.size() == 4) {
                 carbonSulfonicAcid[cNeighbors[0]] = static_cast<int>(i);
-            } else if (dblO == 2 && sglN_unsub == 1 && sglC == 1 && node.neighbors.size() == 4) {
+            } else if (dblO == 2 && sglN == 1 && sglC == 1 && node.neighbors.size() == 4) {
+                // Mirror the AMIDE/THIOAMIDE classification pattern: any single-bonded
+                // N makes this a sulfonamide sulfur, substituted or not (requiring an
+                // UNSUBSTITUTED N here used to misroute any ring-bearing sulfonamide --
+                // e.g. CS(=O)(=O)NC1CCCCC1, an N-cyclohexyl sulfonamide -- straight into
+                // the generic "sulfur-containing groups ... not supported" rejection
+                // below instead of the sulfonamide-specific one, since a purely acyclic
+                // branched/ring-free N-substituent like isopropyl already reached a
+                // separate acyclic code path unaffected by this gate). Substituted
+                // cases now classify correctly and hit the existing, already-correct
+                // checkPrincipalHeteroatomsUnsubstituted guard, which cleanly rejects
+                // them with an honest sulfonamide-specific message.
                 carbonSulfonamide[cNeighbors[0]] = static_cast<int>(i);
             } else if (dblO == 2 && sglC == 1 && halogens.size() == 1 && node.neighbors.size() == 4) {
                 carbonSulfonylHalide[cNeighbors[0]] = static_cast<int>(i);
@@ -18184,7 +18194,8 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                 sulfinylHalideZ[cNeighbors[0]] = g.nodes[halogens[0]].atomicNumber;
             } else if (dblO == 1 && sglO_OH == 1 && sglC == 1 && node.neighbors.size() == 3) {
                 carbonSulfinicAcid[cNeighbors[0]] = static_cast<int>(i);
-            } else if (dblO == 1 && sglN_unsub == 1 && sglC == 1 && node.neighbors.size() == 3) {
+            } else if (dblO == 1 && sglN == 1 && sglC == 1 && node.neighbors.size() == 3) {
+                // Same relaxation as carbonSulfonamide just above (sibling classification).
                 carbonSulfinamide[cNeighbors[0]] = static_cast<int>(i);
             } else if (sglC == 1 && node.neighbors.size() == 1 && node.totalH >= 1) {
                 carbonThiol[cNeighbors[0]] = static_cast<int>(i);

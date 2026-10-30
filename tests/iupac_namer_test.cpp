@@ -869,9 +869,26 @@ int main() {
         {"CS(=O)(=O)N(C)CC", "N-ethyl-N-methylmethanesulfonamide"},  // N,N-di different substituents, alphabetized
         {"CS(=O)N(C)C", "N,N-dimethylmethanesulfinamide"},  // sulfinamide analogue
         {"CS(=O)(=O)NC(C)C", "N-(1-methylethyl)methanesulfonamide"}, // branched N-sub (Wave 2, Item 1A)
+        // N-cyclohexylmethanesulfonamide: ring N-SUBSTITUENT (not the N itself being
+        // a ring atom). Sulfonamide sulfur classification used to require an
+        // unsubstituted N, so any ring-bearing sulfonamide (anywhere in the
+        // molecule, not just on the N) fell through to the generic "sulfur-
+        // containing groups ... not supported" rejection instead of classifying
+        // as SULFONAMIDE and reaching the chain-vs-ring seniority gate -- same
+        // shape as the thioamide misclassification bug fixed earlier this
+        // session. Still an honest rejection (that gate doesn't yet cover this
+        // ring/class combination), just a more specific, accurate one now.
+        {"CS(=O)(=O)NC1CCCCC1", "", true, "A chain-based principal group outranks the ring in this structure; chain-as-parent seniority (P-44.1.1) for this ring/class combination is not yet supported."},
+        {"CS(=O)NC1CCCCC1", "", true, "A chain-based principal group outranks the ring in this structure; chain-as-parent seniority (P-44.1.1) for this ring/class combination is not yet supported."},
         {"CC(C)S(=O)(=O)NC", "N-methylpropane-2-sulfonamide"}, // branched alkyl parent (Wave 2, Item 1B)
         {"CC(C)S(=O)NC", "N-methylpropane-2-sulfinamide"}, // branched alkyl parent, sulfinamide (Wave 2, Item 1B)
-        {"CS(=O)(=O)N1CCCCC1", "", true, "Sulfur-containing groups other than thiols, thioethers, and sulfonic/sulfinic acids are not supported in this phase."},  // N-cyclopentyl (ring - still rejected)
+        // N-mesylpiperidine: the sulfonamide N is itself a ring atom. Used to hit
+        // the generic sulfur-group gate (sulfonamide classification required an
+        // unsubstituted N, so this never classified as SULFONAMIDE at all); now it
+        // classifies correctly and reaches the chain-vs-ring seniority gate, still
+        // honestly rejected (N-sulfonyl heterocycles are a separate, unimplemented
+        // feature) but with a more specific diagnostic.
+        {"CS(=O)(=O)N1CCCCC1", "", true, "A chain-based principal group outranks the ring in this structure; chain-as-parent seniority (P-44.1.1) for this ring/class combination is not yet supported."},
         {"CS(=O)(=O)Cl", "methanesulfonyl chloride"},
         {"c1ccccc1S(=O)(=O)Cl", "benzenesulfonyl chloride"},
         {"CCS(=O)(=O)Br", "ethanesulfonyl bromide"},
