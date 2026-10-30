@@ -6112,12 +6112,14 @@ int main() {
         // 6-membered benzene ring walked through this path came back named
         // "hexyl" (e.g. "c1ccc(OC2CCCCC2)cc1" -> "hexyloxycyclohexane"
         // instead of "phenoxycyclohexane"). Fixed by passing the real ring
-        // list (allSSSRRings) at all 9 sites.
+        // list (allSSSRRings) at all 9 sites. The chlorophenyl cases also
+        // exercise the substituted-phenoxy contraction fix (swept across the
+        // remaining 6 duplicate copies right after this fix landed).
         static const std::pair<const char*, const char*> ringAsChainCases[] = {
             {"c1ccc(OC2CCCCC2)cc1", "phenoxycyclohexane"},
             {"C1CCCCC1Oc1ccccc1", "cyclohexyloxybenzene"},
-            {"Clc1ccccc1OC1CCCCC1", "(2-chlorophenyl)oxycyclohexane"},
-            {"Clc1ccc(OC2CCCCC2)cc1", "(4-chlorophenyl)oxycyclohexane"},
+            {"Clc1ccccc1OC1CCCCC1", "(2-chlorophenoxy)cyclohexane"},
+            {"Clc1ccc(OC2CCCCC2)cc1", "(4-chlorophenoxy)cyclohexane"},
         };
         for (const auto &tc : ringAsChainCases) {
             int m = indigoLoadMoleculeFromString(tc.first);

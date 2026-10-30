@@ -20071,8 +20071,16 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                                     if (alkylName.isEmpty()) {
                                         // leave subName empty -- unnameable substituent
                                     } else if (alkylName.startsWith("(") && alkylName.endsWith(")")) {
-                                        alkylName += "oxy";
-                                        subName = alkylName;
+                                        // Substituted phenyl still contracts to phenoxy, same
+                                        // as the bare "phenyl" case below (see nameBranchGraph's
+                                        // own ether dispatch for the full explanation).
+                                        QString inner = alkylName.mid(1, alkylName.length() - 2);
+                                        if (inner.endsWith("phenyl")) {
+                                            inner.chop(2);
+                                            subName = "(" + inner + "oxy)";
+                                        } else {
+                                            subName = alkylName + "oxy";
+                                        }
                                     } else if (alkylName == "methyl" || alkylName == "ethyl" || alkylName == "propyl" || alkylName == "butyl" || alkylName == "phenyl") {
                                         alkylName.chop(2); alkylName += "oxy";
                                         subName = alkylName;
@@ -21218,8 +21226,16 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                                     if (alkylName.isEmpty()) {
                                         // leave subName empty -- unnameable substituent
                                     } else if (alkylName.startsWith("(") && alkylName.endsWith(")")) {
-                                        alkylName += "oxy";
-                                        subName = alkylName;
+                                        // Substituted phenyl still contracts to phenoxy, same
+                                        // as the bare "phenyl" case below (see nameBranchGraph's
+                                        // own ether dispatch for the full explanation).
+                                        QString inner = alkylName.mid(1, alkylName.length() - 2);
+                                        if (inner.endsWith("phenyl")) {
+                                            inner.chop(2);
+                                            subName = "(" + inner + "oxy)";
+                                        } else {
+                                            subName = alkylName + "oxy";
+                                        }
                                     } else if (alkylName == "methyl" || alkylName == "ethyl" || alkylName == "propyl" || alkylName == "butyl" || alkylName == "phenyl") {
                                         alkylName.chop(2); alkylName += "oxy";
                                         subName = alkylName;
@@ -22990,7 +23006,16 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                                 QString alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings, {}, {}, nullptr, mol);
                                 if (alkylName.isEmpty()) return {false, "", "Unrecognized or unsupported substituent."};
                                 if (alkylName.startsWith("(") && alkylName.endsWith(")")) {
-                                    alkylName += "oxy";
+                                    // Substituted phenyl still contracts to phenoxy, same
+                                    // as the bare "phenyl" case below (see nameBranchGraph's
+                                    // own ether dispatch for the full explanation).
+                                    QString inner = alkylName.mid(1, alkylName.length() - 2);
+                                    if (inner.endsWith("phenyl")) {
+                                        inner.chop(2);
+                                        alkylName = "(" + inner + "oxy)";
+                                    } else {
+                                        alkylName += "oxy";
+                                    }
                                 } else if (alkylName == "methyl" || alkylName == "ethyl" || alkylName == "propyl" || alkylName == "butyl" || alkylName == "phenyl") {
                                     alkylName.chop(2); alkylName += "oxy";
                                 } else if (alkylName.endsWith("yl") && !alkylName.contains('(') && !alkylName.contains('[') &&
@@ -26664,7 +26689,16 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                                 QString alkylName = nameBranchGraph(g, alkylNei, nei, allSSSRRings, ringNodeSet, {}, nullptr, mol);
                                 if (!alkylName.isEmpty()) {
                                     if (alkylName.startsWith("(") && alkylName.endsWith(")")) {
-                                        subName = alkylName + "oxy";
+                                        // Substituted phenyl still contracts to phenoxy, same
+                                        // as the bare "phenyl" case below (see nameBranchGraph's
+                                        // own ether dispatch for the full explanation).
+                                        QString inner = alkylName.mid(1, alkylName.length() - 2);
+                                        if (inner.endsWith("phenyl")) {
+                                            inner.chop(2);
+                                            subName = "(" + inner + "oxy)";
+                                        } else {
+                                            subName = alkylName + "oxy";
+                                        }
                                     } else if (alkylName == "methyl" || alkylName == "ethyl" || alkylName == "propyl" || alkylName == "butyl" || alkylName == "phenyl") {
                                         alkylName.chop(2); alkylName += "oxy";
                                         subName = alkylName;
