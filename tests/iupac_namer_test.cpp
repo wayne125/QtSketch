@@ -486,13 +486,21 @@ int main() {
         {"CC(=S)NC(C)=S", "", true, "Acyclic imides (N-acylamides) are not supported"},
         {"S=CN(C)C", "N,N-dimethylmethanethioamide"},
         {"C1CCCCC1C(=S)N", "cyclohexanecarbothioamide"},
+        // Ring-parent amide + plain N-substituent: checkPrincipalHeteroatomsUnsubstituted
+        // only ever allowed an unsubstituted N (plus the anilide ring-fused-to-N
+        // exception, which doesn't apply here), so this rejected outright even
+        // though the N-substituent is a plain, unbranched methyl -- the acyclic
+        // amide path already built "N-methyl" prefixes via nameBranchGraph; the
+        // ring-parent path never did until tryBuildPrincipalNSubstituentPrefix.
+        {"C1CCCCC1C(=O)NC", "N-methylcyclohexanecarboxamide"},
         // Ring-attached thioamide carbon misclassified as THIONE when its N bore
         // any substituent (classification required an unsubstituted NH2, unlike
         // the AMIDE branch right above it) -- THIONE isn't an exocyclic-to-ring
         // suffix type, so the whole C(=S)N(R) fragment was silently dropped and
         // the molecule named as bare "cyclohexane". Now correctly classified as
-        // THIOAMIDE and cleanly rejected via the same guard AMIDE already uses.
-        {"C1CCCCC1C(=S)NC", "", true, "Branched or ring N-substituents on thioamides are not supported"},
+        // THIOAMIDE; tryBuildPrincipalNSubstituentPrefix then builds the actual
+        // "N-methyl" prefix instead of just rejecting.
+        {"C1CCCCC1C(=S)NC", "N-methylcyclohexanecarbothioamide"},
 
         // P-66.3.3.1 Substituted hydrazides
         {"CC(=O)N(C)N", "N-methylethanehydrazide"}, // Methyl on NEAR nitrogen
@@ -882,6 +890,15 @@ int main() {
         {"CS(=O)NC1CCCCC1", "", true, "A chain-based principal group outranks the ring in this structure; chain-as-parent seniority (P-44.1.1) for this ring/class combination is not yet supported."},
         {"CC(C)S(=O)(=O)NC", "N-methylpropane-2-sulfonamide"}, // branched alkyl parent (Wave 2, Item 1B)
         {"CC(C)S(=O)NC", "N-methylpropane-2-sulfinamide"}, // branched alkyl parent, sulfinamide (Wave 2, Item 1B)
+        // Ring IS the sulfonyl/sulfinyl parent (not the N-substituent) + a plain
+        // N-substituent -- tryBuildPrincipalNSubstituentPrefix now builds this,
+        // same mechanism as the amide/thioamide cases above. Locant correctly
+        // stays omitted (cyclohexane is symmetric, N-methyl carries no ring
+        // locant of its own) -- a real regression caught and fixed while
+        // building this: prefixLocantsMap.empty() is the right omission test,
+        // not prefixPart.isEmpty(), once prefixPart can also hold an N-prefix.
+        {"C1CCCCC1S(=O)(=O)NC", "N-methylcyclohexanesulfonamide"},
+        {"C1CCCCC1S(=O)NC", "N-methylcyclohexanesulfinamide"},
         // N-mesylpiperidine: the sulfonamide N is itself a ring atom. Used to hit
         // the generic sulfur-group gate (sulfonamide classification required an
         // unsubstituted N, so this never classified as SULFONAMIDE at all); now it
@@ -5863,18 +5880,20 @@ int main() {
         // nitrogen at all -- it always assumed a plain, unsubstituted -C(=O)NH2.
         // Procainamide's amide N carries a full N-[2-(diethylamino)ethyl] chain,
         // which was silently dropped, producing "4-aminobenzenecarboxamide" instead
-        // of a proper N-substituted name. Fixed by wiring the existing
-        // checkPrincipalHeteroatomsUnsubstituted() helper (already used for the
-        // chain-as-parent case) into this ring-as-parent dispatch's two
-        // near-duplicate sites too.
+        // of a proper N-substituted name. First fixed to at least reject cleanly
+        // via checkPrincipalHeteroatomsUnsubstituted(); now tryBuildPrincipalNSubstituentPrefix
+        // builds the N-substituent's own prefix (reusing nameBranchGraph, same as
+        // the acyclic amide path already did) and feeds it into the ring's own
+        // pGroups alphabetization so it cites in the correct order alongside the
+        // ring's other substituents ("4-amino-N-..." not "N-...-4-amino-").
         int m = indigoLoadMoleculeFromString("CCN(CC)CCNC(=O)c1ccc(N)cc1"); // procainamide
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
-        if (!r.success && !r.error.isEmpty()) {
-            std::cout << "[PASS] procainamide N-substituent drop now rejected -> " << r.error.toStdString() << "\n";
+        if (r.success && r.name == "4-amino-N-(2-diethylaminoethyl)benzenecarboxamide") {
+            std::cout << "[PASS] procainamide N-substituent -> " << r.name.toStdString() << "\n";
             passed++;
         } else {
-            std::cout << "[FAIL] procainamide N-substituent drop -> got success=" << r.success << " name='" << r.name.toStdString() << "'\n";
+            std::cout << "[FAIL] procainamide N-substituent -> got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
             failed++;
         }
     }

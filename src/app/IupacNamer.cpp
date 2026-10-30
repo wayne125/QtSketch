@@ -7062,6 +7062,87 @@ static HeteroCompletenessError checkPrincipalHeteroatomsUnsubstituted(const Grap
     return {false, ""};
 }
 
+struct NSubstituentPrefixResult {
+    // false means "this N-substitution shape is outside this function's scope
+    // (N,N-disubstituted, or a substituent nameBranchGraph can't name)" --
+    // the caller should fall through to checkPrincipalHeteroatomsUnsubstituted's
+    // existing rejection for that case, unchanged. true (with prefix possibly
+    // empty, for a plain unsubstituted N) means this function has already
+    // fully handled the N and the caller should skip that guard.
+    bool handled = false;
+    std::vector<std::pair<QString, QString>> fragments; // (rawName for alphabetization, "N-<rawName>" formatted)
+};
+
+// A ring-parent AMIDE/THIOAMIDE/SULFONAMIDE/SULFINAMIDE's own principal N
+// rejected ANY substituent at all -- checkPrincipalHeteroatomsUnsubstituted's
+// only exception is the anilide shape (N fused directly into the SAME ring),
+// so even a plain acyclic N-methyl on a ring-parent amide (e.g.
+// C1CCCCC1C(=O)NC) was rejected outright. The acyclic narrow block for these
+// same four classes (~line 17049 ff.) already builds an "N-<name>" prefix via
+// nameBranchGraph for exactly this situation; the ring-parent path never did.
+// Scoped to exactly one extra N-substituent (chain or ring, either is fine --
+// nameBranchGraph already handles both, confirmed live via the working
+// acyclic N-cyclohexylacetamide case) since that's what the acyclic path
+// itself supports; N,N-disubstitution is a separate, larger addition left to
+// the existing rejection path. Confirmed live bug this fixes: a ring acting
+// as BOTH the acyl/sulfonyl parent AND carrying a (possibly also-ring) N-
+// substituent fell through every ringCount==2 special case straight into the
+// naphthalene-fusion-only handler, rejecting with an unrelated message.
+//
+// The two sibling copies of checkPrincipalHeteroatomsUnsubstituted's bare
+// (principalCarbons, winningType) call -- the bicyclic/fused-ring contexts,
+// not this monocyclic one -- were not audited for the same gap; a future
+// pass could check whether they need the identical treatment.
+static NSubstituentPrefixResult tryBuildPrincipalNSubstituentPrefix(
+    const Graph &g, const std::set<int> &principalCarbons, GroupType winningType,
+    const std::vector<std::set<int>> &allSSSRRings, const std::set<int> &ringNodeSet, int mol)
+{
+    NSubstituentPrefixResult out;
+    if (winningType != GroupType::AMIDE && winningType != GroupType::THIOAMIDE &&
+        winningType != GroupType::SULFONAMIDE && winningType != GroupType::SULFINAMIDE) {
+        out.handled = true;
+        return out;
+    }
+
+    for (int pc : principalCarbons) {
+        int nNode = -1, attachFromN = -1;
+        if (winningType == GroupType::AMIDE || winningType == GroupType::THIOAMIDE) {
+            for (size_t i = 0; i < g.nodes[pc].neighbors.size(); ++i) {
+                int nei = g.nodes[pc].neighbors[i];
+                if (g.nodes[nei].atomicNumber == 7 && g.nodes[pc].bondOrders[i] == 1) { nNode = nei; attachFromN = pc; break; }
+            }
+        } else {
+            // SULFONAMIDE/SULFINAMIDE: the principal carbon bonds to S, and the
+            // amide-style N hangs off that S, not off pc directly.
+            for (int nei : g.nodes[pc].neighbors) {
+                if (g.nodes[nei].atomicNumber != 16) continue;
+                for (size_t j = 0; j < g.nodes[nei].neighbors.size(); ++j) {
+                    int sNei = g.nodes[nei].neighbors[j];
+                    if (g.nodes[sNei].atomicNumber == 7 && g.nodes[nei].bondOrders[j] == 1) { nNode = sNei; attachFromN = nei; break; }
+                }
+                if (nNode != -1) break;
+            }
+        }
+        if (nNode == -1) continue;
+
+        std::vector<int> extra;
+        for (int nei : g.nodes[nNode].neighbors) {
+            if (nei == attachFromN) continue;
+            if (g.nodes[nei].atomicNumber > 1) extra.push_back(nei);
+        }
+        if (extra.empty()) continue; // plain NH2/NH- -- nothing to add, already supported today
+        if (extra.size() > 1) return out; // N,N-disubstituted -- out of scope, handled stays false
+
+        QString subName = nameBranchGraph(g, extra[0], nNode, allSSSRRings, ringNodeSet, {}, nullptr, mol);
+        if (subName.isEmpty()) return out; // couldn't name it -- handled stays false
+
+        out.fragments.push_back({subName, "N-" + subName});
+    }
+
+    out.handled = true;
+    return out;
+}
+
 // Phase 52 / Phase 54 (P-44.1.1 chain-wins case): when a chain-attached
 // principal group of the most-senior class outnumbers the ring-attached
 // instances of that class, the chain is the senior parent structure and the
@@ -20511,6 +20592,29 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
         pGroups.push_back(pg);
     }
 
+    // A ring-parent AMIDE/THIOAMIDE/SULFONAMIDE/SULFINAMIDE's own principal N
+    // substituent ("N-methyl", "N-(2-diethylaminoethyl)", ...) has no ring
+    // locant of its own, so it can't come from prefixLocantsMap above -- but it
+    // still needs to alphabetize together with whatever ring substituents DO
+    // have locants (e.g. procainamide: "4-amino-N-[2-(diethylamino)ethyl]...",
+    // not "N-[2-(diethylamino)ethyl]-4-amino..."). Feed it into the SAME
+    // pGroups vector, by its own substituent name (not "N-"), before the one
+    // sort both share.
+    bool usedNSubstituentPrefix = false;
+    if (winningType == GroupType::AMIDE || winningType == GroupType::THIOAMIDE ||
+        winningType == GroupType::SULFONAMIDE || winningType == GroupType::SULFINAMIDE) {
+        auto nsub = tryBuildPrincipalNSubstituentPrefix(g, principalCarbons, winningType, allSSSRRings, ringNodeSet, mol);
+        if (nsub.handled) {
+            for (const auto &frag : nsub.fragments) {
+                PrefixGroup pg;
+                pg.baseName = alphabetizationKey(frag.first);
+                pg.formattedStr = frag.second;
+                pGroups.push_back(pg);
+            }
+            usedNSubstituentPrefix = true;
+        }
+    }
+
     std::sort(pGroups.begin(), pGroups.end(), [](const PrefixGroup &a, const PrefixGroup &b) {
         return a.baseName.toLower() < b.baseName.toLower();
     });
@@ -20719,7 +20823,15 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
             } else {
                 QString stem = rootStr;
                 if (stem.endsWith("e") && !sfx.isEmpty() && isVowel(sfx[0])) stem.chop(1);
-                if (pCount == 1 && prefixPart.isEmpty() && allCarbon) {
+                // prefixLocantsMap (not prefixPart) is the right "no real ring
+                // position to disambiguate" test: for SULFONAMIDE/SULFINAMIDE,
+                // prefixPart may now also carry an "N-<name>" fragment from
+                // tryBuildPrincipalNSubstituentPrefix, which has no ring locant
+                // of its own and shouldn't force one onto an otherwise-symmetric,
+                // single-substituent ring (matches the AMIDE/THIOAMIDE isExocyclic
+                // branch above, whose own omission check never depended on
+                // prefixPart either).
+                if (pCount == 1 && prefixLocantsMap.empty() && allCarbon) {
                     fullName = prefixPart + stem + sfx;
                 } else {
                     QStringList lStrs;
@@ -20750,8 +20862,10 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
     }
 
     {
-        auto res = checkPrincipalHeteroatomsUnsubstituted(g, principalCarbons, winningType);
-        if (res.hasError) return {false, "", res.msg};
+        if (!usedNSubstituentPrefix) {
+            auto res = checkPrincipalHeteroatomsUnsubstituted(g, principalCarbons, winningType);
+            if (res.hasError) return {false, "", res.msg};
+        }
     }
 
     fullName = stereoRes.prefix + fullName;
