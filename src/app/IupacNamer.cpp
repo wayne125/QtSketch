@@ -22689,10 +22689,6 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
         std::set<int> handledBranchStereoIds;
         StereoResult stereoRes;
 
-        if (winningType == GroupType::ESTER && !stereoByGraphId.empty()) {
-            return {false, "", "Stereodescriptors combined with ester naming are not supported in this phase."};
-        }
-
         std::vector<int> parentChain = bestSig.parentChain;
         int k = static_cast<int>(parentChain.size());
         std::set<int> chainSet(parentChain.begin(), parentChain.end());
@@ -23502,6 +23498,7 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
             }
         }
 
+        bool stereoAppliedForEster = false;
         if (winningType == GroupType::ESTER) {
             int esterCarbon = -1;
             for (int pc : principalCarbons) {
@@ -23522,14 +23519,22 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
                 if (alkylName.isEmpty()) {
                     return {false, "", "Unsupported ester alkyl group."};
                 }
-                fullName = alkylName + " " + fullName;
+                // Stereo prefix belongs on the acyl portion ("ethyl (2S)-2-
+                // chloropropanoate"), not in front of the alkyl-ester prefix
+                // ("(2S)-ethyl 2-chloropropanoate" would be wrong) -- applied
+                // here, before the "alkylName + ' '" prefix goes on, and
+                // skipped in the generic stereoRes.prefix application below.
+                fullName = alkylName + " " + stereoRes.prefix + fullName;
+                stereoAppliedForEster = true;
             }
         }
 
         auto res = checkPrincipalHeteroatomsUnsubstituted(g, principalCarbons, winningType);
         if (res.hasError) return {false, "", res.msg};
 
-        fullName = stereoRes.prefix + fullName;
+        if (!stereoAppliedForEster) {
+            fullName = stereoRes.prefix + fullName;
+        }
         return {true, fullName, ""};
         }
     }

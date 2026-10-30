@@ -1007,7 +1007,15 @@ int main() {
         {"COC=O", "methyl methanoate"},
         {"COC(=O)CC(=O)O", "3-methoxycarbonylpropanoic acid"},
         {"COC(=O)C(=O)OC", "", true, "Multiple ester groups are not supported in this phase."},
-        {"C[C@H](Cl)C(=O)OCC", "", true, "Stereodescriptors combined with ester naming are not supported in this phase."},
+        // Stereo prefix belongs on the acyl portion, not prepended in front
+        // of the alkyl-ester prefix -- "ethyl (2S)-2-chloropropanoate", not
+        // "(2S)-ethyl 2-chloropropanoate" or the old honest rejection.
+        {"C[C@H](Cl)C(=O)OCC", "ethyl (2S)-2-chloropropanoate"},
+        {"C[C@@H](Cl)C(=O)OCC", "ethyl (2R)-2-chloropropanoate"},
+        // Stereo on the ALKYL (O-) side of the ester is a separate, still
+        // out-of-scope case (stereocenter isn't on the parent/acyl chain's
+        // own locant map at all) -- correctly a different, honest rejection.
+        {"CC(=O)OC[C@H](Cl)C", "", true, "Stereocenters on substituent branches are not supported in this phase."},
         {"CC(=O)OC(=O)C", "ethanoic anhydride"},
 
         // Phase 9: Symmetric unbranched unsubstituted acid anhydrides
