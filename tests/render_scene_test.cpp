@@ -12,6 +12,7 @@
 #include "app/molecule/DrawingStyle.h"
 #include "app/molecule/PageSettings.h"
 #include <QTemporaryDir>
+#include <QSvgRenderer>
 
 static int g_pass = 0, g_fail = 0;
 #define CHECK(cond, name) do { \
@@ -283,6 +284,105 @@ int main(int argc, char** argv) {
             // well below this floor.
             CHECK(paintedWidthPx > 40, "painted content spans the full scaled width, not ~1/3.39 of it");
         }
+    }
+
+    // Test 10: export stays inside the frame wherever the scene sits.
+    std::printf("--- Test 10: PNG/SVG export frames a scene that is away from the model origin ---\n");
+    {
+        const double offsets[][2] = {{0.0, 0.0}, {0.0, -0.75}, {10.0, 7.0}, {-7.0, -9.0}};
+        for (const auto& off : offsets) {
+            RenderPrimitives p;
+            const double pts[3][2] = {{off[0] + 3.0, off[1]}, {off[0], off[1]}, {off[0], off[1] + 1.5}};
+            for (int i = 0; i < 3; ++i) {
+                AtomPrim a; a.id = i; a.x = pts[i][0]; a.y = pts[i][1]; a.element = "C";
+                p.atoms.append(a);
+            }
+            for (int i = 0; i < 2; ++i) {
+                BondPrim b; b.id = i; b.begin = i; b.end = i + 1; b.type = 1;
+                p.bonds.append(b);
+            }
+            RenderScene s;
+            s.build(p, style, page);
+
+            auto inkBox = [](const QImage& img, int& minX, int& maxX, int& minY, int& maxY) {
+                minX = img.width(); maxX = -1; minY = img.height(); maxY = -1;
+                for (int y = 0; y < img.height(); ++y)
+                    for (int x = 0; x < img.width(); ++x) {
+                        if (img.pixelColor(x, y) != Qt::white) {
+                            minX = qMin(minX, x); maxX = qMax(maxX, x);
+                            minY = qMin(minY, y); maxY = qMax(maxY, y);
+                        }
+                    }
+            };
+
+            QTemporaryDir dir;
+            const QString pngPath = dir.filePath("offset.png");
+            PngExporter png;
+            png.setResolution(300);
+            png.exportToFile(s, pngPath);
+            QImage img(pngPath);
+            int minX, maxX, minY, maxY;
+            inkBox(img, minX, maxX, minY, maxY);
+            // 3.0 x 1.5 model units at 300 dpi is about 120 x 60 px.
+            CHECK(maxX - minX > img.width() * 0.9 && maxY - minY > img.height() * 0.9,
+                  "PNG: both bonds are drawn across the full frame");
+
+            const QString svgPath = dir.filePath("offset.svg");
+            SvgExporter svg;
+            svg.exportToFile(s, svgPath);
+            QSvgRenderer renderer(svgPath);
+            QImage svgImg(240, 120, QImage::Format_ARGB32);
+            svgImg.fill(Qt::white);
+            { QPainter sp(&svgImg); renderer.render(&sp); }
+            inkBox(svgImg, minX, maxX, minY, maxY);
+            CHECK(renderer.isValid() && maxX - minX > svgImg.width() * 0.9 && maxY - minY > svgImg.height() * 0.9,
+                  "SVG: both bonds are visible across the full viewBox");
+        }
+    }
+
+    // Test 11: atom labels reach the exported file at a readable size.
+    std::printf("--- Test 11: PNG/SVG export draws atom labels ---\n");
+    {
+        RenderPrimitives p;
+        AtomPrim o; o.id = 0; o.x = 4.0; o.y = 2.0; o.element = "O"; o.label = "O";
+        p.atoms.append(o);
+        RenderScene s;
+        s.build(p, style, page);
+
+        auto inkBox = [](const QImage& img, int& minX, int& maxX, int& minY, int& maxY) {
+            minX = img.width(); maxX = -1; minY = img.height(); maxY = -1;
+            for (int y = 0; y < img.height(); ++y)
+                for (int x = 0; x < img.width(); ++x)
+                    if (qGray(img.pixel(x, y)) < 128) {
+                        minX = qMin(minX, x); maxX = qMax(maxX, x);
+                        minY = qMin(minY, y); maxY = qMax(maxY, y);
+                    }
+        };
+
+        QTemporaryDir dir;
+        const QString pngPath = dir.filePath("label.png");
+        PngExporter png;
+        png.setResolution(300);
+        CHECK(png.exportToFile(s, pngPath), "PNG export succeeds");
+        QImage img(pngPath);
+        int minX, maxX, minY, maxY;
+        inkBox(img, minX, maxX, minY, maxY);
+        CHECK(maxX >= minX, "PNG: the O label is drawn");
+        // 10 pt at 300 dpi is about 42 px per em; a capital O is roughly 30 px tall.
+        const int h = maxY - minY + 1;
+        CHECK(h > 15 && h < 60, "PNG: the label is drawn at its point size");
+        CHECK(minX > 0 && minY > 0 && maxX < img.width() - 1 && maxY < img.height() - 1,
+              "PNG: the label is not clipped by the frame");
+
+        const QString svgPath = dir.filePath("label.svg");
+        SvgExporter svg;
+        CHECK(svg.exportToFile(s, svgPath), "SVG export succeeds");
+        QSvgRenderer renderer(svgPath);
+        QImage svgImg(renderer.defaultSize() * 4, QImage::Format_ARGB32);
+        svgImg.fill(Qt::white);
+        { QPainter sp(&svgImg); renderer.render(&sp); }
+        inkBox(svgImg, minX, maxX, minY, maxY);
+        CHECK(renderer.isValid() && maxX >= minX, "SVG: the O label is drawn");
     }
 
     std::printf("\nSummary: %d passed, %d failed.\n", g_pass, g_fail);

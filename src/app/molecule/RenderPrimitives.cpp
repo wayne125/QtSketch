@@ -126,6 +126,9 @@ RenderPrimitives RenderPrimitiveBuilder::build(const EditableMolecule& mol, bool
         }
     }
 
+    // one CIP run for the whole molecule
+    const QHash<AtomId, int> atomCip = mol.allAtomCipDescriptors();
+
     for (AtomId id : mol.atomIds()) {
         if (atomToSgroup.contains(id)) continue;
 
@@ -191,7 +194,7 @@ RenderPrimitives RenderPrimitiveBuilder::build(const EditableMolecule& mol, bool
         prim.stereoType = stType;
         prim.stereoGroup = stGroup;
         prim.stereoLabel = stereoLabelFor(stType, stGroup);
-        prim.cipLabel = cipDescriptorLabel(mol.atomCipDescriptor(id));
+        prim.cipLabel = cipDescriptorLabel(atomCip.value(id, 0));
 
         double nbXSum = 0; int nbCount = 0;
         for (AtomId nb : neighbors) {

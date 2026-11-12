@@ -3,6 +3,7 @@
 #include "MoleculeSnapshot.h"
 #include "indigo.h"
 #include <algorithm>
+#include <limits>
 #include <utility>
 #include <cmath>
 #include <QSet>
@@ -862,8 +863,10 @@ QList<BondId> EditableMolecule::bondIds() const {
 
 void EditableMolecule::rebuildIndexTables() {
     activateSession();
+    // Pair by previous index order, not id order: Indigo reuses freed indices,
+    // so a newer id can sit on a lower index.
     QList<AtomId> aIds = m_atomIdx.keys();
-    std::sort(aIds.begin(), aIds.end());
+    std::sort(aIds.begin(), aIds.end(), [this](AtomId l, AtomId r) { return m_atomIdx.value(l) < m_atomIdx.value(r); });
     QList<int> aIdx;
     int iter = indigoIterateAtoms(m_mol);
     if (iter >= 0) {
@@ -878,7 +881,7 @@ void EditableMolecule::rebuildIndexTables() {
     for (auto it = m_atomIdx.constBegin(); it != m_atomIdx.constEnd(); ++it) m_idxToAtom.insert(it.value(), it.key());
 
     QList<BondId> bIds = m_bondIdx.keys();
-    std::sort(bIds.begin(), bIds.end());
+    std::sort(bIds.begin(), bIds.end(), [this](BondId l, BondId r) { return m_bondIdx.value(l) < m_bondIdx.value(r); });
     QList<int> bIdx;
     iter = indigoIterateBonds(m_mol);
     if (iter >= 0) {
@@ -1078,13 +1081,37 @@ MoleculeSnapshot EditableMolecule::snapshot() const {
     s.m_clone = indigoClone(m_mol);
     s.m_session = m_session;
     s.m_ext = m_ext;
-    s.m_atomIdx = m_atomIdx;
-    s.m_bondIdx = m_bondIdx;
+    // indigoClone renumbers without gaps, so store each entity's index in the clone.
+    // Walk the live molecule and the clone in step to pair them.
+    auto liveToClone = [](int liveIter, int cloneIter) {
+        QHash<int, int> map;
+        int a = 0, b = 0;
+        while (liveIter >= 0 && cloneIter >= 0 &&
+               (a = indigoNext(liveIter)) > 0 && (b = indigoNext(cloneIter)) > 0) {
+            map.insert(indigoIndex(a), indigoIndex(b));
+            indigoFree(a); indigoFree(b);
+            a = b = 0;
+        }
+        if (a > 0) indigoFree(a);
+        if (liveIter >= 0) indigoFree(liveIter);
+        if (cloneIter >= 0) indigoFree(cloneIter);
+        return map;
+    };
+    auto remap = [](const QHash<int, int>& idToIdx, const QHash<int, int>& map) {
+        QHash<int, int> out;
+        for (auto it = idToIdx.constBegin(); it != idToIdx.constEnd(); ++it)
+            if (map.contains(it.value())) out.insert(it.key(), map.value(it.value()));
+        return out;
+    };
+    s.m_atomIdx = remap(m_atomIdx, liveToClone(indigoIterateAtoms(m_mol), indigoIterateAtoms(s.m_clone)));
+    s.m_bondIdx = remap(m_bondIdx, liveToClone(indigoIterateBonds(m_mol), indigoIterateBonds(s.m_clone)));
     s.m_nextAtomId = m_nextAtomId;
     s.m_nextBondId = m_nextBondId;
-    s.m_sgroupIdx = m_sgroupIdx;
+    s.m_sgroupIdx = remap(m_sgroupIdx, liveToClone(indigoIterateSuperatoms(m_mol), indigoIterateSuperatoms(s.m_clone)));
     s.m_sgroupExpanded = m_sgroupExpanded;
     s.m_nextSGroupId = m_nextSGroupId;
+    s.m_sgroupLabels = m_sgroupLabels;
+    s.m_ezWasSpecified = m_ezWasSpecified;
     return s;
 }
 
@@ -1098,12 +1125,30 @@ bool EditableMolecule::restore(const MoleculeSnapshot& snap) {
     m_ext = snap.m_ext;
     m_atomIdx = snap.m_atomIdx;
     m_bondIdx = snap.m_bondIdx;
+    // index->id maps are not in the snapshot; rebuild them
+    m_idxToAtom.clear();
+    for (auto it = m_atomIdx.constBegin(); it != m_atomIdx.constEnd(); ++it) m_idxToAtom.insert(it.value(), it.key());
+    m_idxToBond.clear();
+    for (auto it = m_bondIdx.constBegin(); it != m_bondIdx.constEnd(); ++it) m_idxToBond.insert(it.value(), it.key());
     if (snap.m_nextAtomId > m_nextAtomId) m_nextAtomId = snap.m_nextAtomId;
     if (snap.m_nextBondId > m_nextBondId) m_nextBondId = snap.m_nextBondId;
     m_sgroupIdx = snap.m_sgroupIdx;
     m_sgroupExpanded = snap.m_sgroupExpanded;
     if (snap.m_nextSGroupId > m_nextSGroupId) m_nextSGroupId = snap.m_nextSGroupId;
+    m_sgroupLabels = snap.m_sgroupLabels;
+    m_ezWasSpecified = snap.m_ezWasSpecified;
     return true;
+}
+
+EditableMolecule::IdCounters EditableMolecule::idCounters() const {
+    return { m_nextAtomId, m_nextBondId, m_nextSGroupId, m_ext.nextTextId, m_ext.nextRxnArrowId,
+             m_ext.nextRxnPlusId, m_ext.nextMultitailArrowId, m_ext.nextImageId };
+}
+
+void EditableMolecule::setIdCounters(const IdCounters& c) {
+    m_nextAtomId = c.atom; m_nextBondId = c.bond; m_nextSGroupId = c.sgroup;
+    m_ext.nextTextId = c.text; m_ext.nextRxnArrowId = c.rxnArrow; m_ext.nextRxnPlusId = c.rxnPlus;
+    m_ext.nextMultitailArrowId = c.multitailArrow; m_ext.nextImageId = c.image;
 }
 
 QList<BondId> EditableMolecule::graftAtomOnto(AtomId doomed, AtomId kept) {
@@ -1282,7 +1327,11 @@ EditableMolecule::InsertResult EditableMolecule::insertStructure(const QString& 
     // does not alter atom coordinates, every new destination atom's xyz is an exact match (same
     // float bits) for exactly one clone atom's recorded transformed position -- a reliable,
     // order-independent way to recover the true source index.
-    QList<AtomId> newAtomIds;
+    //
+    // Ids are handed out in source order so a redo gives the same atoms the same ids.
+    constexpr int kUnmatched = std::numeric_limits<int>::max();
+    struct NewAtom { int destIdx; int sourceIdx; };
+    QList<NewAtom> newAtoms;
     {
         int it = indigoIterateAtoms(m_mol);
         if (it >= 0) {
@@ -1290,11 +1339,6 @@ EditableMolecule::InsertResult EditableMolecule::insertStructure(const QString& 
             while ((a = indigoNext(it)) > 0) {
                 int idx = indigoIndex(a);
                 if (!atomIdxBefore.contains(idx)) {
-                    AtomId id = m_nextAtomId++;
-                    m_atomIdx.insert(id, idx);
-                    m_idxToAtom.insert(idx, id);
-                    newAtomIds.append(id);
-
                     int sourceIdx = -1;
                     float* xyz = indigoXYZ(a);
                     if (xyz) {
@@ -1307,31 +1351,62 @@ EditableMolecule::InsertResult EditableMolecule::insertStructure(const QString& 
                             }
                         }
                     }
-                    if (sourceIdx >= 0) result.sourceIndexToNewAtomId.insert(sourceIdx, id);
+                    newAtoms.append({ idx, sourceIdx });
                 }
                 indigoFree(a);
             }
             indigoFree(it);
         }
     }
+    std::stable_sort(newAtoms.begin(), newAtoms.end(), [kUnmatched](const NewAtom& l, const NewAtom& r) {
+        const int ls = l.sourceIdx >= 0 ? l.sourceIdx : kUnmatched;
+        const int rs = r.sourceIdx >= 0 ? r.sourceIdx : kUnmatched;
+        return ls != rs ? ls < rs : l.destIdx < r.destIdx;
+    });
+    QHash<int, int> sourceIdxByDestIdx;
+    QList<AtomId> newAtomIds;
+    for (const NewAtom& na : newAtoms) {
+        AtomId id = m_nextAtomId++;
+        m_atomIdx.insert(id, na.destIdx);
+        m_idxToAtom.insert(na.destIdx, id);
+        newAtomIds.append(id);
+        if (na.sourceIdx >= 0) {
+            result.sourceIndexToNewAtomId.insert(na.sourceIdx, id);
+            sourceIdxByDestIdx.insert(na.destIdx, na.sourceIdx);
+        }
+    }
     result.createdAtoms = newAtomIds;
 
-    // New bonds: same idea, using m_nextBondId.
+    // New bonds: same, ordered by their source end atoms.
     {
+        struct NewBond { int destIdx; int lo; int hi; };
+        QList<NewBond> newBonds;
         int it = indigoIterateBonds(m_mol);
         if (it >= 0) {
             int b;
             while ((b = indigoNext(it)) > 0) {
                 int idx = indigoIndex(b);
                 if (!bondIdxBefore.contains(idx)) {
-                    BondId id = m_nextBondId++;
-                    m_bondIdx.insert(id, idx);
-                    m_idxToBond.insert(idx, id);
-                    result.createdBonds.append(id);
+                    int ends[2] = { kUnmatched, kUnmatched };
+                    int src = indigoSource(b), dst = indigoDestination(b);
+                    if (src >= 0) { ends[0] = sourceIdxByDestIdx.value(indigoIndex(src), kUnmatched); indigoFree(src); }
+                    if (dst >= 0) { ends[1] = sourceIdxByDestIdx.value(indigoIndex(dst), kUnmatched); indigoFree(dst); }
+                    newBonds.append({ idx, std::min(ends[0], ends[1]), std::max(ends[0], ends[1]) });
                 }
                 indigoFree(b);
             }
             indigoFree(it);
+        }
+        std::stable_sort(newBonds.begin(), newBonds.end(), [](const NewBond& l, const NewBond& r) {
+            if (l.lo != r.lo) return l.lo < r.lo;
+            if (l.hi != r.hi) return l.hi < r.hi;
+            return l.destIdx < r.destIdx;
+        });
+        for (const NewBond& nb : newBonds) {
+            BondId id = m_nextBondId++;
+            m_bondIdx.insert(id, nb.destIdx);
+            m_idxToBond.insert(nb.destIdx, id);
+            result.createdBonds.append(id);
         }
     }
 
@@ -1340,19 +1415,41 @@ EditableMolecule::InsertResult EditableMolecule::insertStructure(const QString& 
     // default for sg.data.expanded). Uses indigoIterateSuperatoms, NOT an
     // indigoCountSuperatoms-bounded indigoGetSuperatom(mol, i) loop -- see the
     // sgroupIdxBefore block above for why that pattern is broken.
-    int supIter = indigoIterateSuperatoms(m_mol);
-    if (supIter >= 0) {
-        int sup;
-        while ((sup = indigoNext(supIter)) > 0) {
-            int idx = indigoIndex(sup);
-            indigoFree(sup);
-            if (sgroupIdxBefore.contains(idx)) continue;
+    // Ids follow the lowest source atom of each sgroup.
+    {
+        struct NewSGroup { int destIdx; int firstSource; };
+        QList<NewSGroup> newSGroups;
+        int supIter = indigoIterateSuperatoms(m_mol);
+        if (supIter >= 0) {
+            int sup;
+            while ((sup = indigoNext(supIter)) > 0) {
+                int idx = indigoIndex(sup);
+                if (!sgroupIdxBefore.contains(idx)) {
+                    int first = kUnmatched;
+                    int aIter = indigoIterateAtoms(sup);
+                    if (aIter >= 0) {
+                        int a;
+                        while ((a = indigoNext(aIter)) > 0) {
+                            first = std::min(first, sourceIdxByDestIdx.value(indigoIndex(a), kUnmatched));
+                            indigoFree(a);
+                        }
+                        indigoFree(aIter);
+                    }
+                    newSGroups.append({ idx, first });
+                }
+                indigoFree(sup);
+            }
+            indigoFree(supIter);
+        }
+        std::stable_sort(newSGroups.begin(), newSGroups.end(), [](const NewSGroup& l, const NewSGroup& r) {
+            return l.firstSource != r.firstSource ? l.firstSource < r.firstSource : l.destIdx < r.destIdx;
+        });
+        for (const NewSGroup& ns : newSGroups) {
             SGroupId sgId = m_nextSGroupId++;
-            m_sgroupIdx.insert(sgId, idx);
+            m_sgroupIdx.insert(sgId, ns.destIdx);
             m_sgroupExpanded.insert(sgId, true);
             result.createdSGroups.append(sgId);
         }
-        indigoFree(supIter);
     }
 
     return result;
@@ -1631,17 +1728,33 @@ int EditableMolecule::bondStereoDirectionV2000(BondId id) const {
 
 int EditableMolecule::atomCipDescriptor(AtomId id) const {
     if (m_mol < 0 || !m_atomIdx.contains(id)) return 0;
+    return allAtomCipDescriptors().value(id, 0);
+}
+
+QHash<AtomId, int> EditableMolecule::allAtomCipDescriptors() const {
+    QHash<AtomId, int> result;
+    if (m_mol < 0) return result;
     activateSession();
-    int idx = m_atomIdx.value(id);
     int clone = indigoClone(m_mol);
-    if (clone < 0) return 0;
-    if (indigoAddCIPStereoDescriptors(clone) < 0) { indigoFree(clone); return 0; }
-    int a = indigoGetAtom(clone, idx);
-    if (a < 0) { indigoFree(clone); return 0; }
-    int cip = indigoStereocenterCIPDescriptor(a);
-    indigoFree(a);
+    if (clone < 0) return result;
+    if (indigoAddCIPStereoDescriptors(clone) < 0) { indigoFree(clone); return result; }
+    // The clone has no index gaps, so walk both molecules in step.
+    int liveIter = indigoIterateAtoms(m_mol);
+    int cloneIter = indigoIterateAtoms(clone);
+    int live = 0, copy = 0;
+    while (liveIter >= 0 && cloneIter >= 0 &&
+           (live = indigoNext(liveIter)) > 0 && (copy = indigoNext(cloneIter)) > 0) {
+        const AtomId id = m_idxToAtom.value(indigoIndex(live), -1);
+        const int cip = indigoStereocenterCIPDescriptor(copy);
+        if (id != -1) result.insert(id, cip > 0 ? cip : 0);
+        indigoFree(live); indigoFree(copy);
+        live = copy = 0;
+    }
+    if (live > 0) indigoFree(live);
+    if (liveIter >= 0) indigoFree(liveIter);
+    if (cloneIter >= 0) indigoFree(cloneIter);
     indigoFree(clone);
-    return cip > 0 ? cip : 0;
+    return result;
 }
 
 QMap<BondId, QString> EditableMolecule::allBondCipLabels() const {
@@ -1671,11 +1784,29 @@ QMap<BondId, QString> EditableMolecule::allBondCipLabels() const {
 
     if (mol < 0) return result;
 
+    // bondCip uses the KET re-read numbering (fragment by fragment, no gaps).
+    QHash<AtomId, int> position;
+    {
+        QMap<int, QList<AtomId>> byFragment;   // fragment index -> its atoms, ascending live index
+        int iter = indigoIterateAtoms(m_mol);
+        if (iter >= 0) {
+            int a;
+            while ((a = indigoNext(iter)) > 0) {
+                const AtomId aid = m_idxToAtom.value(indigoIndex(a), -1);
+                if (aid != -1) byFragment[indigoComponentIndex(a)].append(aid);
+                indigoFree(a);
+            }
+            indigoFree(iter);
+        }
+        for (const QList<AtomId>& fragment : byFragment)
+            for (AtomId aid : fragment) position.insert(aid, position.size());
+    }
+
     for (BondId bid : bondIds()) {
         AtomId a1 = -1, a2 = -1;
         if (!bondEndpoints(bid, a1, a2)) continue;
-        if (!m_atomIdx.contains(a1) || !m_atomIdx.contains(a2)) continue;
-        int i1 = m_atomIdx.value(a1), i2 = m_atomIdx.value(a2);
+        if (!position.contains(a1) || !position.contains(a2)) continue;
+        int i1 = position.value(a1), i2 = position.value(a2);
         auto it = bondCip.find({std::min(i1, i2), std::max(i1, i2)});
         if (it != bondCip.end()) result[bid] = QString(it->second);
     }

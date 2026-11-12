@@ -1357,6 +1357,151 @@ static void test_bondIdsInIndigoOrder() {
           "bondIdsInIndigoOrder's bond-order sequence matches a fresh reparse's own order");
 }
 
+static void test_idsSurviveRemovalAfterIndexReuse() {
+    std::printf("--- Test: ids stay bound to their own atom/bond when a removal follows an index reuse ---\n");
+    // Indigo reuses freed indices, so id order and index order diverge.
+    EditableMolecule mol;
+    AtomId a1 = mol.addAtom(QStringLiteral("C"), 0, 0);
+    AtomId a2 = mol.addAtom(QStringLiteral("N"), 1, 0);
+    AtomId a3 = mol.addAtom(QStringLiteral("O"), 2, 0);
+    AtomId a4 = mol.addAtom(QStringLiteral("F"), 3, 0);
+    mol.removeAtom(a2);
+    AtomId a5 = mol.addAtom(QStringLiteral("Cl"), 4, 0);   // lands in N's freed index
+    mol.removeAtom(a4);
+    CHECK(mol.atomSymbol(a1) == QStringLiteral("C"), "atom id 1 is still C");
+    CHECK(mol.atomSymbol(a3) == QStringLiteral("O"), "atom id 3 is still O");
+    CHECK(mol.atomSymbol(a5) == QStringLiteral("Cl"), "atom id 5 is still Cl");
+    mol.setAtomCharge(a3, -1);
+    EditableMolecule reparsed(mol.toMolfile().value);
+    QString charged;
+    for (AtomId id : reparsed.atomIds()) if (reparsed.atomCharge(id) == -1) charged += reparsed.atomSymbol(id);
+    CHECK(charged == QStringLiteral("O"), "a charge set through the O id lands on the O atom");
+
+    EditableMolecule m2;
+    AtomId c1 = m2.addAtom(QStringLiteral("C"), 0, 0);
+    AtomId c2 = m2.addAtom(QStringLiteral("C"), 1, 0);
+    AtomId c3 = m2.addAtom(QStringLiteral("C"), 2, 0);
+    AtomId c4 = m2.addAtom(QStringLiteral("C"), 3, 0);
+    BondId b1 = m2.addBond(c1, c2, 1);
+    BondId b2 = m2.addBond(c2, c3, 2);
+    BondId b3 = m2.addBond(c3, c4, 3);
+    m2.removeBond(b1);
+    BondId b4 = m2.addBond(c1, c4, 1);                     // lands in b1's freed index
+    m2.removeBond(b3);
+    CHECK(m2.bondOrder(b2) == 2, "bond id 2 is still the double bond");
+    CHECK(m2.bondOrder(b4) == 1, "bond id 4 is still the single bond");
+    AtomId ea = -1, eb = -1;
+    CHECK(m2.bondEndpoints(b4, ea, eb) && ((ea == c1 && eb == c4) || (ea == c4 && eb == c1)),
+          "bond id 4 still joins the atoms it was created on");
+}
+
+static void test_restoreRebuildsReverseIndexMaps() {
+    std::printf("--- Test: restore() leaves index->id lookups matching the restored molecule ---\n");
+    EditableMolecule mol;
+    QList<AtomId> ring;
+    for (int i = 0; i < 6; ++i) ring.append(mol.addAtom(QStringLiteral("C"), i, 0));
+    for (int i = 0; i < 6; ++i) mol.addBond(ring[i], ring[(i + 1) % 6], 1);
+    MoleculeSnapshot snap = mol.snapshot();
+    mol.removeAtom(ring[0]);                       // opens the ring, drops index 0 and two bonds
+    CHECK(mol.ringMembership().isEmpty(), "no ring while the atom is removed");
+    CHECK(mol.restore(snap), "restore succeeds");
+    QList<EditableMolecule::RingMembership> rings = mol.ringMembership();
+    CHECK(rings.size() == 1, "the ring is back after restore");
+    CHECK(rings.size() == 1 && rings[0].atoms.size() == 6 && rings[0].bonds.size() == 6,
+          "ringMembership reports all 6 atoms and 6 bonds of the restored ring");
+    CHECK(rings.size() == 1 && rings[0].atoms.contains(ring[0]),
+          "the restored atom is reported under its original id");
+}
+
+static void test_snapshotTakenWithIndexGapsRestoresCorrectly() {
+    std::printf("--- Test: a snapshot taken after removals still maps every id to its own atom/bond ---\n");
+    // indigoClone closes index gaps; the stored id tables must follow.
+    EditableMolecule mol;
+    AtomId c = mol.addAtom(QStringLiteral("C"), 0, 0);
+    AtomId n = mol.addAtom(QStringLiteral("N"), 1, 0);
+    AtomId o = mol.addAtom(QStringLiteral("O"), 2, 0);
+    AtomId f = mol.addAtom(QStringLiteral("F"), 3, 0);
+    AtomId s = mol.addAtom(QStringLiteral("S"), 4, 0);
+    mol.addBond(c, n, 1);
+    BondId bOF = mol.addBond(o, f, 2);
+    BondId bFS = mol.addBond(f, s, 3);
+    mol.removeAtom(n);                               // leaves an atom gap and a bond gap
+    MoleculeSnapshot snap = mol.snapshot();
+    mol.removeAtom(s);
+    CHECK(mol.restore(snap), "restore succeeds");
+    CHECK(mol.atomCount() == 4 && mol.bondCount() == 2, "4 atoms and 2 bonds are back");
+    CHECK(mol.atomSymbol(c) == QStringLiteral("C") && mol.atomSymbol(o) == QStringLiteral("O") &&
+          mol.atomSymbol(f) == QStringLiteral("F") && mol.atomSymbol(s) == QStringLiteral("S"),
+          "every atom id resolves to its own element");
+    AtomId ea = -1, eb = -1;
+    CHECK(mol.bondOrder(bOF) == 2 && mol.bondEndpoints(bOF, ea, eb) && ((ea == o && eb == f) || (ea == f && eb == o)),
+          "the O=F bond id resolves to its own bond");
+    CHECK(mol.bondOrder(bFS) == 3 && mol.bondEndpoints(bFS, ea, eb) && ((ea == f && eb == s) || (ea == s && eb == f)),
+          "the F#S bond id resolves to its own bond");
+
+    // Same for superatoms: remove the first of two, snapshot, restore.
+    EditableMolecule m2;
+    AtomId a1 = m2.addAtom(QStringLiteral("C"), 0, 0);
+    AtomId a2 = m2.addAtom(QStringLiteral("C"), 1, 0);
+    AtomId a3 = m2.addAtom(QStringLiteral("C"), 2, 0);
+    m2.addBond(a1, a2, 1);
+    m2.addBond(a2, a3, 1);
+    SGroupId sg1 = m2.createSuperatomFromAtoms({a1});
+    SGroupId sg2 = m2.createSuperatomFromAtoms({a3});
+    m2.removeSuperatomOnly(sg1);
+    MoleculeSnapshot snap2 = m2.snapshot();
+    CHECK(m2.restore(snap2), "restore with a superatom gap succeeds");
+    QList<AtomId> members = m2.sgroupMemberAtomIds(sg2);
+    CHECK(m2.sgroupIds().size() == 1 && members.size() == 1 && members.contains(a3),
+          "the surviving superatom id still resolves to its own group");
+}
+
+static void test_cipLabelsWithIndexGap() {
+    std::printf("--- Test: CIP labels land on the right atom/bond when the molecule has an index gap ---\n");
+    // Removing the leading [Na] shifts live indices by one against the renumbered copy.
+    {
+        EditableMolecule m(QStringLiteral("[Na].F[C@H](Cl)Br"));
+        QList<AtomId> ids = m.atomIds();
+        AtomId chiralC = ids[2];
+        CHECK(m.atomCipDescriptor(chiralC) == 5, "before the removal the carbon is R");
+        m.removeAtom(ids[0]);
+        CHECK(m.atomCipDescriptor(chiralC) == 5, "after the removal the carbon is still R");
+        CHECK(m.atomCipDescriptor(ids[1]) == 0 && m.atomCipDescriptor(ids[3]) == 0,
+              "its neighbours still carry no descriptor");
+        QHash<AtomId, int> all = m.allAtomCipDescriptors();
+        CHECK(all.value(chiralC) == 5 && all.value(ids[1]) == 0 && all.value(ids[3]) == 0 && all.value(ids[4]) == 0,
+              "allAtomCipDescriptors agrees with the per-atom accessor");
+    }
+    {
+        EditableMolecule m(QStringLiteral("[Na].C/C=C/C"));
+        QList<AtomId> ids = m.atomIds();
+        BondId dbl = -1;
+        for (BondId b : m.bondIds()) if (m.bondOrder(b) == 2) dbl = b;
+        CHECK(m.allBondCipLabels().value(dbl) == QStringLiteral("E"), "before the removal the double bond is E");
+        m.removeAtom(ids[0]);
+        QMap<BondId, QString> labels = m.allBondCipLabels();
+        CHECK(labels.size() == 1 && labels.value(dbl) == QStringLiteral("E"),
+              "after the removal the double bond, and only it, is still E");
+    }
+    {
+        // Two fragments with interleaved atom indices.
+        EditableMolecule m;
+        AtomId c1 = m.addAtom(QStringLiteral("C"), 0.0, 0.0);
+        AtomId x1 = m.addAtom(QStringLiteral("Cl"), 10.0, 10.0);
+        AtomId c2 = m.addAtom(QStringLiteral("C"), 1.3, 0.75);
+        AtomId c3 = m.addAtom(QStringLiteral("C"), 2.6, 0.0);
+        AtomId x2 = m.addAtom(QStringLiteral("Cl"), 11.5, 10.0);
+        AtomId c4 = m.addAtom(QStringLiteral("C"), 3.9, 0.75);
+        m.addBond(c1, c2, 1);
+        BondId dbl = m.addBond(c2, c3, 2);
+        m.addBond(c3, c4, 1);
+        m.addBond(x1, x2, 1);
+        QMap<BondId, QString> labels = m.allBondCipLabels();
+        CHECK(labels.size() == 1 && labels.value(dbl) == QStringLiteral("E"),
+              "with a second fragment present, E sits on the double bond and nowhere else");
+    }
+}
+
 static void test_atomStereoDescriptorStorage() {
     std::printf("--- Test: setAtomStereoDescriptor / getters ---\n");
     EditableMolecule mol;
@@ -2138,6 +2283,10 @@ int main() {
     test_createSuperatomFromAtoms();
     test_atomIdsInIndigoOrder();
     test_bondIdsInIndigoOrder();
+    test_idsSurviveRemovalAfterIndexReuse();
+    test_restoreRebuildsReverseIndexMaps();
+    test_snapshotTakenWithIndexGapsRestoresCorrectly();
+    test_cipLabelsWithIndexGap();
     test_atomStereoDescriptorStorage();
     test_bondStereoCipLabelStorage();
     test_checkWarningTextSetters();

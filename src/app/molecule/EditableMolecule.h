@@ -404,6 +404,8 @@ public:
     // API applied to a double bond's own atoms -- this accessor is atom-only, matching Indigo's
     // own "does not represent an atom" rejection of a bond handle.
     int atomCipDescriptor(AtomId id) const;
+    // All atoms from one CIP run. Use this rather than the per-atom accessor in a loop.
+    QHash<AtomId, int> allAtomCipDescriptors() const;
     QMap<BondId, QString> allBondCipLabels() const;
 
     int addDataSGroup(const QList<AtomId>& atoms, const QString& description, const QString& data);
@@ -411,6 +413,15 @@ public:
 
     MoleculeSnapshot snapshot() const;
     bool restore(const MoleculeSnapshot&);
+
+    // Next-id counters. DocumentState rewinds them on redo; only safe when no
+    // live entity holds an id at or above the value.
+    struct IdCounters {
+        AtomId atom; BondId bond; SGroupId sgroup; TextId text; RxnArrowId rxnArrow;
+        RxnPlusId rxnPlus; MultitailArrowId multitailArrow; ImageId image;
+    };
+    IdCounters idCounters() const;
+    void setIdCounters(const IdCounters& counters);
 
     // Re-expresses fuseOverlappingAtoms (10-state.js:179-228) in terms Indigo
     // actually supports: Indigo has no "reassign a bond's endpoints" API, so a
@@ -491,6 +502,7 @@ public:
     // correct external id.
     QList<AtomId> atomIdsInIndigoOrder() const;
     QList<BondId> bondIdsInIndigoOrder() const;
+    QList<SGroupId> sgroupIdsInIndigoOrder() const;
 
     // Removes ONLY the sgroup grouping (indigoRemove on the superatom handle) -- member
     // atoms are left completely untouched. Confirmed by direct probe against the real
@@ -556,16 +568,6 @@ private:
     // entry in preservedIndexToStereo (see loadFrom), that value is kept instead of a fresh
     // indigoBondStereo() read; pass {} for a genuinely new load.
     void captureEzIntent(const QMap<int, int>& preservedIndexToStereo);
-
-    // Same "Indigo's current 0..count-1 order, reverse-mapped to external SGroupId via
-    // m_sgroupIdx" contract as atomIdsInIndigoOrder()/bondIdsInIndigoOrder() above, but for
-    // sgroups. Private (unlike its atom/bond siblings, which are public for an existing
-    // documented external use case) because nothing outside setBondStereo needs it yet. Needed
-    // to remap m_sgroupIdx after setBondStereo replaces the WHOLE Indigo molecule handle --
-    // rebuildIndexTables()'s own sgroup handling only PRUNES vanished sgroups (its own comment,
-    // EditableMolecule.cpp:626-631, is explicitly about in-place removal on the SAME handle, not
-    // about a full handle replacement) and does not reindex survivors, which setBondStereo needs.
-    QList<SGroupId> sgroupIdsInIndigoOrder() const;
 
     // The two numeric-encoding conversions Direction exists to keep apart. Both private: nothing
     // outside setBondStereo/bondStereoDirectionEnum needs raw access to either numbering.
