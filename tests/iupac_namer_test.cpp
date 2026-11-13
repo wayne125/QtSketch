@@ -5247,15 +5247,145 @@ int main() {
 
 
     {
-        // Phase XY: Acenaphthylene (ortho- and peri-fused, P-25.3.1.1.2)
+        // Stage C2: Acenaphthylene (ortho- and peri-fused, P-25.3.1.1.2) - ordering 1
         int m = indigoLoadMoleculeFromString("C1=CC2=C3C1=CC=CC3=CC=C2");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
-        if (!r.success && r.error.contains("ortho- and peri-fused ring systems with interior atoms require interior-atom numbering (Stage C2), not yet supported.")) {
-            std::cout << "[PASS] Acenaphthylene rejected as requiring Stage C2 interior-atom numbering\n";
+        if (r.success && r.name == "acenaphthylene") {
+            std::cout << "[PASS] Acenaphthylene ordering 1 -> acenaphthylene\n";
             passed++;
         } else {
-            std::cout << "[FAIL] Acenaphthylene should reject as Stage C2, got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            std::cout << "[FAIL] Acenaphthylene ordering 1: got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+    {
+        // Stage C2: Acenaphthylene - ordering 2 (aromatic smiles)
+        int m = indigoLoadMoleculeFromString("c1ccc2cccc3c2c1C=C3");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "acenaphthylene") {
+            std::cout << "[PASS] Acenaphthylene ordering 2 -> acenaphthylene\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Acenaphthylene ordering 2: got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+    {
+        // Stage C2: Acenaphthene (1,2-dihydroacenaphthylene) - named rejection
+        int m = indigoLoadMoleculeFromString("C1CC2=C3C1=CC=CC3=CC=C2");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success && r.error.contains("1,2-dihydroacenaphthylene is out of Stage C2 scope (bare parents only).")) {
+            std::cout << "[PASS] Acenaphthene rejected as out of Stage C2 scope\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Acenaphthene rejection: got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+    {
+        // Stage C2: Substituted acenaphthylene (bromo-acenaphthylene) - generic scope rejection
+        int m = indigoLoadMoleculeFromString("Brc1ccc2cccc3c2c1C=C3");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success && r.error.contains("peri-fused hydrocarbon system not yet supported (Stage C2 scope: bare acenaphthylene, phenalene).")) {
+            std::cout << "[PASS] Bromo-acenaphthylene rejected by generic scope fallback\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Bromo-acenaphthylene rejection: got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+    {
+        // Stage C2: 1H-phenalene - ordering 1
+        int m = indigoLoadMoleculeFromString("C1C=CC2=CC=CC3=C2C1=CC=C3");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "1H-phenalene") {
+            std::cout << "[PASS] 1H-phenalene ordering 1 -> 1H-phenalene\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] 1H-phenalene ordering 1: got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+    {
+        // Stage C2: 1H-phenalene - ordering 2
+        int m = indigoLoadMoleculeFromString("C1=CCC2=CC=CC3=C2C1=CC=C3");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "1H-phenalene") {
+            std::cout << "[PASS] 1H-phenalene ordering 2 -> 1H-phenalene\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] 1H-phenalene ordering 2: got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+    {
+        // Stage C2: 9bH-phenalene - ordering 1
+        int m = indigoLoadMoleculeFromString("C1=CC2=CC=CC3=CC=CC(=C1)C23");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "9bH-phenalene") {
+            std::cout << "[PASS] 9bH-phenalene ordering 1 -> 9bH-phenalene\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] 9bH-phenalene ordering 1: got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+    {
+        // Stage C2: 9bH-phenalene - ordering 2
+        int m = indigoLoadMoleculeFromString("C12C3C(=CC=C1)C=CC=C3C=CC=2");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "9bH-phenalene") {
+            std::cout << "[PASS] 9bH-phenalene ordering 2 -> 9bH-phenalene\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] 9bH-phenalene ordering 2: got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+    {
+        // Stage C2: 2H-shaped phenalene isomer (unstarred sp3 position) -> non-Kekule diradical rejection
+        int m = indigoLoadMoleculeFromString("c1ccc2cccc3c2c1=CCC=3");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success && r.error.contains("non-Kekule diradical phenalene isomer (sp3 at an unstarred position) is not a closed-shell parent hydride, not supported.")) {
+            std::cout << "[PASS] 2H-shaped phenalene rejected as non-Kekule diradical\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] 2H-shaped phenalene rejection: got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+    {
+        // Stage C2: 3aH-shaped phenalene isomer (unstarred sp3 position) -> non-Kekule diradical rejection
+        int m = indigoLoadMoleculeFromString("c1ccc2c3c1=CC=CC3C=CC=2");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success && r.error.contains("non-Kekule diradical phenalene isomer (sp3 at an unstarred position) is not a closed-shell parent hydride, not supported.")) {
+            std::cout << "[PASS] 3aH-shaped phenalene rejected as non-Kekule diradical\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] 3aH-shaped phenalene rejection: got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+    {
+        // Stage C2: Over-reduced phenalene (>=2 sp3 ring atoms) -> over-reduced rejection
+        int m = indigoLoadMoleculeFromString("C1CCC2=CC=CC3=C2C1=CC=C3");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success && r.error.contains("over-reduced phenalene skeleton")) {
+            std::cout << "[PASS] Over-reduced phenalene rejected\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Over-reduced phenalene rejection: got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
             failed++;
         }
     }
@@ -5264,7 +5394,7 @@ int main() {
         int m = indigoLoadMoleculeFromString("C1=CC2=C3C1=CC=C4C3=C(C=C2)C=C4");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
-        if (!r.success && r.error.contains("ortho- and peri-fused ring systems with interior atoms require interior-atom numbering (Stage C2), not yet supported.")) {
+        if (!r.success && r.error.contains("ring systems with multiple interior atoms (interior-atom ordering) are not yet supported.")) {
             std::cout << "[PASS] Pyrene rejected as requiring Stage C2 interior-atom numbering\n";
             passed++;
         } else {

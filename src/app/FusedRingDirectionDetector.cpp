@@ -135,6 +135,7 @@ FusedRingSystemInput detectFusedRingDirections(int mol) {
         }
     }
     
+    input.interiorAtoms = topo.interiorAtoms();
     input.ringAtoms = rings;
     input.ringSizes.resize(numRings);
     for (int i = 0; i < numRings; ++i) {

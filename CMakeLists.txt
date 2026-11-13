@@ -27,6 +27,7 @@ set(IUPAC_NAMING_SOURCES
     src/app/PeripheralNumbering.h src/app/PeripheralNumbering.cpp
     src/app/FusionGraphContext.h src/app/FusionGraphContext.cpp
     src/app/FusedSystemTopology.h src/app/FusedSystemTopology.cpp
+    src/app/BareFusedHydrocarbonNamer.h src/app/BareFusedHydrocarbonNamer.cpp
     src/app/NameAssembly.h src/app/NameAssembly.cpp
     src/app/retained/HydrocarbonFamily.h src/app/retained/HydrocarbonFamily.cpp
     src/app/retained/QuinolineFamily.h src/app/retained/QuinolineFamily.cpp

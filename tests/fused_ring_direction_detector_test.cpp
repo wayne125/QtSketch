@@ -233,6 +233,9 @@ int main() {
         } else if (input_acen.fusions.size() != 2) {
             cout << "  FAIL: Expected 2 spanning fusions for acenaphthylene, got " << input_acen.fusions.size() << endl;
             failed++;
+        } else if (input_acen.interiorAtoms.size() != 1) {
+            cout << "  FAIL: Expected 1 interior atom for acenaphthylene, got " << input_acen.interiorAtoms.size() << endl;
+            failed++;
         } else {
             auto orient = computePreferredOrientation(input_acen);
             if (!orient.success) {
@@ -261,6 +264,9 @@ int main() {
         } else if (input_phen.fusions.size() != 2) {
             cout << "  FAIL: Expected 2 spanning fusions for 9bH-phenalene, got " << input_phen.fusions.size() << endl;
             failed++;
+        } else if (input_phen.interiorAtoms.size() != 1) {
+            cout << "  FAIL: Expected 1 interior atom for 9bH-phenalene, got " << input_phen.interiorAtoms.size() << endl;
+            failed++;
         } else {
             auto orient = computePreferredOrientation(input_phen);
             if (!orient.success) {
@@ -268,6 +274,37 @@ int main() {
                 failed++;
             } else {
                 cout << "  PASS: 9bH-Phenalene cyclic placement accepted" << endl;
+                passed++;
+            }
+        }
+    }
+
+    // 11b. Cyclic placement accepted: 1H-Phenalene (3 rings: 6, 6, 6)
+    cout << "Test: Cyclic placement accepted (1H-Phenalene)" << endl;
+    int mol_1h_phen = indigoLoadMoleculeFromString("C1C=CC2=CC=CC3=C2C1=CC=C3");
+    if (mol_1h_phen < 0) {
+        cout << "  FAIL: indigoLoadMoleculeFromString failed for 1H-phenalene" << endl;
+        failed++;
+    } else {
+        indigoAromatize(mol_1h_phen);
+        FusedRingSystemInput input_1h_phen = detectFusedRingDirections(mol_1h_phen);
+        indigoFree(mol_1h_phen);
+        if (input_1h_phen.ringSizes.size() != 3) {
+            cout << "  FAIL: Expected 3 rings for 1H-phenalene, got " << input_1h_phen.ringSizes.size() << endl;
+            failed++;
+        } else if (input_1h_phen.fusions.size() != 2) {
+            cout << "  FAIL: Expected 2 spanning fusions for 1H-phenalene, got " << input_1h_phen.fusions.size() << endl;
+            failed++;
+        } else if (input_1h_phen.interiorAtoms.size() != 1) {
+            cout << "  FAIL: Expected 1 interior atom for 1H-phenalene, got " << input_1h_phen.interiorAtoms.size() << endl;
+            failed++;
+        } else {
+            auto orient = computePreferredOrientation(input_1h_phen);
+            if (!orient.success) {
+                cout << "  FAIL: computePreferredOrientation failed for 1H-phenalene: " << orient.error << endl;
+                failed++;
+            } else {
+                cout << "  PASS: 1H-Phenalene cyclic placement accepted" << endl;
                 passed++;
             }
         }
@@ -288,6 +325,9 @@ int main() {
             failed++;
         } else if (input_pyr.fusions.size() != 3) {
             cout << "  FAIL: Expected 3 spanning fusions for pyrene, got " << input_pyr.fusions.size() << endl;
+            failed++;
+        } else if (input_pyr.interiorAtoms.size() != 2) {
+            cout << "  FAIL: Expected 2 interior atoms for pyrene, got " << input_pyr.interiorAtoms.size() << endl;
             failed++;
         } else {
             auto orient = computePreferredOrientation(input_pyr);

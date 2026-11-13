@@ -2,6 +2,7 @@
 #include "BondStereoPerception.h"
 #include "FusedRingOrientation.h"
 #include "FusedRingDirectionDetector.h"
+#include "BareFusedHydrocarbonNamer.h"
 #include "NamingTrace.h"
 #include "NamingTypes.h"
 #include "GraphTypes.h"
@@ -26830,11 +26831,19 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
         if (hasP25_5) {
             FusedRingSystemInput detectedInput = detectFusedRingDirections(mol);
             if (!detectedInput.ringSizes.empty()) {
-                return {false, "", "ortho- and peri-fused ring systems with interior atoms require interior-atom numbering (Stage C2), not yet supported."};
+                // Stage C2: bare acenaphthylene/phenalene naming hook
+                auto c2 = tryNameBareFusedHydrocarbon(mol, g, detectedInput);
+                if (c2.disposition == BareFusedDisposition::Named) return c2.result;
+                if (c2.disposition == BareFusedDisposition::Rejected) return {false, "", c2.message};
+                int nInterior = static_cast<int>(detectedInput.interiorAtoms.size());
+                return {false, "", (nInterior >= 2)
+                    ? "ring systems with multiple interior atoms (interior-atom ordering) are not yet supported."
+                    : "peri-fused hydrocarbon system not yet supported (Stage C2 scope: bare acenaphthylene, phenalene)."};
             }
             if (!detectedInput.error.empty()) {
                 return {false, "", detectedInput.error.c_str()};
             }
+            // Detector silent bail: ring outside 3-10 window, no interior-atom data
             return {false, "", "three-component ortho- and peri-fused systems (P-25.5) are not yet supported."};
         }
         if (hasPeri) {
@@ -26871,11 +26880,19 @@ IupacResult IupacNamer::generateNameImpl(int mol) {
             }
             FusedRingSystemInput detectedInput = detectFusedRingDirections(mol);
             if (!detectedInput.ringSizes.empty()) {
-                return {false, "", "ortho- and peri-fused ring systems with interior atoms require interior-atom numbering (Stage C2), not yet supported."};
+                // Stage C2: bare acenaphthylene/phenalene naming hook
+                auto c2 = tryNameBareFusedHydrocarbon(mol, g, detectedInput);
+                if (c2.disposition == BareFusedDisposition::Named) return c2.result;
+                if (c2.disposition == BareFusedDisposition::Rejected) return {false, "", c2.message};
+                int nInterior = static_cast<int>(detectedInput.interiorAtoms.size());
+                return {false, "", (nInterior >= 2)
+                    ? "ring systems with multiple interior atoms (interior-atom ordering) are not yet supported."
+                    : "peri-fused hydrocarbon system not yet supported (Stage C2 scope: bare acenaphthylene, phenalene)."};
             }
             if (!detectedInput.error.empty()) {
                 return {false, "", detectedInput.error.c_str()};
             }
+            // Detector silent bail: ring outside 3-10 window, no interior-atom data
             return {false, "", "ortho- and peri-fused ring systems (P-25.3.1.1.2) are not yet supported."};
         }
     }

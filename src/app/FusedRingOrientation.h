@@ -76,6 +76,7 @@ struct FusedRingSystemInput {
     // of the system, an atom-order-dependent bug confirmed during the
     // hydro-prefix fused-ring plan's Task 4.
     std::vector<std::vector<int>> ringDirectedCycles;
+    std::set<int> interiorAtoms;
     std::string error;
 };
 
