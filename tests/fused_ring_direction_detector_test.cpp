@@ -361,16 +361,28 @@ int main() {
         }
     }
 
-    // 14. Pyrene atom-order invariance regression test: both SMILES orderings must produce identical results
-    cout << "Test: Pyrene atom-order invariance regression" << endl;
+    // 14. Pyrene representation invariance: aromatic SMILES vs a genuine 16-carbon
+    // Kekule SMILES must produce identical ring/fusion/interior-atom counts.
+    // CORRECTION: the previous version of this test used the SMILES
+    // "C1=CC2=C3C1=CC=C4C3=C(C=C2)C=C4" as a second pyrene ordering. That string
+    // is only 14 atoms (InChI confirms C14H8, not pyrene's C16H10) -- a different,
+    // smaller molecule that happened to share pyrene's ring count (4) and fusion
+    // count (3), which is why this test passed while actually comparing two
+    // different molecules. Replaced with a verified 16-atom Kekule fixture
+    // (InChI-cross-checked byte-identical to the aromatic ordering via
+    // smiles_driver_v72 + indigoInchiGetInchi, both give
+    // "InChI=1S/C16H10/c1-3-11-7-9-13-5-2-6-14-10-8-12(4-1)15(11)16(13)14/h1-10H").
+    cout << "Test: Pyrene representation invariance (atom order + bond representation)" << endl;
     int mol_pyr1 = indigoLoadMoleculeFromString("c1cc2ccc3cccc4ccc(c1)c2c34");
-    int mol_pyr2 = indigoLoadMoleculeFromString("C1=CC2=C3C1=CC=C4C3=C(C=C2)C=C4");
+    int mol_pyr2 = indigoLoadMoleculeFromString("C1=CC=C3C2=C1C=CC4=C2C(C=C3)=CC=C4");
     if (mol_pyr1 < 0 || mol_pyr2 < 0) {
         cout << "  FAIL: indigoLoadMoleculeFromString failed for pyrene orderings" << endl;
         failed++;
         if (mol_pyr1 >= 0) indigoFree(mol_pyr1);
         if (mol_pyr2 >= 0) indigoFree(mol_pyr2);
     } else {
+        int atomCount1 = indigoCountAtoms(mol_pyr1);
+        int atomCount2 = indigoCountAtoms(mol_pyr2);
         indigoAromatize(mol_pyr1);
         indigoAromatize(mol_pyr2);
         FusedRingSystemInput input1 = detectFusedRingDirections(mol_pyr1);
@@ -379,9 +391,19 @@ int main() {
         indigoFree(mol_pyr2);
 
         bool ok = true;
+        if (atomCount1 != 16 || atomCount2 != 16) {
+            cout << "  FAIL: Expected 16 atoms (pyrene, C16H10) for both orderings, got "
+                 << atomCount1 << " and " << atomCount2 << endl;
+            ok = false;
+        }
         if (input1.ringSizes.size() != 4 || input2.ringSizes.size() != 4) {
             cout << "  FAIL: Expected 4 rings for both orderings, got "
                  << input1.ringSizes.size() << " and " << input2.ringSizes.size() << endl;
+            ok = false;
+        }
+        if (input1.interiorAtoms.size() != 2 || input2.interiorAtoms.size() != 2) {
+            cout << "  FAIL: Expected 2 interior atoms for both orderings, got "
+                 << input1.interiorAtoms.size() << " and " << input2.interiorAtoms.size() << endl;
             ok = false;
         }
         if (input1.error != input2.error) {
@@ -399,7 +421,7 @@ int main() {
             ok = false;
         }
         if (ok) {
-            cout << "  PASS: Both pyrene SMILES orderings produce identical success/ring count/error, closingFusions preserved" << endl;
+            cout << "  PASS: Both pyrene representations (16 atoms, verified same InChI) produce identical ring/fusion/interior-atom counts" << endl;
             passed++;
         } else {
             failed++;
