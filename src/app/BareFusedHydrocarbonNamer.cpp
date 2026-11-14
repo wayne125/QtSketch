@@ -8,8 +8,8 @@
 
 BareFusedHydrocarbonResult tryNameBareFusedHydrocarbon(
     int mol, const Graph &g, const FusedRingSystemInput &input) {
-    // Gate 1: Exactly 3 rings, no detector error
-    if (input.ringSizes.size() != 3 || !input.error.empty()) {
+    // Gate 1: Exactly 3 or 4 rings, no detector error
+    if ((input.ringSizes.size() != 3 && input.ringSizes.size() != 4) || !input.error.empty()) {
         return {BareFusedDisposition::NotMatched, {}, ""};
     }
 
@@ -18,8 +18,8 @@ BareFusedHydrocarbonResult tryNameBareFusedHydrocarbon(
         return {BareFusedDisposition::NotMatched, {}, ""};
     }
 
-    // Gate 3: Exactly 1 interior atom
-    if (input.interiorAtoms.size() != 1) {
+    // Gate 3: Exactly 1 or 2 interior atoms
+    if (input.interiorAtoms.size() != 1 && input.interiorAtoms.size() != 2) {
         return {BareFusedDisposition::NotMatched, {}, ""};
     }
 
@@ -90,10 +90,9 @@ BareFusedHydrocarbonResult tryNameBareFusedHydrocarbon(
         }
     }
     inputGraph.interiorAtoms = interiorGraphNodes;
-    if (interiorGraphNodes.size() != 1) {
+    if (interiorGraphNodes.size() != 1 && interiorGraphNodes.size() != 2) {
         return {BareFusedDisposition::NotMatched, {}, ""};
     }
-    int interiorNode = *interiorGraphNodes.begin();
 
     // Identify sp3 atoms in g (atoms whose bonds are all single)
     std::set<int> sp3Atoms;
@@ -140,6 +139,10 @@ BareFusedHydrocarbonResult tryNameBareFusedHydrocarbon(
 
     if (sortedRings == std::vector<int>{6, 6, 6}) {
         // Phenalene entry
+        if (interiorGraphNodes.size() != 1) {
+            return {BareFusedDisposition::NotMatched, {}, ""};
+        }
+        int interiorNode = *interiorGraphNodes.begin();
         if (sp3Atoms.empty()) {
             return {BareFusedDisposition::Rejected, {}, "requires indicated-hydrogen tautomer"};
         }
@@ -172,6 +175,28 @@ BareFusedHydrocarbonResult tryNameBareFusedHydrocarbon(
 
         return {BareFusedDisposition::Rejected, {},
             "non-Kekule diradical phenalene isomer (sp3 at an unstarred position) is not a closed-shell parent hydride, not supported."};
+    }
+
+    // Pyrene entry. Deliberately NOT keyed on the ring-size multiset: pyrene's
+    // SSSR is not representation-canonical (confirmed this session -- a prior
+    // "second pyrene ordering" fixture that superficially looked like an
+    // alternate ring-size basis of the same molecule turned out to just be a
+    // different, smaller, mislabeled 14-carbon molecule; see c97a194). Keyed
+    // instead on ring count, interior-atom count, and total atom count, all of
+    // which stayed stable across every representation tested. Bare only:
+    // hydro-pyrene and substituted-pyrene naming need the interior-atom
+    // (10b/10c) ordering rule, which is deliberately out of scope here (legacy
+    // A-22.2's "clockwise sequence" tie-break has no codebase precedent yet,
+    // and bare pyrene's own name exposes no interior locant, so it isn't
+    // needed just to recognize the bare parent).
+    bool isPyreneSkeleton = input.ringSizes.size() == 4
+        && interiorGraphNodes.size() == 2
+        && g.nodes.size() == 16;
+    if (isPyreneSkeleton) {
+        if (sp3Atoms.empty()) {
+            return {BareFusedDisposition::Named, {true, "pyrene", "", NamingStatus::SystematicIupacName}, ""};
+        }
+        return {BareFusedDisposition::Rejected, {}, "hydro-pyrene derivatives are out of Stage C2 scope (bare parents only)."};
     }
 
     return {BareFusedDisposition::NotMatched, {}, ""};

@@ -5390,15 +5390,84 @@ int main() {
         }
     }
     {
-        // Phase XY: Pyrene (three-component ortho- and peri-fused, P-25.5)
-        int m = indigoLoadMoleculeFromString("C1=CC2=C3C1=CC=C4C3=C(C=C2)C=C4");
+        // Stage C2: Pyrene - ordering 1 (aromatic SMILES)
+        int m = indigoLoadMoleculeFromString("c1cc2ccc3cccc4ccc(c1)c2c34");
         IupacResult r = IupacNamer::generateName(m);
         indigoFree(m);
-        if (!r.success && r.error.contains("ring systems with multiple interior atoms (interior-atom ordering) are not yet supported.")) {
-            std::cout << "[PASS] Pyrene rejected as requiring Stage C2 interior-atom numbering\n";
+        if (r.success && r.name == "pyrene") {
+            std::cout << "[PASS] Pyrene ordering 1 -> pyrene\n";
             passed++;
         } else {
-            std::cout << "[FAIL] Pyrene should reject as Stage C2, got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            std::cout << "[FAIL] Pyrene ordering 1: got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+    {
+        // Stage C2: Pyrene - ordering 2 (verified 16-atom Kekule SMILES; NOTE:
+        // the SMILES formerly used here, "C1=CC2=C3C1=CC=C4C3=C(C=C2)C=C4", was
+        // not pyrene -- only 14 atoms, InChI confirms C14H8. See c97a194.)
+        int m = indigoLoadMoleculeFromString("C1=CC=C3C2=C1C=CC4=C2C(C=C3)=CC=C4");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "pyrene") {
+            std::cout << "[PASS] Pyrene ordering 2 -> pyrene\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Pyrene ordering 2: got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+    {
+        // Stage C2: Pyrene - ordering 3 (different aromatic atom ordering)
+        int m = indigoLoadMoleculeFromString("c13c2c(ccc4c2c(ccc4)cc3)ccc1");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.success && r.name == "pyrene") {
+            std::cout << "[PASS] Pyrene ordering 3 -> pyrene\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Pyrene ordering 3: got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+    {
+        // Stage C2: Dihydropyrene (one sp3 pair) -> generic hydro-pyrene rejection
+        int m = indigoLoadMoleculeFromString("C1Cc2ccc3cccc4ccc(c1)c2c34");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success && r.error.contains("hydro-pyrene derivatives are out of Stage C2 scope (bare parents only).")) {
+            std::cout << "[PASS] Dihydropyrene rejected as out of Stage C2 scope\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Dihydropyrene rejection: got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+    {
+        // Stage C2: Methylpyrene (substituted, not bare) -> generic scope fallback
+        int m = indigoLoadMoleculeFromString("Cc1cc2ccc3cccc4ccc(c1)c2c34");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (!r.success && !r.error.isEmpty() && r.name != "pyrene") {
+            std::cout << "[PASS] Methylpyrene rejected by generic scope fallback (not named pyrene)\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Methylpyrene rejection: got success=" << r.success << " name='" << r.name.toStdString() << "' err='" << r.error.toStdString() << "'\n";
+            failed++;
+        }
+    }
+    {
+        // Stage C2: Fluoranthene (C16, 4 rings, but 1 interior atom not 2) must
+        // NOT be misnamed as pyrene -- the closest structural competitor to the
+        // pyrene gate's (ringCount==4, interiorAtoms==2, totalAtoms==16) signature.
+        int m = indigoLoadMoleculeFromString("C1=CC=C2C(=C1)C3=CC=CC4=C3C2=CC=C4");
+        IupacResult r = IupacNamer::generateName(m);
+        indigoFree(m);
+        if (r.name != "pyrene") {
+            std::cout << "[PASS] Fluoranthene not misnamed as pyrene (success=" << r.success << ")\n";
+            passed++;
+        } else {
+            std::cout << "[FAIL] Fluoranthene was misnamed as pyrene\n";
             failed++;
         }
     }
