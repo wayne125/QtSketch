@@ -35,7 +35,8 @@ bool PdfExporter::exportToFile(const RenderScene& scene, const QString& filePath
     const double marginMm = 10.0;
     
     QSizeF pageSizeMm = m_pageSizeMm;
-    if (!m_landscape) {
+    // m_pageSizeMm can be in either orientation
+    if (m_landscape != (pageSizeMm.width() > pageSizeMm.height())) {
         pageSizeMm.transpose();
     }
     
@@ -89,10 +90,10 @@ bool PdfExporter::exportToFile(const RenderScene& scene, const QString& filePath
     
     painter.save();
     
-    // Translate to center
+    // Translate to center. Y is flipped below, so bottom() lands at the top.
     painter.translate(
         (writer.width() - sceneBoundsMm.width() * mmToPoints) / 2 - sceneBoundsMm.left() * mmToPoints,
-        (writer.height() - sceneBoundsMm.height() * mmToPoints) / 2 - sceneBoundsMm.top() * mmToPoints
+        (writer.height() - sceneBoundsMm.height() * mmToPoints) / 2 + sceneBoundsMm.bottom() * mmToPoints
     );
     
     // scene.paint() works in raw model units; the full chain to device
@@ -176,10 +177,9 @@ bool SvgExporter::exportToFile(const RenderScene& scene, const QString& filePath
     );
     generator.setSize(sizePt);
     
-    // Set viewbox to match the scene bounds
+    // the painter maps the scene to (0,0)-(width,height)
     generator.setViewBox(QRectF(
-        sceneBoundsMm.left() * mmToPoints,
-        -sceneBoundsMm.top() * mmToPoints,  // Flip Y for SVG
+        0, 0,
         sceneBoundsMm.width() * mmToPoints,
         sceneBoundsMm.height() * mmToPoints
     ));
@@ -290,6 +290,9 @@ bool PngExporter::exportToFile(const RenderScene& scene, const QString& filePath
     // Create image
     QImage image(imageSize, QImage::Format_ARGB32);
     image.fill(m_backgroundColor);
+    // Point sizes (fonts, pen widths) scale by the image's DPI, which defaults to 96.
+    image.setDotsPerMeterX(qRound(m_dpi / 0.0254));
+    image.setDotsPerMeterY(qRound(m_dpi / 0.0254));
     
     // Create painter
     QPainter painter(&image);
@@ -309,14 +312,7 @@ bool PngExporter::exportToFile(const RenderScene& scene, const QString& filePath
     painter.setRenderHint(QPainter::TextAntialiasing);
     painter.setRenderHint(QPainter::Antialiasing);
     
-    // Translate and scale
-    // First, translate to position the scene
-    painter.translate(-sceneBoundsPx.left(), -sceneBoundsPx.top());
-
-    // Then flip Y to match the model coordinate system
-    // The scene's paint method expects y-up, but the image has y-down
-    // So we need to translate and scale
-    painter.translate(0, sceneBoundsPx.height());
+    // Scale with the Y flip, then shift so the scene's left/top edge is at pixel 0.
     // scene.paint() works in raw model units -- the full chain to pixels is
     // modelUnit -> mm (modelToMmScale) -> pixels (dpi / 25.4). A bare
     // scale(1, -1) (Y-flip only, no actual magnification) was the most
@@ -324,6 +320,7 @@ bool PngExporter::exportToFile(const RenderScene& scene, const QString& filePath
     // 1 pixel per model unit regardless of the requested DPI.
     const double pxPerModelUnit = scene.modelToMmScale() * (m_dpi / 25.4);
     painter.scale(pxPerModelUnit, -pxPerModelUnit);
+    painter.translate(-scene.modelBounds().left(), -scene.modelBounds().bottom());
 
     // Paint the scene
     scene.paint(&painter);

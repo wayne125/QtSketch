@@ -4411,7 +4411,195 @@ static void test_selectSubstructureMatches() {
     CHECK(doc.selection().isEmpty(), "selectSubstructureMatches: empty matches array clears the selection");
 }
 
+static void test_singleEntityDeleteRedoAfterUndo() {
+    std::printf("--- Test: delete -> undo -> redo removes the entity again (single-entity deletes) ---\n");
+    // redo must target the id undo recreated
+    {
+        DocumentState doc;
+        AtomId a = doc.addAtom(QStringLiteral("C"), 0, 0);
+        AtomId b = doc.addAtom(QStringLiteral("N"), 1, 0);
+        doc.addBond(a, b, 1);
+        doc.deleteAtom(b);
+        doc.undo();
+        CHECK(doc.molecule().atomCount() == 2 && doc.molecule().bondCount() == 1, "deleteAtom: undo restores atom and bond");
+        doc.redo();
+        CHECK(doc.molecule().atomCount() == 1 && doc.molecule().bondCount() == 0, "deleteAtom: redo removes them again");
+        doc.undo();
+        CHECK(doc.molecule().atomCount() == 2 && doc.molecule().bondCount() == 1, "deleteAtom: second undo restores them again");
+    }
+    {
+        DocumentState doc;
+        AtomId a = doc.addAtom(QStringLiteral("C"), 0, 0);
+        AtomId b = doc.addAtom(QStringLiteral("C"), 1, 0);
+        BondId bond = doc.addBond(a, b, 2);
+        doc.deleteBond(bond);
+        doc.undo();
+        CHECK(doc.molecule().bondCount() == 1, "deleteBond: undo restores the bond");
+        doc.redo();
+        CHECK(doc.molecule().bondCount() == 0, "deleteBond: redo removes it again");
+    }
+    {
+        DocumentState doc;
+        RxnArrowId id = doc.addRxnArrow(0, 0);
+        doc.deleteRxnArrow(id);
+        doc.undo();
+        CHECK(doc.molecule().rxnArrowIds().size() == 1, "deleteRxnArrow: undo restores the arrow");
+        doc.redo();
+        CHECK(doc.molecule().rxnArrowIds().isEmpty(), "deleteRxnArrow: redo removes it again");
+    }
+    {
+        DocumentState doc;
+        RxnPlusId id = doc.addRxnPlus(0, 0);
+        doc.deleteRxnPlus(id);
+        doc.undo();
+        CHECK(doc.molecule().rxnPlusIds().size() == 1, "deleteRxnPlus: undo restores the plus");
+        doc.redo();
+        CHECK(doc.molecule().rxnPlusIds().isEmpty(), "deleteRxnPlus: redo removes it again");
+    }
+    {
+        DocumentState doc;
+        MultitailArrowId id = doc.addMultitailArrow(0, 0);
+        doc.deleteMultitailArrow(id);
+        doc.undo();
+        CHECK(doc.molecule().multitailArrowIds().size() == 1, "deleteMultitailArrow: undo restores the arrow");
+        doc.redo();
+        CHECK(doc.molecule().multitailArrowIds().isEmpty(), "deleteMultitailArrow: redo removes it again");
+    }
+    {
+        DocumentState doc;
+        TextId id = doc.addText(QStringLiteral("note"), 0, 0, false, false);
+        doc.deleteText(id);
+        doc.undo();
+        CHECK(doc.molecule().textAnnotationIds().size() == 1, "deleteText: undo restores the text");
+        doc.redo();
+        CHECK(doc.molecule().textAnnotationIds().isEmpty(), "deleteText: redo removes it again");
+    }
+    {
+        DocumentState doc;
+        ImageId id = doc.addImage(QByteArray("fakepng"), 0, 0, 1, 1);
+        doc.deleteImage(id);
+        doc.undo();
+        CHECK(doc.molecule().imageIds().size() == 1, "deleteImage: undo restores the image");
+        doc.redo();
+        CHECK(doc.molecule().imageIds().isEmpty(), "deleteImage: redo removes it again");
+    }
+}
+
+static void test_applyDrawingStyleWithRescaleRejectsNonPositiveBondLength() {
+    std::printf("--- Test: applyDrawingStyleWithRescale ignores a zero/negative bond length ---\n");
+    DocumentState doc;
+    AtomId a = doc.addAtom(QStringLiteral("C"), 0, 0);
+    AtomId b = doc.addAtom(QStringLiteral("C"), 1.5, 0);
+    for (double bad : {0.0, -1.5}) {
+        DrawingStyle s = doc.drawingStyle();
+        s.bondLength = bad;
+        doc.applyDrawingStyleWithRescale(s);
+        double ax = 0, ay = 0, bx = 0, by = 0;
+        doc.molecule().atomPos(a, ax, ay);
+        doc.molecule().atomPos(b, bx, by);
+        CHECK(std::abs((bx - ax) - 1.5) < 1e-6 && std::abs(by - ay) < 1e-6, "atom positions are left alone");
+        CHECK(doc.drawingStyle().bondLength == 1.5, "the document keeps its previous bond length");
+    }
+}
+
+static void test_historyStaysConsistentAcrossDeleteAndRedo() {
+    std::printf("--- Test: older and newer history steps still apply after a delete is undone / an add is redone ---\n");
+    {   // undoing a delete must hand back the SAME entity, or the step before it cannot be undone
+        DocumentState doc;
+        AtomId a = doc.addAtom(QStringLiteral("C"), 0, 0);
+        doc.deleteAtom(a);
+        doc.undo();
+        doc.undo();
+        CHECK(doc.molecule().atomCount() == 0, "add, delete, undo, undo leaves an empty document");
+    }
+    {   // an undone delete keeps the atom's own properties and its bonds' orders
+        DocumentState doc;
+        AtomId a = doc.addAtom(QStringLiteral("N"), 0, 0);
+        AtomId b = doc.addAtom(QStringLiteral("C"), 1.5, 0);
+        BondId bond = doc.addBond(a, b, 2);
+        doc.changeAtomCharge(a, 1);
+        doc.deleteAtom(a);
+        doc.undo();
+        CHECK(doc.molecule().atomCharge(a) == 1, "the charge survives delete + undo");
+        CHECK(doc.molecule().bondOrder(bond) == 2, "the bond comes back under its own id with its order");
+        doc.undo();
+        CHECK(doc.molecule().atomCharge(a) == 0, "the charge change before the delete can still be undone");
+    }
+    {   // redoing an add must recreate the SAME id, or the steps after it cannot be redone
+        DocumentState doc;
+        AtomId a = doc.addAtom(QStringLiteral("O"), 0, 0);
+        doc.changeAtomCharge(a, -1);
+        doc.undo();
+        doc.undo();
+        doc.redo();
+        doc.redo();
+        CHECK(doc.molecule().atomCount() == 1 && doc.molecule().atomCharge(doc.molecule().atomIds().first()) == -1,
+              "add, charge, undo x2, redo x2 gives the charged atom back");
+    }
+    {   // same for a multi-entity delete and for non-molecule entities
+        DocumentState doc;
+        AtomId a = doc.addAtom(QStringLiteral("C"), 0, 0);
+        AtomId b = doc.addAtom(QStringLiteral("C"), 1.5, 0);
+        doc.addBond(a, b, 1);
+        RxnPlusId plus = doc.addRxnPlus(5, 5);
+        doc.clearSelection();
+        doc.addAtomToSelection(a);
+        doc.addAtomToSelection(b);
+        doc.deleteSelectionEntities();
+        doc.deleteRxnPlus(plus);
+        while (doc.canUndo()) doc.undo();
+        CHECK(doc.molecule().atomCount() == 0 && doc.molecule().bondCount() == 0 && doc.molecule().rxnPlusIds().isEmpty(),
+              "undoing everything returns to the empty document");
+        while (doc.canRedo()) doc.redo();
+        CHECK(doc.molecule().atomCount() == 0 && doc.molecule().bondCount() == 0 && doc.molecule().rxnPlusIds().isEmpty(),
+              "redoing everything returns to the final state");
+    }
+}
+
+static void test_redoOfTemplateInsertKeepsIdsOnTheSameAtoms() {
+    std::printf("--- Test: redoing a structure insert hands each id back to the atom that had it ---\n");
+    // A two-atom O-C molfile: O is source atom 0, C is source atom 1.
+    const QString mf = QStringLiteral(
+        "\n  test\n\n  2  1  0  0  0  0  0  0  0  0999 V2000\n"
+        "    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "    1.5000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n"
+        "  1  2  1  0\nM  END\n");
+    auto idOf = [](DocumentState& doc, const char* sym) {
+        for (AtomId id : doc.molecule().atomIds())
+            if (doc.molecule().atomSymbol(id) == QLatin1String(sym)) return id;
+        return AtomId(-1);
+    };
+    // Variants free a different number of slots first.
+    for (int gaps = 0; gaps <= 3; ++gaps) {
+        for (int reuseOrder = 0; reuseOrder < 2; ++reuseOrder) {
+            DocumentState doc;
+            QList<AtomId> filler;
+            for (int i = 0; i < gaps; ++i) filler.append(doc.addAtom(QStringLiteral("N"), 10 + i, 10));
+            // free the slots in ascending or descending order
+            if (reuseOrder == 0) { for (AtomId f : filler) doc.molecule().removeAtom(f); }
+            else { for (int i = filler.size() - 1; i >= 0; --i) doc.molecule().removeAtom(filler[i]); }
+            doc.insertStructureAt(mf, 0, 0);
+            const AtomId o = idOf(doc, "O"), c = idOf(doc, "C");
+            const QString tag = QStringLiteral(" (gaps=%1, order=%2)").arg(gaps).arg(reuseOrder);
+            CHECK(o >= 0 && c >= 0, qPrintable(QStringLiteral("insert created O and C") + tag));
+            doc.changeAtomCharge(o, -1);
+            doc.undo();
+            doc.undo();
+            doc.redo();
+            doc.redo();
+            CHECK(doc.molecule().atomSymbol(o) == QLatin1String("O") && doc.molecule().atomCharge(o) == -1,
+                  qPrintable(QStringLiteral("the oxygen id still names the charged oxygen after redo") + tag));
+            CHECK(doc.molecule().atomSymbol(c) == QLatin1String("C") && doc.molecule().atomCharge(c) == 0,
+                  qPrintable(QStringLiteral("the carbon id still names the uncharged carbon after redo") + tag));
+        }
+    }
+}
+
 int main() {
+    test_redoOfTemplateInsertKeepsIdsOnTheSameAtoms();
+    test_historyStaysConsistentAcrossDeleteAndRedo();
+    test_applyDrawingStyleWithRescaleRejectsNonPositiveBondLength();
+    test_singleEntityDeleteRedoAfterUndo();
     test_selectionStateBasics();
     test_editCommandBasics();
     test_documentStateUndoRedo();

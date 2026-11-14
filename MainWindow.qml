@@ -236,6 +236,23 @@ ApplicationWindow {
         activeSketch.requestSerialize(op)
     }
 
+    // Mark clean only after the write succeeds.
+    function finishPlainSave(data) {
+        const ok = !!data && fileIO.write(window.pendingSaveUrl, data)
+        if (!ok) {
+            messageDialogsGroup.workerErrorDialog.errorText =
+                "Save failed: could not write " + window.pendingSaveUrl + ". The document is still unsaved; any existing file at that path was left as it was."
+            messageDialogsGroup.workerErrorDialog.severe = true
+            messageDialogsGroup.workerErrorDialog.open()
+            return
+        }
+        if (activeCanvas) activeCanvas.setClean()
+        const appData = StandardPaths.writableLocation(StandardPaths.AppDataLocation)
+        const rid = DocumentManager.recoveryIdFor(DocumentManager.activeDocId)
+        fileIO.remove(appData + "/recovery/autosave_" + rid + ".qtsketch")
+        fileIO.remove(appData + "/recovery/autosave_" + rid + ".ket")
+    }
+
     function saveActive(forceDialog) {
         if (!activeSketch) return
         const path = docFilePaths[DocumentManager.activeDocId]
@@ -268,11 +285,6 @@ ApplicationWindow {
             } else {
                 pendingSaveUrl = path
                 activeSketch.requestStructure(fmt, "save")
-                if (activeCanvas) activeCanvas.setClean()
-                const appData = StandardPaths.writableLocation(StandardPaths.AppDataLocation)
-                const rid = DocumentManager.recoveryIdFor(DocumentManager.activeDocId)
-                fileIO.remove(appData + "/recovery/autosave_" + rid + ".qtsketch")
-                fileIO.remove(appData + "/recovery/autosave_" + rid + ".ket")
             }
         } else {
             fileDialogsGroup.saveDialog.open()
@@ -298,6 +310,8 @@ ApplicationWindow {
     // these two backend services via win.indigoSvc/win.imagoSvc — both need
     // the same alias treatment as the dialog ids above.
     property alias indigoSvc: indigoSvc
+    // used by dialogs/MessageDialogs.qml
+    property alias fileIO: fileIO
     property alias imagoSvc: imagoSvc
     property alias uiSettings: uiSettings
 
@@ -337,6 +351,11 @@ ApplicationWindow {
             }
             let path = appData + "/recovery/" + sortedFiles[i]
             window.loadFromFile(Qt.url("file:///" + path.replace(/\\/g, "/")))
+            // Recovered work is unsaved: drop the recovery path and keep the doc dirty.
+            delete docFilePaths[DocumentManager.activeDocId]
+            delete docTitles[DocumentManager.activeDocId]
+            titleRev++
+            if (activeSketch) activeSketch.setDirty(true)
             // The content is now loaded into a document with its own, freshly
             // minted recovery id -- remove the old file under its old name so it
             // isn't offered for recovery again on every future launch.
@@ -475,6 +494,8 @@ ApplicationWindow {
         }
         if (anyDirty) {
             close_event.accepted = false
+            // Quit, not tab close: drop any stale tab-close id.
+            window._pendingCloseDocId = -1
             messageDialogsGroup.unsavedChangesDialog.open()
         } else {
             // Clean exit. Only remove the autosave files for documents that
@@ -485,13 +506,17 @@ ApplicationWindow {
             // (e.g. the user answered "No" to the recovery prompt, or a
             // restore silently failed for one file), permanently losing the
             // only copy of that unsaved work.
-            const appData = StandardPaths.writableLocation(StandardPaths.AppDataLocation)
-            for (var j = 0; j < DocumentManager.docIds.length; j++) {
-                var docId = DocumentManager.docIds[j]
-                var rid = DocumentManager.recoveryIdFor(docId)
-                fileIO.remove(appData + "/recovery/autosave_" + rid + ".qtsketch")
-                fileIO.remove(appData + "/recovery/autosave_" + rid + ".ket")
-            }
+            removeOpenAutosaveFiles()
+        }
+    }
+
+    // used by dialogs/MessageDialogs.qml
+    function removeOpenAutosaveFiles() {
+        const appData = StandardPaths.writableLocation(StandardPaths.AppDataLocation)
+        for (var j = 0; j < DocumentManager.docIds.length; j++) {
+            var rid = DocumentManager.recoveryIdFor(DocumentManager.docIds[j])
+            fileIO.remove(appData + "/recovery/autosave_" + rid + ".qtsketch")
+            fileIO.remove(appData + "/recovery/autosave_" + rid + ".ket")
         }
     }
 
@@ -842,10 +867,11 @@ ApplicationWindow {
         Connections {
             target: window.activeSketch
             readonly property var structureResponseRoutes: ({
-                save: (data) => fileIO.write(window.pendingSaveUrl, data),
+                save: (data) => window.finishPlainSave(data),
                 autosave: (data) => {
                     const appData = StandardPaths.writableLocation(StandardPaths.AppDataLocation)
-                    const rid = DocumentManager.recoveryIdFor(window.activeSketch.modelData)
+                    // activeSketch has no modelData; use the active doc id.
+                    const rid = DocumentManager.recoveryIdFor(DocumentManager.activeDocId)
                     fileIO.write(appData + "/recovery/autosave_" + rid + ".qtsketch", data)
                 },
                 // Ordinary single-structure export now goes through the shared
@@ -1497,6 +1523,7 @@ ApplicationWindow {
                     // itself carried both the Layout.* properties and was the
                     // anchor target for a RowLayout-level sibling).
                     Item {
+                        id: workspaceViewport
                         Layout.fillWidth: true
                         Layout.fillHeight: true
 
@@ -1520,8 +1547,8 @@ ApplicationWindow {
 
                         Item {
                             id: workspaceContent
-                            width: Math.max(scrollView.availableWidth, (docRect.width * window.zoomLevel) + 100)
-                            height: Math.max(scrollView.availableHeight, (docRect.height * window.zoomLevel) + 100)
+                            width: Math.max(workspaceViewport.width - scrollView.ScrollBar.vertical.width, (docRect.width * window.zoomLevel) + 100)
+                            height: Math.max(workspaceViewport.height - scrollView.ScrollBar.horizontal.height, (docRect.height * window.zoomLevel) + 100)
 
                             Rectangle {
                                 anchors.fill: parent
@@ -2208,11 +2235,6 @@ ApplicationWindow {
     Shortcut {
         sequence: "Ctrl+B"
         onActivated: biopolymerDialog.open()
-    }
-
-    Shortcut {
-        sequence: "Ctrl+R"
-        onActivated: rgroupPanel.open()
     }
 
     Shortcut {
