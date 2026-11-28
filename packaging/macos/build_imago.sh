@@ -13,7 +13,10 @@ if [ "${1:-}" != "--force" ] \
     && [ -f "$DEST/lib/libimago.dylib" ] \
     && [ -f "$DEST/include/imago_c.h" ] \
     && [ -f "$DEST/LICENSE" ] \
-    && [ -f "$DEST/LICENSE-OpenCV" ]; then
+    && [ -f "$DEST/LICENSE-OpenCV" ] \
+    && SYMS="$(nm -gU "$DEST/lib/libimago.dylib" 2>/dev/null)" \
+    && [ -n "$SYMS" ] \
+    && ! grep -Fq "_indigoAllocSessionId" <<<"$SYMS"; then
     echo "Imago already built in $DEST (pass --force to rebuild)"
     exit 0
 fi
@@ -50,16 +53,31 @@ with open(pngpriv, "r", encoding="utf-8", errors="replace") as f:
     txt = f.read()
 with open(pngpriv, "w", encoding="utf-8") as f:
     f.write(txt.replace("|| defined(TARGET_OS_MAC)", ""))
+
+cmakelists = os.path.join(src, "CMakeLists.txt")
+with open(cmakelists, "r", encoding="utf-8") as f:
+    lines = f.readlines()
+with open(cmakelists, "w", encoding="utf-8") as f:
+    for line in lines:
+        if "add_subdirectory" in line and ("tools" in line or "bindings" in line):
+            f.write("# " + line)
+        else:
+            f.write(line)
 PY
+
+python3 "$ROOT/packaging/patch_imago_beast.py" "$TMP/src"
 
 GEN_ARGS=()
 if command -v ninja >/dev/null 2>&1; then
     GEN_ARGS=(-G Ninja)
 fi
 
+# Export only the public C API (_imago*) so Imago's statically linked 2021 Indigo
+# symbols never collide with QtSketch's runtime libindigo 1.45+ dynamic symbols.
 cmake -S "$TMP/src" -B "$TMP/build" "${GEN_ARGS[@]}" \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
     -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-exported_symbol,_imago*" \
     -DCMAKE_INSTALL_NAME_DIR="@rpath" \
     -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
     -DIMAGO_ENABLE_TESTS=OFF \

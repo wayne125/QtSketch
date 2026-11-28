@@ -13,6 +13,7 @@
 #include <QStringList>
 #include <QImage>
 #include <QImageReader>
+#include <QPainter>
 #include <QByteArray>
 #include <QBuffer>
 
@@ -48,18 +49,43 @@ static const int kImagoTargetLongSide = 1600;
 static QByteArray preprocessImageForRecognition(const QString &path) {
     QImageReader reader(path);
     QSize sz = reader.size();
-    if (!sz.isValid() || sz.width() <= 0 || sz.height() <= 0) return QByteArray(); // fall through to the original file-path load
+    if (!sz.isValid() || sz.width() <= 0 || sz.height() <= 0) return QByteArray();
     int longSide = qMax(sz.width(), sz.height());
-    if (longSide >= kImagoTargetLongSide) return QByteArray(); // already big enough -- don't even decode it
-    double scale = (double)kImagoTargetLongSide / longSide;
-    QSize scaledSize(qRound(sz.width() * scale), qRound(sz.height() * scale));
-    reader.setScaledSize(scaledSize);
-    QImage scaled = reader.read();
-    if (scaled.isNull()) return QByteArray();
+    if (longSide != kImagoTargetLongSide) {
+        // Scale toward ~1600px on the longest side in both directions:
+        // - Small inputs (< 1600px) upscale up to 3.2x so ~500px multi-ring figures
+        //   reach ~1600px for heteroatom glyph recognition without bloating tiny single-ring crops.
+        // - Oversized inputs (> 1600px, e.g. high-megapixel scans) downscale during decode
+        //   so we never allocate multi-hundred-MB temporary canvases before Imago's own 1280px pass.
+        const double rawScale = static_cast<double>(kImagoTargetLongSide) / longSide;
+        const double scale = (longSide < kImagoTargetLongSide) ? qMin(3.2, rawScale) : rawScale;
+        reader.setScaledSize(QSize(qMax(1, qRound(sz.width() * scale)),
+                                   qMax(1, qRound(sz.height() * scale))));
+    }
+    QImage srcImg = reader.read();
+    if (srcImg.isNull()) return QByteArray();
+    // Composite onto an opaque white RGB32 canvas (>= 1280px longest side, >= 64px margin)
+    // so transparent PNGs have a clean white background and Imago's internal 1280px
+    // rescaler never stretches small tight crops up to giant stroke widths.
+    constexpr int kMargin = 64;
+    constexpr int kImagoInternalRescaleDim = 1280;
+    const int minW = srcImg.width() + kMargin * 2;
+    const int minH = srcImg.height() + kMargin * 2;
+    const int side = qMax(qMax(minW, minH), kImagoInternalRescaleDim);
+    const int canvasW = (minW < kImagoInternalRescaleDim && minH < kImagoInternalRescaleDim) ? side : minW;
+    const int canvasH = (minW < kImagoInternalRescaleDim && minH < kImagoInternalRescaleDim) ? side : minH;
+    QImage padded(canvasW, canvasH, QImage::Format_RGB32);
+    padded.fill(Qt::white);
+    {
+        QPainter painter(&padded);
+        painter.drawImage((canvasW - srcImg.width()) / 2,
+                          (canvasH - srcImg.height()) / 2,
+                          srcImg);
+    }
     QByteArray bytes;
     QBuffer buffer(&bytes);
     buffer.open(QIODevice::WriteOnly);
-    scaled.save(&buffer, "PNG");
+    padded.save(&buffer, "PNG");
     return bytes;
 }
 
