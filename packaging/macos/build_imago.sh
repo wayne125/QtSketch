@@ -63,28 +63,9 @@ with open(cmakelists, "w", encoding="utf-8") as f:
             f.write("# " + line)
         else:
             f.write(line)
-
-beast = os.path.join(src, "core/src/beast.h")
-with open(beast, "r", encoding="utf-8") as f:
-    btxt = f.read()
-btxt = btxt.replace(
-    "void removeVertex(vertex_descriptor desc)\n        {\n            auto u_iter = _vertex_indices[desc.id];",
-    "void removeVertex(vertex_descriptor desc)\n        {\n            if (desc.id >= _vertex_indices.size() || _vertex_indices[desc.id] == _vertices.end()) return;\n            auto u_iter = _vertex_indices[desc.id];",
-    1,
-)
-btxt = btxt.replace(
-    "size_t getDegree(vertex_descriptor desc) const\n        {\n            return _vertex_indices[desc.id]->neighbors.size();",
-    "size_t getDegree(vertex_descriptor desc) const\n        {\n            if (desc.id >= _vertex_indices.size() || _vertex_indices[desc.id] == _vertices.end()) return 0;\n            return _vertex_indices[desc.id]->neighbors.size();",
-    1,
-)
-btxt = btxt.replace(
-    "void removeEdge(edge_descriptor desc)\n        {\n            auto iter = _edge_indices[desc.id];",
-    "void removeEdge(edge_descriptor desc)\n        {\n            if (desc.id >= _edge_indices.size() || _edge_indices[desc.id] == _edges.end()) return;\n            auto iter = _edge_indices[desc.id];",
-    1,
-)
-with open(beast, "w", encoding="utf-8") as f:
-    f.write(btxt)
 PY
+
+python3 "$ROOT/packaging/patch_imago_beast.py" "$TMP/src"
 
 GEN_ARGS=()
 if command -v ninja >/dev/null 2>&1; then
